@@ -123,6 +123,14 @@ fun LoginScreen(onLogin: (Sesion) -> Unit, vm: LoginViewModel = koinViewModel())
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
+                if (state.servidor.isNotBlank()) {
+                    Text(
+                        "Servidor: ${state.servidor}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
