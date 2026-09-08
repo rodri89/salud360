@@ -1,0 +1,252 @@
+CREATE TABLE consultorio (
+    id TEXT NOT NULL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    direccion TEXT NOT NULL DEFAULT '',
+    telefono TEXT NOT NULL DEFAULT '',
+    foto TEXT,
+    color_primario TEXT,
+    color_secundario TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+consultorios: SELECT * FROM consultorio WHERE deleted = 0 ORDER BY nombre;
+consultorioPorId: SELECT * FROM consultorio WHERE id = ? AND deleted = 0;
+consultoriosPorIds: SELECT * FROM consultorio WHERE id IN ? AND deleted = 0 ORDER BY nombre;
+upsertConsultorio: INSERT OR REPLACE INTO consultorio VALUES ?;
+consultoriosDirty: SELECT * FROM consultorio WHERE dirty = 1;
+limpiarConsultorio: UPDATE consultorio SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE horario (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    consultorio_id TEXT NOT NULL,
+    dia INTEGER NOT NULL,
+    horario TEXT NOT NULL,
+    doble INTEGER NOT NULL DEFAULT 0,
+    tipo_turno INTEGER NOT NULL DEFAULT 1,
+    valido_desde TEXT,
+    valido_hasta TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX horario_medico ON horario(medico_id, consultorio_id, dia);
+
+horariosDeMedico: SELECT * FROM horario WHERE medico_id = ? AND deleted = 0 AND activo = 1 ORDER BY dia, horario;
+horariosDeMedicoDia: SELECT * FROM horario WHERE medico_id = ? AND consultorio_id = ? AND dia = ? AND deleted = 0 AND activo = 1 ORDER BY horario;
+horarioPorId: SELECT * FROM horario WHERE id = ?;
+upsertHorario: INSERT OR REPLACE INTO horario VALUES ?;
+horariosDirty: SELECT * FROM horario WHERE dirty = 1;
+limpiarHorario: UPDATE horario SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE horario_rango (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    consultorio_id TEXT NOT NULL,
+    dia INTEGER NOT NULL,
+    desde TEXT NOT NULL,
+    hasta TEXT NOT NULL,
+    tipo_turno INTEGER NOT NULL DEFAULT 1,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+rangosDeMedico: SELECT * FROM horario_rango WHERE medico_id = ? AND deleted = 0 AND activo = 1 ORDER BY dia, desde;
+upsertHorarioRango: INSERT OR REPLACE INTO horario_rango VALUES ?;
+horarioRangosDirty: SELECT * FROM horario_rango WHERE dirty = 1;
+limpiarHorarioRango: UPDATE horario_rango SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE fecha_agregada (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    consultorio_id TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    -- horarios "HH:MM" separados por coma
+    horarios TEXT NOT NULL DEFAULT '',
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX fecha_agregada_medico ON fecha_agregada(medico_id, fecha);
+
+fechaAgregada: SELECT * FROM fecha_agregada WHERE medico_id = ? AND consultorio_id = ? AND fecha = ? AND deleted = 0 AND activo = 1 LIMIT 1;
+fechasAgregadasDeMedico: SELECT * FROM fecha_agregada WHERE medico_id = ? AND fecha >= ? AND deleted = 0 AND activo = 1 ORDER BY fecha;
+upsertFechaAgregada: INSERT OR REPLACE INTO fecha_agregada VALUES ?;
+fechasAgregadasDirty: SELECT * FROM fecha_agregada WHERE dirty = 1;
+limpiarFechaAgregada: UPDATE fecha_agregada SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE turno (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT,
+    medico_id TEXT NOT NULL,
+    consultorio_id TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    horario TEXT NOT NULL,
+    tipo_turno INTEGER NOT NULL DEFAULT 1,
+    estado TEXT NOT NULL DEFAULT 'ACTIVO',
+    asistencia TEXT NOT NULL DEFAULT 'SIN_MARCAR',
+    sobreturno INTEGER NOT NULL DEFAULT 0,
+    primer_control INTEGER NOT NULL DEFAULT 0,
+    caja REAL NOT NULL DEFAULT 0,
+    comentario TEXT NOT NULL DEFAULT '',
+    otorgado_por TEXT NOT NULL DEFAULT '',
+    cancelado_por TEXT NOT NULL DEFAULT '',
+    recordatorio_enviado INTEGER NOT NULL DEFAULT 0,
+    pagado INTEGER NOT NULL DEFAULT 0,
+    importe_reserva REAL NOT NULL DEFAULT 0,
+    especialidad TEXT NOT NULL DEFAULT '',
+    paciente_nombre TEXT NOT NULL DEFAULT '',
+    paciente_dni TEXT NOT NULL DEFAULT '',
+    paciente_telefono TEXT NOT NULL DEFAULT '',
+    paciente_obra_social TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX turno_medico_fecha ON turno(medico_id, consultorio_id, fecha, estado);
+CREATE INDEX turno_paciente ON turno(paciente_id, fecha);
+
+turnoPorId: SELECT * FROM turno WHERE id = ?;
+turnosDelDia: SELECT * FROM turno WHERE medico_id = ? AND consultorio_id = ? AND fecha = ? AND deleted = 0 AND estado != 'CANCELADO' ORDER BY horario;
+turnosDelDiaTodos: SELECT * FROM turno WHERE medico_id = ? AND fecha = ? AND deleted = 0 ORDER BY horario;
+turnosOcupados: SELECT * FROM turno WHERE medico_id = ? AND consultorio_id = ? AND fecha = ? AND deleted = 0 AND estado IN ('ACTIVO', 'BLOQUEADO');
+turnosEntreFechas: SELECT * FROM turno WHERE medico_id = ? AND fecha >= ? AND fecha <= ? AND deleted = 0 AND estado != 'CANCELADO' ORDER BY fecha, horario;
+turnosDePaciente: SELECT * FROM turno WHERE paciente_id = ? AND deleted = 0 ORDER BY fecha DESC, horario DESC;
+turnosFuturosDePaciente: SELECT * FROM turno WHERE paciente_id = ? AND medico_id = ? AND fecha >= ? AND estado = 'ACTIVO' AND deleted = 0 ORDER BY fecha, horario;
+turnosDePacienteEnFecha: SELECT * FROM turno WHERE paciente_id = ? AND medico_id = ? AND fecha = ? AND estado = 'ACTIVO' AND deleted = 0;
+turnosDePacienteEnMes: SELECT COUNT(*) FROM turno WHERE paciente_id = ? AND medico_id = ? AND fecha >= ? AND fecha <= ? AND estado = 'ACTIVO' AND deleted = 0;
+primerosControlesDelDia: SELECT COUNT(*) FROM turno WHERE medico_id = ? AND consultorio_id = ? AND fecha = ? AND primer_control = 1 AND estado = 'ACTIVO' AND deleted = 0;
+sobreturnosDelDia: SELECT COUNT(*) FROM turno WHERE medico_id = ? AND consultorio_id = ? AND fecha = ? AND sobreturno = 1 AND estado = 'ACTIVO' AND deleted = 0;
+upsertTurno: INSERT OR REPLACE INTO turno VALUES ?;
+turnosDirty: SELECT * FROM turno WHERE dirty = 1;
+limpiarTurno: UPDATE turno SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE feriado (
+    id TEXT NOT NULL PRIMARY KEY,
+    fecha TEXT NOT NULL,
+    descripcion TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+feriados: SELECT * FROM feriado WHERE deleted = 0 ORDER BY fecha;
+feriadoEnFecha: SELECT * FROM feriado WHERE fecha = ? AND deleted = 0 LIMIT 1;
+upsertFeriado: INSERT OR REPLACE INTO feriado VALUES ?;
+feriadosDirty: SELECT * FROM feriado WHERE dirty = 1;
+limpiarFeriado: UPDATE feriado SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE obra_social (
+    id TEXT NOT NULL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+obrasSociales: SELECT * FROM obra_social WHERE deleted = 0 ORDER BY nombre;
+upsertObraSocial: INSERT OR REPLACE INTO obra_social VALUES ?;
+obrasSocialesDirty: SELECT * FROM obra_social WHERE dirty = 1;
+limpiarObraSocial: UPDATE obra_social SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE obra_social_medico (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    obra_social_id TEXT NOT NULL,
+    importe REAL NOT NULL DEFAULT 0,
+    importe_reserva REAL NOT NULL DEFAULT 0,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX osm_medico ON obra_social_medico(medico_id);
+
+obrasSocialesDeMedico: SELECT * FROM obra_social_medico WHERE medico_id = ? AND deleted = 0;
+upsertObraSocialMedico: INSERT OR REPLACE INTO obra_social_medico VALUES ?;
+obraSocialMedicosDirty: SELECT * FROM obra_social_medico WHERE dirty = 1;
+limpiarObraSocialMedico: UPDATE obra_social_medico SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE medico_modulo (
+    medico_id TEXT NOT NULL,
+    modulo INTEGER NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (medico_id, modulo)
+);
+
+modulosDeMedico: SELECT * FROM medico_modulo WHERE medico_id = ? AND deleted = 0;
+upsertMedicoModulo: INSERT OR REPLACE INTO medico_modulo VALUES ?;
+medicoModulosDirty: SELECT * FROM medico_modulo WHERE dirty = 1;
+limpiarMedicoModulo: UPDATE medico_modulo SET dirty = 0 WHERE medico_id = ? AND modulo = ?;
+
+CREATE TABLE config_agenda (
+    medico_id TEXT NOT NULL PRIMARY KEY,
+    ventana_dias INTEGER NOT NULL DEFAULT 180,
+    valor_consulta REAL NOT NULL DEFAULT 0,
+    -- JSON {"MONDAY": 2, ...}
+    cupo_primer_control_json TEXT NOT NULL DEFAULT '{}',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+configDeMedico: SELECT * FROM config_agenda WHERE medico_id = ? AND deleted = 0;
+upsertConfigAgenda: INSERT OR REPLACE INTO config_agenda VALUES ?;
+configAgendaDirty: SELECT * FROM config_agenda WHERE dirty = 1;
+limpiarConfigAgenda: UPDATE config_agenda SET dirty = 0 WHERE medico_id = ?;
+
+CREATE TABLE mensaje_especial (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    descripcion TEXT NOT NULL,
+    valido_desde TEXT,
+    valido_hasta TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+mensajesDeMedico: SELECT * FROM mensaje_especial WHERE medico_id = ? AND deleted = 0 ORDER BY updated_at DESC;
+upsertMensajeEspecial: INSERT OR REPLACE INTO mensaje_especial VALUES ?;
+mensajesDirty: SELECT * FROM mensaje_especial WHERE dirty = 1;
+limpiarMensaje: UPDATE mensaje_especial SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE receta (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    medico_id TEXT NOT NULL,
+    consultorio_id TEXT,
+    motivo TEXT NOT NULL,
+    estado INTEGER NOT NULL DEFAULT 1,
+    retira_consultorio INTEGER NOT NULL DEFAULT 0,
+    comentario TEXT NOT NULL DEFAULT '',
+    archivos TEXT NOT NULL DEFAULT '',
+    activo INTEGER NOT NULL DEFAULT 1,
+    paciente_nombre TEXT NOT NULL DEFAULT '',
+    paciente_dni TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX receta_medico ON receta(medico_id, estado);
+
+recetasDeMedico: SELECT * FROM receta WHERE medico_id = ? AND deleted = 0 AND activo = 1 AND estado NOT IN (5, 6) ORDER BY updated_at DESC;
+recetasPendientesDeMedico: SELECT COUNT(*) FROM receta WHERE medico_id = ? AND deleted = 0 AND activo = 1 AND estado = 1;
+recetasDeMedicos: SELECT * FROM receta WHERE medico_id IN ? AND deleted = 0 AND activo = 1 AND estado NOT IN (5, 6) ORDER BY updated_at DESC;
+recetaPorId: SELECT * FROM receta WHERE id = ?;
+upsertReceta: INSERT OR REPLACE INTO receta VALUES ?;
+recetasDirty: SELECT * FROM receta WHERE dirty = 1;
+limpiarReceta: UPDATE receta SET dirty = 0 WHERE id = ?;

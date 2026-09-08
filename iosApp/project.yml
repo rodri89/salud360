@@ -1,0 +1,30 @@
+# Especificación para generar el proyecto Xcode con XcodeGen (`brew install xcodegen && xcodegen`).
+# También podés crear el proyecto desde Xcode: App SwiftUI "iosApp" y agregar la fase de build de abajo.
+name: iosApp
+options:
+  bundleIdPrefix: com.salud360
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources: [iosApp]
+    info:
+      path: iosApp/Info.plist
+      properties:
+        CFBundleDisplayName: Salud 360
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: Salud 360 graba audio de la consulta para la historia clínica.
+        NSPhotoLibraryUsageDescription: Salud 360 adjunta fotos de estudios a la historia clínica.
+        NSCameraUsageDescription: Salud 360 toma fotos de estudios para la historia clínica.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.salud360.app
+        OTHER_LDFLAGS: -lsqlite3
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+    preBuildScripts:
+      - name: Compile Kotlin Framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode

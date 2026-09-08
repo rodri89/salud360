@@ -1,0 +1,279 @@
+CREATE TABLE consulta (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    medico_id TEXT NOT NULL,
+    especialidad TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'ABIERTA',
+    edad_mostrar TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX consulta_paciente ON consulta(paciente_id, especialidad, fecha);
+
+consultaPorId: SELECT * FROM consulta WHERE id = ? AND deleted = 0;
+consultasDePaciente: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
+consultasDePacienteTodas: SELECT * FROM consulta WHERE paciente_id = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
+consultaAbierta: SELECT * FROM consulta WHERE paciente_id = ? AND medico_id = ? AND especialidad = ? AND estado = 'ABIERTA' AND deleted = 0 ORDER BY updated_at DESC LIMIT 1;
+ultimaConsulta: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado = 'CERRADA' ORDER BY fecha DESC, updated_at DESC LIMIT 1;
+contarConsultasMedico: SELECT COUNT(*) FROM consulta WHERE medico_id = ? AND fecha >= ? AND fecha <= ? AND deleted = 0 AND estado = 'CERRADA';
+upsertConsulta: INSERT OR REPLACE INTO consulta VALUES ?;
+consultasDirty: SELECT * FROM consulta WHERE dirty = 1;
+limpiarConsulta: UPDATE consulta SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE seccion_valor (
+    consulta_id TEXT NOT NULL,
+    seccion TEXT NOT NULL,
+    campo TEXT NOT NULL,
+    valor TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (consulta_id, seccion, campo)
+);
+
+valoresDeConsulta: SELECT * FROM seccion_valor WHERE consulta_id = ? AND deleted = 0;
+valoresDeSeccion: SELECT * FROM seccion_valor WHERE consulta_id = ? AND seccion = ? AND deleted = 0;
+-- Historial de un campo a lo largo de las consultas del paciente (ej. "consultas previas" del motivo)
+historialCampo:
+SELECT c.fecha, c.id AS consulta_id, sv.valor FROM seccion_valor sv
+JOIN consulta c ON c.id = sv.consulta_id
+WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.campo = ? AND sv.deleted = 0 AND c.deleted = 0 AND sv.valor != ''
+ORDER BY c.fecha DESC, c.updated_at DESC;
+upsertSeccionValor: INSERT OR REPLACE INTO seccion_valor VALUES ?;
+seccionValoresDirty: SELECT * FROM seccion_valor WHERE dirty = 1;
+limpiarSeccionValor: UPDATE seccion_valor SET dirty = 0 WHERE consulta_id = ? AND seccion = ? AND campo = ?;
+
+CREATE TABLE examen_fisico (
+    consulta_id TEXT NOT NULL PRIMARY KEY,
+    peso TEXT NOT NULL DEFAULT '',
+    peso_percentil TEXT NOT NULL DEFAULT '',
+    talla TEXT NOT NULL DEFAULT '',
+    talla_percentil TEXT NOT NULL DEFAULT '',
+    imc TEXT NOT NULL DEFAULT '',
+    imc_percentil TEXT NOT NULL DEFAULT '',
+    perimetro_cefalico TEXT NOT NULL DEFAULT '',
+    perimetro_cefalico_percentil TEXT NOT NULL DEFAULT '',
+    circunferencia_abdominal TEXT NOT NULL DEFAULT '',
+    tension_arterial TEXT NOT NULL DEFAULT '',
+    frecuencia_cardiaca TEXT NOT NULL DEFAULT '',
+    temperatura TEXT NOT NULL DEFAULT '',
+    saturacion TEXT NOT NULL DEFAULT '',
+    ipd TEXT NOT NULL DEFAULT '',
+    nota TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+examenFisicoDeConsulta: SELECT * FROM examen_fisico WHERE consulta_id = ? AND deleted = 0;
+-- Evolución de peso/talla del paciente (curvas de crecimiento y tabla de peso)
+examenesFisicosDePaciente:
+SELECT c.fecha, ef.* FROM examen_fisico ef JOIN consulta c ON c.id = ef.consulta_id
+WHERE c.paciente_id = ? AND ef.deleted = 0 AND c.deleted = 0 ORDER BY c.fecha ASC;
+upsertExamenFisico: INSERT OR REPLACE INTO examen_fisico VALUES ?;
+examenesFisicosDirty: SELECT * FROM examen_fisico WHERE dirty = 1;
+limpiarExamenFisico: UPDATE examen_fisico SET dirty = 0 WHERE consulta_id = ?;
+
+CREATE TABLE antecedente (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    especialidad TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    clave TEXT NOT NULL,
+    flag INTEGER NOT NULL DEFAULT 0,
+    detalle TEXT NOT NULL DEFAULT '',
+    consulta_id TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX antecedente_paciente ON antecedente(paciente_id, especialidad, categoria);
+
+antecedentesDePaciente: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND activo = 1;
+antecedentesDeCategoria: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND categoria = ? AND deleted = 0 AND activo = 1;
+upsertAntecedente: INSERT OR REPLACE INTO antecedente VALUES ?;
+antecedentesDirty: SELECT * FROM antecedente WHERE dirty = 1;
+limpiarAntecedente: UPDATE antecedente SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE registro_clinico (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    consulta_id TEXT,
+    especialidad TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    fecha TEXT,
+    campos_json TEXT NOT NULL DEFAULT '{}',
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX registro_paciente ON registro_clinico(paciente_id, especialidad, tipo);
+
+registrosDePaciente: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
+registrosDeConsulta: SELECT * FROM registro_clinico WHERE consulta_id = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
+registroPorId: SELECT * FROM registro_clinico WHERE id = ? AND deleted = 0;
+upsertRegistro: INSERT OR REPLACE INTO registro_clinico VALUES ?;
+registrosDirty: SELECT * FROM registro_clinico WHERE dirty = 1;
+limpiarRegistro: UPDATE registro_clinico SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE laboratorio (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    consulta_id TEXT,
+    especialidad TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    valores_json TEXT NOT NULL DEFAULT '{}',
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX laboratorio_paciente ON laboratorio(paciente_id, especialidad, tipo, fecha);
+
+laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC;
+laboratorioPorId: SELECT * FROM laboratorio WHERE id = ? AND deleted = 0;
+upsertLaboratorio: INSERT OR REPLACE INTO laboratorio VALUES ?;
+laboratoriosDirty: SELECT * FROM laboratorio WHERE dirty = 1;
+limpiarLaboratorio: UPDATE laboratorio SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE archivo (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    consulta_id TEXT,
+    registro_id TEXT,
+    seccion TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    tamanio_bytes INTEGER NOT NULL DEFAULT 0,
+    duracion_ms INTEGER NOT NULL DEFAULT 0,
+    ruta_local TEXT,
+    url_remota TEXT,
+    subido INTEGER NOT NULL DEFAULT 0,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX archivo_paciente ON archivo(paciente_id, seccion);
+
+archivosDePaciente: SELECT * FROM archivo WHERE paciente_id = ? AND seccion = ? AND deleted = 0 AND activo = 1 ORDER BY updated_at DESC;
+archivosDeConsulta: SELECT * FROM archivo WHERE consulta_id = ? AND seccion = ? AND deleted = 0 AND activo = 1 ORDER BY updated_at ASC;
+archivosDeRegistro: SELECT * FROM archivo WHERE registro_id = ? AND deleted = 0 AND activo = 1 ORDER BY updated_at ASC;
+archivosPendientesDeSubir: SELECT * FROM archivo WHERE subido = 0 AND length(ruta_local) > 0 AND deleted = 0;
+archivoPorId: SELECT * FROM archivo WHERE id = ?;
+upsertArchivo: INSERT OR REPLACE INTO archivo VALUES ?;
+archivosDirty: SELECT * FROM archivo WHERE dirty = 1;
+limpiarArchivo: UPDATE archivo SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE pendiente (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    medico_id TEXT NOT NULL,
+    texto TEXT NOT NULL,
+    consulta_id TEXT,
+    resuelto INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+pendientesDePaciente: SELECT * FROM pendiente WHERE paciente_id = ? AND medico_id = ? AND resuelto = 0 AND deleted = 0 ORDER BY updated_at DESC;
+contarPendientesDeMedico: SELECT COUNT(*) FROM pendiente WHERE medico_id = ? AND resuelto = 0 AND deleted = 0;
+upsertPendiente: INSERT OR REPLACE INTO pendiente VALUES ?;
+pendientesDirty: SELECT * FROM pendiente WHERE dirty = 1;
+limpiarPendiente: UPDATE pendiente SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE diagnostico (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT,
+    nombre TEXT NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+diagnosticosDeMedico: SELECT * FROM diagnostico WHERE (medico_id = ? OR medico_id IS NULL) AND deleted = 0 AND activo = 1 ORDER BY nombre;
+upsertDiagnostico: INSERT OR REPLACE INTO diagnostico VALUES ?;
+diagnosticosDirty: SELECT * FROM diagnostico WHERE dirty = 1;
+limpiarDiagnostico: UPDATE diagnostico SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE consulta_diagnostico (
+    consulta_id TEXT NOT NULL,
+    diagnostico_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (consulta_id, diagnostico_id)
+);
+
+diagnosticosDeConsulta: SELECT d.* FROM diagnostico d JOIN consulta_diagnostico cd ON cd.diagnostico_id = d.id WHERE cd.consulta_id = ? AND cd.deleted = 0 AND d.deleted = 0;
+consultaDiagnosticosDe: SELECT * FROM consulta_diagnostico WHERE consulta_id = ? AND deleted = 0;
+pacientesPorDiagnostico:
+SELECT DISTINCT p.* FROM paciente p JOIN consulta c ON c.paciente_id = p.id JOIN consulta_diagnostico cd ON cd.consulta_id = c.id
+WHERE cd.diagnostico_id = ? AND cd.deleted = 0 AND c.deleted = 0 AND p.deleted = 0 ORDER BY p.apellido, p.nombre;
+upsertConsultaDiagnostico: INSERT OR REPLACE INTO consulta_diagnostico VALUES ?;
+consultaDiagnosticosDirty: SELECT * FROM consulta_diagnostico WHERE dirty = 1;
+limpiarConsultaDiagnostico: UPDATE consulta_diagnostico SET dirty = 0 WHERE consulta_id = ? AND diagnostico_id = ?;
+
+CREATE TABLE interconsultor (
+    id TEXT NOT NULL PRIMARY KEY,
+    medico_id TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    apellido TEXT NOT NULL,
+    especialidad TEXT NOT NULL DEFAULT '',
+    direccion TEXT NOT NULL DEFAULT '',
+    telefono_particular TEXT NOT NULL DEFAULT '',
+    telefono_consultorio TEXT NOT NULL DEFAULT '',
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+interconsultoresDeMedico: SELECT * FROM interconsultor WHERE medico_id = ? AND deleted = 0 AND activo = 1 ORDER BY especialidad, apellido;
+upsertInterconsultor: INSERT OR REPLACE INTO interconsultor VALUES ?;
+interconsultoresDirty: SELECT * FROM interconsultor WHERE dirty = 1;
+limpiarInterconsultor: UPDATE interconsultor SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE vacuna_aplicada (
+    id TEXT NOT NULL PRIMARY KEY,
+    paciente_id TEXT NOT NULL,
+    vacuna TEXT NOT NULL,
+    edad_meses INTEGER,
+    aplicada INTEGER NOT NULL DEFAULT 1,
+    fecha TEXT,
+    dosis INTEGER,
+    detalle TEXT NOT NULL DEFAULT '',
+    consulta_id TEXT,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX vacuna_paciente ON vacuna_aplicada(paciente_id);
+
+vacunasDePaciente: SELECT * FROM vacuna_aplicada WHERE paciente_id = ? AND deleted = 0 ORDER BY fecha;
+upsertVacuna: INSERT OR REPLACE INTO vacuna_aplicada VALUES ?;
+vacunasDirty: SELECT * FROM vacuna_aplicada WHERE dirty = 1;
+limpiarVacuna: UPDATE vacuna_aplicada SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE medico_preferencia (
+    medico_id TEXT NOT NULL,
+    clave TEXT NOT NULL,
+    valor TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (medico_id, clave)
+);
+
+preferenciasDeMedico: SELECT * FROM medico_preferencia WHERE medico_id = ? AND deleted = 0;
+upsertPreferencia: INSERT OR REPLACE INTO medico_preferencia VALUES ?;
+preferenciasDirty: SELECT * FROM medico_preferencia WHERE dirty = 1;
+limpiarPreferencia: UPDATE medico_preferencia SET dirty = 0 WHERE medico_id = ? AND clave = ?;

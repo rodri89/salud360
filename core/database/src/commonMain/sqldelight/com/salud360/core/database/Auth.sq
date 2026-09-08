@@ -1,0 +1,134 @@
+-- Usuarios, médicos, secretarias, especialidades y licencias.
+-- Todas las tablas sincronizables tienen: updated_at (epoch millis), deleted (0/1) y dirty (1 = cambio local pendiente).
+
+CREATE TABLE usuario (
+    id TEXT NOT NULL PRIMARY KEY,
+    email TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    apellido TEXT NOT NULL,
+    rol TEXT NOT NULL,
+    foto TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX usuario_email ON usuario(email);
+
+usuarioPorId: SELECT * FROM usuario WHERE id = ? AND deleted = 0;
+usuarioPorEmail: SELECT * FROM usuario WHERE lower(email) = lower(?) AND deleted = 0;
+usuarios: SELECT * FROM usuario WHERE deleted = 0 ORDER BY apellido, nombre;
+usuariosPorRol: SELECT * FROM usuario WHERE rol = ? AND deleted = 0 ORDER BY apellido, nombre;
+upsertUsuario: INSERT OR REPLACE INTO usuario VALUES ?;
+usuariosDirty: SELECT * FROM usuario WHERE dirty = 1;
+limpiarUsuario: UPDATE usuario SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE medico (
+    id TEXT NOT NULL PRIMARY KEY,
+    usuario_id TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    apellido TEXT NOT NULL,
+    telefono TEXT NOT NULL DEFAULT '',
+    mail TEXT NOT NULL DEFAULT '',
+    sexo TEXT NOT NULL DEFAULT '',
+    foto TEXT,
+    consultorio_id TEXT,
+    especialidad_id TEXT,
+    -- códigos de HC separados por coma, ej. "pediatria,desarrollo_infantil"
+    especialidades_hc TEXT NOT NULL DEFAULT '',
+    tiene_turnos INTEGER NOT NULL DEFAULT 0,
+    visible_en_turnos INTEGER NOT NULL DEFAULT 1,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX medico_usuario ON medico(usuario_id);
+
+medicoPorId: SELECT * FROM medico WHERE id = ? AND deleted = 0;
+medicoPorUsuario: SELECT * FROM medico WHERE usuario_id = ? AND deleted = 0;
+medicos: SELECT * FROM medico WHERE deleted = 0 ORDER BY apellido, nombre;
+medicosPorIds: SELECT * FROM medico WHERE id IN ? AND deleted = 0 ORDER BY apellido, nombre;
+medicosPorConsultorio: SELECT * FROM medico WHERE consultorio_id = ? AND deleted = 0 AND activo = 1 ORDER BY apellido, nombre;
+upsertMedico: INSERT OR REPLACE INTO medico VALUES ?;
+medicosDirty: SELECT * FROM medico WHERE dirty = 1;
+limpiarMedico: UPDATE medico SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE secretaria (
+    id TEXT NOT NULL PRIMARY KEY,
+    usuario_id TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    apellido TEXT NOT NULL,
+    consultorio_ids TEXT NOT NULL DEFAULT '',
+    medico_ids TEXT NOT NULL DEFAULT '',
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+secretariaPorId: SELECT * FROM secretaria WHERE id = ? AND deleted = 0;
+secretariaPorUsuario: SELECT * FROM secretaria WHERE usuario_id = ? AND deleted = 0;
+secretarias: SELECT * FROM secretaria WHERE deleted = 0 ORDER BY apellido, nombre;
+upsertSecretaria: INSERT OR REPLACE INTO secretaria VALUES ?;
+secretariasDirty: SELECT * FROM secretaria WHERE dirty = 1;
+limpiarSecretaria: UPDATE secretaria SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE especialidad (
+    id TEXT NOT NULL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    codigo_hc TEXT,
+    color TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+especialidades: SELECT * FROM especialidad WHERE deleted = 0 ORDER BY nombre;
+especialidadPorId: SELECT * FROM especialidad WHERE id = ? AND deleted = 0;
+upsertEspecialidad: INSERT OR REPLACE INTO especialidad VALUES ?;
+especialidadesDirty: SELECT * FROM especialidad WHERE dirty = 1;
+limpiarEspecialidad: UPDATE especialidad SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE licencia (
+    medico_id TEXT NOT NULL PRIMARY KEY,
+    fecha_expiracion TEXT NOT NULL,
+    fecha_aviso TEXT NOT NULL,
+    importe REAL NOT NULL DEFAULT 0,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+
+licenciaPorMedico: SELECT * FROM licencia WHERE medico_id = ? AND deleted = 0;
+licencias: SELECT * FROM licencia WHERE deleted = 0;
+upsertLicencia: INSERT OR REPLACE INTO licencia VALUES ?;
+licenciasDirty: SELECT * FROM licencia WHERE dirty = 1;
+limpiarLicencia: UPDATE licencia SET dirty = 0 WHERE medico_id = ?;
+
+-- Sesión local (una sola fila) para poder abrir la app sin conexión.
+CREATE TABLE sesion_local (
+    id INTEGER NOT NULL PRIMARY KEY,
+    usuario_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    sesion_json TEXT NOT NULL,
+    guardado_en INTEGER NOT NULL
+);
+
+sesionActual: SELECT * FROM sesion_local WHERE id = 1;
+guardarSesion: INSERT OR REPLACE INTO sesion_local(id, usuario_id, token, sesion_json, guardado_en) VALUES (1, ?, ?, ?, ?);
+borrarSesion: DELETE FROM sesion_local;
+
+-- Estado de sincronización por tabla.
+CREATE TABLE sync_estado (
+    tabla TEXT NOT NULL PRIMARY KEY,
+    ultima_version INTEGER NOT NULL DEFAULT 0,
+    ultima_sync INTEGER NOT NULL DEFAULT 0
+);
+
+syncEstado: SELECT * FROM sync_estado WHERE tabla = ?;
+syncEstados: SELECT * FROM sync_estado;
+guardarSyncEstado: INSERT OR REPLACE INTO sync_estado(tabla, ultima_version, ultima_sync) VALUES (?, ?, ?);
+borrarSyncEstados: DELETE FROM sync_estado;

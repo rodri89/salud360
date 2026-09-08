@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salud 360</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #f8f7fa; font-family: Nunito, Roboto, sans-serif; }
+        #cargando { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+            background: linear-gradient(45deg, #2C7B90 0%, #2C7B90 16%, #2A6C7E 36%, #004D45 100%); color: white; }
+        #cargando .spinner { width: 42px; height: 42px; border: 4px solid rgba(255,255,255,.35); border-top-color: white; border-radius: 50%; animation: girar 1s linear infinite; }
+        @keyframes girar { to { transform: rotate(360deg); } }
+        canvas { outline: none; }
+    </style>
+</head>
+<body>
+<div id="cargando"><div class="spinner"></div><div>Cargando Salud 360...</div></div>
+<script src="salud360.js"></script>
+</body>
+</html>

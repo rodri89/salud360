@@ -1,0 +1,92 @@
+CREATE TABLE paciente (
+    id TEXT NOT NULL PRIMARY KEY,
+    dni TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    apellido TEXT NOT NULL,
+    sexo TEXT,
+    fecha_nacimiento TEXT,
+    telefono TEXT NOT NULL DEFAULT '',
+    mail TEXT NOT NULL DEFAULT '',
+    domicilio TEXT NOT NULL DEFAULT '',
+    localidad TEXT NOT NULL DEFAULT '',
+    nacionalidad TEXT NOT NULL DEFAULT '',
+    obra_social TEXT NOT NULL DEFAULT '',
+    numero_afiliado TEXT NOT NULL DEFAULT '',
+    obra_social_plan TEXT NOT NULL DEFAULT '',
+    obra_social_foto TEXT,
+    obra_social_opcional TEXT NOT NULL DEFAULT '',
+    numero_afiliado_opcional TEXT NOT NULL DEFAULT '',
+    obra_social_plan_opcional TEXT NOT NULL DEFAULT '',
+    nombre_madre TEXT NOT NULL DEFAULT '',
+    telefono_madre TEXT NOT NULL DEFAULT '',
+    nombre_padre TEXT NOT NULL DEFAULT '',
+    telefono_padre TEXT NOT NULL DEFAULT '',
+    cantidad_hermanos INTEGER,
+    nombre_familiar TEXT NOT NULL DEFAULT '',
+    telefono_familiar TEXT NOT NULL DEFAULT '',
+    fecha_castigo TEXT,
+    afiliado_obligatorio INTEGER NOT NULL DEFAULT 0,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX paciente_dni ON paciente(dni);
+CREATE INDEX paciente_apellido ON paciente(apellido, nombre);
+
+pacientePorId: SELECT * FROM paciente WHERE id = ? AND deleted = 0;
+pacientePorDni: SELECT * FROM paciente WHERE dni = ? AND deleted = 0 LIMIT 1;
+pacientes: SELECT * FROM paciente WHERE deleted = 0 ORDER BY apellido, nombre;
+buscarPacientes:
+SELECT * FROM paciente
+WHERE deleted = 0 AND (dni LIKE :q || '%' OR lower(apellido) LIKE '%' || lower(:q) || '%' OR lower(nombre) LIKE '%' || lower(:q) || '%')
+ORDER BY apellido, nombre LIMIT :limite;
+pacientesDeMedico:
+SELECT p.* FROM paciente p
+JOIN medico_paciente mp ON mp.paciente_id = p.id
+WHERE mp.medico_id = ? AND mp.activo = 1 AND mp.deleted = 0 AND p.deleted = 0
+ORDER BY p.apellido, p.nombre;
+buscarPacientesDeMedico:
+SELECT p.* FROM paciente p
+JOIN medico_paciente mp ON mp.paciente_id = p.id
+WHERE mp.medico_id = :medicoId AND mp.activo = 1 AND mp.deleted = 0 AND p.deleted = 0
+  AND (p.dni LIKE :q || '%' OR lower(p.apellido) LIKE '%' || lower(:q) || '%' OR lower(p.nombre) LIKE '%' || lower(:q) || '%')
+ORDER BY p.apellido, p.nombre LIMIT :limite;
+pacientesPendientesActivacion: SELECT * FROM paciente WHERE activo = 0 AND deleted = 0 ORDER BY updated_at DESC;
+upsertPaciente: INSERT OR REPLACE INTO paciente VALUES ?;
+pacientesDirty: SELECT * FROM paciente WHERE dirty = 1;
+limpiarPaciente: UPDATE paciente SET dirty = 0 WHERE id = ?;
+
+CREATE TABLE paciente_extra (
+    paciente_id TEXT NOT NULL,
+    especialidad TEXT NOT NULL,
+    clave TEXT NOT NULL,
+    valor TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (paciente_id, especialidad, clave)
+);
+
+extrasDePaciente: SELECT * FROM paciente_extra WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;
+upsertPacienteExtra: INSERT OR REPLACE INTO paciente_extra VALUES ?;
+pacienteExtrasDirty: SELECT * FROM paciente_extra WHERE dirty = 1;
+limpiarPacienteExtra: UPDATE paciente_extra SET dirty = 0 WHERE paciente_id = ? AND especialidad = ? AND clave = ?;
+
+CREATE TABLE medico_paciente (
+    medico_id TEXT NOT NULL,
+    paciente_id TEXT NOT NULL,
+    bloqueado INTEGER NOT NULL DEFAULT 0,
+    activo INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    dirty INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (medico_id, paciente_id)
+);
+CREATE INDEX medico_paciente_paciente ON medico_paciente(paciente_id);
+
+vinculo: SELECT * FROM medico_paciente WHERE medico_id = ? AND paciente_id = ? AND deleted = 0;
+vinculosDePaciente: SELECT * FROM medico_paciente WHERE paciente_id = ? AND deleted = 0;
+upsertMedicoPaciente: INSERT OR REPLACE INTO medico_paciente VALUES ?;
+medicoPacientesDirty: SELECT * FROM medico_paciente WHERE dirty = 1;
+limpiarMedicoPaciente: UPDATE medico_paciente SET dirty = 0 WHERE medico_id = ? AND paciente_id = ?;

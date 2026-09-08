@@ -1,0 +1,19 @@
+# Gradle / IDE
+.gradle/
+build/
+*/build/
+**/build/
+.idea/
+*.iml
+local.properties
+.kotlin/
+.DS_Store
+# Base de datos y adjuntos locales del servidor
+server/*.db
+server/adjuntos/
+# Xcode
+iosApp/iosApp.xcodeproj/xcuserdata/
+iosApp/Pods/
+# Node
+node_modules/
+kotlin-js-store/
