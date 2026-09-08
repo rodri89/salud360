@@ -59,20 +59,31 @@ fun main() {
     val adjuntosDir = File(System.getenv("ADJUNTOS_DIR") ?: "adjuntos").apply { mkdirs() }
     val jwtSecret = System.getenv("JWT_SECRET") ?: "cambiar-este-secreto-en-produccion"
 
+    // URL de turnosonlinebb (ej. https://turnosonlinebb.com). Si está, médicos y secretarias
+    // ingresan con el mail y la contraseña de la web de turnos y su perfil se importa.
+    val turnosUrl = System.getenv("TURNOS_API_URL")?.trim()?.takeIf { it.isNotEmpty() }
+
     val driver = runBlocking { DriverFactory(dbPath).createDriver() }
     ServerDb.driver = driver
     val db = com.salud360.core.database.Salud360Db(driver)
     val credenciales = Credenciales_(db)
     val sync = SyncService(db)
+    val puente = TurnosBridge(db, sync)
+    val turnos = turnosUrl?.let { TurnosOnlineApi(it) }
     runBlocking {
         credenciales.inicializar()
+        puente.inicializar()
         Bootstrap.crearAdminSiHaceFalta(db, credenciales)
     }
+    if (turnos != null) println("Login contra turnosonlinebb habilitado: $turnosUrl")
 
-    embeddedServer(Netty, port = port) { modulo(db, credenciales, sync, adjuntosDir, jwtSecret) }.start(wait = true)
+    embeddedServer(Netty, port = port) { modulo(db, credenciales, sync, adjuntosDir, jwtSecret, turnos, puente) }.start(wait = true)
 }
 
-fun Application.modulo(db: com.salud360.core.database.Salud360Db, credenciales: Credenciales_, sync: SyncService, adjuntosDir: File, jwtSecret: String) {
+fun Application.modulo(
+    db: com.salud360.core.database.Salud360Db, credenciales: Credenciales_, sync: SyncService, adjuntosDir: File, jwtSecret: String,
+    turnos: TurnosOnlineApi? = null, puente: TurnosBridge? = null,
+) {
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; isLenient = true }
     val algoritmo = Algorithm.HMAC256(jwtSecret)
 
@@ -103,8 +114,20 @@ fun Application.modulo(db: com.salud360.core.database.Salud360Db, credenciales: 
 
         post("auth/login") {
             val c = call.receive<Credenciales>()
-            val u = db.authQueries.usuarioPorEmail(c.email.trim().lowercase()).uno { it.toModel() }
-            if (u == null || !u.activo || !credenciales.verificar(u.id, c.password)) return@post call.respond(HttpStatusCode.Unauthorized, "Credenciales inválidas")
+            val email = c.email.trim().lowercase()
+            val local = db.authQueries.usuarioPorEmail(email).uno { it.toModel() }
+            val u: Usuario = if (local != null && local.activo && credenciales.verificar(local.id, c.password)) {
+                local
+            } else if (turnos != null && puente != null) {
+                // Usuario de turnosonlinebb: se valida contra su API y se importa (o actualiza) el perfil.
+                when (val r = turnos.login(email, c.password)) {
+                    is TurnosOnlineApi.ResultadoLogin.Ok -> puente.importarSesion(r.perfil, r.token, r.expira)
+                    is TurnosOnlineApi.ResultadoLogin.Rechazado -> return@post call.respond(HttpStatusCode.Unauthorized, r.mensaje)
+                    is TurnosOnlineApi.ResultadoLogin.Error -> return@post call.respond(HttpStatusCode.ServiceUnavailable, "No se pudo verificar con turnosonlinebb: ${r.mensaje}")
+                }
+            } else {
+                return@post call.respond(HttpStatusCode.Unauthorized, "Credenciales inválidas")
+            }
             val sesion = resolverPerfil(db, u) ?: return@post call.respond(HttpStatusCode.Forbidden, "El usuario no tiene perfil asignado")
             call.respond(sesion.copy(token = emitirToken(u)))
         }
