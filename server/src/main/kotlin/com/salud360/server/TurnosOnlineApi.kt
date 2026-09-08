@@ -8,6 +8,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -64,7 +65,8 @@ class TurnosOnlineApi(baseUrl: String) {
 
     /** GET auth/perfil con un token guardado (para refrescar datos). */
     suspend fun perfil(token: String): TobbPerfil? = try {
-        val r = http.get(base + "auth/perfil") { accept(ContentType.Application.Json); bearerAuth(token) }
+        // Se manda también X-Salud360-Token por si el hosting descarta el encabezado Authorization.
+        val r = http.get(base + "auth/perfil") { accept(ContentType.Application.Json); bearerAuth(token); header("X-Salud360-Token", token) }
         if (r.status == HttpStatusCode.OK) json.decodeFromString(PerfilResponse.serializer(), r.bodyAsText()).perfil else null
     } catch (e: Exception) {
         log.warn("No se pudo leer el perfil de turnosonlinebb: ${e.message}"); null

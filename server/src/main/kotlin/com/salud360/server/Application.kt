@@ -122,7 +122,10 @@ fun Application.modulo(
                 // Usuario de turnosonlinebb: se valida contra su API y se importa (o actualiza) el perfil.
                 when (val r = turnos.login(email, c.password)) {
                     is TurnosOnlineApi.ResultadoLogin.Ok -> puente.importarSesion(r.perfil, r.token, r.expira)
-                    is TurnosOnlineApi.ResultadoLogin.Rechazado -> return@post call.respond(HttpStatusCode.Unauthorized, r.mensaje)
+                    is TurnosOnlineApi.ResultadoLogin.Rechazado -> {
+                        call.application.environment.log.warn("turnosonlinebb rechazó el login de '$email' (contraseña de ${c.password.length} caracteres): HTTP ${r.status} ${r.mensaje}")
+                        return@post call.respond(HttpStatusCode.Unauthorized, r.mensaje)
+                    }
                     is TurnosOnlineApi.ResultadoLogin.Error -> return@post call.respond(HttpStatusCode.ServiceUnavailable, "No se pudo verificar con turnosonlinebb: ${r.mensaje}")
                 }
             } else {
