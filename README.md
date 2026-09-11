@@ -16,6 +16,9 @@ secretarias y un administrador (no para pacientes) y funciona sin conexión.
   (calendario de vacunas, desarrollo madurativo, dibujo sobre esquema PAP / silueta, Child-Pugh).
 - **Turnos** para médicos y secretarias: agenda del día, semana, asignar, sobreturnos, bloquear,
   horarios fijos y fechas especiales, configuración, módulos, obras sociales, recetas.
+  Los médicos y secretarias de **turnosonlinebb** ingresan con sus credenciales de la web y la agenda
+  se lee y escribe directamente en la base de turnos a través de su API `/api/salud360/...`
+  (ver [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md)); los pacientes siguen usando la web.
 - **Administración**: usuarios, médicos (historias clínicas habilitadas, agenda), secretarias,
   consultorios, especialidades, feriados y licencias.
 - **Offline-first**: base SQLite local (SQLDelight) en cada dispositivo y sincronización con el
@@ -65,6 +68,9 @@ salud360/
 
 # Servidor (http://localhost:8080; primer admin: admin@salud360.local / admin123)
 ./gradlew :server:run
+
+# Servidor conectado a turnosonlinebb (login y agenda con la base de la web de turnos)
+TURNOS_API_URL=https://turnosonlinebb.com ./gradlew :server:run
 
 # iOS (en macOS)
 cd iosApp && xcodegen && open iosApp.xcodeproj

@@ -9,10 +9,13 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -55,8 +58,14 @@ class TurnosOnlineApi(baseUrl: String) {
             if (body.ok && body.accessToken != null && body.perfil != null) ResultadoLogin.Ok(body.accessToken, body.expiresAt, body.perfil)
             else ResultadoLogin.Rechazado(body.mensaje ?: "Respuesta inválida de turnosonlinebb", r.status.value)
         } else {
-            val mensaje = runCatching { json.decodeFromString(ErrorResponse.serializer(), texto).mensaje }.getOrNull()
-            ResultadoLogin.Rechazado(mensaje ?: "turnosonlinebb respondió ${r.status.value}", r.status.value)
+            val error = runCatching { json.decodeFromString(ErrorResponse.serializer(), texto) }.getOrNull()
+            if (r.status.value >= 500 || error?.exception != null) {
+                // Error interno de Laravel: se deja el detalle en el log (con APP_DEBUG=true trae excepción, archivo y línea).
+                log.warn("turnosonlinebb respondió ${r.status.value} al login de '$email': ${error?.exception ?: ""} ${error?.message ?: ""} ${error?.file ?: ""}:${error?.line ?: ""} | cuerpo: ${texto.take(600)}")
+            }
+            val mensaje = error?.mensaje ?: error?.message?.takeIf { r.status.value < 500 }
+                ?: if (r.status.value >= 500) "turnosonlinebb respondió ${r.status.value} (error interno de la web de turnos; revisar storage/logs/laravel.log)" else "turnosonlinebb respondió ${r.status.value}"
+            ResultadoLogin.Rechazado(mensaje, r.status.value)
         }
     } catch (e: Exception) {
         log.warn("No se pudo consultar turnosonlinebb: ${e.message}")
@@ -72,11 +81,33 @@ class TurnosOnlineApi(baseUrl: String) {
         log.warn("No se pudo leer el perfil de turnosonlinebb: ${e.message}"); null
     }
 
+    /** Respuesta cruda de turnosonlinebb (estado HTTP + cuerpo JSON) para devolverla tal cual a la app. */
+    data class Reenviada(val status: Int, val cuerpo: String)
+
+    /**
+     * Reenvía un pedido de la app a `/api/salud360/<ruta>` con el token de turnosonlinebb del usuario.
+     * El cuerpo (si hay) ya viene como JSON; Laravel lo lee igual que un formulario.
+     */
+    suspend fun reenviar(token: String, metodo: HttpMethod, ruta: String, query: Map<String, List<String>>, cuerpo: String?): Reenviada {
+        val r = http.request(base + ruta.trimStart('/')) {
+            method = metodo
+            accept(ContentType.Application.Json)
+            bearerAuth(token); header("X-Salud360-Token", token)
+            query.forEach { (k, valores) -> valores.forEach { parameter(k, it) } }
+            if (!cuerpo.isNullOrBlank()) { contentType(ContentType.Application.Json); setBody(cuerpo) }
+        }
+        return Reenviada(r.status.value, r.bodyAsText())
+    }
+
     @Serializable
     private data class LoginBody(val email: String, val password: String)
 
+    /** Error de la API (`ok`/`mensaje`/`codigo`) o de Laravel (`message`, y con APP_DEBUG `exception`/`file`/`line`). */
     @Serializable
-    private data class ErrorResponse(val ok: Boolean = false, val mensaje: String? = null, val codigo: String? = null)
+    private data class ErrorResponse(
+        val ok: Boolean = false, val mensaje: String? = null, val codigo: String? = null,
+        val message: String? = null, val exception: String? = null, val file: String? = null, val line: Int? = null,
+    )
 
     @Serializable
     private data class LoginResponse(

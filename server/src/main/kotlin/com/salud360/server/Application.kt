@@ -27,14 +27,18 @@ import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.util.toMap
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.http.ContentType
@@ -51,7 +55,9 @@ import java.util.Date
  *
  * Variables de entorno:
  * - PORT (8080), DB_PATH (salud360-server.db), ADJUNTOS_DIR (adjuntos), JWT_SECRET,
- * - ADMIN_EMAIL / ADMIN_PASSWORD para crear el primer administrador si la base está vacía.
+ * - ADMIN_EMAIL / ADMIN_PASSWORD para crear el primer administrador si la base está vacía,
+ * - TURNOS_API_URL (ej. https://turnosonlinebb.com): habilita el login con las credenciales de la web de turnos
+ *   y el reenvío de la agenda (`/tobb/...`) a su API `/api/salud360/...`.
  */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
@@ -80,6 +86,12 @@ fun main() {
     embeddedServer(Netty, port = port) { modulo(db, credenciales, sync, adjuntosDir, jwtSecret, turnos, puente) }.start(wait = true)
 }
 
+/** Cuerpo de error con el mismo formato que usa la API de turnosonlinebb. */
+private fun errorTobb(codigo: String, mensaje: String): String =
+    Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.buildJsonObject {
+        put("ok", kotlinx.serialization.json.JsonPrimitive(false)); put("codigo", kotlinx.serialization.json.JsonPrimitive(codigo)); put("mensaje", kotlinx.serialization.json.JsonPrimitive(mensaje))
+    })
+
 fun Application.modulo(
     db: com.salud360.core.database.Salud360Db, credenciales: Credenciales_, sync: SyncService, adjuntosDir: File, jwtSecret: String,
     turnos: TurnosOnlineApi? = null, puente: TurnosBridge? = null,
@@ -92,7 +104,7 @@ fun Application.modulo(
     install(CORS) {
         anyHost() // la app web puede servirse desde otro dominio; restringir en producción
         allowHeader(HttpHeaders.Authorization); allowHeader(HttpHeaders.ContentType)
-        allowMethod(HttpMethod.Get); allowMethod(HttpMethod.Post); allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Get); allowMethod(HttpMethod.Post); allowMethod(HttpMethod.Put); allowMethod(HttpMethod.Delete); allowMethod(HttpMethod.Options)
     }
     install(StatusPages) {
         exception<Throwable> { call, e -> call.application.environment.log.error("Error", e); call.respondText(e.message ?: "Error", status = HttpStatusCode.InternalServerError) }
@@ -151,6 +163,36 @@ fun Application.modulo(
                 if (db.authQueries.usuarioPorEmail(r.email).uno { it } != null) return@post call.respond(HttpStatusCode.Conflict, "Ya existe un usuario con ese mail")
                 val nuevo = Bootstrap.crearUsuario(db, credenciales, r.nombre, r.apellido, r.email, r.password, r.rol, sync)
                 call.respond(nuevo)
+            }
+
+            /**
+             * Puente hacia turnosonlinebb: `/tobb/<ruta>` se reenvía a `/api/salud360/<ruta>` con el token de la web
+             * de turnos que se guardó al iniciar sesión. Laravel sigue siendo el dueño de la base de turnos; acá solo
+             * se agrega la autenticación y se devuelve la respuesta tal cual (mismo estado HTTP y mismo JSON).
+             */
+            route("tobb/{ruta...}") {
+                handle {
+                    val u = usuarioDe(call.principal()) ?: return@handle call.respond(HttpStatusCode.Unauthorized)
+                    if (turnos == null || puente == null) return@handle call.respondText(errorTobb("sin_tobb", "El servidor no tiene configurada TURNOS_API_URL"), ContentType.Application.Json, HttpStatusCode.NotImplemented)
+                    val ruta = call.parameters.getAll("ruta")?.joinToString("/") ?: ""
+                    if (ruta.isBlank() || ruta.startsWith("auth/")) return@handle call.respondText(errorTobb("ruta", "Ruta no permitida"), ContentType.Application.Json, HttpStatusCode.Forbidden)
+                    val token = puente.tokenDe(u.id) ?: return@handle call.respondText(errorTobb("sin_sesion_tobb", "Este usuario no tiene sesión en turnosonlinebb: cerrá sesión y volvé a ingresar con las credenciales de la web de turnos"), ContentType.Application.Json, HttpStatusCode.PreconditionFailed)
+                    val metodo = call.request.httpMethod
+                    val cuerpo = if (metodo == HttpMethod.Get || metodo == HttpMethod.Delete) null else call.receiveText()
+                    val r = try {
+                        turnos.reenviar(token, metodo, ruta, call.request.queryParameters.toMap(), cuerpo)
+                    } catch (e: Exception) {
+                        call.application.environment.log.warn("No se pudo reenviar $metodo /tobb/$ruta a turnosonlinebb: ${e.message}")
+                        return@handle call.respondText(errorTobb("sin_conexion", "No se pudo conectar con turnosonlinebb: ${e.message}"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                    }
+                    if (r.status == HttpStatusCode.Unauthorized.value) {
+                        // El token de la web venció o fue revocado: se olvida para que el próximo login lo renueve.
+                        puente.borrarSesion(u.id)
+                        return@handle call.respondText(errorTobb("sesion_tobb_vencida", "La sesión de turnosonlinebb venció: cerrá sesión y volvé a ingresar"), ContentType.Application.Json, HttpStatusCode.Unauthorized)
+                    }
+                    if (r.status >= 400) call.application.environment.log.info("turnosonlinebb respondió ${r.status} a $metodo /tobb/$ruta: ${r.cuerpo.take(300)}")
+                    call.respondText(r.cuerpo, ContentType.Application.Json, HttpStatusCode.fromValue(r.status))
+                }
             }
 
             post("sync/push") {

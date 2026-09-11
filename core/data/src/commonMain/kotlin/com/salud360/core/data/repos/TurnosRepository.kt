@@ -9,6 +9,7 @@ import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
+import com.salud360.core.model.TobbIds
 import com.salud360.core.model.newId
 import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.ConfigAgenda
@@ -28,6 +29,7 @@ import com.salud360.core.model.turnos.Receta
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
+import com.salud360.core.model.pacientes.Paciente
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.DateTimeUnit
@@ -44,15 +46,35 @@ sealed interface ResultadoTurno {
     data object CupoPrimerControlAgotado : ResultadoTurno
     data object Feriado : ResultadoTurno
     data object HorarioNoVisible : ResultadoTurno
+    /** Error de comunicación o rechazo de turnosonlinebb que no encaja en los anteriores. */
+    data class Error(val mensaje: String) : ResultadoTurno
 }
 
 /**
- * Agenda de turnos. Reimplementa `createJson`, `validarTurnoLibre`, `registrarTurno`,
- * `registrarSobreturno`, `cancelarTurno` y `bloquarDiaAgendaSemanal` de turnosonlinebb,
- * una sola vez y en Kotlin, para médicos y secretarias.
+ * Agenda de turnos para médicos y secretarias.
+ *
+ * Hay dos clases de médicos:
+ * - **Médicos de turnosonlinebb** (ids `tobb-m…`, importados al iniciar sesión): la agenda vive en la base MySQL
+ *   de la web y cada operación se hace contra su API mediante [AgendaTurnosOnline]; la base local es solo caché.
+ * - **Médicos propios de Salud 360**: la agenda es local y se sincroniza con el servidor. Para ellos este
+ *   repositorio reimplementa `createJson`, `validarTurnoLibre`, `registrarTurno`, `registrarSobreturno`,
+ *   `cancelarTurno` y `bloquarDiaAgendaSemanal` de turnosonlinebb en Kotlin.
  */
-class TurnosRepository(private val db: Salud360Db) {
+class TurnosRepository(private val db: Salud360Db, private val online: AgendaTurnosOnline? = null) {
     private val q get() = db.turnosQueries
+
+    /** true si la agenda de este médico se gestiona en turnosonlinebb. */
+    fun esRemota(medicoId: Id): Boolean = online != null && TobbIds.esTobb(medicoId)
+    private fun remota(medicoId: Id): AgendaTurnosOnline? = online?.takeIf { TobbIds.esTobb(medicoId) }
+
+    /**
+     * Trae de turnosonlinebb la agenda del día y la deja en la caché local (los flujos `observar…` se actualizan solos).
+     * Para médicos locales no hace nada y devuelve null.
+     */
+    suspend fun refrescarDia(medicoId: Id, consultorioId: Id, fecha: LocalDate): DiaAgendaResuelto? = remota(medicoId)?.dia(medicoId, consultorioId, fecha)
+
+    /** Búsqueda de pacientes en turnosonlinebb (se guardan en la base local). Null si el médico es local. */
+    suspend fun buscarPacientesRemotos(medicoId: Id, texto: String): List<Paciente>? = remota(medicoId)?.buscarPacientes(texto)
 
     // ---- consultorios / catálogos ----
 
@@ -62,7 +84,7 @@ class TurnosRepository(private val db: Salud360Db) {
     suspend fun guardarConsultorio(c: Consultorio) = q.upsertConsultorio(c.toRow(ahoraMillis()))
 
     fun observarFeriados(): Flow<List<Feriado>> = q.feriados().flujoLista { it.toModel() }
-    suspend fun esFeriado(fecha: LocalDate): Boolean = q.feriadoEnFecha(fecha.toString()).uno { it } != null
+    suspend fun esFeriado(fecha: LocalDate): Boolean = online?.esFeriadoCacheado(fecha) == true || q.feriadoEnFecha(fecha.toString()).uno { it } != null
     suspend fun guardarFeriado(f: Feriado) = q.upsertFeriado(f.toRow(ahoraMillis()))
     suspend fun eliminarFeriado(f: Feriado) = q.upsertFeriado(f.toRow(ahoraMillis(), deleted = true))
 
@@ -145,6 +167,7 @@ class TurnosRepository(private val db: Salud360Db) {
      * 4. módulo "mostrar de a dos" → solo el primer par no ocupado es reservable online
      */
     suspend fun slotsDelDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno = TipoTurno.CONSULTA): List<SlotAgenda> {
+        remota(medicoId)?.let { return it.dia(medicoId, consultorioId, fecha, tipo).slots }
         if (esFeriado(fecha)) return emptyList()
         val modulos = modulos(medicoId)
         val agregada = q.fechaAgregada(medicoId, consultorioId, fecha.toString()).uno { it.toModel() }
@@ -166,6 +189,7 @@ class TurnosRepository(private val db: Salud360Db) {
 
     /** Próximas fechas con al menos un turno libre (máximo `dias` días hacia adelante). */
     suspend fun proximasFechasLibres(medicoId: Id, consultorioId: Id, desde: LocalDate, cantidad: Int = 3, dias: Int = 180): List<LocalDate> {
+        remota(medicoId)?.let { return it.proximasFechas(medicoId, consultorioId, desde, cantidad) }
         val res = mutableListOf<LocalDate>()
         var f = desde
         var i = 0
@@ -177,8 +201,27 @@ class TurnosRepository(private val db: Salud360Db) {
         return res
     }
 
+    /**
+     * Próximos `cantidad` días con horarios cargados a partir de `desde` (agenda semanal, `obtener5Dias`).
+     * Para médicos de turnosonlinebb se pide en una sola llamada a la API.
+     */
+    suspend fun semana(medicoId: Id, consultorioId: Id, desde: LocalDate, cantidad: Int = 5, maxDias: Int = 60): List<DiaAgendaResuelto> {
+        remota(medicoId)?.let { return it.semana(medicoId, consultorioId, desde, cantidad) }
+        val dias = mutableListOf<DiaAgendaResuelto>()
+        var f = desde
+        var i = 0
+        while (dias.size < cantidad && i < maxDias) {
+            val feriado = esFeriado(f)
+            val slots = if (feriado) emptyList() else slotsDelDia(medicoId, consultorioId, f)
+            if (slots.isNotEmpty()) dias += DiaAgendaResuelto(f, slots, feriado, slots.mapNotNull { it.turno })
+            f = f.plus(1, DateTimeUnit.DAY); i++
+        }
+        return dias
+    }
+
     /** Registra un turno validando disponibilidad, feriado, mismo día, un turno por mes y cupo de primer control. */
     suspend fun registrarTurno(turno: Turno, validarMismoDia: Boolean = true): ResultadoTurno {
+        remota(turno.medicoId)?.let { return it.registrar(turno) }
         if (esFeriado(turno.fecha)) return ResultadoTurno.Feriado
         val modulos = modulos(turno.medicoId)
         val ocupados = q.turnosOcupados(turno.medicoId, turno.consultorioId, turno.fecha.toString()).lista { it.toModel() }
@@ -207,6 +250,7 @@ class TurnosRepository(private val db: Salud360Db) {
 
     /** Primer control doble: reserva dos horarios consecutivos (módulo 3). */
     suspend fun registrarTurnoDoble(turno: Turno, segundoHorario: LocalTime): ResultadoTurno {
+        remota(turno.medicoId)?.let { return it.registrar(turno.copy(primerControl = true), segundoHorario) }
         val primero = registrarTurno(turno.copy(primerControl = true))
         if (primero !is ResultadoTurno.Ok) return primero
         val segundo = registrarTurno(turno.copy(id = newId(), horario = segundoHorario, primerControl = true), validarMismoDia = false)
@@ -215,6 +259,7 @@ class TurnosRepository(private val db: Salud360Db) {
 
     /** Sobreturno: no requiere que exista el horario en la plantilla, solo que no esté ocupado. */
     suspend fun registrarSobreturno(turno: Turno): ResultadoTurno {
+        remota(turno.medicoId)?.let { return it.sobreturno(turno) }
         val ocupados = q.turnosOcupados(turno.medicoId, turno.consultorioId, turno.fecha.toString()).lista { it.toModel() }
         if (ocupados.any { it.horario == turno.horario }) return ResultadoTurno.HorarioOcupado
         val t = turno.copy(sobreturno = true, primerControl = false)
@@ -223,23 +268,28 @@ class TurnosRepository(private val db: Salud360Db) {
     }
 
     /** Bloquea un horario sin paciente (`estado = BLOQUEADO`, equivalente a `activo = 2`). */
-    suspend fun bloquearHorario(medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String): Turno {
+    suspend fun bloquearHorario(medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String): ResultadoTurno {
+        remota(medicoId)?.let { return it.bloquearHorario(medicoId, consultorioId, fecha, horario) }
+        val ocupados = q.turnosOcupados(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }
+        if (ocupados.any { it.horario == horario }) return ResultadoTurno.HorarioOcupado
         val t = Turno(newId(), null, medicoId, consultorioId, fecha, horario, estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Bloqueado")
         q.upsertTurno(t.toRow(ahoraMillis()))
-        return t
+        return ResultadoTurno.Ok(t)
     }
 
-    /** Bloquea el día completo; solo si no hay pacientes con turno ese día. */
-    suspend fun bloquearDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, por: String): Boolean {
+    /** Bloquea el día completo; solo si no hay pacientes con turno ese día. Devuelve null si salió bien o el motivo del rechazo. */
+    suspend fun bloquearDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, por: String): String? {
+        remota(medicoId)?.let { return it.bloquearDia(medicoId, consultorioId, fecha) }
         val conPacientes = q.turnosDelDia(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }.any { it.pacienteId != null && it.estado == EstadoTurno.ACTIVO }
-        if (conPacientes) return false
+        if (conPacientes) return "No se puede bloquear: hay pacientes con turno ese día"
         val slots = slotsDelDia(medicoId, consultorioId, fecha)
         db.transaction { slots.filter { it.libre }.forEach { s -> q.upsertTurno(Turno(newId(), null, medicoId, consultorioId, fecha, s.horario, estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Día bloqueado").toRow(ahoraMillis())) } }
-        return true
+        return null
     }
 
     suspend fun cancelarTurno(id: Id, por: String) {
         val t = turno(id) ?: return
+        remota(t.medicoId)?.let { it.cancelar(id, t.medicoId); return }
         q.upsertTurno(t.copy(estado = EstadoTurno.CANCELADO, canceladoPor = por, comentario = listOf(t.comentario, "Cancelado por $por").filter { it.isNotBlank() }.joinToString(" - ")).toRow(ahoraMillis()))
         // si era primer control doble, cancelar el par del mismo día
         if (t.primerControl && t.pacienteId != null) {
@@ -251,26 +301,31 @@ class TurnosRepository(private val db: Salud360Db) {
 
     suspend fun liberarBloqueo(id: Id) {
         val t = turno(id) ?: return
+        remota(t.medicoId)?.let { it.cancelar(id, t.medicoId); return }
         if (t.estado == EstadoTurno.BLOQUEADO) q.upsertTurno(t.toRow(ahoraMillis(), deleted = true))
     }
 
     suspend fun marcarAsistencia(id: Id, asistencia: Asistencia) {
         val t = turno(id) ?: return
+        remota(t.medicoId)?.let { it.asistencia(id, t.medicoId, asistencia); return }
         q.upsertTurno(t.copy(asistencia = asistencia).toRow(ahoraMillis()))
     }
 
     suspend fun actualizarCaja(id: Id, caja: Double) {
         val t = turno(id) ?: return
+        remota(t.medicoId)?.let { it.caja(id, t.medicoId, caja); return }
         q.upsertTurno(t.copy(caja = caja).toRow(ahoraMillis()))
     }
 
     suspend fun actualizarComentario(id: Id, comentario: String) {
         val t = turno(id) ?: return
+        remota(t.medicoId)?.let { it.comentario(id, t.medicoId, comentario); return }
         q.upsertTurno(t.copy(comentario = comentario).toRow(ahoraMillis()))
     }
 
     /** Días hábiles de la semana con al menos un horario vigente en la ventana de reserva (para el calendario). */
     suspend fun diasConAtencion(medicoId: Id, consultorioId: Id, desde: LocalDate): Set<kotlinx.datetime.DayOfWeek> {
+        remota(medicoId)?.let { return it.diasAtencion(medicoId, consultorioId) }
         val ventana = config(medicoId).ventanaDias
         val horarios = horarios(medicoId).filter { it.consultorioId == consultorioId }
         val dias = mutableSetOf<kotlinx.datetime.DayOfWeek>()

@@ -22,3 +22,29 @@ data class SyncMeta(
     /** true cuando el cambio local todavía no fue enviado al servidor */
     val pendiente: Boolean = true,
 )
+
+/**
+ * Identificadores derivados de turnosonlinebb. El servidor de Salud 360 importa usuarios, médicos,
+ * consultorios, pacientes y turnos de la web de turnos con ids estables `tobb-<letra><número>`
+ * para que la app sepa que ese registro vive en la base de turnosonlinebb.
+ */
+object TobbIds {
+    const val PREFIJO = "tobb-"
+
+    fun usuario(n: Long): Id = "${PREFIJO}u$n"
+    fun medico(n: Long): Id = "${PREFIJO}m$n"
+    fun secretaria(n: Long): Id = "${PREFIJO}s$n"
+    fun consultorio(n: Long): Id = "${PREFIJO}c$n"
+    fun especialidad(n: Long): Id = "${PREFIJO}e$n"
+    fun paciente(n: Long): Id = "${PREFIJO}p$n"
+    fun turno(n: Long): Id = "${PREFIJO}t$n"
+
+    /** true si el id fue importado de turnosonlinebb. */
+    fun esTobb(id: Id?): Boolean = id != null && id.startsWith(PREFIJO)
+
+    /** Número de turnosonlinebb contenido en el id (`tobb-m12` → 12), o null si no es un id importado. */
+    fun numero(id: Id?): Long? {
+        if (id == null || !id.startsWith(PREFIJO) || id.length <= PREFIJO.length + 1) return null
+        return id.substring(PREFIJO.length + 1).toLongOrNull()
+    }
+}

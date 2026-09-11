@@ -82,6 +82,11 @@ class TurnosBridge(private val db: Salud360Db, private val sync: SyncService) {
         return token
     }
 
+    /** Olvida el token de turnosonlinebb de un usuario (por ejemplo cuando la web responde 401). */
+    fun borrarSesion(usuarioId: String) {
+        driver.execute(null, "DELETE FROM tobb_sesion WHERE usuario_id = ?", 1) { bindString(0, usuarioId) }
+    }
+
     private suspend fun importarMedico(m: TobbMedico, usuarioId: String?) {
         val consultorioId = m.consultorio?.let { importarConsultorio(it) } ?: m.consultorioId?.let { "tobb-c$it" }
         val especialidadId = m.especialidadId?.let { importarEspecialidad(it, m.especialidad) }

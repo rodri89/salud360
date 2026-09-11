@@ -20,6 +20,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -39,8 +40,13 @@ data class AgendaUiState(
     val modulos: Set<ModuloTurnos> = emptySet(),
     val semana: List<DiaAgenda> = emptyList(),
     val cargandoSemana: Boolean = false,
+    /** true mientras se consulta la agenda del día a turnosonlinebb. */
+    val cargando: Boolean = false,
+    /** Mensaje de error de la última operación (por ejemplo, sin conexión con turnosonlinebb). */
     val mensaje: String? = null,
     val esFeriado: Boolean = false,
+    /** La agenda de este médico vive en turnosonlinebb (se lee y escribe contra su API). */
+    val remota: Boolean = false,
 ) {
     val conCaja: Boolean get() = ModuloTurnos.CAJA_COMENTARIO in modulos
     val primerControlDoble: Boolean get() = ModuloTurnos.PRIMER_CONTROL_DOBLE in modulos
@@ -49,6 +55,10 @@ data class AgendaUiState(
 /**
  * Agenda de un médico en un consultorio, para el médico o la secretaria.
  * Cubre: listado del día, semana, asignar turno, sobreturno, bloquear, cancelar, asistencia, caja y comentario.
+ *
+ * Si el médico es de turnosonlinebb, cada cambio de fecha pide la agenda a la web y la deja en la base local;
+ * las pantallas observan la base, así que se actualizan solas y siguen mostrando lo último que se vio si se
+ * corta la conexión.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgendaViewModel(
@@ -61,7 +71,8 @@ class AgendaViewModel(
     private val operador: String,
 ) : ViewModel() {
     private val fecha = MutableStateFlow(hoy())
-    private val _state = MutableStateFlow(AgendaUiState())
+    private val remota = turnos.esRemota(medicoId)
+    private val _state = MutableStateFlow(AgendaUiState(remota = remota))
     val state: StateFlow<AgendaUiState> = _state
 
     val turnosDelDia: StateFlow<List<Turno>> = fecha.flatMapLatest { f -> turnos.observarTurnosDelDia(medicoId, consultorioId, f) }
@@ -73,6 +84,7 @@ class AgendaViewModel(
                 _state.update { it.copy(fecha = f, turnosDelDia = t, modulos = m, esFeriado = turnos.esFeriado(f)) }
             }
         }
+        if (remota) viewModelScope.launch { fecha.collectLatest { f -> refrescar(f) } }
     }
 
     fun irA(f: LocalDate) { fecha.value = f }
@@ -80,28 +92,42 @@ class AgendaViewModel(
     fun diaAnterior() = irA(fecha.value.plus(-1, DateTimeUnit.DAY))
     fun hoyMismo() = irA(hoy())
 
+    /** Vuelve a pedir la agenda del día a turnosonlinebb (no hace nada para médicos locales). */
+    fun refrescar() = viewModelScope.launch { refrescar(fecha.value) }
+
+    private suspend fun refrescar(f: LocalDate) {
+        if (!remota) return
+        _state.update { it.copy(cargando = true) }
+        runCatching { turnos.refrescarDia(medicoId, consultorioId, f) }
+            .onSuccess { d -> _state.update { it.copy(cargando = false, mensaje = null, esFeriado = d?.feriado ?: it.esFeriado) } }
+            .onFailure { e -> _state.update { it.copy(cargando = false, mensaje = errorDe(e)) } }
+    }
+
     /** Slots del día actual (para asignar o bloquear). */
-    suspend fun slotsDelDia(f: LocalDate = fecha.value): List<SlotAgenda> = turnos.slotsDelDia(medicoId, consultorioId, f)
+    suspend fun slotsDelDia(f: LocalDate = fecha.value): List<SlotAgenda> =
+        runCatching { turnos.slotsDelDia(medicoId, consultorioId, f) }
+            .onFailure { e -> _state.update { it.copy(mensaje = errorDe(e)) } }
+            .getOrDefault(emptyList())
 
     /** Arma los próximos 5 días con atención a partir de una fecha (`obtener5Dias`). */
     fun cargarSemana(desde: LocalDate = fecha.value) = viewModelScope.launch {
         _state.update { it.copy(cargandoSemana = true) }
-        val dias = mutableListOf<DiaAgenda>()
-        var f = desde
-        var i = 0
-        while (dias.size < 5 && i < 60) {
-            val feriado = turnos.esFeriado(f)
-            val slots = if (feriado) emptyList() else turnos.slotsDelDia(medicoId, consultorioId, f)
-            if (slots.isNotEmpty()) dias += DiaAgenda(f, slots, feriado, emptyList())
-            f = f.plus(1, DateTimeUnit.DAY); i++
-        }
-        _state.update { it.copy(semana = dias, cargandoSemana = false) }
+        runCatching { turnos.semana(medicoId, consultorioId, desde) }
+            .onSuccess { dias -> _state.update { it.copy(semana = dias.map { d -> DiaAgenda(d.fecha, d.slots, d.feriado, d.turnos.filter { t -> t.sobreturno }) }, cargandoSemana = false, mensaje = null) } }
+            .onFailure { e -> _state.update { it.copy(cargandoSemana = false, mensaje = errorDe(e)) } }
     }
 
     fun semanaSiguiente() { _state.value.semana.lastOrNull()?.let { cargarSemana(it.fecha.plus(1, DateTimeUnit.DAY)) } }
     fun semanaAnterior() { _state.value.semana.firstOrNull()?.let { cargarSemana(it.fecha.plus(-7, DateTimeUnit.DAY)) } }
 
-    suspend fun buscarPacientes(texto: String): List<Paciente> = pacientes.buscar(texto, null, 30)
+    /** Pacientes para asignar: los de turnosonlinebb si la agenda es remota (con la base local como respaldo). */
+    suspend fun buscarPacientes(texto: String): List<Paciente> {
+        if (remota) {
+            val remotos = runCatching { turnos.buscarPacientesRemotos(medicoId, texto) }.onFailure { e -> _state.update { it.copy(mensaje = errorDe(e)) } }.getOrNull()
+            if (remotos != null) return remotos
+        }
+        return pacientes.buscar(texto, null, 30)
+    }
 
     /** Asigna un turno a un paciente en un slot (`registrarAsignarTurno`). */
     fun asignar(paciente: Paciente, f: LocalDate, horario: LocalTime, primerControl: Boolean, segundoHorario: LocalTime? = null, tipo: TipoTurno = TipoTurno.CONSULTA, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
@@ -110,7 +136,7 @@ class AgendaViewModel(
             pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial,
         )
         val r = if (primerControl && segundoHorario != null) turnos.registrarTurnoDoble(t, segundoHorario) else turnos.registrarTurno(t)
-        if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); launch { sync.sincronizar() } }
+        if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f) }
         cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: f)
         onResultado(r)
     }
@@ -119,21 +145,47 @@ class AgendaViewModel(
         val t = Turno(newId(), paciente.id, medicoId, consultorioId, f, horario, otorgadoPor = operador, sobreturno = true,
             pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial)
         val r = turnos.registrarSobreturno(t)
-        if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); launch { sync.sincronizar() } }
+        if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f) }
         onResultado(r)
     }
 
-    fun bloquear(f: LocalDate, horario: LocalTime) = viewModelScope.launch { turnos.bloquearHorario(medicoId, consultorioId, f, horario, operador); cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: f) }
-    fun bloquearDia(f: LocalDate, onResultado: (Boolean) -> Unit) = viewModelScope.launch { val ok = turnos.bloquearDia(medicoId, consultorioId, f, operador); cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: f); onResultado(ok) }
+    fun bloquear(f: LocalDate, horario: LocalTime, onResultado: (ResultadoTurno) -> Unit = {}) = viewModelScope.launch {
+        val r = turnos.bloquearHorario(medicoId, consultorioId, f, horario, operador)
+        if (r is ResultadoTurno.Ok) despuesDeCambiar(f)
+        cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: f)
+        onResultado(r)
+    }
+
+    /** Bloquea el día completo. `onResultado` recibe null si salió bien o el motivo del rechazo. */
+    fun bloquearDia(f: LocalDate, onResultado: (String?) -> Unit) = viewModelScope.launch {
+        val error = turnos.bloquearDia(medicoId, consultorioId, f, operador)
+        if (error == null) despuesDeCambiar(f)
+        cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: f)
+        onResultado(error)
+    }
+
     fun liberar(turno: Turno) = viewModelScope.launch {
-        if (turno.estado == EstadoTurno.BLOQUEADO) turnos.liberarBloqueo(turno.id) else turnos.cancelarTurno(turno.id, operador)
+        runCatching { if (turno.estado == EstadoTurno.BLOQUEADO) turnos.liberarBloqueo(turno.id) else turnos.cancelarTurno(turno.id, operador) }
+            .onSuccess { despuesDeCambiar(turno.fecha) }
+            .onFailure { e -> _state.update { it.copy(mensaje = errorDe(e)) } }
         cargarSemana(_state.value.semana.firstOrNull()?.fecha ?: turno.fecha)
-        launch { sync.sincronizar() }
     }
     fun cancelar(turno: Turno) = liberar(turno)
-    fun asistencia(turno: Turno, a: Asistencia) = viewModelScope.launch { turnos.marcarAsistencia(turno.id, a) }
-    fun caja(turno: Turno, valor: Double) = viewModelScope.launch { turnos.actualizarCaja(turno.id, valor) }
-    fun comentario(turno: Turno, texto: String) = viewModelScope.launch { turnos.actualizarComentario(turno.id, texto) }
-    suspend fun proximasFechas(desde: LocalDate = hoy()): List<LocalDate> = turnos.proximasFechasLibres(medicoId, consultorioId, desde)
-    suspend fun diasConAtencion(): Set<DayOfWeek> = turnos.diasConAtencion(medicoId, consultorioId, hoy())
+    fun asistencia(turno: Turno, a: Asistencia) = accion { turnos.marcarAsistencia(turno.id, a) }
+    fun caja(turno: Turno, valor: Double) = accion { turnos.actualizarCaja(turno.id, valor) }
+    fun comentario(turno: Turno, texto: String) = accion { turnos.actualizarComentario(turno.id, texto) }
+    suspend fun proximasFechas(desde: LocalDate = hoy()): List<LocalDate> =
+        runCatching { turnos.proximasFechasLibres(medicoId, consultorioId, desde) }.getOrDefault(emptyList())
+    suspend fun diasConAtencion(): Set<DayOfWeek> = runCatching { turnos.diasConAtencion(medicoId, consultorioId, hoy()) }.getOrDefault(emptySet())
+
+    private fun accion(bloque: suspend () -> Unit) = viewModelScope.launch {
+        runCatching { bloque() }.onFailure { e -> _state.update { it.copy(mensaje = errorDe(e)) } }
+    }
+
+    /** Tras escribir: los médicos locales sincronizan con el servidor; los de turnosonlinebb ya quedaron actualizados en la caché. */
+    private fun despuesDeCambiar(f: LocalDate) {
+        if (remota) viewModelScope.launch { refrescar(f) } else viewModelScope.launch { sync.sincronizar() }
+    }
+
+    private fun errorDe(e: Throwable): String = e.message?.takeIf { it.isNotBlank() }?.let { "turnosonlinebb: $it" } ?: "Sin conexión con turnosonlinebb"
 }

@@ -83,6 +83,7 @@ fun ResultadoTurno.mensaje(): String = when (this) {
     ResultadoTurno.CupoPrimerControlAgotado -> "No quedan cupos de primer control para ese día"
     ResultadoTurno.Feriado -> "Ese día es feriado"
     ResultadoTurno.HorarioNoVisible -> "Ese horario no está disponible"
+    is ResultadoTurno.Error -> mensaje
 }
 
 /** Agenda del día: listado de turnos con asistencia, caja y comentario (home del médico en turnosonlinebb). */
@@ -117,6 +118,8 @@ fun AgendaDiaScreen(
             IconButton(onClick = { bloquearDia = true }) { Icon(Icons.Default.Block, contentDescription = "Bloquear día", tint = Salud360Colors.Danger) }
         }
         aviso?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.cargando) com.salud360.core.ui.components.LoadingIndicator()
         val activos = state.turnosDelDia.filter { it.estado != EstadoTurno.CANCELADO }
         if (activos.isEmpty()) EmptyState("No hay turnos para este día", icon = Icons.Default.EventBusy)
         else LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -133,7 +136,7 @@ fun AgendaDiaScreen(
             onConfirm = { vm.cancelar(t); cancelar = null }, onDismiss = { cancelar = null }, confirmText = "Cancelar turno", destructive = true)
     }
     if (bloquearDia) ConfirmDialog("Bloquear día completo", "Se bloquean todos los horarios libres del ${state.fecha.toDisplay()}. Solo es posible si no hay pacientes con turno.",
-        onConfirm = { bloquearDia = false; vm.bloquearDia(state.fecha) { ok -> aviso = if (ok) "Día bloqueado" else "No se puede bloquear: hay pacientes con turno ese día" } },
+        onConfirm = { bloquearDia = false; vm.bloquearDia(state.fecha) { error -> aviso = error ?: "Día bloqueado" } },
         onDismiss = { bloquearDia = false }, confirmText = "Bloquear", destructive = true)
 }
 
@@ -203,6 +206,7 @@ fun AgendaSemanaScreen(
             TextButton(onClick = onVolver) { Text("Volver al día") }
         }
         aviso?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.cargandoSemana) com.salud360.core.ui.components.LoadingIndicator()
         if (!state.cargandoSemana && state.semana.isEmpty()) EmptyState("No hay horarios cargados para los próximos días. Cargá horarios fijos desde Configuración.")
         state.semana.forEach { dia ->
@@ -238,7 +242,8 @@ private fun SlotDialog(vm: AgendaViewModel, f: LocalDate, s: SlotAgenda, modoBlo
             confirmText = if (t.estado == EstadoTurno.BLOQUEADO) "Liberar" else "Cancelar turno", destructive = true,
         )
     } else if (modoBloqueo) {
-        ConfirmDialog("Bloquear horario", "¿Bloquear el ${f.conDia()} a las ${s.horario.hhmm()}?", onConfirm = { vm.bloquear(f, s.horario); onCerrar() }, onDismiss = onCerrar, confirmText = "Bloquear")
+        ConfirmDialog("Bloquear horario", "¿Bloquear el ${f.conDia()} a las ${s.horario.hhmm()}?",
+            onConfirm = { vm.bloquear(f, s.horario) { r -> if (r !is ResultadoTurno.Ok) onAviso(r.mensaje()) else onAviso("Horario bloqueado") }; onCerrar() }, onDismiss = onCerrar, confirmText = "Bloquear")
     } else {
         AsignarTurnoDialog(vm, f, s.horario, segundoHorario = null, primerControlDoble = primerControlDoble && s.doble, onCerrar = onCerrar, onAviso = onAviso)
     }

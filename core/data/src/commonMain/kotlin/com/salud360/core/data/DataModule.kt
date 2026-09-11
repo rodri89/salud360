@@ -2,6 +2,7 @@ package com.salud360.core.data
 
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.repos.AdminRepository
+import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
@@ -34,6 +35,7 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
     single { AuthRepository(get(), get()) }
     single { PacientesRepository(get()) }
     single { HcRepository(get()) }
-    single { TurnosRepository(get()) }
+    single { AgendaTurnosOnline(get(), get()) }
+    single { TurnosRepository(get(), get()) }
     single { AdminRepository(get(), get()) }
 }
