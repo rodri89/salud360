@@ -8,6 +8,7 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlin.time.Clock
 
@@ -16,7 +17,8 @@ fun ahoraMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 /** Observa una consulta como lista de modelos. */
 fun <R : Any, M> Query<R>.flujoLista(map: (R) -> M): Flow<List<M>> =
-    asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map(map) }
+    // flowOn: el mapeo fila → modelo también corre fuera del hilo principal (listas grandes, como la cartera de pacientes).
+    asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map(map) }.flowOn(Dispatchers.Default)
 
 /** Observa una consulta como un único modelo (o null). */
 fun <R : Any, M> Query<R>.flujoUno(map: (R) -> M): Flow<M?> =

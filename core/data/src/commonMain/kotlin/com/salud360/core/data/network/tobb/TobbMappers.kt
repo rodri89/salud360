@@ -5,9 +5,12 @@ import com.salud360.core.model.TobbIds
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.EstadoTurno
+import com.salud360.core.model.turnos.FechaAgregada
+import com.salud360.core.model.turnos.HorarioMedico
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.serialization.json.JsonPrimitive
@@ -37,6 +40,22 @@ fun Asistencia.aCodigoTobb(): Int = when (this) { Asistencia.ASISTIO -> 1; Asist
 
 /** true si el turno es un bloqueo (paciente ficticio de la web). */
 fun TobbTurno.esBloqueo(): Boolean = paciente?.dni.texto() == TOBB_DNI_BLOQUEO
+
+/** Horario fijo de `GET horarios` → modelo local con id `tobb-h<id>`. Null si el día u horario no se pueden interpretar. */
+fun TobbHorarioFijo.toHorario(medicoId: Id, consultorioId: Id): HorarioMedico? {
+    val hora = horario.aHoraTobb() ?: return null
+    if (dia !in 1..7) return null
+    return HorarioMedico(
+        TobbIds.horario(id), medicoId, consultorioId, DayOfWeek(dia), hora, doble = doble == 1, tipoTurno = TipoTurno.porCodigo(tipoTurno),
+        validoDesde = validoDesde?.aFechaTobb(), validoHasta = validoHasta?.aFechaTobb(), activo = true, quincenal = quincenal == 1,
+    )
+}
+
+/** Fecha especial de `GET horarios` → modelo local con id `tobb-f<id>`. */
+fun TobbFechaEspecial.toFechaAgregada(medicoId: Id, consultorioId: Id): FechaAgregada? {
+    val f = fecha.aFechaTobb() ?: return null
+    return FechaAgregada(TobbIds.fechaAgregada(id), medicoId, consultorioId, f, horarios.mapNotNull { it.horario.aHoraTobb() }.sorted())
+}
 
 /**
  * Convierte un turno de la API al modelo de Salud 360. Los bloqueos de la web (paciente con DNI 99999)

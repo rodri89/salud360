@@ -2,6 +2,7 @@ package com.salud360.core.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -32,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDate
@@ -52,7 +56,10 @@ fun TextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     isError: Boolean = false,
     supportingText: String? = null,
+    mostrarCopiar: Boolean = false,
+    onCopiado: (() -> Unit)? = null,
 ) {
+    val portapapeles = LocalClipboardManager.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -62,6 +69,9 @@ fun TextField(
         singleLine = true,
         isError = isError,
         supportingText = supportingText?.let { { Text(it) } },
+        trailingIcon = if (mostrarCopiar && value.isNotEmpty()) {
+            { IconButton(onClick = { portapapeles.setText(AnnotatedString(value)); onCopiado?.invoke() }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copiar") } }
+        } else null,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier.fillMaxWidth(),
     )
@@ -134,19 +144,8 @@ fun DateField(
         },
         modifier = modifier.fillMaxWidth().clickable(enabled = !readOnly) { open = true },
     )
-    if (open) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = value?.toEpochMillis())
-        DatePickerDialog(
-            onDismissRequest = { open = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    onValueChange(state.selectedDateMillis?.toLocalDate())
-                    open = false
-                }) { Text("Aceptar") }
-            },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancelar") } },
-        ) { DatePicker(state = state) }
-    }
+    // Calendario propio (ver CalendarioDialog): el DatePicker de Material 3 en web mostraba el mes corrido.
+    if (open) CalendarioDialog(inicial = value, onElegida = onValueChange, onCerrar = { open = false })
 }
 
 /** Lista desplegable de opciones fijas (equivalente a `<select>`). */
@@ -271,6 +270,24 @@ fun SiNoField(label: String, value: Boolean?, onValueChange: (Boolean) -> Unit, 
 @Composable
 fun FormRow(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), content = content)
+}
+
+/**
+ * Como [FormRow], pero en pantallas angostas (celular) apila los campos uno abajo del otro a ancho
+ * completo en vez de ponerlos en una fila. [ancho] es el mismo corte que ya usa el shell principal
+ * (>= 840dp) para elegir entre barra lateral y barra inferior.
+ */
+@Composable
+fun FormRowResponsivo(ancho: Boolean, modifier: Modifier = Modifier, pesos: List<Float> = emptyList(), campos: List<@Composable () -> Unit>) {
+    if (ancho) {
+        Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            campos.forEachIndexed { i, campo -> Box(Modifier.weight(pesos.getOrElse(i) { 1f })) { campo() } }
+        }
+    } else {
+        Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            campos.forEach { campo -> campo() }
+        }
+    }
 }
 
 // ---- utilidades de fecha ----

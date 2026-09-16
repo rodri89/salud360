@@ -1,5 +1,6 @@
 package com.salud360.core.data.network.tobb
 
+import com.salud360.core.model.tobb.TobbCupoPrimerControl
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -130,8 +131,88 @@ data class TobbPaciente(
 @Serializable
 data class TobbPacientesResponse(val pacientes: List<TobbPaciente> = emptyList(), @SerialName("hay_mas") val hayMas: Boolean = false)
 
+/** Respuesta de `pacientes/vinculados`: todos los pacientes ya vinculados a un médico (sin paginar). */
+@Serializable
+data class TobbPacientesVinculadosResponse(
+    val ok: Boolean = false,
+    @SerialName("medico_id") val medicoId: Long = 0,
+    val total: Int = 0,
+    val pacientes: List<TobbPaciente> = emptyList(),
+)
+
 @Serializable
 data class TobbPacienteResponse(val paciente: TobbPaciente, val creado: Boolean = false)
+
+/** Horario fijo semanal tal como lo devuelve `GET horarios` (`horario_medicos`). `quincenal` llega solo si la API lo expone. */
+@Serializable
+data class TobbHorarioFijo(
+    val id: Long,
+    val dia: Int,
+    val horario: String,
+    val doble: Int = 0,
+    @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    @SerialName("valido_desde") val validoDesde: String? = null,
+    @SerialName("valido_hasta") val validoHasta: String? = null,
+    val quincenal: Int = 0,
+)
+
+@Serializable
+data class TobbHorarioEspecial(val id: Long, val horario: String, val doble: Int = 0)
+
+/** Fecha agregada (`fechas_agregadas`) con sus horarios (`horarios_medicos_agregados`). */
+@Serializable
+data class TobbFechaEspecial(val id: Long, val fecha: String, val dia: Int = 0, val horarios: List<TobbHorarioEspecial> = emptyList())
+
+/** Respuesta de `GET horarios`. */
+@Serializable
+data class TobbHorariosResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    @SerialName("consultorio_id") val consultorioId: Long? = null,
+    @SerialName("horarios_fijos") val horariosFijos: List<TobbHorarioFijo> = emptyList(),
+    @SerialName("fechas_especiales") val fechasEspeciales: List<TobbFechaEspecial> = emptyList(),
+    @SerialName("cupo_primer_control") val cupoPrimerControl: List<TobbCupoPrimerControl> = emptyList(),
+    @SerialName("ventana_dias") val ventanaDias: Int = 180,
+    val modulos: List<Int> = emptyList(),
+)
+
+/** Mensaje especial tal como lo devuelve `GET mensajes?medico_id` (solo lectura: la web no expone alta ni edición). */
+@Serializable
+data class TobbMensaje(
+    val id: Long,
+    val titulo: String = "",
+    val descripcion: String = "",
+    @SerialName("valido_desde") val validoDesde: String? = null,
+    @SerialName("valido_hasta") val validoHasta: String? = null,
+    val activo: Int = 1,
+)
+
+@Serializable
+data class TobbMensajesResponse(val mensajes: List<TobbMensaje> = emptyList())
+
+/** Respuesta de `POST horarios` (`{id}`) y de `POST horarios/fecha-especial` (`{fecha_especial_id, creados}`). */
+@Serializable
+data class TobbAltaResponse(val id: Long = 0, @SerialName("fecha_especial_id") val fechaEspecialId: Long = 0)
+
+@Serializable
+data class TobbObraSocial(val id: Long, val nombre: String = "")
+
+/** Parte de `GET catalogos` que usa la app (el resto se ignora). */
+@Serializable
+data class TobbCatalogosResponse(@SerialName("obras_sociales") val obrasSociales: List<TobbObraSocial> = emptyList())
+
+/** Fila de `GET obras-sociales?medico_id` (`obra_social_medicos` + nombre). */
+@Serializable
+data class TobbObraSocialMedico(
+    val id: Long,
+    @SerialName("obra_social_id") val obraSocialId: Long,
+    val nombre: String = "",
+    val importe: Double = 0.0,
+    @SerialName("importe_reserva") val importeReserva: Double? = null,
+    val activo: Int = 1,
+)
+
+@Serializable
+data class TobbObrasSocialesMedicoResponse(@SerialName("obras_sociales") val obrasSociales: List<TobbObraSocialMedico> = emptyList())
 
 /** Cuerpo de `POST turnos` / `POST turnos/sobreturno`. */
 @Serializable

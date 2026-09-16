@@ -28,6 +28,23 @@ class PacientesRepository(private val db: Salud360Db) {
 
     fun observarDeMedico(medicoId: Id): Flow<List<Paciente>> = q.pacientesDeMedico(medicoId).flujoLista { it.toModel() }
     fun observarTodos(): Flow<List<Paciente>> = q.pacientes().flujoLista { it.toModel() }
+
+    /**
+     * Página del listado (los primeros `limite`, ordenados por apellido) con filtro por DNI (prefijo) o apellido/nombre
+     * (contiene) resuelto en SQL. `medicoId` null = todos (administrador). Reactivo: se vuelve a emitir al cambiar la base.
+     */
+    fun observarPagina(medicoId: Id?, texto: String, limite: Long): Flow<List<Paciente>> {
+        val t = texto.trim()
+        return if (medicoId != null) q.pacientesDeMedicoPagina(medicoId, t, limite).flujoLista { it.toModel() }
+        else q.pacientesPagina(t, limite).flujoLista { it.toModel() }
+    }
+
+    /** Total de pacientes que cumplen el mismo filtro que [observarPagina]. */
+    fun observarTotal(medicoId: Id?, texto: String): Flow<Long> {
+        val t = texto.trim()
+        val flujo = if (medicoId != null) q.contarPacientesDeMedico(medicoId, t).flujoUno { it } else q.contarPacientes(t).flujoUno { it }
+        return flujo.map { it ?: 0L }
+    }
     fun observarPendientesActivacion(): Flow<List<Paciente>> = q.pacientesPendientesActivacion().flujoLista { it.toModel() }
 
     /** Búsqueda por DNI (prefijo) o por apellido/nombre (contiene), como `pacienteConsultar` de las apps. */

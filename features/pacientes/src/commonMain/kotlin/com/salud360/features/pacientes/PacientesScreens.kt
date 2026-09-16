@@ -25,12 +25,18 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -47,9 +53,11 @@ import com.salud360.core.ui.components.BrandPanel
 import com.salud360.core.ui.components.DateField
 import com.salud360.core.ui.components.EmptyState
 import com.salud360.core.ui.components.FormRow
+import com.salud360.core.ui.components.FormRowResponsivo
 import com.salud360.core.ui.components.InitialsAvatar
 import com.salud360.core.ui.components.LabelValue
 import com.salud360.core.ui.components.LinkButton
+import com.salud360.core.ui.components.LoadingIndicator
 import com.salud360.core.ui.components.PillButton
 import com.salud360.core.ui.components.PlainCard
 import com.salud360.core.ui.components.RadioGroupField
@@ -62,6 +70,7 @@ import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -76,6 +85,16 @@ fun PacientesListScreen(
 ) {
     val lista by vm.lista.collectAsState()
     val busqueda by vm.busqueda.collectAsState()
+    val cargandoCartera by vm.cargandoCartera.collectAsState()
+    val total by vm.total.collectAsState()
+    val hayMas by vm.hayMas.collectAsState()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Paginado: al acercarse al final de lo cargado se pide la página siguiente.
+    LaunchedEffect(listState, lista.size, hayMas) {
+        if (!hayMas) return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .collect { ultimo -> if (ultimo >= lista.size - 10) vm.cargarMas() }
+    }
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(onClick = onNuevo, containerColor = MaterialTheme.colorScheme.primary) {
@@ -84,14 +103,21 @@ fun PacientesListScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
-            ScreenTitle(titulo, "${lista.size} pacientes")
+            ScreenTitle(titulo, if (hayMas) "$total pacientes · mostrando ${lista.size}" else "$total pacientes")
             SearchBar(value = busqueda, onValueChange = { vm.busqueda.value = it })
             Spacer(Modifier.height(12.dp))
-            if (lista.isEmpty()) {
+            if (lista.isEmpty() && cargandoCartera) {
+                LoadingIndicator(text = "Cargando pacientes...")
+            } else if (lista.isEmpty()) {
                 EmptyState(if (busqueda.isBlank()) "Todavía no hay pacientes cargados" else "No se encontraron pacientes", icon = Icons.Default.PersonSearch)
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(lista, key = { it.id }) { p -> PacienteItem(p, onClick = { onAbrir(p) }) }
+                    if (hayMas) item(key = "mas") {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
+                            com.salud360.core.ui.components.LinkButton("Mostrar más", onClick = vm::cargarMas)
+                        }
+                    }
                 }
             }
         }
@@ -132,74 +158,89 @@ fun PacienteFormScreen(
 ) {
     val state by vm.state.collectAsState()
     val p = state.paciente
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ScreenTitle(if (pacienteId == null) "Nuevo paciente" else "Actualizar paciente")
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val onCopiado: () -> Unit = { scope.launch { snackbarHostState.showSnackbar("Copiado") } }
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(padding)) {
+        val ancho = maxWidth >= 840.dp
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ScreenTitle(if (pacienteId == null) "Nuevo paciente" else "Actualizar paciente")
 
-        state.existente?.let { e ->
-            PlainCard {
-                Text("Ya existe un paciente con DNI ${e.dni}: ${e.nombreCompleto}", fontWeight = FontWeight.SemiBold)
-                Text("Podés usar su ficha para no duplicarlo.", style = MaterialTheme.typography.bodyMedium)
-                ActionRow { AcceptButton("Usar ficha existente", onClick = vm::usarExistente) }
+            state.existente?.let { e ->
+                PlainCard {
+                    Text("Ya existe un paciente con DNI ${e.dni}: ${e.nombreCompleto}", fontWeight = FontWeight.SemiBold)
+                    Text("Podés usar su ficha para no duplicarlo.", style = MaterialTheme.typography.bodyMedium)
+                    ActionRow { AcceptButton("Usar ficha existente", onClick = vm::usarExistente) }
+                }
             }
-        }
 
-        SectionCard("Datos personales", collapsible = false) {
-            FormRow {
-                TextField("DNI *", p.dni, { v -> vm.actualizar { it.copy(dni = v.filter { c -> c.isDigit() }) } }, Modifier.weight(1f),
-                    keyboardType = KeyboardType.Number, isError = "dni" in state.errores, supportingText = state.errores["dni"])
-                DateField("Fecha de nacimiento", p.fechaNacimiento, { v -> vm.actualizar { it.copy(fechaNacimiento = v) } }, Modifier.weight(1f))
+            SectionCard("Datos personales", collapsible = false) {
+                FormRow {
+                    TextField("DNI *", p.dni, { v -> vm.actualizar { it.copy(dni = v.filter { c -> c.isDigit() }) } }, Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number, isError = "dni" in state.errores, supportingText = state.errores["dni"])
+                    DateField("Fecha de nacimiento", p.fechaNacimiento, { v -> vm.actualizar { it.copy(fechaNacimiento = v) } }, Modifier.weight(1f))
+                }
+                FormRow {
+                    TextField("Apellido *", p.apellido, { v -> vm.actualizar { it.copy(apellido = v) } }, Modifier.weight(1f), isError = "apellido" in state.errores, supportingText = state.errores["apellido"])
+                    TextField("Nombre *", p.nombre, { v -> vm.actualizar { it.copy(nombre = v) } }, Modifier.weight(1f), isError = "nombre" in state.errores, supportingText = state.errores["nombre"])
+                }
+                RadioGroupField("Sexo", p.sexo?.etiqueta, Sexo.entries.map { it.etiqueta }, { e -> vm.actualizar { it.copy(sexo = Sexo.entries.first { s -> s.etiqueta == e }) } })
+                FormRowResponsivo(ancho, campos = listOf(
+                    { TextField("Teléfono", p.telefono, { v -> vm.actualizar { it.copy(telefono = v) } }, Modifier.fillMaxWidth(), keyboardType = KeyboardType.Phone) },
+                    { TextField("Mail", p.mail, { v -> vm.actualizar { it.copy(mail = v) } }, Modifier.fillMaxWidth(), keyboardType = KeyboardType.Email) },
+                ))
+                FormRowResponsivo(ancho, campos = listOf(
+                    { TextField("Domicilio", p.domicilio, { v -> vm.actualizar { it.copy(domicilio = v) } }, Modifier.fillMaxWidth()) },
+                    { TextField("Localidad", p.localidad, { v -> vm.actualizar { it.copy(localidad = v) } }, Modifier.fillMaxWidth()) },
+                ))
+                TextField("Nacionalidad", p.nacionalidad, { v -> vm.actualizar { it.copy(nacionalidad = v) } })
             }
-            FormRow {
-                TextField("Apellido *", p.apellido, { v -> vm.actualizar { it.copy(apellido = v) } }, Modifier.weight(1f), isError = "apellido" in state.errores, supportingText = state.errores["apellido"])
-                TextField("Nombre *", p.nombre, { v -> vm.actualizar { it.copy(nombre = v) } }, Modifier.weight(1f), isError = "nombre" in state.errores, supportingText = state.errores["nombre"])
-            }
-            RadioGroupField("Sexo", p.sexo?.etiqueta, Sexo.entries.map { it.etiqueta }, { e -> vm.actualizar { it.copy(sexo = Sexo.entries.first { s -> s.etiqueta == e }) } })
-            FormRow {
-                TextField("Teléfono", p.telefono, { v -> vm.actualizar { it.copy(telefono = v) } }, Modifier.weight(1f), keyboardType = KeyboardType.Phone)
-                TextField("Mail", p.mail, { v -> vm.actualizar { it.copy(mail = v) } }, Modifier.weight(1f), keyboardType = KeyboardType.Email)
-            }
-            FormRow {
-                TextField("Domicilio", p.domicilio, { v -> vm.actualizar { it.copy(domicilio = v) } }, Modifier.weight(1f))
-                TextField("Localidad", p.localidad, { v -> vm.actualizar { it.copy(localidad = v) } }, Modifier.weight(1f))
-            }
-            TextField("Nacionalidad", p.nacionalidad, { v -> vm.actualizar { it.copy(nacionalidad = v) } })
-        }
 
-        SectionCard("Obra social") {
-            FormRow {
-                TextField("Obra social", p.obraSocial, { v -> vm.actualizar { it.copy(obraSocial = v) } }, Modifier.weight(1.4f))
-                TextField("N° afiliado", p.numeroAfiliado, { v -> vm.actualizar { it.copy(numeroAfiliado = v) } }, Modifier.weight(1f))
-                TextField("Plan", p.obraSocialPlan, { v -> vm.actualizar { it.copy(obraSocialPlan = v) } }, Modifier.weight(0.8f))
+            SectionCard("Obra social") {
+                FormRowResponsivo(ancho, pesos = listOf(1.4f, 1f, 0.8f), campos = listOf(
+                    { TextField("Obra social", p.obraSocial, { v -> vm.actualizar { it.copy(obraSocial = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                    { TextField("N° afiliado", p.numeroAfiliado, { v -> vm.actualizar { it.copy(numeroAfiliado = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                    { TextField("Plan", p.obraSocialPlan, { v -> vm.actualizar { it.copy(obraSocialPlan = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                ))
+                FormRowResponsivo(ancho, pesos = listOf(1.4f, 1f, 0.8f), campos = listOf(
+                    { TextField("Obra social opcional", p.obraSocialOpcional, { v -> vm.actualizar { it.copy(obraSocialOpcional = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                    { TextField("N° afiliado", p.numeroAfiliadoOpcional, { v -> vm.actualizar { it.copy(numeroAfiliadoOpcional = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                    { TextField("Plan", p.obraSocialPlanOpcional, { v -> vm.actualizar { it.copy(obraSocialPlanOpcional = v) } }, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado) },
+                ))
             }
-            FormRow {
-                TextField("Obra social opcional", p.obraSocialOpcional, { v -> vm.actualizar { it.copy(obraSocialOpcional = v) } }, Modifier.weight(1.4f))
-                TextField("N° afiliado", p.numeroAfiliadoOpcional, { v -> vm.actualizar { it.copy(numeroAfiliadoOpcional = v) } }, Modifier.weight(1f))
-                TextField("Plan", p.obraSocialPlanOpcional, { v -> vm.actualizar { it.copy(obraSocialPlanOpcional = v) } }, Modifier.weight(0.8f))
-            }
-        }
 
-        SectionCard("Familia y contacto", initiallyExpanded = false) {
-            FormRow {
-                TextField("Nombre de la madre", p.nombreMadre, { v -> vm.actualizar { it.copy(nombreMadre = v) } }, Modifier.weight(1f))
-                TextField("Teléfono madre", p.telefonoMadre, { v -> vm.actualizar { it.copy(telefonoMadre = v) } }, Modifier.weight(1f), keyboardType = KeyboardType.Phone)
+            SectionCard("Familia y contacto", initiallyExpanded = false) {
+                FormRowResponsivo(ancho, campos = listOf(
+                    { TextField("Nombre de la madre", p.nombreMadre, { v -> vm.actualizar { it.copy(nombreMadre = v) } }, Modifier.fillMaxWidth()) },
+                    { TextField("Teléfono madre", p.telefonoMadre, { v -> vm.actualizar { it.copy(telefonoMadre = v) } }, Modifier.fillMaxWidth(), keyboardType = KeyboardType.Phone) },
+                ))
+                FormRowResponsivo(ancho, campos = listOf(
+                    { TextField("Nombre del padre", p.nombrePadre, { v -> vm.actualizar { it.copy(nombrePadre = v) } }, Modifier.fillMaxWidth()) },
+                    { TextField("Teléfono padre", p.telefonoPadre, { v -> vm.actualizar { it.copy(telefonoPadre = v) } }, Modifier.fillMaxWidth(), keyboardType = KeyboardType.Phone) },
+                ))
+                FormRowResponsivo(ancho, campos = listOf(
+                    { SelectField("Hermanos", p.cantidadHermanos?.toString(), (0..9).map { it.toString() }, { v -> vm.actualizar { it.copy(cantidadHermanos = v?.toIntOrNull()) } }, Modifier.fillMaxWidth()) },
+                    { TextField("Familiar de contacto", p.nombreFamiliar, { v -> vm.actualizar { it.copy(nombreFamiliar = v) } }, Modifier.fillMaxWidth()) },
+                    { TextField("Teléfono familiar", p.telefonoFamiliar, { v -> vm.actualizar { it.copy(telefonoFamiliar = v) } }, Modifier.fillMaxWidth(), keyboardType = KeyboardType.Phone) },
+                ))
             }
-            FormRow {
-                TextField("Nombre del padre", p.nombrePadre, { v -> vm.actualizar { it.copy(nombrePadre = v) } }, Modifier.weight(1f))
-                TextField("Teléfono padre", p.telefonoPadre, { v -> vm.actualizar { it.copy(telefonoPadre = v) } }, Modifier.weight(1f), keyboardType = KeyboardType.Phone)
-            }
-            FormRow {
-                SelectField("Hermanos", p.cantidadHermanos?.toString(), (0..9).map { it.toString() }, { v -> vm.actualizar { it.copy(cantidadHermanos = v?.toIntOrNull()) } }, Modifier.weight(1f))
-                TextField("Familiar de contacto", p.nombreFamiliar, { v -> vm.actualizar { it.copy(nombreFamiliar = v) } }, Modifier.weight(1f))
-                TextField("Teléfono familiar", p.telefonoFamiliar, { v -> vm.actualizar { it.copy(telefonoFamiliar = v) } }, Modifier.weight(1f), keyboardType = KeyboardType.Phone)
-            }
-        }
 
-        ActionRow {
-            BackButton(onClick = onVolver)
-            PillButton(if (state.guardando) "Guardando..." else "Guardar", onClick = { vm.guardar(onGuardado) }, enabled = !state.guardando)
+            ActionRow {
+                BackButton(onClick = onVolver)
+                PillButton(if (state.guardando) "Guardando..." else "Guardar", onClick = { vm.guardar(onGuardado) }, enabled = !state.guardando)
+            }
+            Spacer(Modifier.height(24.dp))
         }
-        Spacer(Modifier.height(24.dp))
     }
+    }
+}
+
+/** Link de WhatsApp para un teléfono (se le agrega el código de país si no lo tiene). */
+private fun linkWhatsApp(telefono: String): String {
+    val digitos = telefono.filter { it.isDigit() }
+    val internacional = if (digitos.startsWith("54")) digitos else "54$digitos"
+    return "https://wa.me/$internacional"
 }
 
 /** Ficha del paciente + accesos a sus historias clínicas y turnos. */
@@ -218,8 +259,13 @@ fun PacienteDetalleScreen(
     val consultas by vm.consultas.collectAsState()
     val turnos by vm.turnos.collectAsState()
     val p = paciente ?: return
+    val uriHandler = LocalUriHandler.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val onCopiado: () -> Unit = { scope.launch { snackbarHostState.showSnackbar("Copiado") } }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BrandPanel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 InitialsAvatar(p.nombreCompleto, size = 56, color = Color.White.copy(alpha = 0.25f))
@@ -231,24 +277,24 @@ fun PacienteDetalleScreen(
                         color = Color.White.copy(alpha = 0.9f),
                     )
                 }
-                LinkButton("Editar", onClick = onEditar)
+                LinkButton("Editar", onClick = onEditar, color = Color.White)
             }
         }
 
         SectionCard("Datos", icon = Icons.Default.Edit, initiallyExpanded = false) {
             FormRow {
                 LabelValue("Fecha de nacimiento", p.fechaNacimiento?.toDisplay() ?: "", Modifier.weight(1f))
-                LabelValue("Teléfono", p.telefono, Modifier.weight(1f))
-                LabelValue("Mail", p.mail, Modifier.weight(1f))
+                LabelValue("Teléfono", p.telefono, Modifier.weight(1f), onClick = if (p.telefono.isNotBlank()) ({ uriHandler.openUri(linkWhatsApp(p.telefono)) }) else null)
             }
+            LabelValue("Mail", p.mail, Modifier.fillMaxWidth())
             FormRow {
                 LabelValue("Domicilio", p.domicilio, Modifier.weight(1f))
                 LabelValue("Localidad", p.localidad, Modifier.weight(1f))
             }
-            FormRow {
-                LabelValue("Obra social", p.obraSocial, Modifier.weight(1f))
-                LabelValue("N° afiliado", p.numeroAfiliado, Modifier.weight(1f))
-                LabelValue("Plan", p.obraSocialPlan, Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LabelValue("Obra social", p.obraSocial, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado)
+                LabelValue("N° afiliado", p.numeroAfiliado, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado)
+                LabelValue("Plan", p.obraSocialPlan, Modifier.fillMaxWidth(), mostrarCopiar = true, onCopiado = onCopiado)
             }
             if (p.nombreMadre.isNotBlank() || p.nombrePadre.isNotBlank() || p.nombreFamiliar.isNotBlank()) FormRow {
                 LabelValue("Madre", listOf(p.nombreMadre, p.telefonoMadre).filter { it.isNotBlank() }.joinToString(" · "), Modifier.weight(1f))
@@ -280,6 +326,7 @@ fun PacienteDetalleScreen(
 
         ActionRow { BackButton(onClick = onVolver) }
         Spacer(Modifier.height(24.dp))
+    }
     }
 }
 

@@ -28,7 +28,7 @@ val especialidades: List<EspecialidadContribution> = listOf(
 )
 
 /** URL del servidor de sincronización. Cambiar por la del despliegue real. */
-const val API_BASE_URL_DEFAULT = "https://api.salud360.turnosonlinebb.com"
+const val API_BASE_URL_DEFAULT = "https://turnosonlinebb.com/api/salud360"
 
 fun iniciarKoin(db: Salud360Db, modulosPlataforma: List<Module>, apiBaseUrl: String = API_BASE_URL_DEFAULT): KoinApplication = startKoin {
     modules(

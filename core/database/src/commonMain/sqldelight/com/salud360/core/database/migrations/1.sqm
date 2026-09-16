@@ -1,0 +1,2 @@
+-- v1 -> v2: horarios fijos quincenales (semana por medio), como en turnosonlinebb.
+ALTER TABLE horario ADD COLUMN quincenal INTEGER NOT NULL DEFAULT 0;

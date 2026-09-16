@@ -6,14 +6,15 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -70,9 +72,11 @@ import com.salud360.features.turnos.AgendaDiaScreen
 import com.salud360.features.turnos.AgendaSemanaScreen
 import com.salud360.features.turnos.AsignarTurnoScreen
 import com.salud360.features.turnos.ConfigAgendaScreen
+import com.salud360.features.turnos.ConfigSeccionScreen
 import com.salud360.features.turnos.HorariosScreen
 import com.salud360.features.turnos.ObrasSocialesScreen
 import com.salud360.features.turnos.RecetasScreen
+import com.salud360.features.turnos.SeccionConfig
 import com.salud360.features.turnos.SelectorMedicoScreen
 import org.koin.compose.koinInject
 
@@ -80,7 +84,6 @@ import org.koin.compose.koinInject
 private object Rutas {
     const val AGENDA = "agenda"
     const val AGENDA_SEMANA = "agenda/semana"
-    const val AGENDA_BLOQUEAR = "agenda/bloquear"
     const val ASIGNAR = "agenda/asignar"
     const val PACIENTES = "pacientes"
     const val PACIENTE_NUEVO = "pacientes/nuevo"
@@ -90,15 +93,21 @@ private object Rutas {
     const val CONSULTA = "consulta/{id}"
     const val HORARIOS = "config/horarios"
     const val CONFIG_AGENDA = "config/agenda"
+    const val CONFIG_SECCION = "config/seccion/{seccion}"
     const val OBRAS_SOCIALES = "config/obras-sociales"
     const val RECETAS = "recetas"
     const val ADMIN = "admin"
     const val ADMIN_CONFIG_MEDICO = "admin/medico/{id}/config"
+    const val ADMIN_CONFIG_SECCION = "admin/medico/{id}/config/{seccion}"
+    const val ADMIN_OBRAS_SOCIALES = "admin/medico/{id}/obras-sociales"
     const val ADMIN_HORARIOS_MEDICO = "admin/medico/{id}/horarios/{consultorioId}"
     const val SELECTOR = "selector"
 }
 
 private data class ItemNav(val ruta: String, val titulo: String, val icono: ImageVector)
+
+/** Recetas está oculto en el menú hasta que se termine de definir; poner en true para volver a mostrarlo. */
+private const val MOSTRAR_RECETAS = false
 
 /** Médico que está siendo gestionado (el propio, o el elegido por la secretaria). */
 data class ContextoMedico(val medicoId: String, val consultorioId: String?, val nombre: String, val especialidades: List<String>, val tieneTurnos: Boolean)
@@ -109,7 +118,7 @@ data class ContextoMedico(val medicoId: String, val consultorioId: String?, val 
  * habilitado el médico (agenda y/o historias clínicas).
  */
 @Composable
-fun MainShell(sesion: Sesion, onLogout: () -> Unit) {
+fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = null) {
     val nav = rememberNavController()
     val registry = koinInject<EspecialidadRegistry>()
     val sync = koinInject<SyncEngine>()
@@ -128,14 +137,15 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit) {
                 Rol.MEDICO -> {
                     if (contexto?.tieneTurnos == true && contexto?.consultorioId != null) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
                     add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People))
-                    if (contexto?.tieneTurnos == true) { add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt)); add(ItemNav(Rutas.CONFIG_AGENDA, "Configuración", Icons.Default.Settings)) }
+                    // Recetas queda oculto por ahora (pendiente de definir); la ruta sigue registrada.
+                    if (contexto?.tieneTurnos == true) { if (MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt)); add(ItemNav(Rutas.CONFIG_AGENDA, "Config", Icons.Default.Settings)) }
                 }
                 Rol.SECRETARIA -> {
                     add(ItemNav(Rutas.SELECTOR, "Médico", Icons.Default.SwapHoriz))
                     if (contexto != null) {
                         if (contexto?.consultorioId != null) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
                         add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People))
-                        add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
+                        if (MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
                         add(ItemNav(Rutas.OBRAS_SOCIALES, "Obras sociales", Icons.Default.HealthAndSafety))
                     }
                 }
@@ -160,23 +170,34 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit) {
                     }
                 },
             ) { padding ->
-                Box(Modifier.padding(padding).fillMaxSize()) {
+                // consumeWindowInsets evita sumar dos veces la barra de navegación; imePadding corre el contenido por encima del teclado.
+                // En web (anchoMaximoContenido) el contenido se acota y se centra para que las secciones no se estiren.
+                Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    // widthIn va antes de fillMaxSize: al revés, fillMaxSize fija el ancho del padre y el máximo no se aplica.
+                    val contenido = if (anchoMaximoContenido != null) Modifier.widthIn(max = anchoMaximoContenido).fillMaxSize() else Modifier.fillMaxSize()
+                    Box(contenido) {
                     NavHost(navController = nav, startDestination = inicio) {
                         composable(Rutas.SELECTOR) {
                             val s = sesion.secretaria
-                            if (s == null) Text("Sin perfil de secretaria") else SelectorMedicoScreen(s.consultorioIds, s.medicoIds, onElegido = { medicoId, consultorioId, nombre ->
-                                contexto = ContextoMedico(medicoId, consultorioId.ifBlank { null }, nombre, emptyList(), consultorioId.isNotBlank())
-                                nav.navigate(if (consultorioId.isNotBlank()) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
-                            })
+                            if (s == null) Text("Sin perfil de secretaria") else SelectorMedicoScreen(
+                                s.consultorioIds, s.medicoIds,
+                                foto = { m -> FotoMedico(m.id, m.nombreCompleto, size = 52) },
+                                medicoActualId = contexto?.medicoId,
+                                onElegido = { medicoId, consultorioId, nombre ->
+                                    contexto = ContextoMedico(medicoId, consultorioId.ifBlank { null }, nombre, emptyList(), consultorioId.isNotBlank())
+                                    nav.navigate(if (consultorioId.isNotBlank()) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
+                                },
+                            )
                         }
                         composable(Rutas.AGENDA) {
                             val c = contexto
                             if (c?.consultorioId == null) Text("Elegí un médico con agenda", Modifier.padding(16.dp))
                             else AgendaDiaScreen(c.medicoId, c.consultorioId, operador, tituloMedico = if (rol == Rol.SECRETARIA) c.nombre else null,
-                                onAbrirPaciente = { nav.navigate("pacientes/$it") }, onVerSemana = { nav.navigate(Rutas.AGENDA_SEMANA) }, onAsignar = { nav.navigate(Rutas.ASIGNAR) })
+                                onAbrirPaciente = { nav.navigate("pacientes/$it") }, onVerSemana = { nav.navigate(Rutas.AGENDA_SEMANA) },
+                                fotoMedico = if (rol == Rol.SECRETARIA) ({ FotoMedico(c.medicoId, c.nombre, size = 48) }) else null,
+                                puedeModificar = rol == Rol.SECRETARIA)
                         }
-                        composable(Rutas.AGENDA_SEMANA) { contexto?.let { c -> c.consultorioId?.let { AgendaSemanaScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }) } } }
-                        composable(Rutas.AGENDA_BLOQUEAR) { contexto?.let { c -> c.consultorioId?.let { AgendaSemanaScreen(c.medicoId, it, operador, modoBloqueo = true, onVolver = { nav.popBackStack() }) } } }
+                        composable(Rutas.AGENDA_SEMANA) { contexto?.let { c -> c.consultorioId?.let { AgendaSemanaScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }, puedeModificar = rol == Rol.SECRETARIA) } } }
                         composable(Rutas.ASIGNAR) { contexto?.let { c -> c.consultorioId?.let { AsignarTurnoScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }) } } }
 
                         composable(Rutas.PACIENTES) {
@@ -212,15 +233,22 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit) {
                         }
                         composable(Rutas.CONFIG_AGENDA) {
                             contexto?.let { c ->
-                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                                    ConfigAgendaScreen(c.medicoId, esAdmin = rol == Rol.ADMIN, onVolver = { nav.popBackStack() })
-                                    Row(Modifier.padding(16.dp)) {
-                                        if (c.consultorioId != null) com.salud360.core.ui.components.AcceptButton("Horarios de atención", onClick = { nav.navigate(Rutas.HORARIOS) })
-                                        Spacer(Modifier.width(10.dp))
-                                        com.salud360.core.ui.components.AcceptButton("Obras sociales", onClick = { nav.navigate(Rutas.OBRAS_SOCIALES) })
-                                    }
-                                }
+                                ConfigAgendaScreen(
+                                    c.medicoId, onVolver = { nav.popBackStack() },
+                                    secciones = SeccionConfig.entries.filter { it != SeccionConfig.HORARIOS || c.consultorioId != null },
+                                    onAbrir = { s ->
+                                        when (s) {
+                                            SeccionConfig.HORARIOS -> nav.navigate(Rutas.HORARIOS)
+                                            SeccionConfig.OBRAS_SOCIALES -> nav.navigate(Rutas.OBRAS_SOCIALES)
+                                            else -> nav.navigate("config/seccion/${s.ruta}")
+                                        }
+                                    },
+                                )
                             }
+                        }
+                        composable(Rutas.CONFIG_SECCION) { entry ->
+                            val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@composable
+                            contexto?.let { c -> ConfigSeccionScreen(c.medicoId, seccion, esAdmin = rol == Rol.ADMIN, onVolver = { nav.popBackStack() }) }
                         }
                         composable(Rutas.HORARIOS) { contexto?.let { c -> c.consultorioId?.let { HorariosScreen(c.medicoId, it, onVolver = { nav.popBackStack() }) } } }
                         composable(Rutas.OBRAS_SOCIALES) { ObrasSocialesScreen(contexto?.medicoId, onVolver = { nav.popBackStack() }) }
@@ -230,13 +258,30 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit) {
                         }
                         composable(Rutas.ADMIN_CONFIG_MEDICO) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
-                            ConfigAgendaScreen(id, esAdmin = true, onVolver = { nav.popBackStack() })
+                            // Horarios se abre desde la tarjeta del médico en Administración (necesita el consultorio).
+                            ConfigAgendaScreen(
+                                id, onVolver = { nav.popBackStack() },
+                                secciones = SeccionConfig.entries.filter { it != SeccionConfig.HORARIOS },
+                                onAbrir = { s ->
+                                    if (s == SeccionConfig.OBRAS_SOCIALES) nav.navigate("admin/medico/$id/obras-sociales") else nav.navigate("admin/medico/$id/config/${s.ruta}")
+                                },
+                            )
+                        }
+                        composable(Rutas.ADMIN_CONFIG_SECCION) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
+                            val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@composable
+                            ConfigSeccionScreen(id, seccion, esAdmin = true, onVolver = { nav.popBackStack() })
+                        }
+                        composable(Rutas.ADMIN_OBRAS_SOCIALES) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
+                            ObrasSocialesScreen(id, onVolver = { nav.popBackStack() })
                         }
                         composable(Rutas.ADMIN_HORARIOS_MEDICO) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
                             val c = entry.savedStateHandle.get<String>("consultorioId") ?: return@composable
                             HorariosScreen(id, c, onVolver = { nav.popBackStack() })
                         }
+                    }
                     }
                 }
             }
@@ -257,7 +302,8 @@ private fun BarraLateral(
                 Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = Color.White, modifier = Modifier.height(32.dp))
                 Text("Salud 360", color = Color.White, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                InitialsAvatar(sesion.usuario.nombreCompleto, size = 40, color = Color.White.copy(alpha = 0.25f))
+                // Foto del médico gestionado (el propio, o el que eligió la secretaria); si no hay, iniciales del usuario.
+                FotoMedico(contexto?.medicoId, contexto?.nombre ?: sesion.usuario.nombreCompleto, size = 44, colorIniciales = Color.White.copy(alpha = 0.25f))
                 Text(sesion.usuario.nombre, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 if (contexto != null && contexto.nombre != sesion.usuario.nombreCompleto) Text(contexto.nombre.substringBefore(","), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }

@@ -61,6 +61,8 @@ data class HorarioMedico(
     val validoDesde: LocalDate? = null,
     val validoHasta: LocalDate? = null,
     val activo: Boolean = true,
+    /** Se ofrece semana por medio (cada 15 días), tomando `validoDesde` como semana ancla. */
+    val quincenal: Boolean = false,
 ) {
     fun vigenteEn(fecha: LocalDate): Boolean =
         activo && (validoDesde == null || validoDesde <= fecha) && (validoHasta == null || validoHasta >= fecha)

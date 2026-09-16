@@ -224,11 +224,11 @@ fun Consultorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean 
 
 fun HorarioRow.toModel() = HorarioMedico(
     id, medico_id, consultorio_id, dia.toDayOfWeek(), horario.toLocalTime(), doble.b(), TipoTurno.porCodigo(tipo_turno.toInt()),
-    valido_desde.toLocalDateOrNull(), valido_hasta.toLocalDateOrNull(), activo.b(),
+    valido_desde.toLocalDateOrNull(), valido_hasta.toLocalDateOrNull(), activo.b(), quincenal.b(),
 )
 fun HorarioMedico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = HorarioRow(
     id, medicoId, consultorioId, dia.toNumero(), horario.hhmm(), doble.l(), tipoTurno.codigo.toLong(),
-    validoDesde?.toString(), validoHasta?.toString(), activo.l(), updatedAt, deleted.l(), dirty.l(),
+    validoDesde?.toString(), validoHasta?.toString(), activo.l(), updatedAt, deleted.l(), dirty.l(), quincenal.l(),
 )
 
 fun HorarioRangoRow.toModel() = HorarioRango(id, medico_id, consultorio_id, dia.toDayOfWeek(), desde.toLocalTime(), hasta.toLocalTime(), TipoTurno.porCodigo(tipo_turno.toInt()), activo.b())

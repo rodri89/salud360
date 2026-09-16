@@ -18,31 +18,24 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
-import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
 
 /**
- * Error devuelto por turnosonlinebb a través del servidor (`/tobb/...`).
- * @param status HTTP (409 para rechazos de agenda, 412 si el usuario no tiene sesión de turnosonlinebb, 401 si venció).
- * @param codigo código de la API (`ocupado`, `mismo_dia`, `cupo_primer_control`, `dia_con_turnos`, `sin_sesion_tobb`, ...).
+ * Error devuelto por turnosonlinebb (ver [com.salud360.core.data.network.TurnosOnlineClient.tobb]).
+ * @param status HTTP (409 para rechazos de agenda, 401 si el token venció).
+ * @param codigo código de la API (`ocupado`, `mismo_dia`, `cupo_primer_control`, `dia_con_turnos`, ...).
  */
 class TobbException(val status: Int, val codigo: String?, mensaje: String) : Exception(mensaje)
 
@@ -116,32 +109,4 @@ class ApiClient(val baseUrl: String, engine: io.ktor.client.engine.HttpClientEng
     suspend fun descargarArchivo(id: String): ByteArray = http.get("archivos/$id") { auth(this) }.verificar().body()
 
     suspend fun ping(): Boolean = runCatching { http.get("health").status.isSuccess() }.getOrDefault(false)
-
-    // ---- turnosonlinebb (reenviado por el servidor con el token de la web de turnos del usuario) ----
-
-    /**
-     * Llama a `/api/salud360/<ruta>` de turnosonlinebb a través del servidor (`/tobb/<ruta>`), que agrega el token
-     * del usuario. Devuelve el objeto JSON de la respuesta; si la API responde `ok: false` o un error HTTP lanza [TobbException].
-     */
-    suspend fun tobb(metodo: HttpMethod, ruta: String, params: Map<String, Any?> = emptyMap(), cuerpo: Any? = null): JsonObject {
-        val r = http.request("tobb/" + ruta.trimStart('/')) {
-            method = metodo
-            auth(this)
-            params.forEach { (k, v) -> if (v != null) parameter(k, v) }
-            if (cuerpo != null) { contentType(ContentType.Application.Json); setBody(cuerpo) }
-        }
-        val texto = runCatching { r.bodyAsText() }.getOrDefault("")
-        val obj = runCatching { json.parseToJsonElement(texto).jsonObject }.getOrNull()
-        val ok = obj?.get("ok")?.jsonPrimitive?.booleanOrNull
-        if (!r.status.isSuccess() || ok == false || obj == null) {
-            val mensaje = obj?.get("mensaje")?.jsonPrimitive?.contentOrNull
-                ?: obj?.get("message")?.jsonPrimitive?.contentOrNull
-                ?: texto.ifBlank { "turnosonlinebb respondió ${r.status.value}" }
-            throw TobbException(r.status.value, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje)
-        }
-        return obj
-    }
-
-    suspend fun tobbGet(ruta: String, params: Map<String, Any?> = emptyMap()): JsonObject = tobb(HttpMethod.Get, ruta, params)
-    suspend fun tobbPost(ruta: String, cuerpo: Any? = null, params: Map<String, Any?> = emptyMap()): JsonObject = tobb(HttpMethod.Post, ruta, params, cuerpo)
 }
