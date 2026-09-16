@@ -52,7 +52,7 @@ e ingresar con el mail y la contraseña de un médico o secretaria de turnosonli
 ### Publicar en el hosting (subdominio, Apache/LiteSpeed)
 
 Es un sitio estático: no necesita PHP, Node ni base de datos. Alcanza con subir a la carpeta raíz del
-subdominio (por ejemplo `salud360.turnosonlinebb.com` → `public_html/salud360` o la que asigne el panel)
+subdominio (`salud360.turnosonlinebb.com` → `domains/turnosonlinebb.com/public_html/salud360`)
 todo el contenido de `productionExecutable` **menos** los `*.map`:
 
 - `index.html`, `salud360.js`, `salud360.js.LICENSE.txt`
@@ -82,7 +82,7 @@ Configuración, una sola vez, en GitHub → Settings → Secrets and variables �
 | `HOSTINGER_SSH_PORT` | `65002` |
 | `HOSTINGER_SSH_USER` | usuario del hosting (`u…`) |
 | `HOSTINGER_SSH_PASSWORD` | contraseña SSH del hosting |
-| `HOSTINGER_WEB_DIR` | carpeta del subdominio relativa al home, ej. `domains/salud360.turnosonlinebb.com/public_html` |
+| `HOSTINGER_WEB_DIR` | carpeta del subdominio relativa al home: `domains/turnosonlinebb.com/public_html/salud360` (el subdominio `salud360.turnosonlinebb.com` apunta ahí) |
 
 Después, push a `main` y seguir el progreso en la pestaña Actions. `rsync --delete` sube solo lo que cambió y
 borra en el servidor los `.wasm` viejos (cambian de nombre en cada build). Los `.map` no se suben.

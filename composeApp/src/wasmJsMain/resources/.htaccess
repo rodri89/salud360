@@ -25,3 +25,9 @@ AddType application/json .json
 
 # Sin listado de directorios.
 Options -Indexes
+
+# La carpeta vive dentro del public_html de la web de turnos (Laravel). Con RewriteEngine propio, las reglas de
+# reescritura del .htaccess padre (que mandan todo a index.php) no se heredan acá: se sirven los archivos tal cual.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+</IfModule>
