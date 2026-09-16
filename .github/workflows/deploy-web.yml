@@ -1,0 +1,74 @@
+# Publica la web (Kotlin/Wasm) en el hosting cada vez que se hace push a main.
+#
+# El hosting compartido no puede compilar Kotlin, así que el build se hace acá y solo se suben los archivos
+# estáticos resultantes por FTP (FTPS). Secrets necesarios en GitHub (Settings → Secrets and variables → Actions):
+#   HOSTINGER_FTP_SERVER    host FTP del hosting (ej. ftp.turnosonlinebb.com o la IP que muestra hPanel)
+#   HOSTINGER_FTP_USER      usuario de la cuenta FTP creada para el subdominio
+#   HOSTINGER_FTP_PASSWORD  su contraseña
+#   HOSTINGER_FTP_DIR       carpeta destino relativa a la raíz de esa cuenta FTP (ej. "./" si la cuenta ya
+#                           apunta a domains/salud360.turnosonlinebb.com/public_html, o la ruta completa)
+name: Web → Hostinger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "composeApp/**"
+      - "core/**"
+      - "features/**"
+      - "build-logic/**"
+      - "gradle/**"
+      - "gradlew"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+# Si llegan dos pushes seguidos, se cancela el deploy anterior y se publica solo el último.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Compilar y subir
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Código
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle (con caché)
+        uses: gradle/actions/setup-gradle@v4
+
+      # Los módulos compartidos tienen target Android: la configuración de Gradle necesita el SDK aunque solo
+      # se compile la web. El runner ya lo trae; se aceptan las licencias para que AGP pueda bajar lo que falte.
+      - name: Licencias del SDK de Android
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
+      - name: Compilar la web (wasmJs, producción)
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution --no-daemon --console=plain
+
+      - name: Quitar mapas de depuración
+        run: rm -f composeApp/build/dist/wasmJs/productionExecutable/*.map
+
+      - name: Subir al hosting por FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USER }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: composeApp/build/dist/wasmJs/productionExecutable/
+          server-dir: ${{ secrets.HOSTINGER_FTP_DIR }}
+          # Sube solo lo que cambió y borra en el servidor lo que ya no existe (los .wasm viejos con otro hash).
+          state-name: .ftp-deploy-sync-state.json
+          exclude: |
+            **/*.map

@@ -52,6 +52,27 @@ JOIN medico_paciente mp ON mp.paciente_id = p.id
 WHERE mp.medico_id = :medicoId AND mp.activo = 1 AND mp.deleted = 0 AND p.deleted = 0
   AND (p.dni LIKE :q || '%' OR lower(p.apellido) LIKE '%' || lower(:q) || '%' OR lower(p.nombre) LIKE '%' || lower(:q) || '%')
 ORDER BY p.apellido, p.nombre LIMIT :limite;
+-- Listado paginado (LIMIT creciente) con filtro opcional (:q vacío = sin filtro), para no mapear toda la cartera de una vez.
+pacientesPagina:
+SELECT * FROM paciente
+WHERE deleted = 0
+  AND (:q = '' OR dni LIKE :q || '%' OR lower(apellido) LIKE '%' || lower(:q) || '%' OR lower(nombre) LIKE '%' || lower(:q) || '%')
+ORDER BY apellido, nombre LIMIT :limite;
+contarPacientes:
+SELECT count(*) FROM paciente
+WHERE deleted = 0
+  AND (:q = '' OR dni LIKE :q || '%' OR lower(apellido) LIKE '%' || lower(:q) || '%' OR lower(nombre) LIKE '%' || lower(:q) || '%');
+pacientesDeMedicoPagina:
+SELECT p.* FROM paciente p
+JOIN medico_paciente mp ON mp.paciente_id = p.id
+WHERE mp.medico_id = :medicoId AND mp.activo = 1 AND mp.deleted = 0 AND p.deleted = 0
+  AND (:q = '' OR p.dni LIKE :q || '%' OR lower(p.apellido) LIKE '%' || lower(:q) || '%' OR lower(p.nombre) LIKE '%' || lower(:q) || '%')
+ORDER BY p.apellido, p.nombre LIMIT :limite;
+contarPacientesDeMedico:
+SELECT count(*) FROM paciente p
+JOIN medico_paciente mp ON mp.paciente_id = p.id
+WHERE mp.medico_id = :medicoId AND mp.activo = 1 AND mp.deleted = 0 AND p.deleted = 0
+  AND (:q = '' OR p.dni LIKE :q || '%' OR lower(p.apellido) LIKE '%' || lower(:q) || '%' OR lower(p.nombre) LIKE '%' || lower(:q) || '%');
 pacientesPendientesActivacion: SELECT * FROM paciente WHERE activo = 0 AND deleted = 0 ORDER BY updated_at DESC;
 upsertPaciente: INSERT OR REPLACE INTO paciente VALUES ?;
 pacientesDirty: SELECT * FROM paciente WHERE dirty = 1;

@@ -38,6 +38,13 @@ object TobbIds {
     fun especialidad(n: Long): Id = "${PREFIJO}e$n"
     fun paciente(n: Long): Id = "${PREFIJO}p$n"
     fun turno(n: Long): Id = "${PREFIJO}t$n"
+    fun horario(n: Long): Id = "${PREFIJO}h$n"
+    fun fechaAgregada(n: Long): Id = "${PREFIJO}f$n"
+    fun obraSocial(n: Long): Id = "${PREFIJO}o$n"
+    /** Mensaje especial para pacientes (`n` porque la `m` es del médico). */
+    fun mensaje(n: Long): Id = "${PREFIJO}n$n"
+    /** Vínculo médico–obra social (`obra_social_medicos`). */
+    fun obraSocialMedico(n: Long): Id = "${PREFIJO}v$n"
 
     /** true si el id fue importado de turnosonlinebb. */
     fun esTobb(id: Id?): Boolean = id != null && id.startsWith(PREFIJO)

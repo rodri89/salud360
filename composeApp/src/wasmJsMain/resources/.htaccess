@@ -1,0 +1,27 @@
+# Salud 360 web (Kotlin/Wasm) en Apache de hosting compartido.
+# Se copia tal cual al paquete de producción (wasmJsBrowserDistribution).
+
+# Tipos MIME: el navegador rechaza el .wasm si no llega como application/wasm.
+AddType application/wasm .wasm
+AddType application/javascript .js .mjs
+AddType application/json .json
+
+# Compresión para JS/Wasm (el bundle pesa varios MB).
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/wasm application/javascript text/html text/css application/json
+</IfModule>
+
+# Los archivos con hash en el nombre pueden cachearse mucho; index.html y salud360.js no.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/wasm "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+</IfModule>
+<IfModule mod_headers.c>
+    <FilesMatch "^(index\.html|salud360\.js)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
+# Sin listado de directorios.
+Options -Indexes

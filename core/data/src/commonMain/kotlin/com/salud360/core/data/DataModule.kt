@@ -1,6 +1,7 @@
 package com.salud360.core.data
 
 import com.salud360.core.data.network.ApiClient
+import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
@@ -27,12 +28,13 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
     single { db }
     single { Settings() }
     single { ApiClient(config.apiBaseUrl) }
+    single { TurnosOnlineClient() }
     single {
         val settings = get<Settings>()
         val id = settings.getStringOrNull("dispositivo_id") ?: newId().also { settings.putString("dispositivo_id", it) }
         SyncEngine(get(), get(), get(), id)
     }
-    single { AuthRepository(get(), get()) }
+    single { AuthRepository(get(), get(), get(), get()) }
     single { PacientesRepository(get()) }
     single { HcRepository(get()) }
     single { AgendaTurnosOnline(get(), get()) }

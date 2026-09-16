@@ -8,6 +8,7 @@ import com.salud360.core.data.repos.ResultadoLogin
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.auth.Credenciales
 import com.salud360.core.model.auth.Sesion
+import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 data class LoginUiState(
     val email: String = "",
     val password: String = "",
+    /** "Recordar este mail": el mail se guarda en el dispositivo y se completa solo la próxima vez. */
+    val recordarEmail: Boolean = false,
     val cargando: Boolean = false,
     val error: String? = null,
     val avisoOffline: Boolean = false,
@@ -29,12 +32,25 @@ class LoginViewModel(
     private val auth: AuthRepository,
     private val sync: SyncEngine,
     private val config: AppConfig,
+    private val settings: Settings,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(LoginUiState(servidor = config.apiBaseUrl))
+    private val emailRecordado = settings.getStringOrNull(CLAVE_EMAIL_RECORDADO)?.takeIf { it.isNotBlank() }
+    private val _state = MutableStateFlow(LoginUiState(email = emailRecordado ?: "", recordarEmail = emailRecordado != null, servidor = config.apiBaseUrl))
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
     fun onEmail(v: String) = _state.update { it.copy(email = v, error = null) }
     fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
+
+    /** Al destildar se olvida enseguida; al tildar se guarda recién cuando el ingreso sale bien. */
+    fun onRecordarEmail(v: Boolean) {
+        _state.update { it.copy(recordarEmail = v) }
+        if (!v) settings.remove(CLAVE_EMAIL_RECORDADO)
+    }
+
+    private fun guardarEmailSiCorresponde(email: String) {
+        if (_state.value.recordarEmail) settings.putString(CLAVE_EMAIL_RECORDADO, email.trim().lowercase())
+        else settings.remove(CLAVE_EMAIL_RECORDADO)
+    }
 
     fun login(onOk: (Sesion) -> Unit) {
         val s = _state.value
@@ -46,17 +62,22 @@ class LoginViewModel(
         viewModelScope.launch {
             when (val r = auth.login(Credenciales(s.email, s.password))) {
                 is ResultadoLogin.Ok -> {
+                    guardarEmailSiCorresponde(s.email)
                     _state.update { it.copy(cargando = false, avisoOffline = r.offline) }
                     if (!r.offline) launch { sync.sincronizar(); auth.refrescarPerfil() }
                     onOk(r.sesion)
                 }
-                is ResultadoLogin.LicenciaVencida -> _state.update { it.copy(cargando = false, licenciaVencida = true) }
+                is ResultadoLogin.LicenciaVencida -> { guardarEmailSiCorresponde(s.email); _state.update { it.copy(cargando = false, licenciaVencida = true) } }
                 ResultadoLogin.CredencialesInvalidas -> _state.update { it.copy(cargando = false, error = "Mail o contraseña incorrectos") }
                 ResultadoLogin.SinConexionYSinSesionPrevia -> _state.update {
-                    it.copy(cargando = false, error = "No se pudo conectar con el servidor ${config.apiBaseUrl}. Verificá la conexión o la URL del servidor. Para ingresar sin internet primero tenés que haber iniciado sesión en este dispositivo.")
+                    it.copy(cargando = false, error = "No se pudo conectar con turnosonlinebb. Verificá la conexión a internet. Para ingresar sin internet primero tenés que haber iniciado sesión en este dispositivo.")
                 }
                 is ResultadoLogin.Error -> _state.update { it.copy(cargando = false, error = r.mensaje) }
             }
         }
+    }
+
+    private companion object {
+        const val CLAVE_EMAIL_RECORDADO = "login.email_recordado"
     }
 }

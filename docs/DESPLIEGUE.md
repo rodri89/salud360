@@ -48,6 +48,44 @@ e ingresar con el mail y la contraseña de un médico o secretaria de turnosonli
 ```bash
 ./gradlew :composeApp:wasmJsBrowserDistribution
 # resultado en composeApp/build/dist/wasmJs/productionExecutable
+
+### Publicar en el hosting (subdominio, Apache/LiteSpeed)
+
+Es un sitio estático: no necesita PHP, Node ni base de datos. Alcanza con subir a la carpeta raíz del
+subdominio (por ejemplo `salud360.turnosonlinebb.com` → `public_html/salud360` o la que asigne el panel)
+todo el contenido de `productionExecutable` **menos** los `*.map`:
+
+- `index.html`, `salud360.js`, `salud360.js.LICENSE.txt`
+- todos los `*.wasm` (la app y `sql-wasm.wasm` de la base local)
+- los chunks `*.js` numerados (el worker de la base)
+- la carpeta `composeResources`
+- `.htaccess` (tipo MIME de `.wasm`, compresión y caché; viene de `composeApp/src/wasmJsMain/resources`)
+
+El subdominio tiene que servirse por HTTPS (la API de turnosonlinebb es HTTPS y el navegador bloquea
+contenido mixto). Fuera de `localhost` la app usa `API_BASE_URL_DEFAULT` (turnosonlinebb.com), así que no
+hay nada que configurar; las fotos y la API ya aceptan pedidos desde otro origen (middleware `Salud360Cors`).
+Para actualizar, volver a generar el paquete y reemplazar los archivos: los `.wasm` cambian de nombre en cada
+build (hash), así que conviene borrar los viejos.
+
+### Publicación automática (GitHub Actions → FTP)
+
+`.github/workflows/deploy-web.yml` compila la web y la sube por FTPS en cada push a `main` (o a mano desde
+la pestaña Actions con "Run workflow"). El hosting compartido no puede compilar Kotlin, por eso el build se
+hace en GitHub y al servidor solo llegan los archivos estáticos; el "Git" de hPanel (que hace `git pull`)
+no sirve para este caso.
+
+Configuración, una sola vez:
+
+1. En hPanel → Archivos → Cuentas FTP, crear una cuenta cuyo directorio sea la carpeta del subdominio
+   (`domains/salud360.turnosonlinebb.com/public_html`). Así la cuenta no puede tocar el resto del hosting.
+2. En GitHub → Settings → Secrets and variables → Actions, cargar:
+   `HOSTINGER_FTP_SERVER` (host o IP que muestra hPanel), `HOSTINGER_FTP_USER`, `HOSTINGER_FTP_PASSWORD` y
+   `HOSTINGER_FTP_DIR` (`./` si la cuenta ya apunta a la carpeta del subdominio).
+3. Hacer push a `main` y seguir el progreso en la pestaña Actions. La primera corrida sube todo (≈17 MB);
+   las siguientes solo lo que cambió y borran los `.wasm` viejos, gracias al archivo de estado
+   `.ftp-deploy-sync-state.json` que queda en el servidor (no borrarlo).
+
+Si el hosting no acepta FTPS, cambiar `protocol: ftps` por `ftp` en el workflow.
 ```
 
 Servir esa carpeta como sitio estático (por ejemplo `app.turnosonlinebb.com`). Requiere navegadores

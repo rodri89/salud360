@@ -72,7 +72,7 @@ fun AcceptButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
 
 /** Botón de cancelar blanco con borde rojo (equivalente a `.rodri_button_cancelar`). */
 @Composable
-fun CancelButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun CancelButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
@@ -80,7 +80,10 @@ fun CancelButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
         shape = CircleShape,
         border = BorderStroke(1.5.dp, Salud360Colors.Danger),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Salud360Colors.Danger),
-    ) { Text(text) }
+    ) {
+        if (icon != null) { Icon(icon, contentDescription = null); Spacer(Modifier.width(8.dp)) }
+        Text(text)
+    }
 }
 
 /** Botón "volver" gris (equivalente a `.rodri_button_volver`). */
@@ -97,8 +100,8 @@ fun BackButton(text: String = "Volver", onClick: () -> Unit, modifier: Modifier 
 
 /** Botón de texto plano para acciones secundarias dentro de tablas y tarjetas. */
 @Composable
-fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.secondary) {
     TextButton(onClick = onClick, modifier = modifier) {
-        Text(text, color = MaterialTheme.colorScheme.secondary)
+        Text(text, color = color)
     }
 }

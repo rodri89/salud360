@@ -1,6 +1,7 @@
 package com.salud360.app
 
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeViewport
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.database.DriverFactory
@@ -39,7 +40,8 @@ fun main() {
         val db = createDatabase(DriverFactory())
         iniciarKoin(db, listOf(module { single { ArchivoStore() } }), apiBaseUrl = apiUrl)
         document.getElementById("cargando")?.remove()
-        ComposeViewport(document.body!!) { App() }
+        // En web el contenido se acota al ancho de una tablet para que las secciones no se estiren a todo el monitor.
+        ComposeViewport(document.body!!) { App(anchoMaximoContenido = 840.dp) }
     }
 }
 

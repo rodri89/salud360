@@ -1,5 +1,6 @@
 package com.salud360.server
 
+import com.salud360.core.model.tobb.TobbPerfil
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -10,6 +11,7 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.post
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
@@ -17,6 +19,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
@@ -47,11 +50,13 @@ class TurnosOnlineApi(baseUrl: String) {
 
     /** POST auth/login con el mail y la contraseña de la web de turnos. */
     suspend fun login(email: String, password: String): ResultadoLogin = try {
-        val r = http.post(base + "auth/login") {
-            accept(ContentType.Application.Json)
-            contentType(ContentType.Application.Json)
-            setBody(LoginBody(email, password))
-        }
+        val r = http.submitForm(
+            url = base + "auth/login",
+            formParameters = Parameters.build {
+                append("email", email)
+                append("password", password)
+            },
+        ) { accept(ContentType.Application.Json) }
         val texto = r.bodyAsText()
         if (r.status.isSuccess()) {
             val body = json.decodeFromString(LoginResponse.serializer(), texto)
@@ -99,9 +104,6 @@ class TurnosOnlineApi(baseUrl: String) {
         return Reenviada(r.status.value, r.bodyAsText())
     }
 
-    @Serializable
-    private data class LoginBody(val email: String, val password: String)
-
     /** Error de la API (`ok`/`mensaje`/`codigo`) o de Laravel (`message`, y con APP_DEBUG `exception`/`file`/`line`). */
     @Serializable
     private data class ErrorResponse(
@@ -121,50 +123,3 @@ class TurnosOnlineApi(baseUrl: String) {
     @Serializable
     private data class PerfilResponse(val ok: Boolean = false, val perfil: TobbPerfil? = null)
 }
-
-// ---- Estructuras que devuelve la API de turnosonlinebb (ver API_SALUD360.md en ese repo) ----
-
-@Serializable
-data class TobbPerfil(
-    val usuario: TobbUsuario,
-    val rol: String,
-    val medico: TobbMedico? = null,
-    val secretaria: TobbSecretaria? = null,
-)
-
-@Serializable
-data class TobbUsuario(val id: Long, val nombre: String = "", val email: String, val tipo: Int, val perfil: Int = 0)
-
-@Serializable
-data class TobbConsultorio(val id: Long, val nombre: String = "", val direccion: String? = "", val telefono: String? = "")
-
-@Serializable
-data class TobbCupoPrimerControl(val id: Long = 0, val dia: Int, val consultorio: Long = 0, val cantidad: Int)
-
-@Serializable
-data class TobbMedico(
-    val id: Long,
-    val nombre: String = "",
-    val apellido: String = "",
-    val mail: String? = "",
-    val telefono: String? = "",
-    val sexo: String? = "",
-    val foto: String? = null,
-    @kotlinx.serialization.SerialName("especialidad_id") val especialidadId: Long? = null,
-    val especialidad: String? = null,
-    @kotlinx.serialization.SerialName("consultorio_id") val consultorioId: Long? = null,
-    val activo: Int = 1,
-    val consultorio: TobbConsultorio? = null,
-    val modulos: List<Int> = emptyList(),
-    @kotlinx.serialization.SerialName("ventana_dias") val ventanaDias: Int = 180,
-    @kotlinx.serialization.SerialName("cupo_primer_control") val cupoPrimerControl: List<TobbCupoPrimerControl> = emptyList(),
-)
-
-@Serializable
-data class TobbSecretaria(
-    val id: Long,
-    val nombre: String = "",
-    val apellido: String = "",
-    val consultorios: List<TobbConsultorio> = emptyList(),
-    val medicos: List<TobbMedico> = emptyList(),
-)

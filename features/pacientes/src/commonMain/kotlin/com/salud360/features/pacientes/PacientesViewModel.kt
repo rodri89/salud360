@@ -12,11 +12,14 @@ import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -26,21 +29,64 @@ import kotlinx.coroutines.launch
 /**
  * Listado y búsqueda de pacientes. Si se indica `medicoId` se limita a su cartera (médico o
  * secretaria operando para un médico); si es null muestra todos (administrador).
+ *
+ * Si el médico es de turnosonlinebb: al abrir la pantalla se trae de una vez toda su cartera
+ * (`pacientes/vinculados`) y se guarda vinculada localmente, así la lista aparece cargada sin
+ * tener que escribir. Además, la búsqueda (2+ caracteres) también consulta la web en vivo —igual
+ * que al asignar un turno—, para encontrar cualquier paciente aunque todavía no tenga turno acá.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class PacientesListViewModel(
     private val pacientes: PacientesRepository,
+    private val turnos: TurnosRepository,
     private val medicoId: Id?,
 ) : ViewModel() {
     val busqueda = MutableStateFlow("")
+    private val remota = medicoId != null && turnos.esRemota(medicoId)
+    private val remotos = MutableStateFlow<List<Paciente>?>(null)
+    private val _cargandoCartera = MutableStateFlow(false)
+    val cargandoCartera: StateFlow<Boolean> = _cargandoCartera
 
-    private val base = if (medicoId != null) pacientes.observarDeMedico(medicoId) else pacientes.observarTodos()
+    /**
+     * Paginado: la lista observa solo los primeros `limite` pacientes (filtro resuelto en SQL) y el límite crece de a
+     * [PAGINA] cuando la pantalla llega al final. Así una cartera de miles de pacientes no se mapea ni recompone entera.
+     */
+    private val limite = MutableStateFlow(PAGINA)
+    private val filtro = busqueda.debounce(200).map { it.trim() }.distinctUntilChanged()
 
-    val lista: StateFlow<List<Paciente>> = combine(base, busqueda.debounce(200)) { todos, q ->
-        val t = q.trim().lowercase()
-        if (t.isEmpty()) todos
-        else todos.filter { p -> p.dni.startsWith(t) || p.apellido.lowercase().contains(t) || p.nombre.lowercase().contains(t) }
+    private val locales: Flow<List<Paciente>> = combine(filtro, limite) { q, lim -> q to lim }
+        .flatMapLatest { (q, lim) -> pacientes.observarPagina(medicoId, q, lim) }
+
+    val lista: StateFlow<List<Paciente>> = combine(locales, remotos) { locales, remotos ->
+        if (remotos.isNullOrEmpty()) locales else (remotos + locales).distinctBy { it.id }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Total que cumple el filtro (para el título y para saber si hay más páginas). */
+    val total: StateFlow<Long> = filtro.flatMapLatest { q -> pacientes.observarTotal(medicoId, q) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    val hayMas: StateFlow<Boolean> = combine(total, limite) { t, lim -> t > lim }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Pide la siguiente página (la llama la pantalla al acercarse al final de la lista). */
+    fun cargarMas() { if (hayMas.value) limite.value += PAGINA }
+
+    init {
+        // Al cambiar la búsqueda se vuelve a la primera página.
+        viewModelScope.launch { filtro.collect { limite.value = PAGINA } }
+        if (remota) {
+            viewModelScope.launch {
+                _cargandoCartera.value = true
+                runCatching { turnos.sincronizarPacientesVinculados(medicoId!!) }
+                _cargandoCartera.value = false
+            }
+            viewModelScope.launch {
+                busqueda.debounce(300).collectLatest { q ->
+                    remotos.value = if (q.trim().length >= 2) runCatching { turnos.buscarPacientesRemotos(medicoId!!, q) }.getOrNull() else null
+                }
+            }
+        }
+    }
 
     /** Búsqueda global por DNI en toda la base (para vincular un paciente ya existente de otro médico). */
     suspend fun buscarGlobal(dni: String): Paciente? = pacientes.porDni(dni)
@@ -48,6 +94,10 @@ class PacientesListViewModel(
     fun vincular(pacienteId: Id) {
         val m = medicoId ?: return
         viewModelScope.launch { pacientes.vincular(m, pacienteId) }
+    }
+
+    private companion object {
+        const val PAGINA = 50L
     }
 }
 

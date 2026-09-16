@@ -76,6 +76,9 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Búsqueda de pacientes en turnosonlinebb (se guardan en la base local). Null si el médico es local. */
     suspend fun buscarPacientesRemotos(medicoId: Id, texto: String): List<Paciente>? = remota(medicoId)?.buscarPacientes(texto)
 
+    /** Trae y vincula localmente todos los pacientes de este médico en turnosonlinebb. Null si el médico es local. */
+    suspend fun sincronizarPacientesVinculados(medicoId: Id): List<Paciente>? = remota(medicoId)?.pacientesVinculados(medicoId)
+
     // ---- consultorios / catálogos ----
 
     fun observarConsultorios(): Flow<List<Consultorio>> = q.consultorios().flujoLista { it.toModel() }
@@ -91,7 +94,15 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     fun observarObrasSociales(): Flow<List<ObraSocial>> = q.obrasSociales().flujoLista { it.toModel() }
     suspend fun guardarObraSocial(o: ObraSocial) = q.upsertObraSocial(o.copy(nombre = o.nombre.trim().uppercase()).toRow(ahoraMillis()))
     fun observarObrasSocialesDeMedico(medicoId: Id): Flow<List<ObraSocialMedico>> = q.obrasSocialesDeMedico(medicoId).flujoLista { it.toModel() }
-    suspend fun guardarObraSocialMedico(o: ObraSocialMedico) = q.upsertObraSocialMedico(o.toRow(ahoraMillis()))
+
+    /** Trae de turnosonlinebb el catálogo de obras sociales y las del médico (caché local). Para médicos locales no hace nada. */
+    suspend fun sincronizarObrasSociales(medicoId: Id) { remota(medicoId)?.sincronizarObrasSociales(medicoId) }
+
+    /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
+    suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {
+        val r = remota(o.medicoId)?.takeIf { TobbIds.esTobb(o.obraSocialId) }
+        if (r != null) r.guardarObraSocialMedico(o) else q.upsertObraSocialMedico(o.toRow(ahoraMillis()))
+    }
 
     fun observarModulos(medicoId: Id): Flow<Set<ModuloTurnos>> =
         q.modulosDeMedico(medicoId).flujoLista { it.toModel() }.map { l -> l.filterNotNull().filter { it.activo }.map { it.modulo }.toSet() }
@@ -102,36 +113,69 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
 
     fun observarConfig(medicoId: Id): Flow<ConfigAgenda> = q.configDeMedico(medicoId).flujoUno { it.toModel() }.map { it ?: ConfigAgenda(medicoId) }
     suspend fun config(medicoId: Id): ConfigAgenda = q.configDeMedico(medicoId).uno { it.toModel() } ?: ConfigAgenda(medicoId)
-    suspend fun guardarConfig(c: ConfigAgenda) = q.upsertConfigAgenda(c.toRow(ahoraMillis()))
+
+    /** Refresca desde turnosonlinebb cupo, ventana de días y mensajes del médico. Para médicos locales no hace nada. */
+    suspend fun sincronizarConfig(medicoId: Id) { remota(medicoId)?.sincronizarConfig(medicoId) }
+
+    /** Guarda la configuración; para médicos de turnosonlinebb la ventana y el cupo se guardan también en la web. */
+    suspend fun guardarConfig(c: ConfigAgenda) {
+        val r = remota(c.medicoId)
+        if (r != null) r.guardarConfig(c) else q.upsertConfigAgenda(c.toRow(ahoraMillis()))
+    }
 
     fun observarMensajes(medicoId: Id): Flow<List<MensajeEspecial>> = q.mensajesDeMedico(medicoId).flujoLista { it.toModel() }
-    suspend fun guardarMensaje(m: MensajeEspecial) = q.upsertMensajeEspecial(m.toRow(ahoraMillis()))
+
+    /** Crea o actualiza un mensaje para pacientes; para médicos de turnosonlinebb se guarda en la web. */
+    suspend fun guardarMensaje(m: MensajeEspecial) {
+        val r = remota(m.medicoId)
+        if (r != null) r.guardarMensaje(m) else q.upsertMensajeEspecial(m.toRow(ahoraMillis()))
+    }
+    suspend fun eliminarMensaje(m: MensajeEspecial) {
+        val r = remota(m.medicoId)
+        if (r != null) r.eliminarMensaje(m) else q.upsertMensajeEspecial(m.toRow(ahoraMillis(), deleted = true))
+    }
 
     // ---- horarios ----
 
     fun observarHorarios(medicoId: Id): Flow<List<HorarioMedico>> = q.horariosDeMedico(medicoId).flujoLista { it.toModel() }
     suspend fun horarios(medicoId: Id): List<HorarioMedico> = q.horariosDeMedico(medicoId).lista { it.toModel() }
 
-    /** Alta de un horario fijo; rechaza duplicados (día + horario + consultorio + tipo). */
+    /**
+     * Trae de turnosonlinebb la plantilla semanal y las fechas especiales del médico y las deja en la caché local
+     * (los flujos `observar…` se actualizan solos). Para médicos locales no hace nada.
+     */
+    suspend fun sincronizarHorarios(medicoId: Id, consultorioId: Id) { remota(medicoId)?.sincronizarHorarios(medicoId, consultorioId) }
+
+    /** Alta de un horario fijo; rechaza duplicados (día + horario + consultorio + tipo). En médicos de turnosonlinebb se crea en la web. */
     suspend fun agregarHorario(h: HorarioMedico): Boolean {
         val existe = q.horariosDeMedicoDia(h.medicoId, h.consultorioId, h.dia.ordinal + 1L).lista { it.toModel() }
             .any { it.horario == h.horario && it.tipoTurno == h.tipoTurno }
         if (existe) return false
+        remota(h.medicoId)?.let { return it.agregarHorario(h) }
         q.upsertHorario(h.toRow(ahoraMillis()))
         return true
     }
 
-    suspend fun guardarHorario(h: HorarioMedico) = q.upsertHorario(h.toRow(ahoraMillis()))
-    suspend fun eliminarHorario(h: HorarioMedico) = q.upsertHorario(h.copy(activo = false).toRow(ahoraMillis()))
+    suspend fun guardarHorario(h: HorarioMedico) {
+        val r = remota(h.medicoId)?.takeIf { TobbIds.esTobb(h.id) }
+        if (r != null) r.guardarHorario(h) else q.upsertHorario(h.toRow(ahoraMillis()))
+    }
+    suspend fun eliminarHorario(h: HorarioMedico) {
+        val r = remota(h.medicoId)?.takeIf { TobbIds.esTobb(h.id) }
+        if (r != null) r.eliminarHorario(h) else q.upsertHorario(h.copy(activo = false).toRow(ahoraMillis()))
+    }
 
     /** Genera slots cada `intervaloMinutos` entre `desde` y `hasta` para un día (`crear_turnos_dia_dh`). */
-    suspend fun generarHorarios(medicoId: Id, consultorioId: Id, dia: kotlinx.datetime.DayOfWeek, desde: LocalTime, hasta: LocalTime, intervaloMinutos: Int, tipo: TipoTurno = TipoTurno.CONSULTA): Int {
+    suspend fun generarHorarios(
+        medicoId: Id, consultorioId: Id, dia: kotlinx.datetime.DayOfWeek, desde: LocalTime, hasta: LocalTime, intervaloMinutos: Int,
+        tipo: TipoTurno = TipoTurno.CONSULTA, quincenal: Boolean = false, validoDesde: LocalDate? = null, validoHasta: LocalDate? = null,
+    ): Int {
         var minutos = desde.hour * 60 + desde.minute
         val fin = hasta.hour * 60 + hasta.minute
         var creados = 0
         while (minutos < fin) {
             val h = LocalTime(minutos / 60, minutos % 60)
-            if (agregarHorario(HorarioMedico(newId(), medicoId, consultorioId, dia, h, tipoTurno = tipo))) creados++
+            if (agregarHorario(HorarioMedico(newId(), medicoId, consultorioId, dia, h, tipoTurno = tipo, validoDesde = validoDesde, validoHasta = validoHasta, quincenal = quincenal))) creados++
             minutos += intervaloMinutos
         }
         return creados
@@ -142,8 +186,14 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
 
     fun observarFechasAgregadas(medicoId: Id, desde: LocalDate): Flow<List<FechaAgregada>> =
         q.fechasAgregadasDeMedico(medicoId, desde.toString()).flujoLista { it.toModel() }
-    suspend fun guardarFechaAgregada(f: FechaAgregada) = q.upsertFechaAgregada(f.toRow(ahoraMillis()))
-    suspend fun eliminarFechaAgregada(f: FechaAgregada) = q.upsertFechaAgregada(f.copy(activo = false).toRow(ahoraMillis()))
+    suspend fun guardarFechaAgregada(f: FechaAgregada) {
+        val r = remota(f.medicoId)
+        if (r != null) r.agregarFechaEspecial(f) else q.upsertFechaAgregada(f.toRow(ahoraMillis()))
+    }
+    suspend fun eliminarFechaAgregada(f: FechaAgregada) {
+        val r = remota(f.medicoId)?.takeIf { TobbIds.esTobb(f.id) }
+        if (r != null) r.eliminarFechaEspecial(f) else q.upsertFechaAgregada(f.copy(activo = false).toRow(ahoraMillis()))
+    }
 
     // ---- turnos ----
 

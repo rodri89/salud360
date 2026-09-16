@@ -14,12 +14,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -31,8 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.salud360.core.ui.theme.Salud360Colors
 
@@ -55,9 +62,9 @@ fun SearchBar(
     )
 }
 
-/** Chip de estado con color de fondo suave. */
+/** Chip de estado con color de fondo suave. Con [pequeno] usa letra y relleno más chicos. */
 @Composable
-fun StatusChip(text: String, color: Color, modifier: Modifier = Modifier) {
+fun StatusChip(text: String, color: Color, modifier: Modifier = Modifier, pequeno: Boolean = false) {
     Surface(
         color = color.copy(alpha = 0.15f),
         contentColor = color,
@@ -67,9 +74,10 @@ fun StatusChip(text: String, color: Color, modifier: Modifier = Modifier) {
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.labelMedium,
+            style = if (pequeno) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = if (pequeno) 6.dp else 10.dp, vertical = if (pequeno) 2.dp else 4.dp),
         )
     }
 }
@@ -186,10 +194,32 @@ fun ScreenTitle(title: String, subtitle: String? = null, modifier: Modifier = Mo
 
 /** Par etiqueta/valor de solo lectura (ficha del paciente). */
 @Composable
-fun LabelValue(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Color.Unspecified) {
+fun LabelValue(
+    label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Color.Unspecified,
+    onClick: (() -> Unit)? = null,
+    mostrarCopiar: Boolean = false, onCopiado: (() -> Unit)? = null,
+) {
+    val portapapeles = LocalClipboardManager.current
+    val esLink = onClick != null && value.isNotBlank()
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge, color = valueColor)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                value.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge,
+                color = if (esLink) MaterialTheme.colorScheme.secondary else valueColor,
+                textDecoration = if (esLink) TextDecoration.Underline else null,
+                modifier = if (esLink) Modifier.clickable(onClick = onClick!!) else Modifier,
+            )
+            if (esLink) {
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+            }
+            if (mostrarCopiar && value.isNotBlank()) {
+                IconButton(onClick = { portapapeles.setText(AnnotatedString(value)); onCopiado?.invoke() }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copiar", modifier = Modifier.size(16.dp))
+                }
+            }
+        }
     }
 }
 
