@@ -1,12 +1,13 @@
 # Publica la web (Kotlin/Wasm) en el hosting cada vez que se hace push a main.
 #
 # El hosting compartido no puede compilar Kotlin, así que el build se hace acá y solo se suben los archivos
-# estáticos resultantes por FTP (FTPS). Secrets necesarios en GitHub (Settings → Secrets and variables → Actions):
-#   HOSTINGER_FTP_SERVER    host FTP del hosting (ej. ftp.turnosonlinebb.com o la IP que muestra hPanel)
-#   HOSTINGER_FTP_USER      usuario de la cuenta FTP creada para el subdominio
-#   HOSTINGER_FTP_PASSWORD  su contraseña
-#   HOSTINGER_FTP_DIR       carpeta destino relativa a la raíz de esa cuenta FTP (ej. "./" si la cuenta ya
-#                           apunta a domains/salud360.turnosonlinebb.com/public_html, o la ruta completa)
+# estáticos resultantes por rsync sobre SSH (el acceso SSH del plan de Hostinger). Secrets necesarios en GitHub
+# (Settings → Secrets and variables → Actions):
+#   HOSTINGER_SSH_HOST      IP o host SSH que muestra hPanel (ej. 195.179.239.54)
+#   HOSTINGER_SSH_PORT      puerto SSH (Hostinger usa 65002)
+#   HOSTINGER_SSH_USER      usuario del hosting (ej. u895805914)
+#   HOSTINGER_SSH_PASSWORD  su contraseña
+#   HOSTINGER_WEB_DIR       carpeta del subdominio, relativa al home (ej. domains/salud360.turnosonlinebb.com/public_html)
 name: Web → Hostinger
 
 on:
@@ -58,17 +59,24 @@ jobs:
       - name: Quitar mapas de depuración
         run: rm -f composeApp/build/dist/wasmJs/productionExecutable/*.map
 
-      - name: Subir al hosting por FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USER }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: composeApp/build/dist/wasmJs/productionExecutable/
-          server-dir: ${{ secrets.HOSTINGER_FTP_DIR }}
-          # Sube solo lo que cambió y borra en el servidor lo que ya no existe (los .wasm viejos con otro hash).
-          state-name: .ftp-deploy-sync-state.json
-          exclude: |
-            **/*.map
+      - name: Subir al hosting por rsync (SSH)
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          # sshpass -e toma la contraseña de la variable SSHPASS (nunca aparece en el log).
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          WEB_DIR: ${{ secrets.HOSTINGER_WEB_DIR }}
+        run: |
+          set -euo pipefail
+          for v in SSH_HOST SSH_PORT SSH_USER SSHPASS WEB_DIR; do
+            if [ -z "${!v}" ]; then echo "Falta cargar el secret para $v (ver comentario al inicio del workflow)"; exit 1; fi
+          done
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync > /dev/null
+          SSH="ssh -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          # Crea la carpeta si no existe y sincroniza: sube lo que cambió y borra lo que ya no está (los .wasm viejos).
+          sshpass -e $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$WEB_DIR'"
+          sshpass -e rsync -az --delete --exclude '*.map' -e "$SSH" \
+            composeApp/build/dist/wasmJs/productionExecutable/ "$SSH_USER@$SSH_HOST:$WEB_DIR/"
+          echo "Publicado en $WEB_DIR"

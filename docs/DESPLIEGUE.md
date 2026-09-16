@@ -67,25 +67,25 @@ hay nada que configurar; las fotos y la API ya aceptan pedidos desde otro origen
 Para actualizar, volver a generar el paquete y reemplazar los archivos: los `.wasm` cambian de nombre en cada
 build (hash), así que conviene borrar los viejos.
 
-### Publicación automática (GitHub Actions → FTP)
+### Publicación automática (GitHub Actions → rsync por SSH)
 
-`.github/workflows/deploy-web.yml` compila la web y la sube por FTPS en cada push a `main` (o a mano desde
-la pestaña Actions con "Run workflow"). El hosting compartido no puede compilar Kotlin, por eso el build se
-hace en GitHub y al servidor solo llegan los archivos estáticos; el "Git" de hPanel (que hace `git pull`)
-no sirve para este caso.
+`.github/workflows/deploy-web.yml` compila la web y la sube por `rsync` sobre SSH en cada push a `main` (o a
+mano desde la pestaña Actions con "Run workflow"). El hosting compartido no puede compilar Kotlin, por eso el
+build se hace en GitHub y al servidor solo llegan los archivos estáticos; el "Git" de hPanel (que hace
+`git pull`) no sirve para este caso.
 
-Configuración, una sola vez:
+Configuración, una sola vez, en GitHub → Settings → Secrets and variables → Actions (Repository secrets):
 
-1. En hPanel → Archivos → Cuentas FTP, crear una cuenta cuyo directorio sea la carpeta del subdominio
-   (`domains/salud360.turnosonlinebb.com/public_html`). Así la cuenta no puede tocar el resto del hosting.
-2. En GitHub → Settings → Secrets and variables → Actions, cargar:
-   `HOSTINGER_FTP_SERVER` (host o IP que muestra hPanel), `HOSTINGER_FTP_USER`, `HOSTINGER_FTP_PASSWORD` y
-   `HOSTINGER_FTP_DIR` (`./` si la cuenta ya apunta a la carpeta del subdominio).
-3. Hacer push a `main` y seguir el progreso en la pestaña Actions. La primera corrida sube todo (≈17 MB);
-   las siguientes solo lo que cambió y borran los `.wasm` viejos, gracias al archivo de estado
-   `.ftp-deploy-sync-state.json` que queda en el servidor (no borrarlo).
+| Secret | Valor |
+|---|---|
+| `HOSTINGER_SSH_HOST` | IP/host SSH que muestra hPanel (Avanzado → Acceso SSH) |
+| `HOSTINGER_SSH_PORT` | `65002` |
+| `HOSTINGER_SSH_USER` | usuario del hosting (`u…`) |
+| `HOSTINGER_SSH_PASSWORD` | contraseña SSH del hosting |
+| `HOSTINGER_WEB_DIR` | carpeta del subdominio relativa al home, ej. `domains/salud360.turnosonlinebb.com/public_html` |
 
-Si el hosting no acepta FTPS, cambiar `protocol: ftps` por `ftp` en el workflow.
+Después, push a `main` y seguir el progreso en la pestaña Actions. `rsync --delete` sube solo lo que cambió y
+borra en el servidor los `.wasm` viejos (cambian de nombre en cada build). Los `.map` no se suben.
 ```
 
 Servir esa carpeta como sitio estático (por ejemplo `app.turnosonlinebb.com`). Requiere navegadores
