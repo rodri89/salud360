@@ -36,6 +36,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
+import com.salud360.core.ui.components.DatoCopiable
+import com.salud360.core.ui.components.linkWhatsApp
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -182,7 +190,8 @@ fun AgendaDiaScreen(
                 when (fila) {
                     is FilaAgendaDia.ConTurno -> TurnoCard(fila.turno, conCaja = state.conCaja, onAsistencia = { vm.asistencia(fila.turno, it) }, onCaja = { vm.caja(fila.turno, it) }, onComentario = { vm.comentario(fila.turno, it) },
                         onCancelar = { cancelar = fila.turno }, onAbrirPaciente = fila.turno.pacienteId?.let { id -> onAbrirPaciente?.let { f -> { f(id) } } },
-                        onModificar = if (puedeModificar && fila.turno.pacienteId != null && modificando?.id != fila.turno.id) ({ vm.iniciarModificacion(fila.turno) }) else null)
+                        onModificar = if (puedeModificar && fila.turno.pacienteId != null && modificando?.id != fila.turno.id) ({ vm.iniciarModificacion(fila.turno) }) else null,
+                        paciente = fila.turno.pacienteId?.let { state.pacientesDelDia[it] })
                     is FilaAgendaDia.Libre ->
                         if (modificando != null) SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotMover = fila.horario }, etiqueta = "Mover acá")
                         else SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotLibre = fila.horario }, onBloquear = { slotBloquear = fila.horario })
@@ -217,7 +226,10 @@ fun TurnoCard(
     t: Turno, conCaja: Boolean, onAsistencia: (Asistencia) -> Unit, onCaja: (Double) -> Unit, onComentario: (String) -> Unit, onCancelar: () -> Unit, onAbrirPaciente: (() -> Unit)?,
     /** "Modificar" (mover el turno a otro horario); solo lo tiene la secretaria. */
     onModificar: (() -> Unit)? = null,
+    /** Ficha cacheada del paciente, para número de afiliado y plan (el turno solo trae el nombre de la obra social). */
+    paciente: Paciente? = null,
 ) {
+    val uriHandler = LocalUriHandler.current
     // Caja y comentario se editan localmente y se guardan al salir del campo (no tecla a tecla): así se puede borrar
     // sin que el valor guardado vuelva a pisar lo escrito, y en turnosonlinebb se hace un solo pedido por edición.
     var caja by remember(t.id) { mutableStateOf(t.caja.aTextoCaja()) }
@@ -244,7 +256,28 @@ fun TurnoCard(
                 InitialsAvatar(t.pacienteNombre.ifBlank { "?" }, size = 36)
                 Column(Modifier.weight(1f)) {
                     Text(t.pacienteNombre.ifBlank { "Sin paciente" }, fontWeight = FontWeight.SemiBold)
-                    Text(listOf("DNI ${t.pacienteDni}", t.pacienteTelefono, t.pacienteObraSocial).filter { it.isNotBlank() && it != "DNI " }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Datos de contacto y cobertura: DNI y nº de afiliado se copian al tocarlos; el teléfono abre WhatsApp.
+                    val telefono = t.pacienteTelefono.ifBlank { paciente?.telefono ?: "" }
+                    val obraSocial = t.pacienteObraSocial.ifBlank { paciente?.obraSocial ?: "" }
+                    val afiliado = paciente?.numeroAfiliado?.trim().orEmpty()
+                    val plan = paciente?.obraSocialPlan?.trim().orEmpty()
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (t.pacienteDni.isNotBlank()) DatoCopiable("DNI ${t.pacienteDni}", valor = t.pacienteDni)
+                        if (telefono.isNotBlank()) {
+                            Row(
+                                Modifier.clip(RoundedCornerShape(6.dp)).clickable { uriHandler.openUri(linkWhatsApp(telefono)) }.padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(Icons.Default.Phone, contentDescription = "WhatsApp", modifier = Modifier.size(14.dp), tint = Salud360Colors.SuccessDark)
+                                Text(telefono, style = MaterialTheme.typography.bodyMedium, color = Salud360Colors.SuccessDark)
+                            }
+                        }
+                        if (obraSocial.isNotBlank()) {
+                            val textoOs = listOfNotNull(obraSocial, afiliado.ifBlank { null }?.let { "Nº $it" }, plan.ifBlank { null }?.let { "Plan $it" }).joinToString(" · ")
+                            if (afiliado.isNotBlank()) DatoCopiable(textoOs, valor = afiliado)
+                            else Text(textoOs, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                        }
+                    }
                 }
             }
         }

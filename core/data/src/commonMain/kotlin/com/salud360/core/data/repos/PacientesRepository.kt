@@ -23,6 +23,9 @@ class PacientesRepository(private val db: Salud360Db) {
     private val q get() = db.pacientesQueries
 
     fun observar(id: Id): Flow<Paciente?> = q.pacientePorId(id).flujoUno { it.toModel() }
+    /** Fichas de varios pacientes (por ejemplo, los de los turnos del día) para mostrar afiliado, plan, etc. */
+    fun observarPorIds(ids: List<Id>): Flow<List<Paciente>> =
+        if (ids.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList()) else q.pacientesPorIds(ids).flujoLista { it.toModel() }
     suspend fun porId(id: Id): Paciente? = q.pacientePorId(id).uno { it.toModel() }
     suspend fun porDni(dni: String): Paciente? = q.pacientePorDni(dni.trim()).uno { it.toModel() }
 

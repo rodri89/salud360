@@ -35,6 +35,7 @@ CREATE INDEX paciente_dni ON paciente(dni);
 CREATE INDEX paciente_apellido ON paciente(apellido, nombre);
 
 pacientePorId: SELECT * FROM paciente WHERE id = ? AND deleted = 0;
+pacientesPorIds: SELECT * FROM paciente WHERE id IN ? AND deleted = 0;
 pacientePorDni: SELECT * FROM paciente WHERE dni = ? AND deleted = 0 LIMIT 1;
 pacientes: SELECT * FROM paciente WHERE deleted = 0 ORDER BY apellido, nombre;
 buscarPacientes:

@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import com.salud360.core.ui.components.linkWhatsApp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -237,12 +238,6 @@ fun PacienteFormScreen(
 }
 
 /** Link de WhatsApp para un teléfono (se le agrega el código de país si no lo tiene). */
-private fun linkWhatsApp(telefono: String): String {
-    val digitos = telefono.filter { it.isDigit() }
-    val internacional = if (digitos.startsWith("54")) digitos else "54$digitos"
-    return "https://wa.me/$internacional"
-}
-
 /** Ficha del paciente + accesos a sus historias clínicas y turnos. */
 @Composable
 fun PacienteDetalleScreen(

@@ -23,7 +23,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -47,6 +49,8 @@ data class AgendaUiState(
     val proximasFechas: List<LocalDate> = emptyList(),
     /** Turno que la secretaria está moviendo a otro horario (flujo "Modificar" de la web): se elige el nuevo y se cancela este. */
     val turnoAModificar: Turno? = null,
+    /** Fichas de los pacientes con turno ese día (número de afiliado, plan), por id de paciente. */
+    val pacientesDelDia: Map<Id, Paciente> = emptyMap(),
     /** true mientras se consulta la agenda del día a turnosonlinebb. */
     val cargando: Boolean = false,
     /** Mensaje de error de la última operación (por ejemplo, sin conexión con turnosonlinebb). */
@@ -92,6 +96,12 @@ class AgendaViewModel(
             }
         }
         if (remota) viewModelScope.launch { fecha.collectLatest { f -> refrescar(f) } }
+        // Fichas de los pacientes del día (afiliado, plan): se observan para que la tarjeta muestre lo que haya en caché.
+        viewModelScope.launch {
+            turnosDelDia.map { ts -> ts.mapNotNull { it.pacienteId }.distinct().sorted() }.distinctUntilChanged()
+                .flatMapLatest { ids -> pacientes.observarPorIds(ids) }
+                .collect { lista -> _state.update { it.copy(pacientesDelDia = lista.associateBy { p -> p.id }) } }
+        }
         cargarProximasFechas()
     }
 
