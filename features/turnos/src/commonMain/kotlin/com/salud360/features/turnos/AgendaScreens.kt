@@ -54,6 +54,7 @@ import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.EstadoTurno
 import com.salud360.core.model.turnos.SlotAgenda
+import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.BackButton
@@ -83,6 +84,16 @@ fun DayOfWeek.nombre(): String = when (this) {
     DayOfWeek.FRIDAY -> "Viernes"; DayOfWeek.SATURDAY -> "Sábado"; else -> "Domingo"
 }
 fun LocalDate.conDia(): String = "${dayOfWeek.nombre()} ${toDisplay()}"
+
+/** Color del chip de tipo de turno en la tarjeta de la agenda. */
+fun TipoTurno.color() = when (this) {
+    TipoTurno.CONSULTA -> Salud360Colors.TipoConsulta
+    TipoTurno.VIDEOLLAMADA -> Salud360Colors.TipoVideollamada
+    TipoTurno.CONSULTA_ONLINE -> Salud360Colors.TipoConsultaOnline
+    TipoTurno.ECOGRAFIA -> Salud360Colors.TipoEcografia
+    TipoTurno.DEPORTOLOGIA -> Salud360Colors.TipoDeportologia
+    TipoTurno.CONSULTA_ECO -> Salud360Colors.TipoConsultaEco
+}
 
 /** Texto editable de la caja: vacío si es 0, sin ".0" si es entero. */
 private fun Double.aTextoCaja(): String = when {
@@ -245,10 +256,7 @@ fun TurnoCard(
     fun guardarComentario() { if (comentario != t.comentario) onComentario(comentario) }
     PlainCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.width(64.dp)) {
-                Text(t.horario.hhmm(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Salud360Colors.Indigo)
-                if (t.primerControl) StatusChip("1er control", Salud360Colors.Info, pequeno = true, modifier = Modifier.padding(top = 2.dp))
-            }
+            Text(t.horario.hhmm(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Salud360Colors.Indigo, modifier = Modifier.width(64.dp))
             if (t.estado == EstadoTurno.BLOQUEADO) {
                 Text("Bloqueado", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 LinkButton("Liberar", onCancelar)
@@ -279,10 +287,15 @@ fun TurnoCard(
                         }
                     }
                 }
+                // Arriba a la derecha: tipo de turno (color por tipo) y, si corresponde, sobreturno y primer control.
+                Column(Modifier.align(Alignment.Top), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    StatusChip(t.tipoTurno.etiqueta, t.tipoTurno.color(), pequeno = true)
+                    if (t.sobreturno) StatusChip("Sobreturno", Salud360Colors.Warning, pequeno = true)
+                    if (t.primerControl) StatusChip("1er control", Salud360Colors.Info, pequeno = true)
+                }
             }
         }
         if (t.estado != EstadoTurno.BLOQUEADO) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (t.sobreturno) StatusChip("Sobreturno", Salud360Colors.Warning)
             if (t.pagado) StatusChip("Pagado", Salud360Colors.Success)
             AsistenciaSelector(t.asistencia, onAsistencia)
             if (onAbrirPaciente != null) LinkButton("Ficha", onAbrirPaciente)
