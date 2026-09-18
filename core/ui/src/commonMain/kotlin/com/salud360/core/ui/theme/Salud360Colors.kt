@@ -52,6 +52,14 @@ object Salud360Colors {
     val Grey = Color(0xFF999999)
     val GreyLight = Color(0xFFD7D3CB)
 
+    // Tipos de turno (chip en la tarjeta de la agenda): un color por tipo para distinguirlos de un vistazo
+    val TipoConsulta = TealStart
+    val TipoVideollamada = Indigo
+    val TipoConsultaOnline = Info
+    val TipoEcografia = Color(0xFF7E57C2)
+    val TipoDeportologia = Color(0xFFEF6C00)
+    val TipoConsultaEco = Color(0xFFC2185B)
+
     // Modo oscuro (mejora visual: no existía en los proyectos originales)
     val DarkBackground = Color(0xFF0F1B1E)
     val DarkSurface = Color(0xFF16262B)
