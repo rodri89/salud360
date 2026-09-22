@@ -73,7 +73,11 @@ class LoginViewModel(
                     onOk(r.sesion)
                 }
                 is ResultadoLogin.LicenciaVencida -> { guardarEmailSiCorresponde(s.email); _state.update { it.copy(cargando = false, licenciaVencida = true) } }
-                ResultadoLogin.CredencialesInvalidas -> _state.update { it.copy(cargando = false, error = "Mail o contraseña incorrectos") }
+                // Se muestra el motivo que da turnosonlinebb: no siempre es la contraseña (por ejemplo, un usuario
+                // sin permiso para usar Salud 360 daba el mismo aviso y no había forma de saberlo desde la pantalla).
+                is ResultadoLogin.CredencialesInvalidas -> _state.update {
+                    it.copy(cargando = false, error = r.mensaje.ifBlank { "Mail o contraseña incorrectos" })
+                }
                 ResultadoLogin.SinConexionYSinSesionPrevia -> _state.update {
                     it.copy(cargando = false, error = "No se pudo conectar con turnosonlinebb. Verificá la conexión a internet. Para ingresar sin internet primero tenés que haber iniciado sesión en este dispositivo.")
                 }

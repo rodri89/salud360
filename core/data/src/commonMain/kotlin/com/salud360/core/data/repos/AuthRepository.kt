@@ -23,7 +23,11 @@ import kotlinx.datetime.toLocalDateTime
 
 sealed interface ResultadoLogin {
     data class Ok(val sesion: Sesion, val offline: Boolean = false) : ResultadoLogin
-    data object CredencialesInvalidas : ResultadoLogin
+    /**
+     * turnosonlinebb rechazó el ingreso. [mensaje] es el motivo que informa la web: puede ser la contraseña,
+     * pero también que el usuario no tenga permiso para usar Salud 360, así que se muestra tal cual.
+     */
+    data class CredencialesInvalidas(val mensaje: String, val status: Int) : ResultadoLogin
     data object SinConexionYSinSesionPrevia : ResultadoLogin
     data class LicenciaVencida(val sesion: Sesion) : ResultadoLogin
     data class Error(val mensaje: String) : ResultadoLogin
@@ -99,7 +103,7 @@ class AuthRepository(
                 guardarSesion(sesion)
                 return ResultadoLogin.Ok(sesion)
             }
-            is TurnosOnlineClient.ResultadoLogin.Rechazado -> return ResultadoLogin.CredencialesInvalidas
+            is TurnosOnlineClient.ResultadoLogin.Rechazado -> return ResultadoLogin.CredencialesInvalidas(r.mensaje, r.status)
             is TurnosOnlineClient.ResultadoLogin.Error -> {
                 // 2) sin conexión: solo si ya había una sesión previa de este mismo usuario en el dispositivo
                 val previa = db.authQueries.sesionActual().uno { it }
