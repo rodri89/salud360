@@ -6,6 +6,6 @@ import org.koin.dsl.module
 
 val pacientesFeatureModule = module {
     viewModel { (medicoId: Id?) -> PacientesListViewModel(get(), get(), medicoId) }
-    viewModel { (pacienteId: Id?, vincularA: Id?) -> PacienteFormViewModel(get(), pacienteId, vincularA) }
+    viewModel { (pacienteId: Id?, vincularA: Id?) -> PacienteFormViewModel(get(), get(), pacienteId, vincularA) }
     viewModel { (pacienteId: Id) -> PacienteDetalleViewModel(get(), get(), get(), pacienteId) }
 }

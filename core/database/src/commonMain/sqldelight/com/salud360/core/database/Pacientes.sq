@@ -29,7 +29,9 @@ CREATE TABLE paciente (
     activo INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    -- Nota libre interna del paciente; va última porque `upsertPaciente` es posicional (ver migración 2.sqm)
+    nota TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX paciente_dni ON paciente(dni);
 CREATE INDEX paciente_apellido ON paciente(apellido, nombre);

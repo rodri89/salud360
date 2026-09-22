@@ -135,7 +135,7 @@ fun LoginScreen(onLogin: (Sesion) -> Unit, vm: LoginViewModel = koinViewModel())
                 )
                 if (state.servidor.isNotBlank()) {
                     Text(
-                        "Servidor: ${state.servidor}",
+                        "Entorno: ${state.servidor}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                         textAlign = TextAlign.Center,

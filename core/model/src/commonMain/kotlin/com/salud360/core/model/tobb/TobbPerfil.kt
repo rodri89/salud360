@@ -41,6 +41,12 @@ data class TobbMedico(
     val modulos: List<Int> = emptyList(),
     @SerialName("ventana_dias") val ventanaDias: Int = 180,
     @SerialName("cupo_primer_control") val cupoPrimerControl: List<TobbCupoPrimerControl> = emptyList(),
+    /**
+     * Códigos de las historias clínicas habilitadas al médico en turnosonlinebb (tabla `salud360_medico_hc`,
+     * ej. `["pediatria"]`). turnosonlinebb es la identidad única de Salud 360: acá se decide quién ve qué HC.
+     * Vacío si la web todavía no informa el campo.
+     */
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
 )
 
 @Serializable

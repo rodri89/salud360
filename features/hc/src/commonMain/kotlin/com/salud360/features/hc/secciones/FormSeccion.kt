@@ -39,19 +39,49 @@ import kotlinx.datetime.LocalDate
  */
 @Composable
 fun FormSeccion(s: SeccionDef, ctx: SeccionContext, valores: Map<String, String>) {
-    SectionCard(s.titulo, icon = iconoSeccion(s.icono), initiallyExpanded = s.inicialmenteExpandida) {
+    val hayArchivos = s.conArchivos && hayArchivos(s.id, ctx)
+    if (ctx.soloLectura && camposCompletos(s.campos, valores).isEmpty() && !hayArchivos) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "form"), initiallyExpanded = s.inicialmenteExpandida) {
         CamposForm(s.campos, valores, ctx.soloLectura) { campo, valor -> ctx.setValor(s.id, campo, valor) }
         if (s.conArchivos) ArchivosInline(s.id, ctx)
     }
 }
 
-/** Renderiza una lista de campos; reutilizado por registros repetibles y diálogos. */
+/** Si el valor guardado para el campo cuenta como "completado" (respeta las codificaciones de [Campo]). */
+fun CampoDef.tieneValor(valor: String): Boolean = when (tipo) {
+    TipoCampo.ETIQUETA -> false
+    TipoCampo.CHECK -> valor == "1"
+    TipoCampo.CHECK_DETALLE -> valor.substringBefore("|") == "1" || valor.substringAfter("|", "").isNotBlank()
+    TipoCampo.SI_NO -> valor == "SI" || valor == "NO"
+    TipoCampo.SI_NO_DETALLE -> valor.substringBefore("|") in setOf("SI", "NO") || valor.substringAfter("|", "").isNotBlank()
+    else -> valor.isNotBlank()
+}
+
+/**
+ * Campos con valor cargado (para el modo lectura). Una ETIQUETA se conserva solo si alguno de los campos
+ * que le siguen, hasta la próxima etiqueta, tiene valor.
+ */
+fun camposCompletos(campos: List<CampoDef>, valores: Map<String, String>): List<CampoDef> {
+    val resultado = mutableListOf<CampoDef>()
+    var etiquetaPendiente: CampoDef? = null
+    campos.forEach { c ->
+        if (c.tipo == TipoCampo.ETIQUETA) etiquetaPendiente = c
+        else if (c.tieneValor(valores[c.clave] ?: "")) {
+            etiquetaPendiente?.let { resultado += it; etiquetaPendiente = null }
+            resultado += c
+        }
+    }
+    return resultado
+}
+
+/** Renderiza una lista de campos; reutilizado por registros repetibles y diálogos. En lectura solo pinta los completados. */
 @Composable
 fun CamposForm(campos: List<CampoDef>, valores: Map<String, String>, soloLectura: Boolean, onCambio: (String, String) -> Unit) {
+    val visibles = if (soloLectura) camposCompletos(campos, valores) else campos
     val grupos = mutableListOf<List<CampoDef>>()
     var actual = mutableListOf<CampoDef>()
     var grupoActual: String? = null
-    campos.forEach { c ->
+    visibles.forEach { c ->
         if (c.grupo != null && c.grupo == grupoActual) actual += c
         else {
             if (actual.isNotEmpty()) grupos += actual
@@ -105,16 +135,29 @@ fun Campo(c: CampoDef, valor: String, soloLectura: Boolean, modifier: Modifier =
 /** Sección de un único texto largo, con historial de consultas previas si existe. */
 @Composable
 fun TextoSeccion(s: SeccionDef, ctx: SeccionContext, valores: Map<String, String>) {
-    val historial by ctx.vm.historial(s.id, "texto").collectAsState(emptyList())
-    val previas = historial.filter { it.consultaId != ctx.consultaId }
-    SectionCard(s.titulo, icon = iconoSeccion(s.icono), initiallyExpanded = s.inicialmenteExpandida) {
-        if (previas.isNotEmpty()) {
-            Text("Consultas previas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            previas.take(8).forEach { h ->
-                Text("${h.fecha.toDisplay()}: ${h.valor}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
-            }
-        }
-        TextAreaField(s.titulo, valores["texto"] ?: "", { ctx.setValor(s.id, "texto", it) }, minLines = 5, readOnly = ctx.soloLectura)
+    val texto = valores["texto"] ?: ""
+    val hayArchivos = s.conArchivos && hayArchivos(s.id, ctx)
+    if (ctx.soloLectura && texto.isBlank() && !hayArchivos) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "texto"), initiallyExpanded = s.inicialmenteExpandida) {
+        if (texto.isNotBlank() || !ctx.soloLectura) TextoLibreConPrevias(s.id, "texto", s.titulo, ctx, texto)
         if (s.conArchivos) ArchivosInline(s.id, ctx)
     }
+}
+
+/**
+ * Texto libre de una sección (guardado en `seccion_valor`) precedido por lo cargado en consultas previas.
+ * Reutilizable desde secciones a medida (ej. vacunas en modo texto). En lectura no se listan las previas:
+ * se muestra solo lo cargado en esta consulta.
+ */
+@Composable
+fun TextoLibreConPrevias(seccionId: String, campo: String, etiqueta: String, ctx: SeccionContext, valor: String = ctx.valor(seccionId, campo), minLines: Int = 5) {
+    val historial by ctx.vm.historial(seccionId, campo).collectAsState(emptyList())
+    val previas = if (ctx.soloLectura) emptyList() else historial.filter { it.consultaId != ctx.consultaId }
+    if (previas.isNotEmpty()) {
+        Text("Consultas previas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        previas.take(8).forEach { h ->
+            Text("${h.fecha.toDisplay()}: ${h.valor}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+        }
+    }
+    TextAreaField(etiqueta, valor, { ctx.setValor(seccionId, campo, it) }, minLines = minLines, readOnly = ctx.soloLectura)
 }

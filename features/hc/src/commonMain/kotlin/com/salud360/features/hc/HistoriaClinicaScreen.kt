@@ -2,6 +2,7 @@ package com.salud360.features.hc
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -111,7 +112,7 @@ fun HistoriaClinicaScreen(
         }
 
         if (pendientes.isNotEmpty()) SectionCard("Pendientes", icon = Icons.Default.NotificationsActive) {
-            pendientes.forEach { p -> Text("• ${p.texto}", color = Salud360Colors.Danger) }
+            pendientes.forEach { p -> p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it", color = Salud360Colors.Danger) } }
         }
 
         if (def == null) {
@@ -132,10 +133,11 @@ fun HistoriaClinicaScreen(
                 })
             }
             if (elegirTipo) SectionCard("¿Qué tipo de consulta querés cargar?", collapsible = false, trailing = { TextButton(onClick = { elegirTipo = false }) { Text("Cancelar") } }) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                // FlowRow: en teléfono las tarjetas envuelven (pediatría tiene 6 tipos), en pantallas anchas quedan en una fila.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     def.tiposConsulta.forEach { t ->
                         OptionCard(t.nombre, iconoTipoConsulta(t.icono), subtitle = t.descripcion.ifBlank { null }, tint = color,
-                            onClick = { elegirTipo = false; vm.nuevaConsulta(t.codigo, onAbrirConsulta) }, modifier = Modifier.weight(1f).widthIn(max = 220.dp))
+                            onClick = { elegirTipo = false; vm.nuevaConsulta(t.codigo, onAbrirConsulta) }, modifier = Modifier.widthIn(min = 150.dp, max = 220.dp).weight(1f, fill = false))
                     }
                 }
             }

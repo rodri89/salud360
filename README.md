@@ -13,7 +13,8 @@ secretarias y un administrador (no para pacientes) y funciona sin conexión.
 - **Historia clínica** por especialidad definida de forma declarativa (`especialidades/*`), con
   secciones genéricas reutilizadas (motivo, examen físico, laboratorios longitudinales, exámenes
   complementarios, interconsultas, antecedentes, adjuntos, audio, pendientes) y secciones a medida
-  (calendario de vacunas, desarrollo madurativo, dibujo sobre esquema PAP / silueta, Child-Pugh).
+  (tabla de desarrollo madurativo, curvas de crecimiento OMS, dibujo sobre esquema PAP / silueta, Child-Pugh).
+  Cada médico elige en Configuración qué secciones ve en cada historia clínica.
 - **Turnos** para médicos y secretarias: agenda del día, semana, asignar, sobreturnos, bloquear,
   horarios fijos y fechas especiales, configuración, módulos, obras sociales, recetas.
   Los médicos y secretarias de **turnosonlinebb** ingresan con sus credenciales de la web y la agenda
@@ -59,25 +60,27 @@ salud360/
 
 ## Compilar y ejecutar
 
+La app se compila contra un **entorno**: `dev` (turnosonlinebb y las historias clínicas del MAMP local) o
+`release` (producción). Ver [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md#entornos-dev-mamp-local-y-release-producción).
+
 ```bash
-# Android
-./gradlew :androidApp:assembleDebug
-
 # Web (abre http://localhost:8080)
-./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+./gradlew devWeb          # contra el MAMP local
+./gradlew releaseWeb      # build de producción
 
-# Servidor (http://localhost:8080; primer admin: admin@salud360.local / admin123)
-./gradlew :server:run
-
-# Servidor conectado a turnosonlinebb (login y agenda con la base de la web de turnos)
-TURNOS_API_URL=https://turnosonlinebb.com ./gradlew :server:run
+# Android
+./gradlew devAndroid      # instala el debug contra el MAMP local (emulador; teléfono: -PdevHost=<ip de la Mac>)
+./gradlew releaseAndroid  # APK release contra producción
 
 # iOS (en macOS)
 cd iosApp && xcodegen && open iosApp.xcodeproj
+
+# Servidor Ktor (opcional, hoy la app no lo usa)
+./gradlew :server:run
 ```
 
-La URL del servidor se configura en `composeApp/src/commonMain/kotlin/com/salud360/app/AppDi.kt`
-(`API_BASE_URL_DEFAULT`).
+Las URLs de cada entorno están en `gradle.properties` (`salud360.entorno.dev.*` / `salud360.entorno.release.*`);
+`-Pentorno=dev|release` fuerza uno.
 
 ## Documentación
 

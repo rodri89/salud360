@@ -110,6 +110,15 @@ class HcRepository(private val db: Salud360Db) {
     fun observarHistorial(pacienteId: Id, especialidad: String, seccion: String, campo: String): Flow<List<ValorHistorico>> =
         q.historialCampo(pacienteId, especialidad, seccion, campo).flujoLista { ValorHistorico(LocalDate.parse(it.fecha), it.consulta_id, it.valor) }
 
+    /**
+     * Último valor conocido de cada campo de una sección en las demás consultas del paciente (se excluye
+     * `consultaIdActual`). Sirve para lo que pertenece al paciente y se arrastra entre consultas, como los hitos
+     * del desarrollo madurativo.
+     */
+    fun observarUltimosValores(pacienteId: Id, especialidad: String, seccion: String, consultaIdActual: Id): Flow<Map<String, String>> =
+        q.ultimosValoresDeSeccion(pacienteId, especialidad, seccion, consultaIdActual).flujoLista { it.campo to it.valor }
+            .map { lista -> lista.distinctBy { it.first }.toMap() }
+
     // ---- examen físico ----
 
     fun observarExamenFisico(consultaId: Id): Flow<ExamenFisico?> = q.examenFisicoDeConsulta(consultaId).flujoUno { it.toModel() }

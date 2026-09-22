@@ -79,6 +79,13 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Trae y vincula localmente todos los pacientes de este médico en turnosonlinebb. Null si el médico es local. */
     suspend fun sincronizarPacientesVinculados(medicoId: Id): List<Paciente>? = remota(medicoId)?.pacientesVinculados(medicoId)
 
+    /**
+     * Guarda en turnosonlinebb la ficha editada en la app (la da de alta si todavía no existe allá).
+     * Null si el médico es local, en cuyo caso la ficha vive solo en la base propia.
+     */
+    suspend fun guardarPacienteRemoto(medicoId: Id, pacienteId: Id, consultorioId: Id?): Unit? =
+        remota(medicoId)?.guardarPacienteRemoto(pacienteId, medicoId, consultorioId)
+
     // ---- consultorios / catálogos ----
 
     fun observarConsultorios(): Flow<List<Consultorio>> = q.consultorios().flujoLista { it.toModel() }

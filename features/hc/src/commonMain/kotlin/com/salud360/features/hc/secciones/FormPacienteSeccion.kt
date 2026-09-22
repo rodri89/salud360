@@ -24,7 +24,9 @@ fun FormPacienteSeccion(s: SeccionDef, ctx: SeccionContext) {
     val scope = rememberCoroutineScope()
     val prefijo = "${s.id}."
     val valores = extras.filterKeys { it.startsWith(prefijo) }.mapKeys { it.key.removePrefix(prefijo) }
-    SectionCard(s.titulo, icon = iconoSeccion(s.icono), initiallyExpanded = s.inicialmenteExpandida) {
+    val hayArchivos = s.conArchivos && hayArchivos(s.id, ctx, porPaciente = true)
+    if (ctx.soloLectura && camposCompletos(s.campos, valores).isEmpty() && !hayArchivos) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "form"), initiallyExpanded = s.inicialmenteExpandida) {
         CamposForm(s.campos, valores, ctx.soloLectura) { campo, valor ->
             scope.launch { pacientes.guardarExtra(ctx.pacienteId, ctx.especialidad, prefijo + campo, valor) }
         }

@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.salud360.app.App
+import com.salud360.app.configEntorno
 import com.salud360.app.iniciarKoin
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.database.DriverFactory
@@ -20,9 +21,11 @@ class Salud360Application : Application() {
         super.onCreate()
         contextGlobal = this
         val db = runBlocking { createDatabase(DriverFactory(this@Salud360Application)) }
+        // En dev, 10.0.2.2 es la Mac vista desde el emulador; para un teléfono físico compilar con -PdevHost=<ip de la Mac>.
         iniciarKoin(
             db = db,
             modulosPlataforma = listOf(module { single { ArchivoStore(this@Salud360Application) } }),
+            config = configEntorno(hostLocal = "10.0.2.2"),
         ).androidContext(this)
     }
 }

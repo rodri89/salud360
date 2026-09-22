@@ -35,11 +35,20 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val cat = def.antecedentes.firstOrNull { it.categoria == s.categoriaAntecedentes } ?: return
     val actuales = ui.antecedentes.filter { it.categoria == cat.categoria }.associateBy { it.clave }
     val ro = ctx.soloLectura
+    // En lectura solo se listan los ítems marcados o con detalle.
+    val items = if (ro) cat.items.filter { i -> actuales[i.clave]?.let { it.flag || it.detalle.isNotBlank() } == true } else cat.items
+    val historico = actuales["texto"]?.detalle ?: ""
+    val nota = actuales["nota"]?.detalle ?: ""
+    val hayContenido = when (cat.modo) {
+        ModoAntecedentes.CASILLAS -> items.isNotEmpty()
+        ModoAntecedentes.TEXTO_ACUMULATIVO -> historico.isNotBlank()
+    } || (cat.notaLibre && nota.isNotBlank())
+    if (ro && !hayContenido) { SeccionVacia(); return }
 
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "antecedentes"), initiallyExpanded = s.inicialmenteExpandida) {
         when (cat.modo) {
             ModoAntecedentes.CASILLAS -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                cat.items.forEach { item ->
+                items.forEach { item ->
                     val a = actuales[item.clave]
                     if (item.soloDetalle) {
                         DebouncedText(item.etiqueta, a?.detalle ?: "", ro, multiline = false) { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it.isNotBlank(), it) }
@@ -55,7 +64,6 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             }
             ModoAntecedentes.TEXTO_ACUMULATIVO -> {
                 // el histórico acumulado se muestra arriba, la nota nueva se agrega abajo (HC hematología)
-                val historico = actuales["texto"]?.detalle ?: ""
                 if (historico.isNotBlank()) TextAreaField("Histórico", historico, {}, minLines = 3, readOnly = true)
                 if (!ro) {
                     var nuevo by remember { mutableStateOf("") }
@@ -71,8 +79,8 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
                 }
             }
         }
-        if (cat.notaLibre) {
-            DebouncedText("Nota", actuales["nota"]?.detalle ?: "", ro, multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
+        if (cat.notaLibre && (!ro || nota.isNotBlank())) {
+            DebouncedText("Nota", nota, ro, multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
         }
     }
 }

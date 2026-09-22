@@ -32,6 +32,12 @@ data class EspecialidadDefinition(
     ),
     /** Muestra percentilos junto a peso/talla/PC/IMC (pediatría). */
     val conPercentilos: Boolean = false,
+    /**
+     * URL base de la API propia de esta historia clínica (ej. "https://hcpediatrica.com"). Cada especialidad vive en su
+     * propio sistema Laravel; cuando esté su API `/api/salud360/...` la app le pega directo con el token de turnosonlinebb.
+     * Null mientras la especialidad guarda solo en la base local.
+     */
+    val apiBaseUrl: String? = null,
 ) {
     fun tipoConsulta(codigo: String): TipoConsultaDef? = tiposConsulta.firstOrNull { it.codigo == codigo }
     fun seccion(id: String): SeccionDef? = secciones.firstOrNull { it.id == id }
@@ -93,6 +99,12 @@ data class SeccionDef(
     /** Solo se muestra si se cumple la condición (ej. sexo femenino). */
     val condicion: CondicionSeccion? = null,
     val inicialmenteExpandida: Boolean = true,
+    /**
+     * Ids de otras secciones de la especialidad que se renderizan a continuación de esta, dentro del mismo bloque
+     * (ej. la lista de internaciones debajo de los antecedentes personales en pediatría). Permite componer una pestaña
+     * con varios componentes sin escribir una sección a medida.
+     */
+    val subsecciones: List<String> = emptyList(),
 )
 
 sealed interface CondicionSeccion {

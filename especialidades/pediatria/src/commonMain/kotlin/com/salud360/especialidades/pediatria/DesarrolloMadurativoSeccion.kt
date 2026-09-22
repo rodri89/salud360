@@ -1,74 +1,98 @@
 package com.salud360.especialidades.pediatria
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.model.especialidad.SeccionDef
-import com.salud360.core.ui.components.CheckboxField
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.hc.SeccionContext
+import com.salud360.features.hc.iconoSeccion
+import com.salud360.features.hc.secciones.SeccionVacia
+
+/** Cuatro columnas entran en el ancho de una tablet (808 dp de contenido); en teléfono la tabla se desplaza horizontalmente. */
+private val ANCHO_COLUMNA = 196.dp
 
 /**
- * Hitos del desarrollo madurativo por edad (catálogo `desarrollo_madurativos`), en cuatro áreas.
- * El catálogo original se cargaba a mano en la base; acá se incluye una versión inicial basada en
- * las pautas habituales de control pediátrico, ampliable en este archivo.
+ * Tabla de hitos del desarrollo madurativo como en la web: cuatro columnas (motor grueso, motor fino, psicosocial,
+ * lenguaje) y una fila por hito del tramo de edad del paciente; se puede revisar otro tramo con los chips.
+ * Los hitos pertenecen al paciente: cada casilla muestra lo cargado en esta consulta o, si no hay, lo último
+ * cargado en consultas anteriores; tildar o destildar escribe en la consulta actual. La observación es de la consulta.
  */
-object HitosDesarrollo {
-    data class Hito(val clave: String, val area: String, val descripcion: String)
-    private fun h(area: String, vararg d: String) = d.map { Hito("${area.take(2).lowercase()}_${it.lowercase().replace(Regex("[^a-z0-9]+"), "_")}", area, it) }
-    val areas = listOf("Motor grueso", "Motor fino", "Psicosocial", "Lenguaje")
-
-    /** Hitos por tramo de edad (límite superior en meses). */
-    val porEdad: List<Pair<IntRange, List<Hito>>> = listOf(
-        0..0 to h("Motor grueso", "Reflejos de búsqueda y succión", "Postura en flexión") + h("Motor fino", "Prensión palmar refleja") + h("Psicosocial", "Fijación ocular") + h("Lenguaje", "Responde al sonido"),
-        1..2 to h("Motor grueso", "Levanta la cabeza en prono") + h("Motor fino", "Sigue objetos con la mirada") + h("Psicosocial", "Sonrisa social") + h("Lenguaje", "Vocaliza"),
-        3..4 to h("Motor grueso", "Sostén cefálico", "Se apoya en antebrazos") + h("Motor fino", "Junta las manos", "Toma objetos") + h("Psicosocial", "Ríe a carcajadas") + h("Lenguaje", "Balbucea"),
-        5..6 to h("Motor grueso", "Rola", "Se sienta con apoyo") + h("Motor fino", "Pasa objetos de una mano a otra") + h("Psicosocial", "Reconoce extraños") + h("Lenguaje", "Silabeo"),
-        7..8 to h("Motor grueso", "Se sienta sin apoyo") + h("Motor fino", "Pinza inferior") + h("Psicosocial", "Angustia del 8° mes") + h("Lenguaje", "Dice \"mamá\"/\"papá\" inespecífico"),
-        9..11 to h("Motor grueso", "Gatea", "Se para con apoyo") + h("Motor fino", "Pinza superior") + h("Psicosocial", "Juega a las escondidas", "Saluda") + h("Lenguaje", "Comprende el \"no\""),
-        12..14 to h("Motor grueso", "Camina con apoyo", "Primeros pasos") + h("Motor fino", "Mete objetos en un recipiente") + h("Psicosocial", "Señala con el dedo") + h("Lenguaje", "2-3 palabras con sentido"),
-        15..17 to h("Motor grueso", "Camina solo") + h("Motor fino", "Garabatea", "Torre de 2 cubos") + h("Psicosocial", "Imita tareas del hogar") + h("Lenguaje", "5-10 palabras"),
-        18..23 to h("Motor grueso", "Corre", "Sube escaleras con ayuda") + h("Motor fino", "Torre de 4 cubos") + h("Psicosocial", "Come solo con cuchara") + h("Lenguaje", "Frases de 2 palabras"),
-        24..35 to h("Motor grueso", "Salta con ambos pies", "Patea la pelota") + h("Motor fino", "Torre de 6 cubos", "Copia línea") + h("Psicosocial", "Control de esfínteres diurno", "Juego paralelo") + h("Lenguaje", "Frases de 3 palabras", "Dice su nombre"),
-        36..47 to h("Motor grueso", "Pedalea triciclo", "Se para en un pie") + h("Motor fino", "Copia círculo") + h("Psicosocial", "Se viste con ayuda", "Juego simbólico") + h("Lenguaje", "Conversa", "Pregunta \"por qué\""),
-        48..72 to h("Motor grueso", "Salta en un pie", "Atrapa la pelota") + h("Motor fino", "Copia cruz y cuadrado", "Dibuja figura humana") + h("Psicosocial", "Juega con reglas", "Se viste solo") + h("Lenguaje", "Cuenta historias", "Conoce colores"),
-    )
-
-    fun hitosPara(meses: Int): List<Hito> = porEdad.firstOrNull { meses in it.first }?.second ?: porEdad.last().second
-    fun tituloPara(meses: Int): String = when {
-        meses < 1 -> "Menor de 1 mes"; meses == 1 -> "1 mes"; meses in 7..8 -> "7 y 8 meses"; meses in 9..11 -> "9, 10 y 11 meses"
-        meses >= 24 -> "Mayor de 2 años"; else -> "$meses meses"
-    }
-}
-
 @Composable
 fun DesarrolloMadurativoSeccion(s: SeccionDef, ctx: SeccionContext) {
     val valores by ctx.vm.valores.collectAsState()
+    val previos by remember(ctx.consultaId) { ctx.vm.valoresPrevios(s.id) }.collectAsState(emptyMap())
     val v = valores[s.id] ?: emptyMap()
-    val meses = ctx.edadMeses ?: 0
-    val hitos = HitosDesarrollo.hitosPara(meses)
-    SectionCard("${s.titulo} · ${HitosDesarrollo.tituloPara(meses)}", initiallyExpanded = s.inicialmenteExpandida) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HitosDesarrollo.areas.forEach { area ->
-                Column(Modifier.weight(1f)) {
-                    Text(area, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Salud360Colors.Indigo)
-                    hitos.filter { it.area == area }.forEach { h ->
-                        CheckboxField(h.descripcion, v[h.clave] == "1", { ctx.setValor(s.id, h.clave, if (it) "1" else "0") }, enabled = !ctx.soloLectura)
+    val edad = ctx.edadMeses ?: 0
+    var tramo by remember(edad) { mutableIntStateOf(HitosDesarrollo.tramoPara(edad)) }
+    val ro = ctx.soloLectura
+    fun logrado(h: HitoDesarrollo) = (v[h.clave] ?: previos[h.clave]) == "1"
+    // En lectura solo se listan los hitos logrados; si no hay ninguno en ningún tramo ni observación, la sección no se muestra.
+    val columnas = HitosDesarrollo.columnasDeTramo(tramo).map { (area, hitos) -> area to (if (ro) hitos.filter(::logrado) else hitos) }
+    val filas = columnas.maxOf { it.second.size }
+    val observacion = v["observacion"] ?: ""
+    if (ro) {
+        val algunLogrado = HitosDesarrollo.tramos.any { t -> HitosDesarrollo.columnasDeTramo(t).any { (_, hitos) -> hitos.any(::logrado) } }
+        if (!algunLogrado && observacion.isBlank()) { SeccionVacia(); return }
+    }
+
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "desarrollo"), initiallyExpanded = s.inicialmenteExpandida) {
+        Text(HitosDesarrollo.tituloDeTramo(tramo), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Salud360Colors.Indigo)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            HitosDesarrollo.tramos.forEach { t ->
+                FilterChip(selected = t == tramo, onClick = { tramo = t }, label = { Text(HitosDesarrollo.etiquetaCorta(t)) })
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Column {
+                Row(Modifier.clip(MaterialTheme.shapes.small).background(Salud360Colors.BrandGradient).padding(vertical = 8.dp)) {
+                    columnas.forEach { (area, _) ->
+                        Text(area.etiqueta, color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(ANCHO_COLUMNA).padding(horizontal = 8.dp))
                     }
+                }
+                repeat(filas) { i ->
+                    Row(Modifier.background(if (i % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent), verticalAlignment = Alignment.Top) {
+                        columnas.forEach { (_, hitos) ->
+                            val h = hitos.getOrNull(i)
+                            Box(Modifier.width(ANCHO_COLUMNA).padding(horizontal = 4.dp)) {
+                                if (h != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = logrado(h), enabled = !ro, onCheckedChange = { on -> ctx.setValor(s.id, h.clave, if (on) "1" else "0") })
+                                    Text(h.descripcion, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                 }
             }
         }
-        TextAreaField("Observación", v["observacion"] ?: "", { ctx.setValor(s.id, "observacion", it) }, minLines = 3, readOnly = ctx.soloLectura)
+        if (!ro || observacion.isNotBlank()) TextAreaField("Observación", observacion, { ctx.setValor(s.id, "observacion", it) }, minLines = 3, readOnly = ro)
     }
 }

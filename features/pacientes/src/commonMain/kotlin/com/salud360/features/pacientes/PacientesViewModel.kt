@@ -10,6 +10,7 @@ import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.newId
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Turno
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -108,11 +109,14 @@ data class PacienteFormState(
     val guardado: Boolean = false,
     /** Un paciente con ese DNI ya existe: se reutilizará su ficha. */
     val existente: Paciente? = null,
+    /** La ficha se guardó en el dispositivo pero no se pudo actualizar turnosonlinebb (sin conexión, etc.). */
+    val avisoRemoto: String? = null,
 )
 
 /** Alta / edición de la ficha del paciente (formulario compartido por médico y secretaria). */
 class PacienteFormViewModel(
     private val pacientes: PacientesRepository,
+    private val turnos: TurnosRepository,
     private val pacienteId: Id?,
     private val vincularA: Id?,
 ) : ViewModel() {
@@ -152,11 +156,31 @@ class PacienteFormViewModel(
             else if (p.dni.any { !it.isDigit() }) put("dni", "Solo números")
         }
         if (errores.isNotEmpty()) { _state.value = _state.value.copy(errores = errores); return }
-        _state.value = _state.value.copy(guardando = true, errores = emptyMap())
+        _state.value = _state.value.copy(guardando = true, errores = emptyMap(), avisoRemoto = null)
         viewModelScope.launch {
+            // Primero el dispositivo, que no depende de la red; después turnosonlinebb.
             val guardado = pacientes.guardar(p, vincularA)
-            _state.value = _state.value.copy(paciente = guardado, guardando = false, guardado = true)
+            val aviso = guardarEnTurnosOnline(guardado.id)
+            _state.value = _state.value.copy(paciente = guardado, guardando = false, guardado = true, avisoRemoto = aviso)
             onOk(guardado)
+        }
+    }
+
+    /**
+     * Manda la ficha a turnosonlinebb cuando el médico es de la web (la da de alta si todavía no existe allá).
+     * Sin esto lo editado se pierde en cuanto la web vuelve a informar al paciente. Devuelve el aviso a mostrar
+     * si no se pudo, o null si salió bien o no correspondía.
+     */
+    private suspend fun guardarEnTurnosOnline(pacienteId: Id): String? {
+        val medicoId = vincularA ?: return null
+        if (!turnos.esRemota(medicoId)) return null
+        return try {
+            turnos.guardarPacienteRemoto(medicoId, pacienteId, consultorioId = null)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            "Se guardó en este dispositivo, pero no se pudo actualizar turnosonlinebb: ${e.message ?: "sin conexión"}. Volvé a guardar para reintentar."
         }
     }
 }

@@ -32,11 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextOverflow
 import com.salud360.core.ui.components.linkWhatsApp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,14 +63,18 @@ import com.salud360.core.ui.components.InitialsAvatar
 import com.salud360.core.ui.components.LabelValue
 import com.salud360.core.ui.components.LinkButton
 import com.salud360.core.ui.components.LoadingIndicator
+import com.salud360.core.ui.components.NotaInline
+import com.salud360.core.ui.components.NotaPacienteCard
 import com.salud360.core.ui.components.PillButton
 import com.salud360.core.ui.components.PlainCard
+import com.salud360.core.ui.components.PuntoNota
 import com.salud360.core.ui.components.RadioGroupField
 import com.salud360.core.ui.components.ScreenTitle
 import com.salud360.core.ui.components.SearchBar
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.SelectField
 import com.salud360.core.ui.components.StatusChip
+import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
@@ -127,6 +135,8 @@ fun PacientesListScreen(
 
 @Composable
 fun PacienteItem(p: Paciente, onClick: () -> Unit) {
+    // Con clave por id: al reciclar la fila en la lista, si no, se abriría la nota de otro paciente.
+    var notaAbierta by rememberSaveable(p.id) { mutableStateOf(false) }
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -137,11 +147,19 @@ fun PacienteItem(p: Paciente, onClick: () -> Unit) {
             InitialsAvatar(p.nombreCompleto, color = if (p.sexo == Sexo.F) Salud360Colors.SkyEnd else Salud360Colors.TealStart)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(p.nombreCompleto, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // weight(fill = false) + maxLines: un nombre largo no empuja el punto fuera de la tarjeta.
+                    Text(
+                        p.nombreCompleto, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    PuntoNota(p.nota, notaAbierta) { notaAbierta = !notaAbierta }
+                }
                 Text(
                     listOfNotNull("DNI ${p.dni}", p.edad(hoy())?.let { "${it.anios} años" }, p.obraSocial.ifBlank { null }).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                NotaInline(p.nota, notaAbierta)
             }
             if (!p.activo) StatusChip("Pendiente", Salud360Colors.Warning)
         }
@@ -196,6 +214,10 @@ fun PacienteFormScreen(
                     { TextField("Localidad", p.localidad, { v -> vm.actualizar { it.copy(localidad = v) } }, Modifier.fillMaxWidth()) },
                 ))
                 TextField("Nacionalidad", p.nacionalidad, { v -> vm.actualizar { it.copy(nacionalidad = v) } })
+                TextAreaField(
+                    "Nota interna", p.nota, { v -> vm.actualizar { it.copy(nota = v) } },
+                    minLines = 2, placeholder = "Ej: no cobrar, es familiar del médico",
+                )
             }
 
             SectionCard("Obra social") {
@@ -227,6 +249,10 @@ fun PacienteFormScreen(
                 ))
             }
 
+            state.avisoRemoto?.let { aviso ->
+                Text(aviso, color = Salud360Colors.Warning, style = MaterialTheme.typography.bodyMedium)
+            }
+
             ActionRow {
                 BackButton(onClick = onVolver)
                 PillButton(if (state.guardando) "Guardando..." else "Guardar", onClick = { vm.guardar(onGuardado) }, enabled = !state.guardando)
@@ -253,7 +279,14 @@ fun PacienteDetalleScreen(
     val paciente by vm.paciente.collectAsState()
     val consultas by vm.consultas.collectAsState()
     val turnos by vm.turnos.collectAsState()
-    val p = paciente ?: return
+    // Mientras la base responde se muestra el indicador; si el id no existe, un aviso en vez de una pantalla en blanco.
+    val p = paciente ?: run {
+        var esperando by remember { mutableStateOf(true) }
+        LaunchedEffect(pacienteId) { kotlinx.coroutines.delay(1_500); esperando = false }
+        if (esperando) LoadingIndicator(text = "Abriendo ficha...")
+        else Column(Modifier.fillMaxSize().padding(16.dp)) { EmptyState("No se encontró el paciente"); ActionRow { BackButton(onClick = onVolver) } }
+        return
+    }
     val uriHandler = LocalUriHandler.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -275,6 +308,8 @@ fun PacienteDetalleScreen(
                 LinkButton("Editar", onClick = onEditar, color = Color.White)
             }
         }
+
+        NotaPacienteCard(p.nota)
 
         SectionCard("Datos", icon = Icons.Default.Edit, initiallyExpanded = false) {
             FormRow {

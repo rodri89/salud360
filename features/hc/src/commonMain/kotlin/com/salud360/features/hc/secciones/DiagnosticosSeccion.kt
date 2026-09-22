@@ -30,9 +30,12 @@ import com.salud360.features.hc.iconoSeccion
 @Composable
 fun DiagnosticosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     var nuevo by remember { mutableStateOf("") }
+    // En lectura solo se muestran los diagnósticos asignados a esta consulta.
+    val catalogo = if (ctx.soloLectura) ui.diagnosticosCatalogo.filter { it.id in ui.diagnosticosConsulta } else ui.diagnosticosCatalogo
+    if (ctx.soloLectura && catalogo.isEmpty()) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "diagnostico"), initiallyExpanded = s.inicialmenteExpandida) {
-        if (ui.diagnosticosCatalogo.isEmpty()) Text("No tenés diagnósticos en tu listado. Agregá el primero abajo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        ui.diagnosticosCatalogo.chunked(3).forEach { fila ->
+        if (catalogo.isEmpty()) Text("No tenés diagnósticos en tu listado. Agregá el primero abajo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        catalogo.chunked(3).forEach { fila ->
             Row(Modifier.fillMaxWidth()) {
                 fila.forEach { d ->
                     CheckboxField(d.nombre, d.id in ui.diagnosticosConsulta, { ctx.vm.toggleDiagnostico(d.id, it) }, Modifier.weight(1f), enabled = !ctx.soloLectura)

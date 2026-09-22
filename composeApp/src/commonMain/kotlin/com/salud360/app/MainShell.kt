@@ -40,6 +40,7 @@ import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -62,6 +66,7 @@ import com.salud360.core.model.auth.Sesion
 import com.salud360.core.ui.components.InitialsAvatar
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.admin.AdminScreen
+import com.salud360.features.hc.ConfigSeccionesHcScreen
 import com.salud360.features.hc.ConsultaScreen
 import com.salud360.features.hc.EspecialidadRegistry
 import com.salud360.features.hc.HistoriaClinicaScreen
@@ -86,7 +91,8 @@ private object Rutas {
     const val AGENDA_SEMANA = "agenda/semana"
     const val ASIGNAR = "agenda/asignar"
     const val PACIENTES = "pacientes"
-    const val PACIENTE_NUEVO = "pacientes/nuevo"
+    // Tres segmentos a propósito: "pacientes/nuevo" lo capturaba "pacientes/{id}" (id = "nuevo") y la ficha quedaba en blanco.
+    const val PACIENTE_NUEVO = "pacientes/nuevo/alta"
     const val PACIENTE = "pacientes/{id}"
     const val PACIENTE_EDITAR = "pacientes/{id}/editar"
     const val HC = "hc/{pacienteId}/{especialidad}"
@@ -94,6 +100,7 @@ private object Rutas {
     const val HORARIOS = "config/horarios"
     const val CONFIG_AGENDA = "config/agenda"
     const val CONFIG_SECCION = "config/seccion/{seccion}"
+    const val CONFIG_HC = "config/historia-clinica"
     const val OBRAS_SOCIALES = "config/obras-sociales"
     const val RECETAS = "recetas"
     const val ADMIN = "admin"
@@ -105,6 +112,18 @@ private object Rutas {
 }
 
 private data class ItemNav(val ruta: String, val titulo: String, val icono: ImageVector)
+
+/** Las pantallas de administración son exclusivas del rol ADMIN. */
+private fun esRutaDeAdmin(ruta: String?) = ruta == Rutas.ADMIN || ruta?.startsWith("${Rutas.ADMIN}/") == true
+
+/**
+ * Registra una pantalla de administración. La ruta queda siempre en el grafo —en web puede llegar desde la
+ * URL y navegar a un destino inexistente sería un error— pero solo se dibuja para el administrador; a los
+ * demás los saca de ahí el efecto de [MainShell] que devuelve al inicio del rol.
+ */
+private fun NavGraphBuilder.pantallaAdmin(ruta: String, esAdmin: Boolean, contenido: @Composable (NavBackStackEntry) -> Unit) {
+    composable(ruta) { entry -> if (esAdmin) contenido(entry) }
+}
 
 /** Recetas está oculto en el menú hasta que se termine de definir; poner en true para volver a mostrarlo. */
 private const val MOSTRAR_RECETAS = false
@@ -118,8 +137,10 @@ data class ContextoMedico(val medicoId: String, val consultorioId: String?, val 
  * habilitado el médico (agenda y/o historias clínicas).
  */
 @Composable
-fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = null) {
+fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = null, alIniciarNavegacion: (suspend (NavHostController) -> Unit)? = null) {
     val nav = rememberNavController()
+    // En web ata las rutas a la URL del navegador (recargar vuelve a la misma pantalla; atrás/adelante funcionan).
+    LaunchedEffect(nav) { alIniciarNavegacion?.invoke(nav) }
     val registry = koinInject<EspecialidadRegistry>()
     val sync = koinInject<SyncEngine>()
     val estadoSync by sync.estado.collectAsState()
@@ -138,7 +159,9 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                     if (contexto?.tieneTurnos == true && contexto?.consultorioId != null) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
                     add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People))
                     // Recetas queda oculto por ahora (pendiente de definir); la ruta sigue registrada.
-                    if (contexto?.tieneTurnos == true) { if (MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt)); add(ItemNav(Rutas.CONFIG_AGENDA, "Config", Icons.Default.Settings)) }
+                    if (contexto?.tieneTurnos == true && MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
+                    // Config: agenda (si tiene) y secciones de las historias clínicas habilitadas.
+                    if (contexto?.tieneTurnos == true || contexto?.especialidades?.isNotEmpty() == true) add(ItemNav(Rutas.CONFIG_AGENDA, "Config", Icons.Default.Settings))
                 }
                 Rol.SECRETARIA -> {
                     add(ItemNav(Rutas.SELECTOR, "Médico", Icons.Default.SwapHoriz))
@@ -156,6 +179,14 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
     val inicio = items.firstOrNull()?.ruta ?: Rutas.PACIENTES
     val backStack by nav.currentBackStackEntryAsState()
     val rutaActual = backStack?.destination?.route
+
+    // En web la ruta se refleja en la URL y la URL sobrevive al cierre de sesión: si el administrador dejó la
+    // página en "admin" y después entra un médico, la navegación restauraría esa pantalla. Se vuelve al inicio del rol.
+    LaunchedEffect(rutaActual, rol) {
+        if (rol != Rol.ADMIN && esRutaDeAdmin(rutaActual)) {
+            nav.navigate(inicio) { popUpTo(0) { inclusive = true }; launchSingleTop = true }
+        }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val ancho = maxWidth >= 840.dp
@@ -183,8 +214,9 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                                 s.consultorioIds, s.medicoIds,
                                 foto = { m -> FotoMedico(m.id, m.nombreCompleto, size = 52) },
                                 medicoActualId = contexto?.medicoId,
-                                onElegido = { medicoId, consultorioId, nombre ->
-                                    contexto = ContextoMedico(medicoId, consultorioId.ifBlank { null }, nombre, emptyList(), consultorioId.isNotBlank())
+                                onElegido = { m, consultorioId ->
+                                    // La secretaria opera la agenda y también puede abrir las historias clínicas habilitadas al médico.
+                                    contexto = ContextoMedico(m.id, consultorioId.ifBlank { null }, m.nombreCompleto, m.especialidadesHc.filter { registry.existe(it) }, consultorioId.isNotBlank())
                                     nav.navigate(if (consultorioId.isNotBlank()) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
                                 },
                             )
@@ -235,16 +267,26 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                             contexto?.let { c ->
                                 ConfigAgendaScreen(
                                     c.medicoId, onVolver = { nav.popBackStack() },
-                                    secciones = SeccionConfig.entries.filter { it != SeccionConfig.HORARIOS || c.consultorioId != null },
+                                    secciones = SeccionConfig.entries.filter { s ->
+                                        when (s) {
+                                            SeccionConfig.HORARIOS -> c.consultorioId != null
+                                            SeccionConfig.HISTORIA_CLINICA -> c.especialidades.isNotEmpty()
+                                            else -> c.tieneTurnos
+                                        }
+                                    },
                                     onAbrir = { s ->
                                         when (s) {
                                             SeccionConfig.HORARIOS -> nav.navigate(Rutas.HORARIOS)
                                             SeccionConfig.OBRAS_SOCIALES -> nav.navigate(Rutas.OBRAS_SOCIALES)
+                                            SeccionConfig.HISTORIA_CLINICA -> nav.navigate(Rutas.CONFIG_HC)
                                             else -> nav.navigate("config/seccion/${s.ruta}")
                                         }
                                     },
                                 )
                             }
+                        }
+                        composable(Rutas.CONFIG_HC) {
+                            contexto?.let { c -> ConfigSeccionesHcScreen(c.medicoId, c.especialidades, onVolver = { nav.popBackStack() }) }
                         }
                         composable(Rutas.CONFIG_SECCION) { entry ->
                             val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@composable
@@ -253,32 +295,33 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         composable(Rutas.HORARIOS) { contexto?.let { c -> c.consultorioId?.let { HorariosScreen(c.medicoId, it, onVolver = { nav.popBackStack() }) } } }
                         composable(Rutas.OBRAS_SOCIALES) { ObrasSocialesScreen(contexto?.medicoId, onVolver = { nav.popBackStack() }) }
 
-                        composable(Rutas.ADMIN) {
+                        val esAdmin = rol == Rol.ADMIN
+                        pantallaAdmin(Rutas.ADMIN, esAdmin) {
                             AdminScreen(onAbrirConfigMedico = { nav.navigate("admin/medico/$it/config") }, onAbrirHorarios = { m, c -> nav.navigate("admin/medico/$m/horarios/$c") })
                         }
-                        composable(Rutas.ADMIN_CONFIG_MEDICO) { entry ->
-                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
+                        pantallaAdmin(Rutas.ADMIN_CONFIG_MEDICO, esAdmin) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@pantallaAdmin
                             // Horarios se abre desde la tarjeta del médico en Administración (necesita el consultorio).
                             ConfigAgendaScreen(
                                 id, onVolver = { nav.popBackStack() },
-                                secciones = SeccionConfig.entries.filter { it != SeccionConfig.HORARIOS },
+                                secciones = SeccionConfig.entries.filter { it != SeccionConfig.HORARIOS && it != SeccionConfig.HISTORIA_CLINICA },
                                 onAbrir = { s ->
                                     if (s == SeccionConfig.OBRAS_SOCIALES) nav.navigate("admin/medico/$id/obras-sociales") else nav.navigate("admin/medico/$id/config/${s.ruta}")
                                 },
                             )
                         }
-                        composable(Rutas.ADMIN_CONFIG_SECCION) { entry ->
-                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
-                            val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@composable
+                        pantallaAdmin(Rutas.ADMIN_CONFIG_SECCION, esAdmin) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@pantallaAdmin
+                            val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@pantallaAdmin
                             ConfigSeccionScreen(id, seccion, esAdmin = true, onVolver = { nav.popBackStack() })
                         }
-                        composable(Rutas.ADMIN_OBRAS_SOCIALES) { entry ->
-                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
+                        pantallaAdmin(Rutas.ADMIN_OBRAS_SOCIALES, esAdmin) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@pantallaAdmin
                             ObrasSocialesScreen(id, onVolver = { nav.popBackStack() })
                         }
-                        composable(Rutas.ADMIN_HORARIOS_MEDICO) { entry ->
-                            val id = entry.savedStateHandle.get<String>("id") ?: return@composable
-                            val c = entry.savedStateHandle.get<String>("consultorioId") ?: return@composable
+                        pantallaAdmin(Rutas.ADMIN_HORARIOS_MEDICO, esAdmin) { entry ->
+                            val id = entry.savedStateHandle.get<String>("id") ?: return@pantallaAdmin
+                            val c = entry.savedStateHandle.get<String>("consultorioId") ?: return@pantallaAdmin
                             HorariosScreen(id, c, onVolver = { nav.popBackStack() })
                         }
                     }

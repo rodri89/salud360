@@ -35,11 +35,16 @@ class LoginViewModel(
     private val settings: Settings,
 ) : ViewModel() {
     private val emailRecordado = settings.getStringOrNull(CLAVE_EMAIL_RECORDADO)?.takeIf { it.isNotBlank() }
-    private val _state = MutableStateFlow(LoginUiState(email = emailRecordado ?: "", recordarEmail = emailRecordado != null, servidor = config.apiBaseUrl))
+    private val _state = MutableStateFlow(LoginUiState(
+        email = emailRecordado ?: "", recordarEmail = emailRecordado != null,
+        // En dev se muestra contra qué MAMP se está probando; en release solo el nombre del entorno.
+        servidor = if (config.esDev) "dev · ${config.turnosUrl}" else "release",
+    ))
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
-    fun onEmail(v: String) = _state.update { it.copy(email = v, error = null) }
-    fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
+    // Al tocar los campos se limpia el aviso anterior: si no, el cartel de licencia queda al probar con otro usuario.
+    fun onEmail(v: String) = _state.update { it.copy(email = v, error = null, licenciaVencida = false) }
+    fun onPassword(v: String) = _state.update { it.copy(password = v, error = null, licenciaVencida = false) }
 
     /** Al destildar se olvida enseguida; al tildar se guarda recién cuando el ingreso sale bien. */
     fun onRecordarEmail(v: Boolean) {
@@ -58,7 +63,7 @@ class LoginViewModel(
             _state.update { it.copy(error = "Ingresá tu mail y contraseña") }
             return
         }
-        _state.update { it.copy(cargando = true, error = null) }
+        _state.update { it.copy(cargando = true, error = null, licenciaVencida = false) }
         viewModelScope.launch {
             when (val r = auth.login(Credenciales(s.email, s.password))) {
                 is ResultadoLogin.Ok -> {

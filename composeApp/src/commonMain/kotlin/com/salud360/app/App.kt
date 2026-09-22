@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.navigation.NavHostController
 import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.ui.components.LoadingIndicator
@@ -29,8 +30,12 @@ import org.koin.compose.koinInject
  * según el rol, y mantiene la sincronización periódica mientras la app está abierta.
  */
 @Composable
-/** `anchoMaximoContenido`: si se pasa (web), el contenido del shell se acota a ese ancho y se centra. */
-fun App(darkTheme: Boolean? = null, anchoMaximoContenido: Dp? = null) {
+/**
+ * `anchoMaximoContenido`: si se pasa (web), el contenido del shell se acota a ese ancho y se centra.
+ * `alIniciarNavegacion`: gancho de la plataforma al crear el navegador de pantallas (en web ata las rutas a la URL,
+ * así recargar la página vuelve a la misma pantalla).
+ */
+fun App(darkTheme: Boolean? = null, anchoMaximoContenido: Dp? = null, alIniciarNavegacion: (suspend (NavHostController) -> Unit)? = null) {
     Salud360Theme(darkTheme = darkTheme ?: androidx.compose.foundation.isSystemInDarkTheme()) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val auth = koinInject<AuthRepository>()
@@ -50,7 +55,7 @@ fun App(darkTheme: Boolean? = null, anchoMaximoContenido: Dp? = null) {
             when {
                 restaurando -> Box(Modifier.fillMaxSize()) { LoadingIndicator(text = "Abriendo Salud 360...") }
                 sesion == null -> LoginScreen(onLogin = {})
-                else -> MainShell(sesion = sesion!!, onLogout = { appScope.launch { auth.logout() } }, anchoMaximoContenido = anchoMaximoContenido)
+                else -> MainShell(sesion = sesion!!, onLogout = { appScope.launch { auth.logout() } }, anchoMaximoContenido = anchoMaximoContenido, alIniciarNavegacion = alIniciarNavegacion)
             }
         }
     }

@@ -6,6 +6,7 @@ kotlin {
             api(project(":core:model"))
             api(project(":core:data"))
             api(project(":core:ui"))
+            api(project(":core:crecimiento"))
         }
     }
 }

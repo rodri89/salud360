@@ -110,6 +110,7 @@ fun TobbPaciente.toPaciente(): Paciente = Paciente(
     afiliadoObligatorio = afiliadoObligatorio == 1,
     // activo = 2 en la web significa "pendiente de activación por el médico"
     activo = activo == 1,
+    nota = nota ?: "",
 )
 
 /**

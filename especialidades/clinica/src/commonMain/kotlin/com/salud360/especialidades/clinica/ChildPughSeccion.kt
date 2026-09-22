@@ -9,6 +9,7 @@ import com.salud360.core.ui.components.RadioGroupField
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.hc.SeccionContext
+import com.salud360.features.hc.iconoSeccion
 
 private val PARAMETROS = listOf(
     "ascitis" to Triple("Ascitis", "Ausente (I)", listOf("Moderada (II)", "Severa (III) o refractaria")),
@@ -21,7 +22,7 @@ private val PARAMETROS = listOf(
 /** Score Child-Pugh-Turcotte: cada parámetro suma 1, 2 o 3 puntos; A ≤ 6, B 7-9, C ≥ 10. */
 @Composable
 fun ChildPughSeccion(s: SeccionDef, ctx: SeccionContext) {
-    SectionCard(s.titulo, initiallyExpanded = s.inicialmenteExpandida) {
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "form"), initiallyExpanded = s.inicialmenteExpandida) {
         var total = 0
         var completos = 0
         PARAMETROS.forEach { (clave, def) ->

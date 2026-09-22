@@ -44,9 +44,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import com.salud360.core.ui.components.DatoCopiable
 import com.salud360.core.ui.components.linkWhatsApp
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.repos.ResultadoTurno
 import com.salud360.core.model.Id
@@ -63,14 +65,18 @@ import com.salud360.core.ui.components.DateField
 import com.salud360.core.ui.components.EmptyState
 import com.salud360.core.ui.components.InitialsAvatar
 import com.salud360.core.ui.components.LinkButton
+import com.salud360.core.ui.components.NotaInline
 import com.salud360.core.ui.components.PlainCard
+import com.salud360.core.ui.components.PuntoNota
 import com.salud360.core.ui.components.ScreenTitle
 import com.salud360.core.ui.components.SlotState
 import com.salud360.core.ui.components.StatusChip
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.TimeSlotCircle
 import com.salud360.core.ui.components.toDisplay
+import com.salud360.core.ui.theme.LocalIsDarkTheme
 import com.salud360.core.ui.theme.Salud360Colors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -247,6 +253,9 @@ fun TurnoCard(
     var comentario by remember(t.id) { mutableStateOf(t.comentario) }
     var cajaEnfocada by remember(t.id) { mutableStateOf(false) }
     var comentarioEnfocado by remember(t.id) { mutableStateOf(false) }
+    // Con clave por turno: al reciclar la fila en la lista, si no, se abriría la nota de otro paciente.
+    var notaAbierta by rememberSaveable(t.id) { mutableStateOf(false) }
+    val nota = paciente?.nota.orEmpty()
     LaunchedEffect(t.caja) { if (!cajaEnfocada) caja = t.caja.aTextoCaja() }
     LaunchedEffect(t.comentario) { if (!comentarioEnfocado) comentario = t.comentario }
     fun guardarCaja() {
@@ -254,6 +263,10 @@ fun TurnoCard(
         if (valor != t.caja) onCaja(valor)
     }
     fun guardarComentario() { if (comentario != t.comentario) onComentario(comentario) }
+    // Además de al salir del campo, se guarda poco después de dejar de escribir: tocar fuera de un campo no
+    // siempre le quita el foco, y sin esto el total "Caja del día" no se actualizaba hasta recargar la pantalla.
+    LaunchedEffect(caja, cajaEnfocada) { if (cajaEnfocada) { delay(700); guardarCaja() } }
+    LaunchedEffect(comentario, comentarioEnfocado) { if (comentarioEnfocado) { delay(700); guardarComentario() } }
     PlainCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(t.horario.hhmm(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Salud360Colors.Indigo, modifier = Modifier.width(64.dp))
@@ -263,7 +276,14 @@ fun TurnoCard(
             } else {
                 InitialsAvatar(t.pacienteNombre.ifBlank { "?" }, size = 36)
                 Column(Modifier.weight(1f)) {
-                    Text(t.pacienteNombre.ifBlank { "Sin paciente" }, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // weight(fill = false) + maxLines: un nombre largo no empuja el punto fuera de la tarjeta.
+                        Text(
+                            t.pacienteNombre.ifBlank { "Sin paciente" }, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                        )
+                        PuntoNota(nota, notaAbierta) { notaAbierta = !notaAbierta }
+                    }
                     // Datos de contacto y cobertura: DNI y nº de afiliado se copian al tocarlos; el teléfono abre WhatsApp.
                     val telefono = t.pacienteTelefono.ifBlank { paciente?.telefono ?: "" }
                     val obraSocial = t.pacienteObraSocial.ifBlank { paciente?.obraSocial ?: "" }
@@ -286,6 +306,7 @@ fun TurnoCard(
                             else Text(textoOs, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
                         }
                     }
+                    NotaInline(nota, notaAbierta)
                 }
                 // Arriba a la derecha: tipo de turno (color por tipo) y, si corresponde, sobreturno y primer control.
                 Column(Modifier.align(Alignment.Top), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -553,9 +574,14 @@ private fun SobreturnoDialog(vm: AgendaViewModel, f: LocalDate, onCerrar: () -> 
 /** Card de un horario libre: hora + botón para agregar el turno. */
 @Composable
 fun SlotCardLibre(horario: String, onAsignar: () -> Unit, onBloquear: (() -> Unit)? = null, etiqueta: String = "Agregar turno") {
-    PlainCard {
+    // Verde muy suave para distinguir de un vistazo dónde hay lugar: un turno ocupado queda con el fondo normal.
+    val dark = LocalIsDarkTheme.current
+    PlainCard(containerColor = if (dark) Salud360Colors.SlotLibreBgDark else Salud360Colors.SlotLibreBg) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(horario, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Salud360Colors.Indigo, modifier = Modifier.weight(1f))
+            Text(
+                horario, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                color = if (dark) MaterialTheme.colorScheme.secondary else Salud360Colors.Indigo, modifier = Modifier.weight(1f),
+            )
             if (onBloquear != null) LinkButton("Bloquear", onBloquear)
             AcceptButton(etiqueta, onClick = onAsignar)
         }

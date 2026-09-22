@@ -47,6 +47,11 @@ data class Paciente(
     val afiliadoObligatorio: Boolean = false,
     /** false = pendiente de activación por el médico (módulo "Activar paciente" de turnos). */
     val activo: Boolean = true,
+    /**
+     * Nota libre de uso interno del consultorio, visible en la agenda y en el listado
+     * (ej: "no cobrar, es familiar del médico"). Se guarda también en turnosonlinebb.
+     */
+    val nota: String = "",
 ) {
     val nombreCompleto: String get() = "$apellido, $nombre"
 

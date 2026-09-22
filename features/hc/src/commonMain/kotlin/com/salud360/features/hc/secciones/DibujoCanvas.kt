@@ -41,6 +41,7 @@ import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.features.hc.SeccionContext
+import com.salud360.features.hc.iconoSeccion
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -64,8 +65,10 @@ fun DibujoSeccion(s: SeccionDef, ctx: SeccionContext, fondo: Painter?, colorInic
     var dirty by remember { mutableStateOf(false) }
     LaunchedEffect(trazos, dirty) { if (dirty) { delay(500); ctx.setValor(s.id, "trazos", json.encodeToString(trazos)); dirty = false } }
     val paleta = listOf(colorInicial, Color(0xFFE53935), Color(0xFF1E88E5), Color(0xFF43A047), Color(0xFFFB8C00), Color(0xFF8E24AA), Color.Black)
+    val resultado = campoResultado?.let { ctx.valor(s.id, it) } ?: ""
 
-    SectionCard(s.titulo, initiallyExpanded = s.inicialmenteExpandida) {
+    if (ctx.soloLectura && trazos.isEmpty() && resultado.isBlank()) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "dibujo"), initiallyExpanded = s.inicialmenteExpandida) {
         if (!ctx.soloLectura) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Color:", style = MaterialTheme.typography.labelLarge)
             paleta.forEach { c ->
@@ -101,11 +104,13 @@ fun DibujoSeccion(s: SeccionDef, ctx: SeccionContext, fondo: Painter?, colorInic
         // referencias por color (como en el PAP original)
         trazos.map { it.color }.distinct().forEach { c ->
             var ref by remember(c, ctx.valor(s.id, "ref_$c")) { mutableStateOf(ctx.valor(s.id, "ref_$c")) }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!ctx.soloLectura || ref.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(20.dp).clip(CircleShape).background(Color(c.toULong())))
                 TextField("Referencia", ref, { ref = it; ctx.setValor(s.id, "ref_$c", it) }, Modifier.width(360.dp), readOnly = ctx.soloLectura)
             }
         }
-        if (campoResultado != null) TextAreaField("Descripción / resultado", ctx.valor(s.id, campoResultado), { ctx.setValor(s.id, campoResultado, it) }, minLines = 3, readOnly = ctx.soloLectura)
+        if (campoResultado != null && (!ctx.soloLectura || resultado.isNotBlank())) {
+            TextAreaField("Descripción / resultado", resultado, { ctx.setValor(s.id, campoResultado, it) }, minLines = 3, readOnly = ctx.soloLectura)
+        }
     }
 }

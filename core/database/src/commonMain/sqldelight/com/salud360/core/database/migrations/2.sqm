@@ -1,0 +1,2 @@
+-- v2 -> v3: nota libre del paciente (alerta interna del consultorio, ej. "no cobrar, es familiar del médico").
+ALTER TABLE paciente ADD COLUMN nota TEXT NOT NULL DEFAULT '';

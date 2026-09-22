@@ -112,12 +112,16 @@ fun BrandPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.(
     }
 }
 
-/** Tarjeta simple con sombra suave para listados y paneles. */
+/** Tarjeta simple con sombra suave para listados y paneles. [containerColor] tiñe el fondo (ej. horario libre). */
 @Composable
-fun PlainCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun PlainCard(
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)

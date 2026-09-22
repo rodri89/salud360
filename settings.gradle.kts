@@ -37,6 +37,7 @@ include(":core:model")
 include(":core:database")
 include(":core:data")
 include(":core:ui")
+include(":core:crecimiento")
 
 // Funcionalidades transversales (médicos, secretarias, administrador)
 include(":features:auth")

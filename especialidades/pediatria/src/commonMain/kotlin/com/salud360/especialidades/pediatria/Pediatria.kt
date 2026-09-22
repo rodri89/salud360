@@ -12,6 +12,7 @@ import com.salud360.core.model.especialidad.SeccionesComunes as C
 import com.salud360.core.model.especialidad.TipoCampo
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.especialidad.TipoSeccion
+import com.salud360.features.hc.RENDER_CURVAS_CRECIMIENTO
 import com.salud360.features.hc.SeccionesGenericas as G
 import com.salud360.features.hc.EspecialidadContribution
 
@@ -39,14 +40,30 @@ private val perinatales = SeccionDef(
 private val neonatales = SeccionDef("neonatales", "Antec. neonatales", TipoSeccion.FORM_PACIENTE, conArchivos = true, icono = "antecedentes",
     campos = listOf(CampoDef("nota", "Antecedentes neonatales patológicos", TipoCampo.TEXTO_LARGO)))
 
+/**
+ * Alimentación con las mismas claves que la tabla `alimentacions` de la web (pecho, leche_maternizada, leche_vaca,
+ * dieta_tipo, dieta_comidas, hierro, vitamina). El detalle de las casillas se guarda como `<clave>|<detalle>`;
+ * en la web hierro y vitamina guardan la dosis en `hierro_dosis` / `vitamina_dosis`.
+ */
 private val alimentacion = SeccionDef(
     "alimentacion", "Alimentación", TipoSeccion.FORM, icono = "alimentacion",
     campos = listOf(
         CampoDef("pecho", "Pecho", TipoCampo.CHECK_DETALLE), CampoDef("leche_maternizada", "Leche maternizada", TipoCampo.CHECK_DETALLE), CampoDef("leche_vaca", "Leche de vaca", TipoCampo.CHECK_DETALLE),
         CampoDef("dieta_tipo", "Dieta - tipo", TipoCampo.TEXTO_LARGO), CampoDef("dieta_comidas", "Comidas por día", TipoCampo.NUMERO),
-        CampoDef("hierro", "Hierro", TipoCampo.CHECK_DETALLE), CampoDef("vitaminas", "Vitaminas", TipoCampo.CHECK_DETALLE),
+        CampoDef("hierro", "Hierro", TipoCampo.CHECK_DETALLE, placeholder = "Dosis"), CampoDef("vitamina", "Vitaminas", TipoCampo.CHECK_DETALLE, placeholder = "Dosis"),
     ),
 )
+
+/**
+ * Antecedentes personales como en la web: casillas con detalle (enfermedad actual, alergias, Qx, traumatismos,
+ * transfusiones, otro) y, debajo, la lista de internaciones con fotos. "Internaciones" no va como casilla porque
+ * ya está la lista.
+ */
+private val personalesPediatria = CategoriaAntecedentes(
+    "personales", "Antecedentes personales",
+    G.personalesEstandar.items.filter { it.clave != "internaciones" },
+)
+private val seccionPersonalesPediatria = G.seccionPersonales.copy(subsecciones = listOf("internaciones"))
 
 private fun texto(id: String, titulo: String, icono: String? = null, condicion: CondicionSeccion? = null) =
     SeccionDef(id, titulo, TipoSeccion.TEXTO, icono = icono, condicion = condicion, inicialmenteExpandida = false)
@@ -65,7 +82,7 @@ private val prenatalEmbarazo = SeccionDef("prenatal_embarazo", "Embarazo actual"
     CampoDef("vacunas", "Vacunas", TipoCampo.TEXTO_LARGO), CampoDef("parto", "Parto", TipoCampo.RADIO, listOf("Parto", "Cesárea"), grupo = "pa"), CampoDef("cesarea_detalle", "Detalle", grupo = "pa"),
     CampoDef("ecografia", "Ecografía", TipoCampo.TEXTO_LARGO), CampoDef("observaciones", "Observaciones", TipoCampo.TEXTO_LARGO),
 ))
-private val prenatalObstetricos = SeccionDef("prenatal_obstetricos", "Antecedentes obstétricos", TipoSeccion.FORM, campos = listOf(
+private val prenatalObstetricos = SeccionDef("prenatal_obstetricos", "Antecedentes obstétricos", TipoSeccion.FORM, icono = "antecedentes", campos = listOf(
     CampoDef("g", "G (gestas)", TipoCampo.NUMERO, grupo = "gpa"), CampoDef("p", "P (partos)", TipoCampo.NUMERO, grupo = "gpa"), CampoDef("a", "A (abortos)", TipoCampo.NUMERO, grupo = "gpa"),
     CampoDef("detalle", "Detalle", TipoCampo.TEXTO_LARGO),
 ))
@@ -76,9 +93,9 @@ val pediatria = EspecialidadDefinition(
     tiposConsulta = listOf(
         TipoConsultaDef(C.TIPO_CONTROL, "Control de salud", "control", pestanias = listOf(C.DATOS_PACIENTE, "perinatales", "neonatales", C.ANTECEDENTES_PERSONALES, C.ANTECEDENTES_FAMILIARES),
             secciones = listOf("vacunas", "alimentacion", "diuresis_catarsis", "somnia", "escolaridad", "actividades", "pantallas", "habitos", "menarca", "desarrollo",
-                C.EXAMEN_FISICO, C.EXAMENES_COMPLEMENTARIOS, C.INTERCONSULTA, "internaciones", "screening", C.CONDUCTAS, C.OBSERVACIONES, C.NOTA)),
+                C.EXAMEN_FISICO, CURVAS, C.EXAMENES_COMPLEMENTARIOS, C.INTERCONSULTA, "screening", C.CONDUCTAS, C.OBSERVACIONES, C.NOTA)),
         TipoConsultaDef(C.TIPO_ENFERMEDAD, "Enfermedad", "enfermedad", pestanias = listOf(C.DATOS_PACIENTE, "perinatales", "neonatales", C.ANTECEDENTES_PERSONALES, C.ANTECEDENTES_FAMILIARES),
-            secciones = listOf(C.MOTIVO_CONSULTA, C.EXAMEN_FISICO, C.EXAMENES_COMPLEMENTARIOS, C.INTERCONSULTA, C.CONDUCTAS, C.OBSERVACIONES)),
+            secciones = listOf(C.MOTIVO_CONSULTA, C.EXAMEN_FISICO, CURVAS, C.EXAMENES_COMPLEMENTARIOS, C.INTERCONSULTA, C.CONDUCTAS, C.OBSERVACIONES)),
         TipoConsultaDef(C.TIPO_TELEMEDICINA, "Telemedicina", "telemedicina", pestanias = listOf(C.DATOS_PACIENTE, C.ANTECEDENTES_PERSONALES, C.ANTECEDENTES_FAMILIARES),
             secciones = listOf(C.DATOS_SUBJETIVOS, C.DATOS_OBJETIVOS, C.EXAMENES_COMPLEMENTARIOS, C.INTERCONSULTA, C.CONDUCTAS, C.OBSERVACIONES)),
         TipoConsultaDef("prenatal", "Consulta prenatal", "prenatal", pestanias = listOf(C.DATOS_PACIENTE),
@@ -87,19 +104,21 @@ val pediatria = EspecialidadDefinition(
         TipoConsultaDef(C.TIPO_FOTO, "HC digitalizada", "foto", pestanias = listOf(C.DATOS_PACIENTE), secciones = listOf(C.FOTOS)),
     ),
     secciones = listOf(
-        perinatales, neonatales, G.seccionPersonales, G.seccionFamiliares,
-        SeccionDef("vacunas", "Vacunas", TipoSeccion.CUSTOM, renderKey = "vacunas_calendario", icono = "vacunas"),
-        alimentacion, texto("diuresis_catarsis", "Diuresis / catarsis"), texto("somnia", "Sueño"), texto("escolaridad", "Escolaridad", "escolaridad"),
-        texto("actividades", "Actividades extraescolares"), texto("pantallas", "Pantallas"), G.habitos.copy(inicialmenteExpandida = false),
-        texto("menarca", "Menarca", condicion = CondicionSeccion.SoloFemenino),
+        perinatales, neonatales, seccionPersonalesPediatria, G.seccionFamiliares,
+        // Vacunas en texto libre (módulo "vacunas_dos" de la web); el calendario en grilla quedó fuera por ahora.
+        G.texto("vacunas", "Vacunas", "vacunas", expandida = true),
+        SeccionDef(CURVAS, "Curvas de crecimiento", TipoSeccion.CUSTOM, renderKey = RENDER_CURVAS_CRECIMIENTO, icono = "curvas", inicialmenteExpandida = false),
+        alimentacion, texto("diuresis_catarsis", "Diuresis / catarsis", "diuresis"), texto("somnia", "Sueño", "sueno"), texto("escolaridad", "Escolaridad", "escolaridad"),
+        texto("actividades", "Actividades extraescolares", "actividades"), texto("pantallas", "Pantallas", "pantallas"), G.habitos.copy(inicialmenteExpandida = false),
+        texto("menarca", "Menarca", "menarca", condicion = CondicionSeccion.SoloFemenino),
         SeccionDef("desarrollo", "Desarrollo madurativo", TipoSeccion.CUSTOM, renderKey = "desarrollo_madurativo", icono = "desarrollo", condicion = CondicionSeccion.EdadMaximaMeses(72)),
         G.examenFisico, G.examenesComplementarios, G.interconsulta,
-        SeccionDef("internaciones", "Internaciones", TipoSeccion.REGISTROS, registroTipo = "internacion", inicialmenteExpandida = false),
+        SeccionDef("internaciones", "Internaciones", TipoSeccion.REGISTROS, registroTipo = "internacion", icono = "internacion", inicialmenteExpandida = false),
         G.screening, G.motivo, G.conductas, G.observaciones, G.nota, G.subjetivo, G.objetivo, G.fotos,
-        prenatalFamilia, prenatalEmbarazo, prenatalObstetricos, texto("lactancia_previa", "Lactancia de embarazo previo"),
+        prenatalFamilia, prenatalEmbarazo, prenatalObstetricos, texto("lactancia_previa", "Lactancia de embarazo previo", "lactancia"),
     ),
     antecedentes = listOf(
-        G.personalesEstandar,
+        personalesPediatria,
         CategoriaAntecedentes("familiares", "Antecedentes familiares", listOf(
             "hta" to "HTA", "dbt" to "DBT", "asma" to "Asma", "alergia" to "Alergia", "enf_cv" to "Enf. cardiovascular", "muerte_subita" to "Muerte súbita",
             "enf_celiaca" to "Enf. celíaca", "enf_tiroideas" to "Enf. tiroideas", "enf_neurologicas" to "Enf. neurológicas", "convulsion_febril" to "Convulsión febril",
@@ -111,12 +130,16 @@ val pediatria = EspecialidadDefinition(
         conArchivos = true, porPaciente = true),
     examenFisicoCampos = setOf(CampoExamenFisico.PESO, CampoExamenFisico.TALLA, CampoExamenFisico.IMC, CampoExamenFisico.PERIMETRO_CEFALICO, CampoExamenFisico.IPD, CampoExamenFisico.TENSION_ARTERIAL, CampoExamenFisico.NOTA),
     conPercentilos = true,
+    // Fase siguiente: API propia de hc_pediatria ("https://hcpediatrica.com"); mientras tanto la HC se guarda en la base local.
+    apiBaseUrl = null,
 )
+
+/** Id de la sección de curvas de crecimiento (OMS) en pediatría. */
+private const val CURVAS = "curvas_crecimiento"
 
 val pediatriaContribution = EspecialidadContribution(
     pediatria,
     mapOf(
-        "vacunas_calendario" to { s, ctx -> VacunasCalendarioSeccion(s, ctx) },
         "desarrollo_madurativo" to { s, ctx -> DesarrolloMadurativoSeccion(s, ctx) },
     ),
 )

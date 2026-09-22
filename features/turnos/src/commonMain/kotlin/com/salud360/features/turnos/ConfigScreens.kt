@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.PersonAdd
@@ -241,7 +242,9 @@ enum class SeccionConfig(val ruta: String, val titulo: String, val subtitulo: St
     RESERVAS("reservas", "Reservas", "Ventana de días para reservar y valor de la consulta"),
     CUPO("cupo", "Cupo de primeros controles", "Cuántos primeros controles por día"),
     MODULOS("modulos", "Módulos habilitados", "Funciones de la agenda activas para este médico"),
-    MENSAJES("mensajes", "Mensajes para pacientes", "Avisos que ven los pacientes al reservar");
+    MENSAJES("mensajes", "Mensajes para pacientes", "Avisos que ven los pacientes al reservar"),
+    /** Pantalla propia en `features/hc` (la navegación la resuelve la app). */
+    HISTORIA_CLINICA("historia-clinica", "Secciones de la historia clínica", "Elegí qué secciones ves en cada consulta");
 
     companion object {
         fun porRuta(ruta: String?): SeccionConfig? = entries.firstOrNull { it.ruta == ruta }
@@ -255,6 +258,7 @@ private fun SeccionConfig.icono() = when (this) {
     SeccionConfig.CUPO -> Icons.Default.PersonAdd
     SeccionConfig.MODULOS -> Icons.Default.Tune
     SeccionConfig.MENSAJES -> Icons.Default.Campaign
+    SeccionConfig.HISTORIA_CLINICA -> Icons.Default.Checklist
 }
 
 /**
@@ -271,7 +275,7 @@ fun ConfigAgendaScreen(
     val estado by vm.estado.collectAsState()
     val u = ui
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ScreenTitle("Configuración de la agenda")
+        ScreenTitle("Configuración")
         if (estado.cargando) Text("Actualizando desde turnosonlinebb…", color = MaterialTheme.colorScheme.onSurfaceVariant)
         estado.error?.let { Text(it, color = Salud360Colors.Danger) }
         secciones.forEach { s ->
@@ -307,7 +311,7 @@ fun ConfigSeccionScreen(
             SeccionConfig.CUPO -> CupoSeccion(u, vm)
             SeccionConfig.MODULOS -> ModulosSeccion(u, vm, esAdmin)
             SeccionConfig.MENSAJES -> MensajesSeccion(u, vm)
-            SeccionConfig.HORARIOS, SeccionConfig.OBRAS_SOCIALES -> Text("Esta sección tiene su propia pantalla.")
+            SeccionConfig.HORARIOS, SeccionConfig.OBRAS_SOCIALES, SeccionConfig.HISTORIA_CLINICA -> Text("Esta sección tiene su propia pantalla.")
         }
         BackButton(onClick = onVolver)
         Spacer(Modifier.height(24.dp))
@@ -563,7 +567,8 @@ fun RecetasScreen(
 @Composable
 fun SelectorMedicoScreen(
     consultorioIds: List<Id>, medicoIds: List<Id>,
-    onElegido: (medicoId: Id, consultorioId: Id, nombreMedico: String) -> Unit,
+    /** Médico elegido y consultorio para la agenda (vacío si el médico no tiene agenda). */
+    onElegido: (medico: Medico, consultorioId: Id) -> Unit,
     /** Avatar del médico (foto o iniciales); lo aporta la app porque la carga de fotos vive fuera de este módulo. */
     foto: @Composable (Medico) -> Unit = { m -> InitialsAvatar(m.nombreCompleto, size = 48) },
     medicoActualId: Id? = null,
@@ -592,7 +597,7 @@ fun SelectorMedicoScreen(
                             Text(detalle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (elegido) StatusChip("Elegido", Salud360Colors.Success)
-                        else AcceptButton("Elegir", onClick = { onElegido(m.id, m.consultorioId ?: consultorio ?: "", m.nombreCompleto) })
+                        else AcceptButton("Elegir", onClick = { onElegido(m, m.consultorioId ?: consultorio ?: "") })
                     }
                 }
             }

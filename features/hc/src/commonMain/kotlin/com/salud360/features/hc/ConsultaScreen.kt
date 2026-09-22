@@ -21,6 +21,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -59,6 +61,7 @@ import com.salud360.features.hc.secciones.DiagnosticosSeccion
 import com.salud360.features.hc.secciones.ExamenFisicoSeccion
 import com.salud360.features.hc.secciones.FormSeccion
 import com.salud360.features.hc.secciones.LaboratorioSeccion
+import com.salud360.features.hc.secciones.LocalSeccionEnPestania
 import com.salud360.features.hc.secciones.RegistrosSeccion
 import com.salud360.features.hc.secciones.TextoSeccion
 import org.koin.compose.koinInject
@@ -88,10 +91,18 @@ fun ConsultaScreen(
     if (consulta == null || def == null || tipo == null || ui.paciente == null) { LoadingIndicator(); return }
 
     var pestania by remember { mutableIntStateOf(0) }
-    var confirmarCierre by remember { mutableStateOf(false) }
-    var mostrarPendiente by remember { mutableStateOf(false) }
+    var mostrarCierre by remember { mutableStateOf(false) }
     val soloLectura = ui.soloLectura
     val color = Salud360Colors.especialidad(consulta.especialidad)
+
+    // Pendientes que dejaron consultas anteriores (los creados al cerrar esta misma consulta no cuentan).
+    val pendientesPrevios = ui.pendientes.filter { it.consultaId != consulta.id }
+    // Al abrir una consulta en curso con pendientes se avisa una sola vez, como el modal de la web al cargar.
+    var avisoMostrado by remember(consulta.id) { mutableStateOf(false) }
+    var mostrarAviso by remember(consulta.id) { mutableStateOf(false) }
+    LaunchedEffect(pendientesPrevios.isNotEmpty(), soloLectura) {
+        if (!soloLectura && pendientesPrevios.isNotEmpty() && !avisoMostrado) { avisoMostrado = true; mostrarAviso = true }
+    }
 
     val ctx = remember(consulta.id, soloLectura, ui.edadMeses, ui.paciente?.sexo) {
         object : SeccionContext {
@@ -128,18 +139,18 @@ fun ConsultaScreen(
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 DateField("Fecha de consulta", consulta.fecha, { it?.let(vm::cambiarFecha) }, Modifier.width(220.dp), readOnly = soloLectura)
-                if (ui.pendientes.isNotEmpty()) {
+                if (pendientesPrevios.isNotEmpty()) {
                     Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Salud360Colors.Warning)
-                    Text("${ui.pendientes.size} pendiente(s)", color = Color.White)
+                    Text("Con pendientes", color = Color.White)
                 }
             }
         }
 
-        ui.pendientes.takeIf { it.isNotEmpty() }?.let { lista ->
+        pendientesPrevios.takeIf { it.isNotEmpty() }?.let { lista ->
             SectionCard("Pendientes de la consulta anterior", icon = Icons.Default.NotificationsActive, initiallyExpanded = true) {
                 lista.forEach { p ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("• ${p.texto}", modifier = Modifier.weight(1f))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) { p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") } }
                         if (!soloLectura) LinkButton("Resuelto", onClick = { vm.resolverPendiente(p) })
                     }
                 }
@@ -153,7 +164,10 @@ fun ConsultaScreen(
                 pestanias.forEachIndexed { i, s -> Tab(selected = pestania == i, onClick = { pestania = i }, text = { Text(s.titulo, fontWeight = FontWeight.SemiBold) }) }
             }
             val actual = pestanias[pestania.coerceIn(0, pestanias.lastIndex)]
-            if (actual.id == SeccionesComunes.DATOS_PACIENTE) DatosPacienteSeccion(ui.paciente!!, def, ctx) else RenderSeccion(actual, ctx, registry, valores)
+            // Dentro de una pestaña, una sección sin datos en modo lectura muestra un aviso en lugar de desaparecer.
+            CompositionLocalProvider(LocalSeccionEnPestania provides true) {
+                if (actual.id == SeccionesComunes.DATOS_PACIENTE) DatosPacienteSeccion(ui.paciente!!, def, ctx) else RenderSeccion(actual, ctx, registry, valores)
+            }
         }
 
         // ---- secciones ----
@@ -163,8 +177,7 @@ fun ConsultaScreen(
         ActionRow {
             BackButton(onClick = onVolver)
             if (!soloLectura) {
-                TextButton(onClick = { mostrarPendiente = true }) { Text("Agregar pendiente") }
-                PillButton("Guardar y cerrar consulta", onClick = { confirmarCierre = true })
+                PillButton("Guardar y cerrar consulta", onClick = { mostrarCierre = true })
             } else {
                 AcceptButton("Reabrir para editar", onClick = { vm.reabrir() })
             }
@@ -172,29 +185,55 @@ fun ConsultaScreen(
         Spacer(Modifier.height(32.dp))
     }
 
-    if (confirmarCierre) ConfirmDialog(
-        "Cerrar consulta", "Al cerrar la consulta queda registrada en la historia clínica. Podés reabrirla después si necesitás corregir algo.",
-        onConfirm = { confirmarCierre = false; vm.cerrar(onCerrada) }, onDismiss = { confirmarCierre = false }, confirmText = "Cerrar consulta",
+    if (mostrarCierre) PendientesCierreDialog(
+        inicial = vm.textoPendientes(),
+        onConfirmar = { mostrarCierre = false; vm.cerrarConPendientes(it, onCerrada) },
+        onCancelar = { mostrarCierre = false },
     )
-    if (mostrarPendiente) PendienteDialog(onGuardar = { vm.agregarPendiente(it); mostrarPendiente = false }, onCancelar = { mostrarPendiente = false })
+    if (mostrarAviso) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { mostrarAviso = false },
+        title = { Text("Pendientes de la consulta anterior") },
+        text = { Column { pendientesPrevios.forEach { p -> p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") } } } },
+        confirmButton = { TextButton(onClick = { mostrarAviso = false }) { Text("Aceptar") } },
+    )
 }
 
+/**
+ * Al guardar la consulta se piden los pendientes para la próxima (como el modal de la web al tocar GUARDAR):
+ * el texto viene prellenado con los pendientes actuales; vacío significa que no queda nada pendiente.
+ */
 @Composable
-private fun PendienteDialog(onGuardar: (String) -> Unit, onCancelar: () -> Unit) {
-    var texto by remember { mutableStateOf("") }
+private fun PendientesCierreDialog(inicial: String, onConfirmar: (String) -> Unit, onCancelar: () -> Unit) {
+    var texto by remember(inicial) { mutableStateOf(inicial) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text("Pendiente para la próxima consulta") },
-        text = { TextAreaField("Esta información se recordará al abrir la próxima consulta", texto, { texto = it }, minLines = 4) },
-        confirmButton = { TextButton(onClick = { if (texto.isNotBlank()) onGuardar(texto) }) { Text("Guardar") } },
+        title = { Text("Pendientes para la próxima consulta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextAreaField("Pendientes", texto, { texto = it }, minLines = 4, placeholder = "Qué hay que recordar en la próxima consulta")
+                Text(
+                    "Se muestran al abrir la próxima consulta. Dejalo vacío si no hay pendientes. Al confirmar, la consulta queda cerrada en la historia clínica; podés reabrirla si necesitás corregir algo.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirmar(texto) }) { Text("Cerrar consulta") } },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
     )
 }
 
-/** Despacha cada sección al renderizador que corresponde a su tipo. */
+/** Despacha cada sección al renderizador que corresponde a su tipo y, debajo, sus [SeccionDef.subsecciones]. */
 @Composable
 fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>) {
     val ui by ctx.vm.ui.collectAsState()
+    RenderSeccionSola(s, ctx, registry, valores, ui)
+    s.subsecciones.mapNotNull { ui.definicion?.seccion(it) }.filter { ctx.vm.cumpleCondicion(it, ui) }.forEach { sub ->
+        RenderSeccionSola(sub, ctx, registry, valores, ui)
+    }
+}
+
+@Composable
+private fun RenderSeccionSola(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
         TipoSeccion.TEXTO -> TextoSeccion(s, ctx, valores[s.id] ?: emptyMap())
@@ -208,7 +247,7 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
         TipoSeccion.FORM_PACIENTE -> com.salud360.features.hc.secciones.FormPacienteSeccion(s, ctx)
         TipoSeccion.CUSTOM -> {
             val r = s.renderKey?.let { registry.renderer(it) }
-            if (r != null) r(s, ctx) else SectionCard(s.titulo) { Text("Sección no disponible: ${s.renderKey}", color = MaterialTheme.colorScheme.error) }
+            if (r != null) r(s, ctx) else SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "form")) { Text("Sección no disponible: ${s.renderKey}", color = MaterialTheme.colorScheme.error) }
         }
     }
 }

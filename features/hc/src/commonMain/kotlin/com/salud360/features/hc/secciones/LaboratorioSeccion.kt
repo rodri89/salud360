@@ -65,6 +65,7 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     var borrar by remember { mutableStateOf<Laboratorio?>(null) }
     val scroll = rememberScrollState()
 
+    if (ctx.soloLectura && enEstaConsulta == null) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida) {
         val columnas = historico.filter { it.id != enEstaConsulta?.id }.take(8)
         if (!ctx.soloLectura) ActionRow {

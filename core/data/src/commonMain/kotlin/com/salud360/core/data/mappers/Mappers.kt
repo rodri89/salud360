@@ -138,12 +138,14 @@ fun PacienteRow.toModel() = Paciente(
     nombreMadre = nombre_madre, telefonoMadre = telefono_madre, nombrePadre = nombre_padre, telefonoPadre = telefono_padre,
     cantidadHermanos = cantidad_hermanos?.toInt(), nombreFamiliar = nombre_familiar, telefonoFamiliar = telefono_familiar,
     fechaCastigo = fecha_castigo.toLocalDateOrNull(), afiliadoObligatorio = afiliado_obligatorio.b(), activo = activo.b(),
+    nota = nota,
 )
+// Los argumentos son POSICIONALES: `nota` va última porque es la última columna de la tabla (ver Pacientes.sq).
 fun Paciente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = PacienteRow(
     id, dni, nombre, apellido, sexo?.name, fechaNacimiento?.toString(), telefono, mail, domicilio, localidad, nacionalidad,
     obraSocial, numeroAfiliado, obraSocialPlan, obraSocialFoto, obraSocialOpcional, numeroAfiliadoOpcional, obraSocialPlanOpcional,
     nombreMadre, telefonoMadre, nombrePadre, telefonoPadre, cantidadHermanos?.toLong(), nombreFamiliar, telefonoFamiliar,
-    fechaCastigo?.toString(), afiliadoObligatorio.l(), activo.l(), updatedAt, deleted.l(), dirty.l(),
+    fechaCastigo?.toString(), afiliadoObligatorio.l(), activo.l(), updatedAt, deleted.l(), dirty.l(), nota,
 )
 
 fun PacienteExtraRow.toModel() = PacienteExtra(paciente_id, especialidad, clave, valor)

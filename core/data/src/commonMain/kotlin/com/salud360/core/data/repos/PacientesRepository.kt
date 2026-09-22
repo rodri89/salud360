@@ -69,6 +69,7 @@ class PacientesRepository(private val db: Salud360Db) {
             nombre = aGuardar.nombre.trim().uppercase(),
             apellido = aGuardar.apellido.trim().uppercase(),
             dni = aGuardar.dni.trim(),
+            nota = aGuardar.nota.trim(),
         )
         db.transaction {
             q.upsertPaciente(normalizado.toRow(ahoraMillis()))

@@ -15,8 +15,25 @@ import com.salud360.core.model.newId
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-/** Configuración del entorno (URL del servidor). */
-data class AppConfig(val apiBaseUrl: String)
+/**
+ * Configuración del entorno en el que corre la app.
+ *
+ * @param entorno "dev" (MAMP local) o "release" (producción).
+ * @param turnosUrl base de turnosonlinebb (identidad, agenda, pacientes); la API cuelga de `<turnosUrl>/api/salud360/`.
+ * @param hcUrls base de la API de cada historia clínica por código de especialidad (ej. "pediatria" → hc_pediatria).
+ * @param apiBaseUrl servidor de sincronización propio (Ktor, hoy no desplegado).
+ */
+data class AppConfig(
+    val entorno: String,
+    val turnosUrl: String,
+    val hcUrls: Map<String, String> = emptyMap(),
+    val apiBaseUrl: String = turnosUrl.trimEnd('/') + "/api/salud360",
+) {
+    val esDev: Boolean get() = entorno == "dev"
+
+    /** URL base de la API de una historia clínica, o null si esa especialidad todavía no tiene API configurada. */
+    fun hcUrl(codigoEspecialidad: String): String? = hcUrls[codigoEspecialidad]?.takeIf { it.isNotBlank() }
+}
 
 /**
  * Módulo Koin de la capa de datos.
@@ -28,7 +45,7 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
     single { db }
     single { Settings() }
     single { ApiClient(config.apiBaseUrl) }
-    single { TurnosOnlineClient() }
+    single { TurnosOnlineClient(config.turnosUrl) }
     single {
         val settings = get<Settings>()
         val id = settings.getStringOrNull("dispositivo_id") ?: newId().also { settings.putString("dispositivo_id", it) }

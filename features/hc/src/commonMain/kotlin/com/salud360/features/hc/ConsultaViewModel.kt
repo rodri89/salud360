@@ -126,10 +126,11 @@ class ConsultaViewModel(
         _valores.value = _valores.value + (seccion to ((_valores.value[seccion] ?: emptyMap()) + (campo to valor)))
         pendientesGuardar.getOrPut(seccion) { mutableMapOf() }[campo] = valor
         jobGuardar?.cancel()
-        jobGuardar = viewModelScope.launch { delay(600); guardarPendientes() }
+        jobGuardar = viewModelScope.launch { delay(600); flushValores() }
     }
 
-    suspend fun guardarPendientes() {
+    /** Escribe en la base los valores de sección que todavía están en memoria (autoguardado). */
+    suspend fun flushValores() {
         if (pendientesGuardar.isEmpty()) return
         val copia = pendientesGuardar.mapValues { it.value.toMap() }
         pendientesGuardar.clear()
@@ -213,12 +214,10 @@ class ConsultaViewModel(
 
     // ---- pendientes ----
 
-    fun agregarPendiente(texto: String) = viewModelScope.launch {
-        val c = ui.value.consulta ?: return@launch
-        hc.guardarPendiente(Pendiente(newId(), c.pacienteId, medicoId, texto, consultaId))
-    }
-
     fun resolverPendiente(p: Pendiente) = viewModelScope.launch { hc.guardarPendiente(p.copy(resuelto = true)) }
+
+    /** Texto actual de los pendientes del paciente (los no resueltos, uno por línea), para prellenar el cierre. */
+    fun textoPendientes(): String = ui.value.pendientes.joinToString("\n") { it.texto }.trim()
 
     // ---- ciclo de vida de la consulta ----
 
@@ -228,8 +227,19 @@ class ConsultaViewModel(
         hc.guardarConsulta(c.copy(fecha = fecha, edadMostrar = edad))
     }
 
-    fun cerrar(onCerrada: () -> Unit) = viewModelScope.launch {
-        guardarPendientes()
+    /**
+     * Cierra la consulta dejando `texto` como pendientes para la próxima (modelo de la web: un solo texto por
+     * paciente). Si el texto no cambió se conserva; si cambió, se resuelven los pendientes anteriores y, si no está
+     * vacío, se crea uno nuevo asociado a esta consulta.
+     */
+    fun cerrarConPendientes(texto: String, onCerrada: () -> Unit) = viewModelScope.launch {
+        val c = ui.value.consulta ?: return@launch
+        val nuevo = texto.trim()
+        if (nuevo != textoPendientes()) {
+            ui.value.pendientes.forEach { hc.guardarPendiente(it.copy(resuelto = true)) }
+            if (nuevo.isNotBlank()) hc.guardarPendiente(Pendiente(newId(), c.pacienteId, medicoId, nuevo, consultaId))
+        }
+        flushValores()
         hc.cerrarConsulta(consultaId)
         launch { sync.sincronizar() }
         onCerrada()
@@ -242,6 +252,9 @@ class ConsultaViewModel(
     /** Historial de un campo en consultas anteriores ("consultas previas"). */
     fun historial(seccion: String, campo: String) = ui.value.consulta?.let { c -> hc.observarHistorial(c.pacienteId, c.especialidad, seccion, campo) } ?: flowOf(emptyList())
 
+    /** Último valor de cada campo de la sección en las otras consultas del paciente (lo que se arrastra entre consultas). */
+    fun valoresPrevios(seccion: String) = ui.value.consulta?.let { c -> hc.observarUltimosValores(c.pacienteId, c.especialidad, seccion, consultaId) } ?: flowOf(emptyMap())
+
     fun examenesFisicos() = ui.value.consulta?.let { c -> hc.observarExamenesFisicos(c.pacienteId) } ?: flowOf(emptyList())
 
     /** Secciones visibles para la consulta según el tipo, la condición y las preferencias del médico. */
@@ -252,7 +265,7 @@ class ConsultaViewModel(
         return tipo.secciones.mapNotNull { def.seccion(it) }.filter { s -> s.id !in ocultas && cumpleCondicion(s, ui) }
     }
 
-    private fun cumpleCondicion(s: SeccionDef, ui: ConsultaUi): Boolean = when (val c = s.condicion) {
+    fun cumpleCondicion(s: SeccionDef, ui: ConsultaUi): Boolean = when (val c = s.condicion) {
         null -> true
         is com.salud360.core.model.especialidad.CondicionSeccion.SoloFemenino -> ui.paciente?.sexo?.name == "F"
         is com.salud360.core.model.especialidad.CondicionSeccion.SoloMasculino -> ui.paciente?.sexo?.name == "M"
@@ -260,7 +273,7 @@ class ConsultaViewModel(
         is com.salud360.core.model.especialidad.CondicionSeccion.EdadMinimaMeses -> (ui.edadMeses ?: Int.MAX_VALUE) >= c.meses
     }
 
-    override fun onCleared() { viewModelScope.launch { guardarPendientes() } }
+    override fun onCleared() { viewModelScope.launch { flushValores() } }
 }
 
 /** Lista de consultas de un paciente en una especialidad + apertura de una nueva. */

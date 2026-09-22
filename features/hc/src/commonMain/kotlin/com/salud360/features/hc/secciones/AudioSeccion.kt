@@ -63,6 +63,7 @@ fun AudioSeccion(s: SeccionDef, ctx: SeccionContext) {
         }
     }
 
+    if (ctx.soloLectura && grabaciones.isEmpty()) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = Icons.Default.Mic, initiallyExpanded = s.inicialmenteExpandida) {
         if (!recorder.disponible) Text("La grabación de audio no está disponible en este dispositivo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         else if (!ctx.soloLectura) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

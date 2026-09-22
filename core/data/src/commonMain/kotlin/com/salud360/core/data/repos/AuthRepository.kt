@@ -64,11 +64,15 @@ class AuthRepository(
         val fila = db.authQueries.sesionActual().uno { it }
         // Sin fila en la base (web recién cargada) se usa la copia de Settings y se vuelve a dejar en la base.
         val texto = fila?.sesion_json ?: settings?.getStringOrNull(CLAVE_SESION)?.takeIf { it.isNotBlank() } ?: return null
-        val s = runCatching { json.decodeFromString<Sesion>(texto) }.getOrNull() ?: return null
-        api.token = s.token
-        turnos.token = s.token
+        val guardada = runCatching { json.decodeFromString<Sesion>(texto) }.getOrNull() ?: return null
+        api.token = guardada.token
+        turnos.token = guardada.token
+        // El perfil se rearma desde la base: el administrador pudo dar de baja la licencia después del último ingreso,
+        // y la copia guardada en JSON todavía la tendría vigente.
+        val s = resolverPerfilLocal(guardada.usuario)?.copy(token = guardada.token) ?: guardada
+        if (s.licenciaBloqueada()) { logout(); return null }
         _sesion.value = s
-        if (fila == null) guardarSesion(s)
+        guardarSesion(s)
         refrescarPerfilRemoto(s)
         return _sesion.value
     }
@@ -77,6 +81,7 @@ class AuthRepository(
         val perfil = turnos.perfil() ?: return
         val usuario = importador.importar(perfil)
         val nueva = resolverPerfil(db, usuario)?.copy(token = actual.token) ?: return
+        if (nueva.licenciaBloqueada()) { logout(); return }
         guardarSesion(nueva)
     }
 
@@ -88,8 +93,11 @@ class AuthRepository(
                 val usuario = importador.importar(r.perfil)
                 val sesion = resolverPerfil(db, usuario)?.copy(token = r.token)
                     ?: return ResultadoLogin.Error("El usuario no tiene perfil asignado")
+                // El bloqueo va ANTES de guardar: `guardarSesion` publica en `sesion`, y la app navega al shell
+                // apenas deja de ser null, sin darle tiempo a la pantalla de ingreso a mostrar el aviso.
+                if (sesion.licenciaBloqueada()) { logout(); return ResultadoLogin.LicenciaVencida(sesion) }
                 guardarSesion(sesion)
-                return if (sesion.medico?.licenciaVencida() == true) ResultadoLogin.LicenciaVencida(sesion) else ResultadoLogin.Ok(sesion)
+                return ResultadoLogin.Ok(sesion)
             }
             is TurnosOnlineClient.ResultadoLogin.Rechazado -> return ResultadoLogin.CredencialesInvalidas
             is TurnosOnlineClient.ResultadoLogin.Error -> {
@@ -98,8 +106,9 @@ class AuthRepository(
                 if (previa != null) {
                     val s = runCatching { json.decodeFromString<Sesion>(previa.sesion_json) }.getOrNull()
                     if (s != null && s.usuario.email.equals(email, ignoreCase = true)) {
-                        // Se rearma el perfil desde la base local por si cambió (especialidades, consultorios)
+                        // Se rearma el perfil desde la base local por si cambió (especialidades, consultorios, licencia)
                         val actualizada = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: s
+                        if (actualizada.licenciaBloqueada()) { logout(); return ResultadoLogin.LicenciaVencida(actualizada) }
                         _sesion.value = actualizada
                         api.token = actualizada.token
                         turnos.token = actualizada.token
@@ -125,10 +134,14 @@ class AuthRepository(
         _sesion.value = null
     }
 
-    /** Refresca el perfil (por ejemplo tras una sincronización que trajo nuevas especialidades). */
+    /**
+     * Refresca el perfil (por ejemplo tras una sincronización que trajo nuevas especialidades).
+     * Si en el camino la licencia dejó de estar vigente, cierra la sesión.
+     */
     suspend fun refrescarPerfil() {
         val s = _sesion.value ?: return
         val nueva = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: return
+        if (nueva.licenciaBloqueada()) { logout(); return }
         guardarSesion(nueva)
     }
 
@@ -163,7 +176,10 @@ suspend fun resolverPerfil(db: Salud360Db, usuario: Usuario): Sesion? {
             val lic = q.licenciaPorMedico(m.id).uno { it.toModel() }
             Sesion(
                 usuario = usuario, token = "",
-                medico = PerfilMedico(m.id, m.especialidadesHc, m.tieneTurnos, m.consultorioId, lic?.fechaExpiracion, lic?.fechaAviso),
+                medico = PerfilMedico(
+                    m.id, m.especialidadesHc, m.tieneTurnos, m.consultorioId,
+                    lic?.fechaExpiracion, lic?.fechaAviso, licenciaActiva = lic?.activo ?: true,
+                ),
             )
         }
         Rol.SECRETARIA -> {
@@ -175,10 +191,19 @@ suspend fun resolverPerfil(db: Salud360Db, usuario: Usuario): Sesion? {
     }
 }
 
-private fun PerfilMedico.licenciaVencida(): Boolean {
+/**
+ * La licencia no está vigente: el administrador la dio de baja (falta de pago) o pasó la fecha de
+ * vencimiento. Un médico sin licencia cargada no queda bloqueado. Misma regla que muestra la
+ * pestaña Licencias de Administración.
+ */
+fun PerfilMedico.licenciaVencida(): Boolean {
+    if (!licenciaActiva) return true
     val venc = licenciaVence ?: return false
     return runCatching { kotlinx.datetime.LocalDate.parse(venc) < hoy() }.getOrDefault(false)
 }
+
+/** La sesión corresponde a un médico con la licencia caída: no puede entrar a la app. */
+fun Sesion.licenciaBloqueada(): Boolean = medico?.licenciaVencida() == true
 
 fun hoy(): kotlinx.datetime.LocalDate =
     kotlin.time.Clock.System.now().toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date

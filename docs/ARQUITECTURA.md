@@ -12,7 +12,7 @@ Salud 360 separa esas dos cosas:
    El módulo `features/hc` renderiza cualquier definición sin código específico.
 
 Así, la sección "Motivo de consulta" o "Exámenes complementarios" existe una sola vez y la usan
-todas las especialidades; y "Calendario de vacunas" existe solo en pediatría.
+todas las especialidades; y la tabla de "Desarrollo madurativo" existe solo en pediatría.
 
 ## Cómo se guarda una consulta
 
@@ -59,12 +59,52 @@ No hace falta tocar la base de datos ni el servidor.
 
 ## Roles y acceso
 
-- **Médico**: ve su agenda (si `tieneTurnos`) y sus pacientes; abre la historia clínica de cada
-  especialidad habilitada (`medico.especialidades_hc`). Si tiene dos, elige cuál al abrir la ficha.
-- **Secretaria**: elige consultorio y médico; opera agenda, pacientes, recetas y obras sociales.
+- **Médico**: ve su agenda (si `tieneTurnos`, es decir, si tiene consultorio en turnosonlinebb) y sus pacientes;
+  abre la historia clínica de cada especialidad habilitada (`medico.especialidades_hc`). Si tiene dos, elige cuál
+  al abrir la ficha.
+- **Secretaria**: elige consultorio y médico; opera agenda, pacientes, recetas y obras sociales, y abre las
+  historias clínicas habilitadas al médico elegido.
 - **Administrador**: usuarios, médicos, secretarias, consultorios, especialidades, feriados, licencias.
 
 La sesión se resuelve con `resolverPerfil` (misma función en app y servidor) a partir del mail.
+
+## Identidad y permisos: turnosonlinebb como identidad única
+
+Todos los usuarios de Salud 360 entran con su cuenta de **turnosonlinebb** (`POST /api/salud360/auth/login`),
+tengan o no agenda. Un médico puede tener agenda, historias clínicas o ambas:
+
+- **Agenda**: la tiene si turnosonlinebb le asignó consultorio (`consultorio_id` > 0 en el perfil).
+- **Historias clínicas**: el administrador de turnosonlinebb las habilita por médico en Administración → Médico →
+  "Historias clínicas Salud 360" (tabla `salud360_medico_hc`). El perfil de login las devuelve en
+  `medico.historias_clinicas` (`["pediatria", ...]`) y `TurnosImportador` las copia a `medico.especialidades_hc`.
+  Mientras la web no informe el campo, `TurnosImportador.FALLBACK_HC_POR_ESPECIALIDAD` deduce la HC del nombre de la
+  especialidad de turnos (Pediatría → `pediatria`); hay que ponerlo en `false` cuando la web esté desplegada.
+
+Antes, cada historia clínica tenía sus propios usuarios y guardaba el id del médico de turnos en
+`users.medico_id_tobb`. Ese campo se conserva, pero invertido: ahora es la forma en que cada sistema de HC
+reconoce al usuario que llega con el token de turnosonlinebb.
+
+## Fase siguiente: una API por historia clínica
+
+Cada historia clínica sigue viviendo en su propio Laravel (hc_pediatria, hclinica, ...). El plan es que cada uno
+exponga `/api/salud360/...` copiando el patrón de turnosonlinebb (`Api/Salud360/*`, `Salud360Cors`,
+`TokenService`), con una diferencia: no emite tokens propios. El middleware acepta el token de turnosonlinebb
+(`Authorization: Bearer` o `X-Salud360-Token`), lo valida con `GET https://turnosonlinebb.com/api/salud360/auth/perfil`
+(con caché por token) y resuelve el usuario local por `users.medico_id_tobb = perfil.medico.id`.
+
+En la app, `EspecialidadDefinition.apiBaseUrl` indica la URL de esa API. Con ella, cada especialidad tendrá un
+repositorio "API primero, caché local" como `AgendaTurnosOnline` (la base SQLite sigue siendo la caché y el modo
+sin conexión). Queda por decidir en esa fase si la API expone las tablas legacy de cada proyecto o tablas genéricas
+nuevas (`consulta`, `seccion_valor`, `examen_fisico`, ...) cargadas con un script de migración.
+
+## Percentilos y curvas de crecimiento
+
+`core/crecimiento` calcula percentilos y puntajes z con el método LMS sobre los patrones OMS 2006 (0-5 años) y la
+referencia OMS 2007 (5-19 años): peso, talla, perímetro cefálico e IMC por edad. Las tablas se generan con
+`tools/oms/generar_tablas.py`. En el examen físico de las especialidades con `conPercentilos` los percentilos se
+completan solos (si el paciente tiene fecha de nacimiento y sexo) y se pueden corregir a mano; la sección
+`curvas_crecimiento` (renderer del motor, disponible para cualquier especialidad) grafica los exámenes físicos
+históricos sobre las curvas P3-P97.
 
 ## Offline-first y sincronización
 
@@ -73,7 +113,10 @@ La sesión se resuelve con `resolverPerfil` (misma función en app y servidor) a
   trae los cambios de cada tabla desde la última versión conocida (`GET /sync/pull`).
 - Conflictos: última escritura gana por `updated_at`; para **turnos** el servidor rechaza un turno si
   el horario ya fue ocupado por otro dispositivo, y el cliente lo ve al sincronizar.
-- Web: la base vive en memoria (sql.js) mientras la pestaña está abierta y se recarga del servidor.
+- Web: la base corre en memoria (sql.js en un Web Worker) con una copia en IndexedDB del navegador que se
+  actualiza tras cada escritura (`composeApp/src/wasmJsMain/resources/sqljs-persistente.worker.js`), así
+  recargar la pestaña no pierde datos. Si cambia el esquema entre versiones, la copia se descarta y se recrea
+  (es una caché). Las rutas se reflejan en la URL (`#pacientes/…`), por lo que recargar vuelve a la misma pantalla.
   Android e iOS mantienen la base en el dispositivo.
 
 ## Agenda de turnos

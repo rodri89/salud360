@@ -13,6 +13,52 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// ---- Entorno (dev = MAMP local, release = producción) ----
+// Se genera `Entornos.kt` con las URLs de gradle.properties. Ver docs/DESPLIEGUE.md.
+val tareasPedidas = gradle.startParameter.taskNames.joinToString(" ").lowercase()
+val entornoElegido: String = (findProperty("entorno") as String?)?.trim()?.lowercase()
+    ?: if (Regex("developmentrun|debug|\\bdev|:dev").containsMatchIn(tareasPedidas)) "dev" else "release"
+require(entornoElegido == "dev" || entornoElegido == "release") { "-Pentorno debe ser dev o release (fue '$entornoElegido')" }
+val devHost: String = (findProperty("devHost") as String?)?.trim().orEmpty()
+
+fun propiedadEntorno(clave: String): String =
+    (findProperty("salud360.entorno.$entornoElegido.$clave") as String?)?.trim()
+        ?: error("Falta salud360.entorno.$entornoElegido.$clave en gradle.properties")
+
+val hcUrls: Map<String, String> = properties.keys.map { it.toString() }
+    .filter { it.startsWith("salud360.entorno.$entornoElegido.hc.") }
+    .associate { it.removePrefix("salud360.entorno.$entornoElegido.hc.") to propiedadEntorno("hc." + it.removePrefix("salud360.entorno.$entornoElegido.hc.")) }
+
+val dirEntorno = layout.buildDirectory.dir("generated/entorno/commonMain/kotlin")
+val generarEntorno by tasks.registering {
+    val salida = dirEntorno
+    val entorno = entornoElegido
+    val turnos = propiedadEntorno("turnos")
+    val hcs = hcUrls
+    val host = devHost
+    inputs.property("entorno", entorno); inputs.property("turnos", turnos); inputs.property("hcs", hcs); inputs.property("devHost", host)
+    outputs.dir(salida)
+    doLast {
+        val archivo = salida.get().file("com/salud360/app/Entornos.kt").asFile
+        archivo.parentFile.mkdirs()
+        archivo.writeText(
+            """
+            |package com.salud360.app
+            |
+            |/** Generado por Gradle a partir de gradle.properties (-Pentorno=$entorno). No editar a mano. */
+            |object Entornos {
+            |    const val ENTORNO = "$entorno"
+            |    const val TURNOS_URL = "$turnos"
+            |    /** Host local forzado con -PdevHost (vacío = el de cada plataforma). */
+            |    const val DEV_HOST = "$host"
+            |    val HC_URLS: Map<String, String> = mapOf(${hcs.entries.joinToString { "\"${it.key}\" to \"${it.value}\"" }})
+            |}
+            |""".trimMargin(),
+        )
+    }
+}
+logger.lifecycle("Salud 360: entorno '$entornoElegido' (turnos: ${propiedadEntorno("turnos")})")
+
 kotlin {
     jvmToolchain(17)
 
@@ -46,6 +92,7 @@ kotlin {
     }
 
     sourceSets {
+        commonMain { kotlin.srcDir(generarEntorno) }
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
@@ -84,3 +131,7 @@ kotlin {
         }
     }
 }
+
+// Atajos: `./gradlew devWeb` (contra MAMP local) y `./gradlew releaseWeb` (build de producción).
+tasks.register("devWeb") { group = "salud360"; description = "Web en http://localhost:8080 contra el MAMP local"; dependsOn("wasmJsBrowserDevelopmentRun") }
+tasks.register("releaseWeb") { group = "salud360"; description = "Build web de producción (composeApp/build/dist/wasmJs/productionExecutable)"; dependsOn("wasmJsBrowserDistribution") }

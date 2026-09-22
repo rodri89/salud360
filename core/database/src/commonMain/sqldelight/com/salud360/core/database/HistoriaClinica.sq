@@ -42,6 +42,14 @@ SELECT c.fecha, c.id AS consulta_id, sv.valor FROM seccion_valor sv
 JOIN consulta c ON c.id = sv.consulta_id
 WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.campo = ? AND sv.deleted = 0 AND c.deleted = 0 AND sv.valor != ''
 ORDER BY c.fecha DESC, c.updated_at DESC;
+-- Valores de una sección en las otras consultas del paciente, de la más nueva a la más vieja
+-- (para arrastrar entre consultas lo que pertenece al paciente, ej. los hitos del desarrollo madurativo).
+ultimosValoresDeSeccion:
+SELECT sv.campo, sv.valor FROM seccion_valor sv
+JOIN consulta c ON c.id = sv.consulta_id
+WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.consulta_id != ?
+  AND sv.deleted = 0 AND c.deleted = 0 AND c.estado != 'ANULADA'
+ORDER BY c.fecha DESC, c.updated_at DESC;
 upsertSeccionValor: INSERT OR REPLACE INTO seccion_valor VALUES ?;
 seccionValoresDirty: SELECT * FROM seccion_valor WHERE dirty = 1;
 limpiarSeccionValor: UPDATE seccion_valor SET dirty = 0 WHERE consulta_id = ? AND seccion = ? AND campo = ?;

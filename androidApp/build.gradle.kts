@@ -33,6 +33,10 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Atajos: `./gradlew devAndroid` instala el debug contra el MAMP local; `./gradlew releaseAndroid` arma el APK de producción.
+tasks.register("devAndroid") { group = "salud360"; description = "Instala el APK debug (entorno dev: MAMP local)"; dependsOn("installDebug") }
+tasks.register("releaseAndroid") { group = "salud360"; description = "APK release (entorno release: producción)"; dependsOn("assembleRelease") }
+
 dependencies {
     implementation(project(":composeApp"))
     implementation(libs.androidx.activity.compose)

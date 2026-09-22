@@ -5,6 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.network.CambiarPasswordRequest
 import com.salud360.core.data.network.CrearUsuarioRequest
+import com.salud360.core.data.repos.licenciaBloqueada
 import com.salud360.core.data.repos.resolverPerfil
 import com.salud360.core.data.uno
 import com.salud360.core.database.DriverFactory
@@ -144,6 +145,8 @@ fun Application.modulo(
                 return@post call.respond(HttpStatusCode.Unauthorized, "Credenciales inválidas")
             }
             val sesion = resolverPerfil(db, u) ?: return@post call.respond(HttpStatusCode.Forbidden, "El usuario no tiene perfil asignado")
+            // Médico con la licencia dada de baja o vencida: no se emite token.
+            if (sesion.licenciaBloqueada()) return@post call.respond(HttpStatusCode.Forbidden, "Licencia vencida. Comunicate con el administrador.")
             call.respond(sesion.copy(token = emitirToken(u)))
         }
 

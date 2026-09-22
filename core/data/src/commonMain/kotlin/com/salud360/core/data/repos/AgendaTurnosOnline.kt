@@ -20,6 +20,7 @@ import com.salud360.core.data.network.tobb.TobbMensajesResponse
 import com.salud360.core.data.network.tobb.TobbNuevoPaciente
 import com.salud360.core.data.network.tobb.TobbNuevoTurno
 import com.salud360.core.data.network.tobb.TobbPaciente
+import com.salud360.core.data.network.tobb.TobbPacienteEdicion
 import com.salud360.core.data.network.tobb.TobbPacienteResponse
 import com.salud360.core.data.network.tobb.TobbPacienteResumen
 import com.salud360.core.data.network.tobb.TobbPacientesResponse
@@ -429,22 +430,57 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
      * Id en turnosonlinebb de un paciente de la app. Si el paciente se creó en Salud 360 se lo da de alta en la
      * web (por DNI: si ya existe se reutiliza) y se recuerda el vínculo en `paciente_extra` (turnos / tobb_id).
      */
-    suspend fun pacienteTobbId(pacienteId: Id, medicoId: Id, consultorioId: Id): Long {
+    suspend fun pacienteTobbId(pacienteId: Id, medicoId: Id, consultorioId: Id?): Long {
+        idTobbConocido(pacienteId)?.let { return it }
+        return altaPacienteRemoto(pacienteId, medicoId, consultorioId)
+    }
+
+    /** Id del paciente en turnosonlinebb si ya se conoce: está en el propio id (`tobb-p…`) o en `paciente_extra`. */
+    private suspend fun idTobbConocido(pacienteId: Id): Long? {
         TobbIds.numero(pacienteId)?.let { return it }
-        pq.extrasDePaciente(pacienteId, EXTRA_TURNOS).lista { it.toModel() }.firstOrNull { it.clave == EXTRA_TOBB_ID }?.valor?.toLongOrNull()?.let { return it }
+        return pq.extrasDePaciente(pacienteId, EXTRA_TURNOS).lista { it.toModel() }
+            .firstOrNull { it.clave == EXTRA_TOBB_ID }?.valor?.toLongOrNull()
+    }
+
+    /** Ficha local del paciente con el DNI validado, que turnosonlinebb exige numérico. */
+    private suspend fun pacienteConDni(pacienteId: Id): Pair<Paciente, String> {
         val p = pq.pacientePorId(pacienteId).uno { it.toModel() } ?: throw TobbException(404, "paciente", "El paciente no existe en este dispositivo")
         val dni = p.dni.trim()
         if (dni.isEmpty() || !dni.all { it.isDigit() }) throw TobbException(422, "datos", "El paciente necesita un DNI numérico para registrarlo en turnosonlinebb")
+        return p to dni
+    }
+
+    /** Da de alta el paciente en la web (por DNI: si ya existe se reutiliza) y recuerda el vínculo en `paciente_extra`. */
+    private suspend fun altaPacienteRemoto(pacienteId: Id, medicoId: Id, consultorioId: Id?): Long {
+        val (p, dni) = pacienteConDni(pacienteId)
         val cuerpo = TobbNuevoPaciente(
-            medicoId = numeroMedico(medicoId), consultorioId = TobbIds.numero(consultorioId), dni = dni, nombre = p.nombre, apellido = p.apellido,
+            medicoId = numeroMedico(medicoId), consultorioId = consultorioId?.let { TobbIds.numero(it) }, dni = dni, nombre = p.nombre, apellido = p.apellido,
             telefono = p.telefono.ifBlank { null }, mail = p.mail.ifBlank { null }, fechaNacimiento = p.fechaNacimiento?.toString(),
             domicilio = p.domicilio.ifBlank { null }, localidad = p.localidad.ifBlank { null },
             obraSocial = p.obraSocial.ifBlank { null }, numeroAfiliado = p.numeroAfiliado.ifBlank { null }, obraSocialPlan = p.obraSocialPlan.ifBlank { null },
+            nota = p.nota.ifBlank { null },
         )
         val r = decodificar(TobbPacienteResponse.serializer(), turnos.tobbPost("pacientes", cuerpo(TobbNuevoPaciente.serializer(), cuerpo)))
         // dirty = true: el vínculo viaja por la sincronización normal a los demás dispositivos
         pq.upsertPacienteExtra(PacienteExtra(pacienteId, EXTRA_TURNOS, EXTRA_TOBB_ID, r.paciente.id.toString()).toRow(ahoraMillis(), dirty = true))
         return r.paciente.id
+    }
+
+    /**
+     * Guarda en turnosonlinebb la ficha que se acaba de editar en la app. Si el paciente ya existe allá se
+     * actualiza (`PUT pacientes/{id}`, que solo pisa los campos enviados); si no, se lo da de alta.
+     * Sin esto, lo que se edita en la app se pierde en cuanto la web vuelve a informar al paciente.
+     */
+    suspend fun guardarPacienteRemoto(pacienteId: Id, medicoId: Id, consultorioId: Id?) {
+        val id = idTobbConocido(pacienteId) ?: run { altaPacienteRemoto(pacienteId, medicoId, consultorioId); return }
+        val (p, dni) = pacienteConDni(pacienteId)
+        val cuerpo = TobbPacienteEdicion(
+            dni = dni, nombre = p.nombre, apellido = p.apellido, telefono = p.telefono, mail = p.mail,
+            domicilio = p.domicilio, localidad = p.localidad, obraSocial = p.obraSocial,
+            numeroAfiliado = p.numeroAfiliado, obraSocialPlan = p.obraSocialPlan, nota = p.nota,
+            fechaNacimiento = p.fechaNacimiento?.toString(),
+        )
+        turnos.tobbPut("pacientes/$id", cuerpo(TobbPacienteEdicion.serializer(), cuerpo))
     }
 
     private suspend fun pacienteBloqueo(): Long {
@@ -513,6 +549,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             fechaNacimiento = nuevo.fechaNacimiento ?: existente.fechaNacimiento,
             obraSocial = nuevo.obraSocial.ifBlank { existente.obraSocial }, numeroAfiliado = nuevo.numeroAfiliado.ifBlank { existente.numeroAfiliado },
             obraSocialPlan = nuevo.obraSocialPlan.ifBlank { existente.obraSocialPlan },
+            // La nota llega vacía mientras la web no exponga la columna: en ese caso se conserva la local.
+            nota = nuevo.nota.ifBlank { existente.nota },
         )
         pq.upsertPaciente(fusionado.toRow(ahora, dirty = false))
     }

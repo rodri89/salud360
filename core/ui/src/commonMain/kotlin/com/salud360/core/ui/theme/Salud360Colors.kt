@@ -60,6 +60,12 @@ object Salud360Colors {
     val TipoDeportologia = Color(0xFFEF6C00)
     val TipoConsultaEco = Color(0xFFC2185B)
 
+    // Nota interna del paciente (cartel bajo el nombre) y horario libre en la agenda del día
+    val NotaBg = Color(0xFFFDF3D8)
+    val NotaBgDark = Color(0xFF33290F)
+    val SlotLibreBg = Color(0xFFE6F6EA)
+    val SlotLibreBgDark = Color(0xFF17302A)
+
     // Modo oscuro (mejora visual: no existía en los proyectos originales)
     val DarkBackground = Color(0xFF0F1B1E)
     val DarkSurface = Color(0xFF16262B)

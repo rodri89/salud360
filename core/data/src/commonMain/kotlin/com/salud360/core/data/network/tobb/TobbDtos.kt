@@ -126,6 +126,8 @@ data class TobbPaciente(
     @SerialName("obra_social_plan") val obraSocialPlan: String? = null,
     @SerialName("afiliado_obligatorio") val afiliadoObligatorio: Int = 0,
     val activo: Int = 1,
+    /** Nota interna del consultorio; llega vacía mientras la web no exponga la columna. */
+    val nota: String? = null,
 )
 
 @Serializable
@@ -244,4 +246,26 @@ data class TobbNuevoPaciente(
     @SerialName("obra_social") val obraSocial: String? = null,
     @SerialName("numero_afiliado") val numeroAfiliado: String? = null,
     @SerialName("obra_social_plan") val obraSocialPlan: String? = null,
+    val nota: String? = null,
+)
+
+/**
+ * Cuerpo de `PUT pacientes/{id}`. El endpoint solo pisa los campos que recibe, y acá se mandan todos los
+ * que edita la ficha de la app (con cadena vacía incluida) para que borrar un dato también lo borre en la
+ * web. `fechaNacimiento` va nullable: sin fecha cargada no se toca la que tenga turnosonlinebb.
+ */
+@Serializable
+data class TobbPacienteEdicion(
+    val dni: String,
+    val nombre: String,
+    val apellido: String,
+    val telefono: String,
+    val mail: String,
+    val domicilio: String,
+    val localidad: String,
+    @SerialName("obra_social") val obraSocial: String,
+    @SerialName("numero_afiliado") val numeroAfiliado: String,
+    @SerialName("obra_social_plan") val obraSocialPlan: String,
+    val nota: String,
+    @SerialName("fecha_nacimiento") val fechaNacimiento: String? = null,
 )

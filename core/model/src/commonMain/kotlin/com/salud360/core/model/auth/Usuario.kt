@@ -44,6 +44,11 @@ data class PerfilMedico(
     val consultorioId: Id? = null,
     val licenciaVence: String? = null,
     val licenciaAviso: String? = null,
+    /**
+     * Licencia habilitada por el administrador. Se puede dar de baja (falta de pago) sin tocar la fecha
+     * de vencimiento, así que el bloqueo mira este flag además de [licenciaVence].
+     */
+    val licenciaActiva: Boolean = true,
 ) {
     val tieneHistoriaClinica: Boolean get() = especialidades.isNotEmpty()
 }

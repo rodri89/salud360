@@ -57,9 +57,18 @@ import kotlinx.coroutines.launch
 /** Sección de adjuntos (fotos de estudios, HC digitalizada, PDF). */
 @Composable
 fun ArchivosSeccion(s: SeccionDef, ctx: SeccionContext) {
+    val porPaciente = s.id == "familigrama"
+    if (ctx.soloLectura && !hayArchivos(s.id, ctx, porPaciente)) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "archivos"), initiallyExpanded = s.inicialmenteExpandida) {
-        ArchivosInline(s.id, ctx, porPaciente = s.id == "familigrama")
+        ArchivosInline(s.id, ctx, porPaciente = porPaciente)
     }
+}
+
+/** Si la sección tiene adjuntos (para decidir si se muestra en modo lectura sin pintar la galería). */
+@Composable
+fun hayArchivos(seccion: String, ctx: SeccionContext, porPaciente: Boolean = false): Boolean {
+    val archivos by ctx.vm.archivos(seccion, porPaciente).collectAsState(emptyList())
+    return archivos.isNotEmpty()
 }
 
 /** Galería + botón "Agregar" reutilizable dentro de cualquier sección. */

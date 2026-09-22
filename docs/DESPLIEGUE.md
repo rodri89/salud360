@@ -34,14 +34,45 @@ Con `TURNOS_API_URL=https://turnosonlinebb.com` el servidor:
 La API del lado de turnosonlinebb está documentada en `API_SALUD360.md` de ese repositorio
 (`rodri89/turnosonlinebb`). Sin `TURNOS_API_URL` la app funciona con agenda local únicamente.
 
-Prueba local:
+Prueba local del servidor Ktor (opcional, hoy la app no lo usa):
 
 ```bash
 PORT=8765 DB_PATH=test.db TURNOS_API_URL=https://turnosonlinebb.com ./gradlew :server:run
-./gradlew :composeApp:wasmJsBrowserDevelopmentRun   # abre http://localhost:8080 (usa http://localhost:8765)
 ```
 
-e ingresar con el mail y la contraseña de un médico o secretaria de turnosonlinebb.
+## Entornos: dev (MAMP local) y release (producción)
+
+La app se compila contra un entorno fijo. Las URLs están en `gradle.properties`
+(`salud360.entorno.dev.*` y `salud360.entorno.release.*`) y Gradle genera `Entornos.kt` en `composeApp` con ellas:
+
+| Entorno | turnosonlinebb | HC pediatría |
+|---|---|---|
+| `dev` | `http://{host}:8888/TurnosOnlineBB/TurnosImage/public/index.php` (MAMP) | `http://{host}:8888/HCPediatria/public_html/pediatria/HCDPediatria/public/index.php` |
+| `release` | `https://turnosonlinebb.com` | `https://hcpediatrica.com` |
+
+`{host}` se reemplaza en cada plataforma: `localhost` en web y simulador iOS, `10.0.2.2` en el emulador Android
+(así ve a la Mac), o lo que se pase con `-PdevHost=192.168.x.x` para probar en un teléfono físico contra la Mac
+(misma red Wi-Fi). El login muestra el entorno activo abajo del formulario.
+
+Comandos:
+
+```bash
+./gradlew devWeb            # web en http://localhost:8080 contra el MAMP local
+./gradlew releaseWeb        # build web de producción (composeApp/build/dist/wasmJs/productionExecutable)
+./gradlew devAndroid        # instala el APK debug en el emulador/teléfono, contra el MAMP local
+./gradlew releaseAndroid    # APK release contra producción
+./gradlew devAndroid -PdevHost=192.168.0.10   # teléfono físico: la Mac por su IP de la red
+```
+
+Sin decir nada, Gradle elige `dev` para las tareas de desarrollo (`*DevelopmentRun`, `*Debug`, `dev*`) y
+`release` para el resto. Para forzarlo: `-Pentorno=dev` o `-Pentorno=release` (por ejemplo,
+`./gradlew :composeApp:wasmJsBrowserDevelopmentRun -Pentorno=release` prueba la web local contra producción).
+El deploy por GitHub Actions corre `wasmJsBrowserDistribution`, es decir `release`.
+
+Requisitos del MAMP para `dev`: Apache en 8888 y MySQL en 8889 levantados, y la API de turnos respondiendo en
+`http://localhost:8888/TurnosOnlineBB/TurnosImage/public/index.php/api/salud360/auth/login` (el `index.php` va en
+la URL porque el `public/` local no tiene `.htaccess`). Como la sesión se guarda en el dispositivo, al cambiar de
+entorno en un mismo dispositivo conviene cerrar sesión y volver a entrar.
 
 ## Web (Compose para Web / Wasm)
 
@@ -56,13 +87,14 @@ subdominio (`salud360.turnosonlinebb.com` → `domains/turnosonlinebb.com/public
 todo el contenido de `productionExecutable` **menos** los `*.map`:
 
 - `index.html`, `salud360.js`, `salud360.js.LICENSE.txt`
-- todos los `*.wasm` (la app y `sql-wasm.wasm` de la base local)
+- todos los `*.wasm` (la app y `sql-wasm.wasm` de la base local), más `sql-wasm.js` y `sqljs-persistente.worker.js`
+  (motor y worker de la base local, con copia persistente en IndexedDB)
 - los chunks `*.js` numerados (el worker de la base)
 - la carpeta `composeResources`
 - `.htaccess` (tipo MIME de `.wasm`, compresión y caché; viene de `composeApp/src/wasmJsMain/resources`)
 
 El subdominio tiene que servirse por HTTPS (la API de turnosonlinebb es HTTPS y el navegador bloquea
-contenido mixto). Fuera de `localhost` la app usa `API_BASE_URL_DEFAULT` (turnosonlinebb.com), así que no
+contenido mixto). El build de producción se compila con el entorno `release` (turnosonlinebb.com), así que no
 hay nada que configurar; las fotos y la API ya aceptan pedidos desde otro origen (middleware `Salud360Cors`).
 Para actualizar, volver a generar el paquete y reemplazar los archivos: los `.wasm` cambian de nombre en cada
 build (hash), así que conviene borrar los viejos.
@@ -89,8 +121,8 @@ borra en el servidor los `.wasm` viejos (cambian de nombre en cada build). Los `
 ```
 
 Servir esa carpeta como sitio estático (por ejemplo `app.turnosonlinebb.com`). Requiere navegadores
-con soporte de WasmGC (Chrome/Edge 119+, Firefox 120+, Safari 18.2+). Cambiar `API_BASE_URL_DEFAULT`
-en `AppDi.kt` antes de compilar.
+con soporte de WasmGC (Chrome/Edge 119+, Firefox 120+, Safari 18.2+). Compilar con `./gradlew releaseWeb`
+(entorno `release`; las URLs salen de `gradle.properties`).
 
 ## Android
 
