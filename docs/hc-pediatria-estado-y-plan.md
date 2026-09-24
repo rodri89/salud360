@@ -127,13 +127,15 @@ Ninguno salió al compilar; todos al probar:
 
 ### Repo de pediatría (`/Applications/MAMP/htdocs/HCPediatria/public_html/pediatria/HCDPediatria`)
 
-En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Todavía no está en producción, a
-propósito**: el paso 3 explica en qué orden va.
+En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Desde el 2026-09-24 está en
+producción**, subida por fuera de git; el paso 3 dice qué se verificó y qué falta.
 
 > **Ojo:** el commit de la fase 3 (`api salud360: fase 3, las fotos y los archivos adjuntos`) está
-> hecho y probado, pero **sin pushear**. Vive en el clon de `C:\Users\flor\hc_pediatria`, un commit
-> por delante de `origin/salud360-api`, y se sube con `git push origin salud360-api` desde ahí. Por
-> las dudas quedó también como parche en `C:\Users\flor\hc_pediatria-fase3.patch`.
+> hecho, probado y **corriendo en producción, pero sin pushear**. O sea que el servidor tiene código
+> que no está en el repositorio, y cualquiera que clone la rama no ve las fotos. Vive en el clon de
+> `C:\Users\flor\hc_pediatria`, un commit por delante de `origin/salud360-api`, y se sube con
+> `git push origin salud360-api` desde ahí. Por las dudas quedó también como parche en
+> `C:\Users\flor\hc_pediatria-fase3.patch`.
 >
 > La copia que sirve Apache (`C:\xampp\htdocs\HCDPediatria-salud360`) es otra: al tocar el backend
 > hay que copiar el archivo cambiado a las dos, o la prueba corre contra código viejo.
@@ -404,12 +406,31 @@ conviene renombrarlo alguna vez, pero no mientras se dan de alta médicos.
 
 ### Paso 3: subir a producción, en este orden
 
-1. Commitear y subir el repo de pediatría.
-2. `php artisan config:clear` en el servidor.
-3. Correr las dos sentencias del paso 2 contra las bases de producción, y revisar el resultado: el
-   cruce por mail puede resolver más o menos médicos que en la copia local.
-4. Probar con curl contra producción los mismos casos que en local.
-5. Recién ahí desplegar la app.
+**El backend ya está arriba, desde el 2026-09-24.** Se subieron los 18 archivos de la API (las tres
+fases) y se corrió a mano el equivalente de la migración, porque en ese hosting `artisan migrate`
+falla con migraciones viejas sin registrar.
+
+Verificado contra `pediatria.hclinicadigital.com` sin credenciales, que es lo que se puede comprobar
+sin escribir nada:
+
+| Qué se pidió | Qué contestó |
+|---|---|
+| `auth/perfil` sin token | `401 {"ok":false,"codigo":"sin_token"}`, o sea el contrato propio y no un error genérico |
+| `consultas/1/fotos` y `fotos/consulta/1/archivo` | 401, no 404: **las rutas de la fase 3 están publicadas** |
+| una ruta inventada | 404, que es el control de que el enrutador distingue |
+| preflight `OPTIONS` de subida de fotos | 204 con `POST` permitido y `X-Salud360-Token` entre los encabezados |
+
+Lo que queda:
+
+1. **Pushear el repo de pediatría.** Los archivos se subieron al servidor por fuera de git, así que
+   **producción tiene código que no está en el repositorio**. El commit espera en el clon de
+   `C:\Users\flor\hc_pediatria`.
+2. Correr las dos sentencias del paso 2 contra las bases de producción, y revisar el resultado: el
+   cruce por mail puede resolver más o menos médicos que en la copia local. **Todavía sin hacer**:
+   sin eso, ningún médico entra, porque le falta alguno de los dos interruptores.
+3. Probar con un token de verdad, que es lo único que no se puede comprobar sin escribir en la base
+   de turnos: una fila en `salud360_tokens`, o directamente el ingreso de un médico desde la app.
+4. Recién ahí desplegar la app.
 
 Si se despliega la app primero no se rompe nada: todo se guarda igual en el dispositivo y queda
 pendiente de envío, pero se ven avisos de que no se pudo enviar.
