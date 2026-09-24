@@ -1,7 +1,7 @@
 # Historia clínica de pediatría contra su propia base: estado y plan
 
 Documento de continuidad. Lo que sigue alcanza para retomar sin el historial de la conversación
-donde se hizo. Última actualización: 2026-09-24 (fase 3 escrita; fases 1 y 2 terminadas y verificadas).
+donde se hizo. Última actualización: 2026-09-24 (fases 1, 2 y 3 terminadas y verificadas).
 
 ## Qué se está haciendo y por qué
 
@@ -65,11 +65,13 @@ y llegan a las tablas que lee la web las secciones de texto, el examen físico, 
 el desarrollo madurativo y las cuatro listas, con su alta, su modificación y su baja. Lo único que
 queda afuera de la prueba es la pantalla.
 
-**La fase 3, los archivos, está escrita pero todavía no se probó contra una API de verdad.** Compila
-de los dos lados —la app en Android, web, servidor y `jvmTest`; el backend pasa `php -l`— y la prueba
-de punta a punta ya manda dos adjuntos, los relee de la galería y los baja. Falta correrla: en la
-máquina donde se escribió no hay ni base `hc_pediatrica` ni el Laravel de pediatría levantado (ver
-"Dónde se puede probar cada cosa"). Es lo primero a hacer al volver a una máquina con el entorno.
+**La fase 3, los archivos, también anda de punta a punta.** `HcPediatriaE2ETest` manda dos adjuntos
+—uno de la consulta y otro colgado de un examen complementario—, los encuentra en la galería y los
+vuelve a bajar. Verificado el 2026-09-24 contra el XAMPP de la máquina de Windows, con las bases de
+producción restauradas: las dos filas quedaron en `consulta_fotos` y en
+`examenes_complementarios_fotos`, con la foto en `public/img/<usuario>/<carpeta>/`, y la imagen de
+8×8 píxeles de la prueba **no** se agrandó, o sea que el redimensionado respeta la proporción.
+Lo único que queda afuera de la prueba, igual que en las fases anteriores, es la pantalla.
 
 Cómo correrla (se saltea sola si no se le pasan las propiedades, así el `jvmTest` de siempre no
 necesita servidor):
@@ -114,6 +116,10 @@ Ninguno salió al compilar; todos al probar:
 5. **Las secciones que pediatría ignora pasaban en silencio.** La API contesta `desconocidas` con las
    secciones que todavía no traduce (todas las estructuradas, que son fase 2) y la app no lo miraba.
    Ahora queda en el log. Ojo: igual se marcan como enviadas, ver la nota de la fase 2.
+6. **Un privado tapando a un protegido tumbaba la API entera.** Al mover `atiende` a la clase base
+   quedó la copia privada de `PacienteController`, y eso en PHP no es un aviso sino un error fatal:
+   toda la API respondía 500. No lo agarró `php -l`, que mira un archivo por vez y no la herencia;
+   lo agarró la prueba de punta a punta en el primer pedido.
 
 ---
 
@@ -125,9 +131,12 @@ En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Todavía no es
 propósito**: el paso 3 explica en qué orden va.
 
 > **Ojo:** el commit de la fase 3 (`api salud360: fase 3, las fotos y los archivos adjuntos`) está
-> hecho pero **sin pushear**, porque el push se hizo desde un clon temporal y quedó bloqueado. Quedó
-> guardado como parche en `C:\Users\flor\hc_pediatria-fase3.patch`: se aplica con
-> `git am < hc_pediatria-fase3.patch` sobre `salud360-api` y recién entonces se pushea.
+> hecho y probado, pero **sin pushear**. Vive en el clon de `C:\Users\flor\hc_pediatria`, un commit
+> por delante de `origin/salud360-api`, y se sube con `git push origin salud360-api` desde ahí. Por
+> las dudas quedó también como parche en `C:\Users\flor\hc_pediatria-fase3.patch`.
+>
+> La copia que sirve Apache (`C:\xampp\htdocs\HCDPediatria-salud360`) es otra: al tocar el backend
+> hay que copiar el archivo cambiado a las dos, o la prueba corre contra código viejo.
 
 | Nuevos | |
 |---|---|
@@ -172,16 +181,45 @@ Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRe
 **Importante:** en desarrollo la app apunta al **MAMP**, no a producción. Por eso se puede probar todo
 sin subir nada. `pediatria.hclinicadigital.com` solo se usa al compilar para producción.
 
-### Dónde se puede probar cada cosa
+### El entorno de la máquina de Windows (XAMPP)
 
-El entorno completo está en la máquina del MAMP. En la de Windows con XAMPP **no**: hay `tobb` (sin las
-tablas `salud360_*`) y una copia vieja de `HCDPediatria` sin la rama `salud360-api`, pero **no existe la
-base `hc_pediatrica`** ni hay un dump para armarla. Ahí se puede escribir código y compilarlo, y nada más:
-ni la prueba de punta a punta ni la verificación desde la pantalla.
+Armado el 2026-09-24 a partir de dos volcados de producción. Sirve para correr la prueba de punta a
+punta; la app se compila igual sin nada de esto.
 
-La URL de desarrollo (`gradle.properties`) es la del MAMP, con su puerto 8888 y su ruta. En XAMPP el
-mismo Laravel quedaría en el puerto 80 y con otra ruta, así que para trabajar en Windows hay que cambiar
-esa línea **además** de restaurar la base.
+| Qué | Dónde |
+|---|---|
+| Bases | `hc_pediatrica` y `turnosonlinebb`, restauradas en el MySQL del XAMPP |
+| Volcados | `bd_test/`, ignorado por git: **son copias con datos reales** |
+| Laravel de pediatría | `C:\xampp\htdocs\HCDPediatria-salud360`, copia de la rama `salud360-api` |
+| Clon para commitear | `C:\Users\flor\hc_pediatria` |
+| URL de la API | `http://localhost/HCDPediatria-salud360/public/index.php` |
+
+Cuatro cosas para entenderlo:
+
+- **La copia vieja `htdocs/HCDPediatria` no se tocó**: tiene cambios sin commitear y apunta a otro
+  repositorio. Por eso el directorio nuevo va aparte. Su `vendor/` se copió, no se enlazó: con un
+  enlace, el autocargador de Composer resuelve la ruta real y busca las clases en el directorio viejo.
+- **Turnos no se consulta desde esta máquina.** `SALUD360_TOBB_URL` apunta a un puerto muerto a
+  propósito, para que ningún pedido salga a producción. La sesión vale igual porque hay una fila
+  sembrada en `salud360_token_cache`, que es el camino que la API ya usa cuando turnos no responde.
+  El token en claro es `salud360-prueba-fase3` y corresponde al usuario 2 de pediatría (médico 1 de
+  turnos). **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
+- **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
+  historia clínica real.
+- **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
+  máquina. La prueba recibe la URL por parámetro. Para levantar la app entera en Windows sí habría
+  que cambiar esa línea.
+
+Cómo se corre acá:
+
+```
+./gradlew :core:data:jvmTest --rerun --tests '*HcPediatriaE2ETest*' \
+  -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
+  -Psalud360.test.hc.token=salud360-prueba-fase3
+```
+
+**Cuando terminemos, borrar las dos bases y `bd_test/`**: son pacientes, contraseñas y credenciales
+de cobro reales en un MySQL sin contraseña.
 
 ```
 dev     → http://{host}:8888/HCPediatria/public_html/pediatria/HCDPediatria/public/index.php
@@ -422,7 +460,7 @@ Las de columnas fijas están declaradas en `SeccionesService::FORMULARIOS` y las
 
 ### Paso 5: fase 3, los archivos
 
-**Escrita, sin probar contra la API.** Los adjuntos ya existían enteros en la app —tabla `archivo`,
+**Terminada y probada de punta a punta.** Los adjuntos ya existían enteros en la app —tabla `archivo`,
 galería, cámara, almacenamiento por plataforma— pero solo subían al servidor propio de Salud 360, que
 no está desplegado. Ahora van a las galerías de pediatría, que son las que muestra la web.
 
@@ -456,7 +494,7 @@ Cinco cosas para entenderlas:
   paciente, y no por su URL pública: `public/img/` lo abre cualquiera que tenga el enlace. La URL
   pública igual viene en la respuesta, porque es la que usa la web.
 
-Lo que queda de la fase 3: correr `HcPediatriaE2ETest` con el entorno levantado, y después probarlo
+Lo que queda de la fase 3: probarlo
 desde la pantalla, que es lo mismo que le falta a las fases 1 y 2 (paso 1).
 
 ### Paso 6: fase 4
