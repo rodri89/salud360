@@ -191,9 +191,9 @@ fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especia
 fun Laboratorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     LaboratorioRow(id, pacienteId, consultaId, especialidad, tipo, fecha.toString(), valores.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l())
 
-fun ArchivoRow.toModel() = Archivo(id, paciente_id, consulta_id, registro_id, seccion, nombre, mime, tamanio_bytes, duracion_ms, ruta_local, url_remota, subido.b(), activo.b())
+fun ArchivoRow.toModel() = Archivo(id, paciente_id, consulta_id, registro_id, seccion, nombre, mime, tamanio_bytes, duracion_ms, ruta_local, url_remota, subido.b(), activo.b(), remoto_id)
 fun Archivo.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    ArchivoRow(id, pacienteId, consultaId, registroId, seccion, nombre, mime, tamanioBytes, duracionMs, rutaLocal, urlRemota, subido.l(), activo.l(), updatedAt, deleted.l(), dirty.l())
+    ArchivoRow(id, pacienteId, consultaId, registroId, seccion, nombre, mime, tamanioBytes, duracionMs, rutaLocal, urlRemota, subido.l(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun PendienteRow.toModel() = Pendiente(id, paciente_id, medico_id, texto, consulta_id, resuelto.b())
 fun Pendiente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =

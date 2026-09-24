@@ -182,7 +182,12 @@ CREATE TABLE archivo (
     activo INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    -- Id de este adjunto en la API de la especialidad (ej. hc_pediatria). Vacío mientras no se subió.
+    -- `subido` y `url_remota` son del servidor propio de Salud 360, que es otro camino: sin este
+    -- vínculo, el segundo envío subiría la misma foto de nuevo. Va última porque el upsert es
+    -- posicional (ver migración 5.sqm).
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX archivo_paciente ON archivo(paciente_id, seccion);
 
@@ -194,6 +199,16 @@ archivoPorId: SELECT * FROM archivo WHERE id = ?;
 upsertArchivo: INSERT OR REPLACE INTO archivo VALUES ?;
 archivosDirty: SELECT * FROM archivo WHERE dirty = 1;
 limpiarArchivo: UPDATE archivo SET dirty = 0 WHERE id = ?;
+
+-- Adjuntos que le faltan a la API de la especialidad. Los de una sección "por paciente" (el
+-- familigrama, los antecedentes) no llevan consulta, así que se mandan con la consulta abierta como
+-- contexto: la API la usa para saber de qué paciente es y si el médico puede escribirla.
+archivosPendientesDeConsulta:
+SELECT * FROM archivo
+WHERE dirty = 1 AND deleted = 0
+  AND (consulta_id = :consultaId OR (consulta_id IS NULL AND paciente_id = :pacienteId))
+ORDER BY updated_at ASC;
+guardarRemotoIdArchivo: UPDATE archivo SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE pendiente (
     id TEXT NOT NULL PRIMARY KEY,

@@ -161,6 +161,8 @@ data class Archivo(
     val urlRemota: String? = null,
     val subido: Boolean = false,
     val activo: Boolean = true,
+    /** Id de este adjunto en la API de la especialidad. Vacío mientras no se subió. */
+    val remotoId: String = "",
 ) {
     val esImagen: Boolean get() = mime.startsWith("image/")
     val esAudio: Boolean get() = mime.startsWith("audio/")

@@ -23,6 +23,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.ExamenFisico
@@ -30,6 +31,7 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import com.salud360.core.model.newId
 import com.salud360.core.model.pacientes.PacienteExtra
+import io.ktor.http.HttpMethod
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -295,6 +297,69 @@ class HcPediatriaBackend(
         )
     }
 
+    // ------------------------------------------------------------------
+    // Archivos adjuntos
+    // ------------------------------------------------------------------
+
+    override suspend fun subirArchivo(remotoId: String, archivo: Archivo, bytes: ByteArray): String? {
+        val tipo = tipoDeArchivo(archivo) ?: run {
+            log.w { "pediatría no acepta adjuntos en '${archivo.seccion}': la foto queda solo en el dispositivo" }
+            return null
+        }
+        val campos = mutableMapOf("tipo" to tipo, "ref" to archivo.id)
+        // Las fotos de una lista cuelgan de su fila, que tiene que estar del otro lado primero. El
+        // motor manda los registros antes que los archivos, así que si falta es que ese envío falló.
+        if (tipo in TIPOS_DE_REGISTRO) {
+            val padre = archivo.registroId?.let { hq.registroPorId(it).uno { r -> r.remoto_id } }.orEmpty()
+            if (padre.isBlank()) {
+                throw TobbException(0, "padre_sin_enviar", "La fila de la que cuelga el adjunto todavía no llegó a pediatría")
+            }
+            campos["padre_id"] = padre
+        }
+        val r = api.subir("consultas/$remotoId/fotos", campos, archivo.nombre, archivo.mime, bytes)
+        return api.leerOpcional(SERIALIZER_CAMPOS, r, "ids")?.get(archivo.id)
+    }
+
+    override suspend fun borrarArchivo(remotoId: String, archivo: Archivo) {
+        val tipo = tipoDeArchivo(archivo) ?: return
+        if (archivo.remotoId.isBlank()) return
+        api.pedir(
+            HttpMethod.Delete,
+            "fotos/$tipo/${archivo.remotoId}",
+            mapOf("consulta_id" to remotoId),
+        )
+    }
+
+    override suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray? {
+        val tipo = tipoDeArchivo(archivo) ?: return null
+        if (archivo.remotoId.isBlank()) return null
+        return runCatching {
+            api.descargar("fotos/$tipo/${archivo.remotoId}/archivo", mapOf("consulta_id" to remotoId))
+        }.getOrElse {
+            log.w(it) { "no se pudo bajar el adjunto ${archivo.nombre}" }
+            null
+        }
+    }
+
+    /**
+     * A qué galería de pediatría va este adjunto, o null si esa sección no tiene dónde guardarlo.
+     *
+     * Los que cuelgan de una lista van por el tipo de la fila; los demás, por la sección. Todo lo que
+     * no tiene tabla propia (evolución, documentos, la historia clínica digitalizada) cae en las fotos
+     * de la consulta, que es donde la web las muestra.
+     */
+    private suspend fun tipoDeArchivo(archivo: Archivo): String? {
+        archivo.registroId?.let { id ->
+            val tipo = hq.registroPorId(id).uno { it.tipo } ?: return null
+            return if (tipo in TIPOS_DE_REGISTRO) tipo else null
+        }
+        return when (archivo.seccion) {
+            "neonatales" -> "neonatales"
+            "familigrama" -> "familigrama"
+            else -> "consulta"
+        }
+    }
+
     companion object {
         private val SERIALIZER_CAMPOS = MapSerializer(String.serializer(), String.serializer())
         private val SERIALIZER_SECCIONES = MapSerializer(String.serializer(), SERIALIZER_CAMPOS)
@@ -302,6 +367,9 @@ class HcPediatriaBackend(
 
         /** Clave de `paciente_extra` donde se guarda el id del paciente en la historia clínica. */
         const val EXTRA_HC_PACIENTE_ID = "hc_paciente_id"
+
+        /** Listas cuyas filas aceptan adjuntos: la foto cuelga de la fila, no de la consulta. */
+        val TIPOS_DE_REGISTRO = setOf("examen_complementario", "internacion")
 
         /** Secciones que en realidad son antecedentes del paciente: id de sección => categoría. */
         val CATEGORIAS = mapOf(

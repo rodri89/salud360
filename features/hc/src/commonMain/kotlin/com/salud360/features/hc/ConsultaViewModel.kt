@@ -228,6 +228,7 @@ class ConsultaViewModel(
         val ruta = archivos.guardar(id, nombre, bytes)
         hc.guardarArchivo(Archivo(id, c.pacienteId, if (porPaciente) null else c.id, registroId, seccion, nombre, mimeDe(nombre), bytes.size.toLong(), duracionMs, ruta))
         launch { sync.sincronizar() }
+        hcApi.marcarSucia(consultaId)
     }
 
     suspend fun bytesDe(archivo: Archivo): ByteArray? {
@@ -236,7 +237,10 @@ class ConsultaViewModel(
         return archivos.leer(ruta)
     }
 
-    fun eliminarArchivo(id: Id) = viewModelScope.launch { hc.eliminarArchivo(id) }
+    fun eliminarArchivo(id: Id) = viewModelScope.launch {
+        hc.eliminarArchivo(id)
+        hcApi.marcarSucia(consultaId)
+    }
 
     // ---- diagnósticos ----
 

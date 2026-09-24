@@ -2,16 +2,24 @@ package com.salud360.core.data.network.hc
 
 import com.salud360.core.data.network.TobbException
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.get
+import io.ktor.client.request.post
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
@@ -91,6 +99,10 @@ class HcApiClient(
             // En web el fallo de red llega como kotlin.Error, que no hereda de Exception.
             throw TobbException(0, "red", "Sin conexión con la historia clínica de $especialidad: ${e.message ?: "error de red"}")
         }
+        return interpretar(r)
+    }
+
+    private suspend fun interpretar(r: HttpResponse): JsonObject {
         val texto = runCatching { r.bodyAsText() }.getOrDefault("")
         val obj = runCatching { json.parseToJsonElement(texto).jsonObject }.getOrNull()
         val ok = obj?.get("ok")?.jsonPrimitive?.booleanOrNull
@@ -101,6 +113,70 @@ class HcApiClient(
             throw TobbException(r.status.value, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje)
         }
         return obj
+    }
+
+    /**
+     * Sube un archivo en multiparte. Un archivo por pedido: el médico saca la foto en el consultorio,
+     * donde la señal es mala, y si se corta a la mitad se reintenta ese y no los diez de la consulta.
+     *
+     * Lleva su propio tiempo de espera, más largo que el de los pedidos de texto: una foto de teléfono
+     * por una conexión de datos no entra en treinta segundos.
+     */
+    suspend fun subir(
+        ruta: String,
+        campos: Map<String, String>,
+        nombre: String,
+        mime: String,
+        bytes: ByteArray,
+    ): JsonObject {
+        val r = try {
+            http.post(base + ruta.trimStart('/')) {
+                auth(this)
+                accept(ContentType.Application.Json)
+                timeout { requestTimeoutMillis = ESPERA_ARCHIVO_MS }
+                setBody(
+                    MultiPartFormDataContent(
+                        formData {
+                            campos.forEach { (k, v) -> append(k, v) }
+                            append("archivo", bytes, Headers.build {
+                                append(HttpHeaders.ContentType, mime)
+                                append(HttpHeaders.ContentDisposition, "filename=\"$nombre\"")
+                            })
+                        },
+                    ),
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            throw TobbException(0, "red", "No se pudo subir el archivo a $especialidad: ${e.message ?: "error de red"}")
+        }
+        return interpretar(r)
+    }
+
+    /**
+     * Baja un archivo ya subido. La API lo sirve comprobando de quién es el paciente, en vez de dejarlo
+     * colgado de una URL pública que abre cualquiera con el enlace.
+     *
+     * Si en lugar del archivo llega un JSON, es un error de la API: se interpreta como tal.
+     */
+    suspend fun descargar(ruta: String, params: Map<String, Any?> = emptyMap()): ByteArray {
+        val r = try {
+            http.get(base + ruta.trimStart('/')) {
+                auth(this)
+                timeout { requestTimeoutMillis = ESPERA_ARCHIVO_MS }
+                params.forEach { (k, v) -> if (v != null) parameter(k, v) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            throw TobbException(0, "red", "No se pudo bajar el archivo de $especialidad: ${e.message ?: "error de red"}")
+        }
+        if (!r.status.isSuccess() || r.contentType()?.match(ContentType.Application.Json) == true) {
+            interpretar(r)
+            throw TobbException(r.status.value, "respuesta", "$especialidad devolvió una respuesta en vez del archivo")
+        }
+        return r.body()
     }
 
     suspend fun get(ruta: String, params: Map<String, Any?> = emptyMap()): JsonObject = pedir(HttpMethod.Get, ruta, params)
@@ -118,5 +194,10 @@ class HcApiClient(
     fun <T> leerOpcional(serializer: KSerializer<T>, obj: JsonObject, clave: String): T? {
         val el = obj[clave] ?: return null
         return runCatching { json.decodeFromJsonElement(serializer, el) }.getOrNull()
+    }
+
+    private companion object {
+        /** Subir o bajar una foto por datos móviles no entra en los treinta segundos de un pedido normal. */
+        const val ESPERA_ARCHIVO_MS = 120_000L
     }
 }

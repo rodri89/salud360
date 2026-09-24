@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.hc.HcApiClient
@@ -11,6 +12,7 @@ import com.salud360.core.data.uno
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.createDatabase
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.ExamenFisico
@@ -26,7 +28,12 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -69,7 +76,8 @@ class HcPediatriaE2ETest {
             val db = createDatabase(DriverFactory(archivo.absolutePath))
             val api = HcApiClient(url, "pediatria").also { it.token = token }
             val backend = HcPediatriaBackend(db, api)
-            val sync = HcApiSync(db, mapOf("pediatria" to backend))
+            val adjuntos = File(archivo.absolutePath + "-adjuntos")
+            val sync = HcApiSync(db, mapOf("pediatria" to backend), ArchivoStore(adjuntos.absolutePath))
             val hq = db.historiaClinicaQueries
             val ahora = ahoraMillis()
             val consultaId = "e2e-$ahora"
@@ -115,6 +123,13 @@ class HcPediatriaE2ETest {
                 // Las listas: varias filas por sección, cada una con su id local.
                 registros.forEach { r -> hq.upsertRegistro(r.toRow(ahora)) }
                 hq.upsertExamenFisico(ExamenFisico(consultaId, peso = PESO, talla = TALLA, nota = NOTA_EXAMEN).toRow(ahora))
+                // Dos adjuntos, que son los dos caminos: uno cuelga de la consulta y el otro de una
+                // fila de una lista, que del otro lado recién existe después de enviar los registros.
+                val store = ArchivoStore(adjuntos.absolutePath)
+                for (a in adjuntosDePrueba(consultaId, pacienteId)) {
+                    val bytes = imagenPng()
+                    hq.upsertArchivo(a.copy(rutaLocal = store.guardar(a.id, a.nombre, bytes), tamanioBytes = bytes.size.toLong()).toRow(ahora))
+                }
 
                 val pacienteRemoto = backend.resolverPaciente(pacienteId)
                 assertTrue(pacienteRemoto != null, "no se pudo resolver el paciente en pediatría")
@@ -162,6 +177,18 @@ class HcPediatriaE2ETest {
                 assertEquals(PESO, examen["peso"], "el peso no llegó a pediatría")
                 assertEquals(TALLA, examen["talla"], "la talla no llegó a pediatría")
                 assertEquals(NOTA_EXAMEN, examen["nota"], "la nota del examen no llegó a pediatría")
+
+                // Los adjuntos: que estén en la galería de la consulta y que el archivo se pueda bajar.
+                val fotos = api.leerOpcional(FOTOS, api.get("consultas/$remotoId/fotos"), "fotos").orEmpty()
+                for (a in adjuntosDePrueba(consultaId, pacienteId)) {
+                    val remoto = hq.archivoPorId(a.id).uno { it.remoto_id }.orEmpty()
+                    assertTrue(remoto.isNotBlank(), "no se guardó el id de pediatría del adjunto '${a.nombre}'")
+                    val enLaGaleria = fotos.firstOrNull { it["id"]?.jsonPrimitive?.content == remoto }
+                    assertTrue(enLaGaleria != null, "el adjunto '${a.nombre}' no llegó a la galería de pediatría")
+                    val tipo = enLaGaleria["tipo"]?.jsonPrimitive?.content.orEmpty()
+                    val bajado = api.descargar("fotos/$tipo/$remoto/archivo", mapOf("consulta_id" to remotoId))
+                    assertTrue(bajado.isNotEmpty(), "el adjunto '${a.nombre}' quedó vacío en el servidor")
+                }
             } finally {
                 // Se relee de la base y no de la variable: si la prueba se cortó antes de llegar a
                 // asignarla, la consulta ya existe del otro lado y hay que borrarla igual.
@@ -170,6 +197,14 @@ class HcPediatriaE2ETest {
                 // única prueba del camino de borrado.
                 val aBorrar = registros.mapNotNull { r ->
                     hq.registroPorId(r.id).uno { it.remoto_id }?.takeIf { it.isNotBlank() }?.let { r.copy(remotoId = it, activo = false) }
+                }
+                // Los adjuntos tampoco se van con la consulta: se dan de baja uno por uno. De paso, es
+                // la única prueba del camino de borrado de archivos.
+                if (remotoId.isNotBlank()) {
+                    for (a in adjuntosDePrueba(consultaId, pacienteId)) {
+                        val remoto = hq.archivoPorId(a.id).uno { it.remoto_id }.orEmpty()
+                        if (remoto.isNotBlank()) runCatching { backend.borrarArchivo(remotoId, a.copy(remotoId = remoto)) }
+                    }
                 }
                 if (aBorrar.isNotEmpty() && remotoId.isNotBlank()) {
                     runCatching { backend.enviarRegistros(remotoId, aBorrar) }
@@ -180,6 +215,7 @@ class HcPediatriaE2ETest {
                     println("HcPediatriaE2ETest: la consulta $remotoId ya existía (reutilizada); no se borra.")
                 }
                 archivo.delete()
+                adjuntos.deleteRecursively()
             }
         }
     }
@@ -201,6 +237,33 @@ class HcPediatriaE2ETest {
         )
     }
 
+    /**
+     * Los dos adjuntos de la corrida, que son los dos caminos distintos: el que cuelga de la consulta
+     * y el que cuelga de una fila de una lista, que del otro lado recién existe cuando se enviaron los
+     * registros. Los ids son fijos para la corrida, así el sembrado y las comprobaciones hablan de lo
+     * mismo.
+     */
+    private fun adjuntosDePrueba(consultaId: String, pacienteId: String) = listOf(
+        Archivo(
+            id = "$consultaId-foto", pacienteId = pacienteId, consultaId = consultaId,
+            seccion = "fotos", nombre = "hc-$consultaId.png", mime = "image/png",
+        ),
+        Archivo(
+            id = "$consultaId-foto-examen", pacienteId = pacienteId, consultaId = consultaId,
+            registroId = "$consultaId-examen_complementario",
+            seccion = "examenes_complementarios", nombre = "estudio-$consultaId.png", mime = "image/png",
+        ),
+    )
+
+    /** Un PNG de verdad, chico: del otro lado lo abre una biblioteca de imágenes y no acepta cualquier cosa. */
+    private fun imagenPng(): ByteArray {
+        val img = BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB)
+        for (x in 0 until 8) for (y in 0 until 8) img.setRGB(x, y, if ((x + y) % 2 == 0) 0xFFFFFF else 0x224466)
+        val out = ByteArrayOutputStream()
+        ImageIO.write(img, "png", out)
+        return out.toByteArray()
+    }
+
     /** Qué le queda por enviar al motor, con nombre, para que un fallo diga qué se trabó. */
     private suspend fun pendientes(hq: com.salud360.core.database.HistoriaClinicaQueries, consultaId: String, pacienteId: String): List<String> {
         val out = mutableListOf<String>()
@@ -212,6 +275,8 @@ class HcPediatriaE2ETest {
             .forEach { out += "antecedente ${it.categoria}.${it.clave}" }
         hq.registrosDirty().lista { it }.filter { it.paciente_id == pacienteId }
             .forEach { out += "registro ${it.tipo} (${it.id})" }
+        hq.archivosDirty().lista { it }.filter { it.paciente_id == pacienteId }
+            .forEach { out += "adjunto ${it.nombre}" }
         if (hq.consultasDirty().lista { it.id }.contains(consultaId)) out += "estado de la consulta"
         return out
     }
@@ -326,5 +391,6 @@ class HcPediatriaE2ETest {
 
         private val CAMPOS = MapSerializer(String.serializer(), String.serializer())
         private val SECCIONES = MapSerializer(String.serializer(), CAMPOS)
+        private val FOTOS = ListSerializer(JsonObject.serializer())
     }
 }

@@ -75,7 +75,7 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
             }.toMap(),
         )
     }
-    single { HcApiSync(get(), get<HcBackends>().porEspecialidad) }
+    single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
     single { AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad) }
     single { PacientesRepository(get()) }
     single { HcRepository(get(), get<HcBackends>().porEspecialidad) }

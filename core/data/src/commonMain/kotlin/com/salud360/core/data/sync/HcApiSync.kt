@@ -1,6 +1,7 @@
 package com.salud360.core.data.sync
 
 import co.touchlab.kermit.Logger
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.repos.HcBackend
@@ -37,6 +38,8 @@ class HcApiSync(
     private val db: Salud360Db,
     /** Backend por código de especialidad. Una especialidad sin backend no se envía a ningún lado. */
     private val backends: Map<String, HcBackend>,
+    /** Archivos guardados en el dispositivo. Sin él los adjuntos no se suben, el resto va igual. */
+    private val archivos: ArchivoStore? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val log = Logger.withTag("HcApiSync")
@@ -83,6 +86,7 @@ class HcApiSync(
             ids += hq.consultasDirty().lista { it.id }
             ids += hq.seccionValoresDirty().lista { it.consulta_id }
             ids += hq.examenesFisicosDirty().lista { it.consulta_id }
+            ids += hq.archivosDirty().lista { it.consulta_id }.filterNotNull()
             ids += consultasDeAntecedentesPendientes()
             ids.forEach { drenar(it) }
             recontar()
@@ -133,6 +137,26 @@ class HcApiSync(
                 }
             }
 
+            // Los adjuntos van después de las listas: la foto de un examen complementario cuelga de
+            // esa fila y necesita el id con el que quedó del otro lado. Se suben de a uno, porque la
+            // foto se saca en el consultorio y, si se corta la señal, conviene reintentar esa sola.
+            if (archivos != null) {
+                for (a in hq.archivosPendientesDeConsulta(consultaId, fila.pacienteId).lista { it.toModel() }) {
+                    if (!a.activo) {
+                        backend.borrarArchivo(remotoId, a)
+                    } else if (a.remotoId.isBlank()) {
+                        val bytes = a.rutaLocal?.let { archivos.leer(it) }
+                        if (bytes == null) {
+                            // Pasa con lo que bajó otro dispositivo: la fila está, el archivo no.
+                            log.w { "el adjunto ${a.nombre} no está en este dispositivo: no se sube" }
+                        } else {
+                            backend.subirArchivo(remotoId, a, bytes)?.let { hq.guardarRemotoIdArchivo(it, a.id) }
+                        }
+                    }
+                    hq.limpiarArchivo(a.id)
+                }
+            }
+
             val examenSucio = hq.examenesFisicosDirty().lista { it }.firstOrNull { it.consulta_id == consultaId }
             if (examenSucio != null) {
                 backend.enviarExamen(remotoId, HcPediatriaBackend.aCampos(examenSucio.toModel()))
@@ -168,6 +192,7 @@ class HcApiSync(
         ids += hq.consultasDirty().lista { it.id }
         ids += hq.seccionValoresDirty().lista { it.consulta_id }
         ids += hq.examenesFisicosDirty().lista { it.consulta_id }
+        ids += hq.archivosDirty().lista { it.consulta_id }.filterNotNull()
         ids += consultasDeAntecedentesPendientes()
         _pendientes.value = ids.size
     }

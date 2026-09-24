@@ -1,7 +1,7 @@
 # Historia clínica de pediatría contra su propia base: estado y plan
 
 Documento de continuidad. Lo que sigue alcanza para retomar sin el historial de la conversación
-donde se hizo. Última actualización: 2026-09-24 (fases 1 y 2 terminadas y verificadas).
+donde se hizo. Última actualización: 2026-09-24 (fase 3 escrita; fases 1 y 2 terminadas y verificadas).
 
 ## Qué se está haciendo y por qué
 
@@ -63,7 +63,13 @@ de la app —base local con filas pendientes, `HcApiSync`, `HcPediatriaBackend` 
 contra la API de verdad, y vuelve a leer de la API lo que quedó guardado. Pasa: la consulta se crea,
 y llegan a las tablas que lee la web las secciones de texto, el examen físico, los nueve formularios,
 el desarrollo madurativo y las cuatro listas, con su alta, su modificación y su baja. Lo único que
-queda afuera de la prueba es la pantalla. Falta la fase 3: los archivos.
+queda afuera de la prueba es la pantalla.
+
+**La fase 3, los archivos, está escrita pero todavía no se probó contra una API de verdad.** Compila
+de los dos lados —la app en Android, web, servidor y `jvmTest`; el backend pasa `php -l`— y la prueba
+de punta a punta ya manda dos adjuntos, los relee de la galería y los baja. Falta correrla: en la
+máquina donde se escribió no hay ni base `hc_pediatrica` ni el Laravel de pediatría levantado (ver
+"Dónde se puede probar cada cosa"). Es lo primero a hacer al volver a una máquina con el entorno.
 
 Cómo correrla (se saltea sola si no se le pasan las propiedades, así el `jvmTest` de siempre no
 necesita servidor):
@@ -118,10 +124,15 @@ Ninguno salió al compilar; todos al probar:
 En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Todavía no está en producción, a
 propósito**: el paso 3 explica en qué orden va.
 
+> **Ojo:** el commit de la fase 3 (`api salud360: fase 3, las fotos y los archivos adjuntos`) está
+> hecho pero **sin pushear**, porque el push se hizo desde un clon temporal y quedó bloqueado. Quedó
+> guardado como parche en `C:\Users\flor\hc_pediatria-fase3.patch`: se aplica con
+> `git am < hc_pediatria-fase3.patch` sobre `salud360-api` y recién entonces se pushea.
+
 | Nuevos | |
 |---|---|
-| `app/Http/Controllers/Api/Salud360/` | `Salud360Controller` (base), `Auth`, `Paciente`, `Consulta` |
-| `app/Services/Salud360/` | `TobbAuthService`, `PacienteVinculoService`, `SeccionesService` (textos, formularios y desarrollo madurativo), `RegistrosService` (las listas), `ColumnasLegacy` |
+| `app/Http/Controllers/Api/Salud360/` | `Salud360Controller` (base, con los permisos sobre una consulta), `Auth`, `Paciente`, `Consulta`, `Foto` |
+| `app/Services/Salud360/` | `TobbAuthService`, `PacienteVinculoService`, `SeccionesService` (textos, formularios y desarrollo madurativo), `RegistrosService` (las listas), `FotosService` (las galerías), `ColumnasLegacy` |
 | `app/Http/Middleware/` | `Salud360Api`, `Salud360Cors` |
 | `config/salud360.php` | URL de turnos, caché, gracia, autoprovisión |
 | `database/migrations/2026_09_22_000000_add_paciente_id_tobb_to_pacientes_table.php` | |
@@ -146,11 +157,13 @@ En la rama `hc-pediatria-fase-2`. Todavía sin unir a `main`.
 | `core/data/.../sync/HcApiSync.kt` | Motor de envío diferido |
 | `core/database/.../migrations/3.sqm` | Columna `consulta.remoto_id` |
 | `core/database/.../migrations/4.sqm` | Columna `registro_clinico.remoto_id` |
+| `core/database/.../migrations/5.sqm` | Columna `archivo.remoto_id` (fase 3) |
 | `core/data/src/jvmTest/.../repos/HcPediatriaE2ETest.kt` | La prueba de punta a punta contra la API real |
 
 Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRepository` (backends),
-`HistoriaClinica.sq`, `Consulta.kt` (campo `remotoId`), `ConsultaViewModel`, `HcModule`,
-`gradle.properties` (dominio de pediatría), `core/data/build.gradle.kts` (propiedades de la prueba).
+`HistoriaClinica.sq`, `Consulta.kt` (campos `remotoId`), `ConsultaViewModel`, `HcModule`,
+`ArchivosSeccion.kt`, `gradle.properties` (dominio de pediatría),
+`core/data/build.gradle.kts` (propiedades de la prueba).
 
 ---
 
@@ -158,6 +171,17 @@ Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRe
 
 **Importante:** en desarrollo la app apunta al **MAMP**, no a producción. Por eso se puede probar todo
 sin subir nada. `pediatria.hclinicadigital.com` solo se usa al compilar para producción.
+
+### Dónde se puede probar cada cosa
+
+El entorno completo está en la máquina del MAMP. En la de Windows con XAMPP **no**: hay `tobb` (sin las
+tablas `salud360_*`) y una copia vieja de `HCDPediatria` sin la rama `salud360-api`, pero **no existe la
+base `hc_pediatrica`** ni hay un dump para armarla. Ahí se puede escribir código y compilarlo, y nada más:
+ni la prueba de punta a punta ni la verificación desde la pantalla.
+
+La URL de desarrollo (`gradle.properties`) es la del MAMP, con su puerto 8888 y su ruta. En XAMPP el
+mismo Laravel quedaría en el puerto 80 y con otra ruta, así que para trabajar en Windows hay que cambiar
+esa línea **además** de restaurar la base.
 
 ```
 dev     → http://{host}:8888/HCPediatria/public_html/pediatria/HCDPediatria/public/index.php
@@ -231,6 +255,15 @@ a cada corrida (fila 1 de `antecedentes_perinatales` y de `antecedentes_neonatal
 - **`medicos.castigo_automatico` no castiga nada: decide si el médico se muestra para sacar turno.**
   Es el "Mostrar Medico" del administrador, y las vistas del paciente saltean al que tiene 0. Nada en
   el código lo usa para penalizar. Sirve para el médico que solo usa historia clínica (ver el paso 2).
+- **Las fotos van a `public/img/<usuario>/`, y esa carpeta la crea la API si no existe.** En el MAMP
+  `public/img/` solo tiene `iconos`: las carpetas por médico aparecen recién cuando alguien sube algo.
+  Si el hosting no deja escribir ahí, la subida falla con `500 no_se_pudo_guardar`.
+- **Al subir un adjunto, los límites que mandan son los del PHP del hosting**, no el de 12 MB de la
+  API: `upload_max_filesize` y `post_max_size`. Cuando los pasa, PHP entrega el archivo incompleto y
+  la API contesta `422 archivo_invalido`, que es distinto de `archivo_grande`.
+- **Las columnas nuevas de la base del dispositivo van siempre últimas.** `upsertX` es
+  `INSERT OR REPLACE INTO x VALUES ?`, o sea posicional: si una columna se cuela en el medio, todas
+  las filas se guardan corridas. Vale para `archivo.remoto_id` y para lo que venga.
 
 ---
 
@@ -389,9 +422,42 @@ Las de columnas fijas están declaradas en `SeccionesService::FORMULARIOS` y las
 
 ### Paso 5: fase 3, los archivos
 
-Las cuatro tablas de fotos. Envío multiparte y almacenamiento del hosting. Ojo: las fotos se guardan con
-ruta relativa bajo `public/img/<prefijo del mail del médico>/`, así que hay que exponer una URL absoluta
-o un endpoint propio.
+**Escrita, sin probar contra la API.** Los adjuntos ya existían enteros en la app —tabla `archivo`,
+galería, cámara, almacenamiento por plataforma— pero solo subían al servidor propio de Salud 360, que
+no está desplegado. Ahora van a las galerías de pediatría, que son las que muestra la web.
+
+Cinco galerías, no cuatro: además de las de la consulta, los antecedentes neonatales, el examen
+complementario y la internación, está el familigrama, que cuelga del paciente.
+
+| En la app | En pediatría |
+|---|---|
+| sección `fotos`, `documentos`, `evolucion` | `consulta_fotos` |
+| sección `neonatales` | `antecedentes_neonatales_fotos` |
+| adjunto de un registro `examen_complementario` | `examenes_complementarios_fotos` |
+| adjunto de un registro `internacion` | `internaciones_fotos` |
+| sección `familigrama` | `familigramas` |
+
+Cinco cosas para entenderlas:
+
+- **Los adjuntos se mandan después de las listas**, en el mismo `drenar`. La foto de un examen
+  complementario cuelga de esa fila, así que necesita el id con el que quedó del otro lado; si todavía
+  no llegó, el envío se reintenta entero en vez de subir una foto huérfana.
+- **Uno por pedido, y en multiparte.** La foto se saca en el consultorio, donde la señal es mala: si
+  se corta a la mitad conviene reintentar esa sola y no las diez de la consulta. Lleva su propio
+  tiempo de espera, de dos minutos, porque una foto de teléfono no entra en los treinta segundos de
+  un pedido de texto.
+- **Hizo falta `archivo.remoto_id`** (migración `5.sqm`), por lo mismo que las listas: sin saber con
+  qué id quedó, el segundo envío sube la misma foto otra vez. `subido` y `url_remota`, que ya estaban,
+  son del servidor propio y se dejaron como estaban.
+- **Se aceptan imágenes y PDF**, hasta 12 MB. Las imágenes se achican conservando la proporción, que
+  es lo que la web **no** hace: llama a `resize(1980, 1920)` a secas y deforma todo lo que no tenga
+  esa medida. Los PDF se guardan tal cual; la web todavía no los muestra.
+- **El archivo se baja por la API** (`fotos/{tipo}/{id}/archivo`), que comprueba de quién es el
+  paciente, y no por su URL pública: `public/img/` lo abre cualquiera que tenga el enlace. La URL
+  pública igual viene en la respuesta, porque es la que usa la web.
+
+Lo que queda de la fase 3: correr `HcPediatriaE2ETest` con el entorno levantado, y después probarlo
+desde la pantalla, que es lo mismo que le falta a las fases 1 y 2 (paso 1).
 
 ### Paso 6: fase 4
 
@@ -406,7 +472,9 @@ App: `./gradlew :androidApp:compileDebugKotlin`, `:composeApp:compileKotlinWasmJ
 `:server:compileKotlin`, `:core:data:jvmTest`.
 
 Punta a punta contra el MAMP (`HcPediatriaE2ETest`, ver arriba cómo se corre): es la versión
-automática de "cargar algo y verlo del otro lado", sin la pantalla.
+automática de "cargar algo y verlo del otro lado", sin la pantalla. Desde la fase 3 también manda dos
+adjuntos —uno de la consulta y otro colgado de un examen complementario—, los busca en la galería y
+los vuelve a bajar. Los da de baja al terminar, como a las listas.
 
 Backend: `php -l` sobre los archivos tocados, y las pruebas con curl del contrato, que están en
 `md/API_SALUD360_PEDIATRIA.md` del repo de pediatría.

@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.model.Id
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.RegistroClinico
 import kotlinx.datetime.LocalDate
@@ -46,6 +47,21 @@ interface HcBackend {
 
     /** Refleja en la API el cierre, la reapertura o la anulación de la consulta. */
     suspend fun enviarEstado(consulta: Consulta, remotoId: String)
+
+    /**
+     * Sube un adjunto que todavía no está en la API y devuelve el id con el que quedó, o null si esa
+     * sección no acepta adjuntos del otro lado. Hay que guardarlo o el próximo envío lo sube de nuevo.
+     *
+     * Va de a uno: la foto se saca en el consultorio, donde la señal es mala, y si se corta a la
+     * mitad conviene reintentar esa sola y no las diez de la consulta.
+     */
+    suspend fun subirArchivo(remotoId: String, archivo: Archivo, bytes: ByteArray): String?
+
+    /** Da de baja en la API un adjunto ya subido. */
+    suspend fun borrarArchivo(remotoId: String, archivo: Archivo)
+
+    /** Baja de la API un adjunto que no está en el dispositivo (lo subió otro, o se reinstaló la app). */
+    suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray?
 
     /** Trae de la API las consultas del paciente y las deja en la base del dispositivo. */
     suspend fun traerConsultas(pacienteId: Id, medicoId: Id): List<Consulta>
