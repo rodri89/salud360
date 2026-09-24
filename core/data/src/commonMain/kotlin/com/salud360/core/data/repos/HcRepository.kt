@@ -39,8 +39,30 @@ data class ExamenFisicoFechado(val fecha: LocalDate, val examen: ExamenFisico)
  * registros repetibles, laboratorios, archivos, pendientes, diagnósticos, interconsultores y vacunas.
  * Todas las especialidades usan este mismo repositorio; lo que cambia es la definición de secciones.
  */
-class HcRepository(private val db: Salud360Db) {
+class HcRepository(
+    private val db: Salud360Db,
+    /**
+     * Especialidades con API propia (hoy pediatría). El repositorio no habla con la red: solo sabe si
+     * hay backend para decidir si además de guardar en el dispositivo hay que traer lo que está en el
+     * servidor. Una especialidad sin backend funciona exactamente como antes, solo local.
+     */
+    private val backends: Map<String, HcBackend> = emptyMap(),
+) {
     private val q get() = db.historiaClinicaQueries
+
+    /** true si esa especialidad guarda también en su propio sistema. */
+    fun tieneApi(especialidad: String): Boolean = backends.containsKey(especialidad)
+
+    /** Trae del servidor las consultas del paciente y las deja en el dispositivo. Null si no hay API. */
+    suspend fun traerConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =
+        backends[especialidad]?.traerConsultas(pacienteId, medicoId)
+
+    /** Trae del servidor el contenido de una consulta, sin pisar lo que esté pendiente de enviar. */
+    suspend fun traerConsultaRemota(consulta: Consulta) {
+        val backend = backends[consulta.especialidad] ?: return
+        if (consulta.remotoId.isBlank()) return
+        backend.traerConsulta(consulta.id, consulta.remotoId)
+    }
 
     // ---- consultas ----
 
@@ -158,7 +180,14 @@ class HcRepository(private val db: Salud360Db) {
     fun observarRegistrosDeConsulta(consultaId: Id, tipo: String): Flow<List<RegistroClinico>> =
         q.registrosDeConsulta(consultaId, tipo).flujoLista { it.toModel() }
 
-    suspend fun guardarRegistro(registro: RegistroClinico) = q.upsertRegistro(registro.toRow(ahoraMillis()))
+    /**
+     * El vínculo con la API de la especialidad se conserva aunque el que llama arme el registro de
+     * cero: la pantalla no lo conoce, y perderlo duplicaría la fila del otro lado en el próximo envío.
+     */
+    suspend fun guardarRegistro(registro: RegistroClinico) {
+        val remoto = registro.remotoId.ifBlank { q.registroPorId(registro.id).uno { it.remoto_id }.orEmpty() }
+        q.upsertRegistro(registro.copy(remotoId = remoto).toRow(ahoraMillis()))
+    }
 
     suspend fun eliminarRegistro(id: Id) {
         val r = q.registroPorId(id).uno { it.toModel() } ?: return

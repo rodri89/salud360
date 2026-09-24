@@ -9,7 +9,12 @@ CREATE TABLE consulta (
     edad_mostrar TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    -- Id de esta consulta en la API de la especialidad (ej. hc_pediatria). Vacío mientras no se envió:
+    -- la consulta se abre en el dispositivo aunque no haya señal y se reconcilia después, y así el id
+    -- local nunca cambia y nada que lo referencie se rompe. Va última porque el upsert es posicional
+    -- (ver migración 3.sqm).
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX consulta_paciente ON consulta(paciente_id, especialidad, fecha);
 
@@ -22,6 +27,10 @@ contarConsultasMedico: SELECT COUNT(*) FROM consulta WHERE medico_id = ? AND fec
 upsertConsulta: INSERT OR REPLACE INTO consulta VALUES ?;
 consultasDirty: SELECT * FROM consulta WHERE dirty = 1;
 limpiarConsulta: UPDATE consulta SET dirty = 0 WHERE id = ?;
+-- Vínculo con la API de la especialidad, una vez que la consulta se pudo crear allá.
+guardarRemotoId: UPDATE consulta SET remoto_id = ? WHERE id = ?;
+consultaPorRemotoId: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = ? AND deleted = 0;
+consultasSinEnviar: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = '' AND deleted = 0;
 
 CREATE TABLE seccion_valor (
     consulta_id TEXT NOT NULL,
@@ -118,16 +127,23 @@ CREATE TABLE registro_clinico (
     activo INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    -- Id de esta fila en la API de la especialidad. Vacío mientras no se envió; va última porque el
+    -- upsert es posicional (ver migración 4.sqm). Igual que `consulta.remoto_id`.
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX registro_paciente ON registro_clinico(paciente_id, especialidad, tipo);
 
 registrosDePaciente: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registrosDeConsulta: SELECT * FROM registro_clinico WHERE consulta_id = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registroPorId: SELECT * FROM registro_clinico WHERE id = ? AND deleted = 0;
+-- Todos los del paciente en la especialidad, sin filtrar por tipo ni por activo: para emparejar con
+-- lo que devuelve la API de la especialidad, que también informa los dados de baja.
+registrosDePacienteTodos: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;
 upsertRegistro: INSERT OR REPLACE INTO registro_clinico VALUES ?;
 registrosDirty: SELECT * FROM registro_clinico WHERE dirty = 1;
 limpiarRegistro: UPDATE registro_clinico SET dirty = 0 WHERE id = ?;
+guardarRemotoIdRegistro: UPDATE registro_clinico SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE laboratorio (
     id TEXT NOT NULL PRIMARY KEY,

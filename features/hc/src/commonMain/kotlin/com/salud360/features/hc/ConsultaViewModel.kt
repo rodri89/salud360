@@ -7,6 +7,7 @@ import com.salud360.core.data.files.mimeDe
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.EspecialidadDefinition
@@ -24,8 +25,11 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
 import com.salud360.core.model.pacientes.Paciente
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -70,11 +74,33 @@ class ConsultaViewModel(
     private val archivos: ArchivoStore,
     private val sync: SyncEngine,
     private val registry: EspecialidadRegistry,
+    /** Envío diferido a la API de la especialidad, cuando la tiene (hoy pediatría). */
+    private val hcApi: HcApiSync,
     val consultaId: Id,
     private val medicoId: Id,
 ) : ViewModel() {
 
+    /** Consultas con cambios guardados en el dispositivo que todavía no llegaron al servidor. */
+    val pendientesDeEnviar: StateFlow<Int> = hcApi.pendientes
+
+    /** Ámbito para el último guardado, el de `onCleared`, cuando `viewModelScope` ya no sirve. */
+    private val salida = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val consultaFlow = hc.observarConsulta(consultaId)
+
+    // Este init tiene que ir *después* de `consultaFlow`: `viewModelScope` usa Dispatchers.Main.immediate,
+    // así que el cuerpo del launch arranca acá mismo y no en el siguiente turno del bucle de eventos.
+    // Con el init más arriba, `consultaFlow` todavía valía null y la app se caía al abrir la consulta.
+    init {
+        // Al abrir la consulta se trae lo que haya en el servidor de la especialidad, sin pisar lo que el
+        // médico escribió y todavía no se envió. Además se reintenta lo que haya quedado pendiente.
+        viewModelScope.launch {
+            val c = consultaFlow.first { it != null } ?: return@launch
+            if (!hc.tieneApi(c.especialidad)) return@launch
+            runCatching { hc.traerConsultaRemota(c) }
+            hcApi.empujarTodo()
+        }
+    }
 
     val ui: StateFlow<ConsultaUi> = consultaFlow.flatMapLatest { c ->
         if (c == null) flowOf(ConsultaUi()) else {
@@ -136,6 +162,9 @@ class ConsultaViewModel(
         pendientesGuardar.clear()
         copia.forEach { (s, campos) -> hc.guardarSeccion(consultaId, s, campos) }
         _guardadoEn.value = com.salud360.core.data.ahoraMillis()
+        // El envío a la API va aparte y con su propia espera: acá se guarda en el dispositivo, que es
+        // lo que no puede fallar, y el motor junta los cambios para mandarlos en un solo pedido.
+        hcApi.marcarSucia(consultaId)
     }
 
     // ---- examen físico ----
@@ -143,6 +172,7 @@ class ConsultaViewModel(
     fun guardarExamen(examen: ExamenFisico) = viewModelScope.launch {
         val imc = examen.calcularImc() ?: examen.imc
         hc.guardarExamenFisico(examen.copy(consultaId = consultaId, imc = imc))
+        hcApi.marcarSucia(consultaId)
         _guardadoEn.value = com.salud360.core.data.ahoraMillis()
     }
 
@@ -151,6 +181,7 @@ class ConsultaViewModel(
     fun guardarAntecedente(categoria: String, clave: String, flag: Boolean, detalle: String) = viewModelScope.launch {
         val c = ui.value.consulta ?: return@launch
         hc.guardarAntecedente(c.pacienteId, c.especialidad, categoria, clave, flag, detalle, consultaId)
+        hcApi.marcarSucia(consultaId)
     }
 
     // ---- registros repetibles ----
@@ -164,9 +195,13 @@ class ConsultaViewModel(
     fun guardarRegistro(tipo: String, id: Id?, fecha: LocalDate?, campos: Map<String, String>, porPaciente: Boolean) = viewModelScope.launch {
         val c = ui.value.consulta ?: return@launch
         hc.guardarRegistro(RegistroClinico(id ?: newId(), c.pacienteId, if (porPaciente) null else c.id, c.especialidad, tipo, fecha, campos))
+        hcApi.marcarSucia(consultaId)
     }
 
-    fun eliminarRegistro(id: Id) = viewModelScope.launch { hc.eliminarRegistro(id) }
+    fun eliminarRegistro(id: Id) = viewModelScope.launch {
+        hc.eliminarRegistro(id)
+        hcApi.marcarSucia(consultaId)
+    }
 
     // ---- laboratorios ----
 
@@ -241,6 +276,8 @@ class ConsultaViewModel(
         }
         flushValores()
         hc.cerrarConsulta(consultaId)
+        // Al cerrar se manda ya, sin esperar: es el momento en que el médico da la consulta por terminada.
+        hcApi.empujarYa(consultaId)
         launch { sync.sincronizar() }
         onCerrada()
     }
@@ -273,7 +310,18 @@ class ConsultaViewModel(
         is com.salud360.core.model.especialidad.CondicionSeccion.EdadMinimaMeses -> (ui.edadMeses ?: Int.MAX_VALUE) >= c.meses
     }
 
-    override fun onCleared() { viewModelScope.launch { flushValores() } }
+    // Al salir de la pantalla se vuelca lo que quedó en memoria y se manda sin esperar el debounce.
+    //
+    // No puede ir en `viewModelScope`: para cuando corre `onCleared` ese ámbito ya está cancelado (se
+    // cierra antes, junto con los demás recursos del modelo de vista), así que el `launch` no haría
+    // nada y se perdería lo tecleado en los últimos 600 ms, incluso en el dispositivo. Por eso un
+    // ámbito propio, que nadie cancela.
+    override fun onCleared() {
+        salida.launch {
+            flushValores()
+            hcApi.empujarYa(consultaId)
+        }
+    }
 }
 
 /** Lista de consultas de un paciente en una especialidad + apertura de una nueva. */
@@ -289,6 +337,22 @@ class HistoriaClinicaViewModel(
     val paciente: StateFlow<Paciente?> = pacientes.observar(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val consultas: StateFlow<List<Consulta>> = hc.observarConsultas(pacienteId, especialidad).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val pendientes: StateFlow<List<Pendiente>> = hc.observarPendientes(pacienteId, medicoId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _mensaje = MutableStateFlow<String?>(null)
+
+    /** Aviso cuando no se pudo traer la historia clínica del servidor de la especialidad. */
+    val mensaje: StateFlow<String?> = _mensaje
+
+    init {
+        // Si la especialidad tiene su propio sistema (hoy pediatría), se trae lo que haya allá. La lista se
+        // observa de la base, así que aparece sola; sin conexión se sigue viendo lo que ya está en el dispositivo.
+        if (hc.tieneApi(especialidad)) {
+            viewModelScope.launch {
+                runCatching { hc.traerConsultasRemotas(pacienteId, medicoId, especialidad) }
+                    .onFailure { _mensaje.value = "No se pudo traer la historia clínica del servidor: ${it.message}" }
+            }
+        }
+    }
 
     fun nuevaConsulta(tipo: String, onAbierta: (Consulta) -> Unit) = viewModelScope.launch {
         val p = paciente.first { it != null }!!

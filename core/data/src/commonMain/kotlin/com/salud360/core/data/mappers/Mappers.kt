@@ -160,10 +160,11 @@ fun MedicoPaciente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boole
 
 fun ConsultaRow.toModel() = Consulta(
     id, paciente_id, medico_id, especialidad, tipo, LocalDate.parse(fecha), EstadoConsulta.valueOf(estado), edad_mostrar,
-    Instant.fromEpochMilliseconds(updated_at),
+    Instant.fromEpochMilliseconds(updated_at), remoto_id,
 )
+// Posicional: `remotoId` va último porque es la última columna de la tabla (ver HistoriaClinica.sq).
 fun Consulta.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l())
+    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun SeccionValorRow.toModel() = SeccionValor(consulta_id, seccion, campo, valor)
 fun SeccionValor.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
@@ -182,9 +183,9 @@ fun AntecedenteRow.toModel() = Antecedente(id, paciente_id, especialidad, catego
 fun Antecedente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     AntecedenteRow(id, pacienteId, especialidad, categoria, clave, flag.l(), detalle, consultaId, activo.l(), updatedAt, deleted.l(), dirty.l())
 
-fun RegistroRow.toModel() = RegistroClinico(id, paciente_id, consulta_id, especialidad, tipo, fecha.toLocalDateOrNull(), campos_json.toStringMap(), activo.b())
+fun RegistroRow.toModel() = RegistroClinico(id, paciente_id, consulta_id, especialidad, tipo, fecha.toLocalDateOrNull(), campos_json.toStringMap(), activo.b(), remoto_id)
 fun RegistroClinico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    RegistroRow(id, pacienteId, consultaId, especialidad, tipo, fecha?.toString(), campos.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l())
+    RegistroRow(id, pacienteId, consultaId, especialidad, tipo, fecha?.toString(), campos.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especialidad, tipo, LocalDate.parse(fecha), valores_json.toStringMap(), activo.b())
 fun Laboratorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =

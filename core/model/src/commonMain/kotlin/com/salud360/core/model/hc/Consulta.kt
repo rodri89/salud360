@@ -25,6 +25,12 @@ data class Consulta(
     /** Edad del paciente al momento de la consulta, en texto ("3 años, 2 meses y 5 días"). */
     val edadMostrar: String = "",
     val updatedAt: Instant? = null,
+    /**
+     * Id de esta consulta en la API de la especialidad, vacío mientras todavía no se pudo enviar.
+     * La consulta se abre en el dispositivo aunque no haya señal; cuando el envío funciona, la API
+     * devuelve su id y se guarda acá. El id local no cambia nunca.
+     */
+    val remotoId: String = "",
 )
 
 @Serializable
@@ -114,6 +120,11 @@ data class RegistroClinico(
     val fecha: LocalDate? = null,
     val campos: Map<String, String> = emptyMap(),
     val activo: Boolean = true,
+    /**
+     * Id de esta fila en la API de la especialidad, vacío mientras todavía no se pudo enviar. Sin él,
+     * el segundo envío la duplicaría del otro lado. El id local no cambia nunca.
+     */
+    val remotoId: String = "",
 )
 
 /**
