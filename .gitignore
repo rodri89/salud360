@@ -17,3 +17,7 @@ iosApp/Pods/
 # Node
 node_modules/
 kotlin-js-store/
+
+# Volcados de base para levantar el entorno local. Nunca al repo: son copias con
+# pacientes, contraseñas y credenciales de cobro reales, y esto es público.
+bd_test/
