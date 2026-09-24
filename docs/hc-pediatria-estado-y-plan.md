@@ -115,7 +115,8 @@ Ninguno salió al compilar; todos al probar:
 
 ### Repo de pediatría (`/Applications/MAMP/htdocs/HCPediatria/public_html/pediatria/HCDPediatria`)
 
-Sin commitear, rama `main`. **Todavía no subido a producción, a propósito.**
+En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Todavía no está en producción, a
+propósito**: el paso 3 explica en qué orden va.
 
 | Nuevos | |
 |---|---|
@@ -134,6 +135,8 @@ Sin commitear, rama `main`. **Todavía no subido a producción, a propósito.**
 El `.env` local se tocó para apuntar a turnos del MAMP. Está ignorado por git.
 
 ### Repo de la app
+
+En la rama `hc-pediatria-fase-2`. Todavía sin unir a `main`.
 
 | Nuevos | |
 |---|---|
