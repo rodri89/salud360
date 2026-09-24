@@ -265,7 +265,19 @@ a cada corrida (fila 1 de `antecedentes_perinatales` y de `antecedentes_neonatal
 - **Nunca adivinar con documentos duplicados.** Hay 19 casos reales en pediatría. Se desempata por
   fecha de nacimiento y apellido; si queda duda, elige el médico.
 - **Al agregar o cambiar `config/salud360.php` hay que correr `php artisan config:clear`.** La
-  configuración cacheada no incluye archivos nuevos y la URL de turnos queda vacía. Ya costó un rato.
+  configuración cacheada no incluye archivos nuevos y la URL de turnos queda vacía. Ya costó un rato,
+  y volvió a pasar al subir a producción el 2026-09-24. **Se manifiesta como `503 tobb_caido`**, que
+  parece una caída de turnos y no lo es: el pedido sale hacia una dirección vacía y ni siquiera se
+  completa. Cómo distinguirlo sin credenciales, y sin tocar nada:
+
+  ```
+  curl -s -H "Authorization: Bearer token-inventado" \
+    https://pediatria.hclinicadigital.com/api/salud360/auth/perfil
+  ```
+
+  Si contesta `codigo: tobb_caido`, pediatría no llegó a turnos. Si contesta `codigo: token`, sí
+  llegó y turnos rechazó el token, que es lo correcto. El motivo exacto queda en el log del servidor
+  de pediatría, en la línea `salud360: no se pudo consultar el perfil en turnosonlinebb:`.
 - **No correr `php artisan migrate` en producción** sin revisar antes: en turnos hay migraciones viejas
   sin registrar cuyas columnas ya existen, y el comando falla antes de llegar a las nuevas. Las tablas
   de esta API y la columna del vínculo **se crean solas**.
@@ -419,18 +431,25 @@ sin escribir nada:
 | `consultas/1/fotos` y `fotos/consulta/1/archivo` | 401, no 404: **las rutas de la fase 3 están publicadas** |
 | una ruta inventada | 404, que es el control de que el enrutador distingue |
 | preflight `OPTIONS` de subida de fotos | 204 con `POST` permitido y `X-Salud360-Token` entre los encabezados |
+| `auth/perfil` con un token inventado | `401 codigo: token`, o sea que **pediatría llegó a turnos y turnos contestó** |
+
+La API de turnos también está publicada y sana: contesta `401 sin_token` en su `auth/perfil` y 404 en
+una ruta inventada.
+
+**El paso 2 ya se corrió contra producción**, en las dos bases, que son distintas: el cruce por correo
+escribe en `users.medico_id_tobb` de pediatría y la habilitación inserta en `salud360_medico_hc` de
+turnos. Sobre la copia del 2026-09-24 el cruce sumaba 4 médicos a los 8 que ya estaban vinculados, y
+quedaban 11 habilitados. El duodécimo está vinculado a un médico dado de baja en turnos, así que no
+entra igual.
 
 Lo que queda:
 
 1. **Pushear el repo de pediatría.** Los archivos se subieron al servidor por fuera de git, así que
    **producción tiene código que no está en el repositorio**. El commit espera en el clon de
    `C:\Users\flor\hc_pediatria`.
-2. Correr las dos sentencias del paso 2 contra las bases de producción, y revisar el resultado: el
-   cruce por mail puede resolver más o menos médicos que en la copia local. **Todavía sin hacer**:
-   sin eso, ningún médico entra, porque le falta alguno de los dos interruptores.
-3. Probar con un token de verdad, que es lo único que no se puede comprobar sin escribir en la base
-   de turnos: una fila en `salud360_tokens`, o directamente el ingreso de un médico desde la app.
-4. Recién ahí desplegar la app.
+2. Probar con un token de verdad, que es lo único que no se puede comprobar sin credenciales: el
+   ingreso de un médico desde la app, o una fila en `salud360_tokens` de turnos.
+3. Recién ahí desplegar la app.
 
 Si se despliega la app primero no se rompe nada: todo se guarda igual en el dispositivo y queda
 pendiente de envío, pero se ven avisos de que no se pudo enviar.
