@@ -188,13 +188,27 @@ class PacienteFormViewModel(
 /** Ficha del paciente con su actividad: consultas por especialidad y turnos. */
 class PacienteDetalleViewModel(
     pacientes: PacientesRepository,
-    hc: HcRepository,
+    private val hc: HcRepository,
     turnos: TurnosRepository,
     private val pacienteId: Id,
+    private val medicoId: Id,
 ) : ViewModel() {
     val paciente: StateFlow<Paciente?> = pacientes.observar(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val consultas: StateFlow<List<Consulta>> = hc.observarConsultasTodas(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val turnos: StateFlow<List<Turno>> = turnos.observarTurnosDePaciente(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // Las historias clínicas con sistema propio se traen acá y no recién al entrar en cada una: el
+        // médico abre la ficha para ver qué pasó con el paciente, y hasta ahora la lista salía vacía
+        // aunque del otro lado hubiera consultas. La lista se observa de la base, así que aparecen solas.
+        if (medicoId.isNotBlank()) {
+            viewModelScope.launch {
+                hc.especialidadesConApi.forEach { especialidad ->
+                    runCatching { hc.traerConsultasRemotas(pacienteId, medicoId, especialidad) }
+                }
+            }
+        }
+    }
 }
 
 private fun <T> MutableStateFlow<T>.asStateFlowCompat(): StateFlow<T> = this

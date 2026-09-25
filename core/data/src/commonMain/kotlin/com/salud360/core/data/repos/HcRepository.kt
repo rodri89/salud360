@@ -53,6 +53,9 @@ class HcRepository(
     /** true si esa especialidad guarda también en su propio sistema. */
     fun tieneApi(especialidad: String): Boolean = backends.containsKey(especialidad)
 
+    /** Especialidades que guardan también en su propio sistema, para traerlas sin que el médico las pida. */
+    val especialidadesConApi: Set<String> get() = backends.keys
+
     /** Trae del servidor las consultas del paciente y las deja en el dispositivo. Null si no hay API. */
     suspend fun traerConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =
         backends[especialidad]?.traerConsultas(pacienteId, medicoId)

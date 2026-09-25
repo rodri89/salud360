@@ -240,7 +240,7 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         composable(Rutas.PACIENTE) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
                             val esp = contexto?.especialidades?.map { it to registry.nombre(it) } ?: emptyList()
-                            PacienteDetalleScreen(id, esp, onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { nav.navigate("hc/$id/$it") },
+                            PacienteDetalleScreen(id, esp, contexto?.medicoId.orEmpty(), onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { nav.navigate("hc/$id/$it") },
                                 onVerConsulta = { nav.navigate("consulta/${it.id}") },
                                 onNuevoTurno = if (contexto?.consultorioId != null) ({ nav.navigate(Rutas.ASIGNAR) }) else null, onVolver = { nav.popBackStack() })
                         }
