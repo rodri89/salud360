@@ -1,7 +1,7 @@
 # Historia clínica de pediatría contra su propia base: estado y plan
 
 Documento de continuidad. Lo que sigue alcanza para retomar sin el historial de la conversación
-donde se hizo. Última actualización: 2026-09-24 (fases 1, 2 y 3 terminadas y verificadas).
+donde se hizo. Última actualización: 2026-09-26 (las tres fases terminadas y probadas desde la pantalla).
 
 ## Qué se está haciendo y por qué
 
@@ -69,9 +69,23 @@ queda afuera de la prueba es la pantalla.
 —uno de la consulta y otro colgado de un examen complementario—, los encuentra en la galería y los
 vuelve a bajar. Verificado el 2026-09-24 contra el XAMPP de la máquina de Windows, con las bases de
 producción restauradas: las dos filas quedaron en `consulta_fotos` y en
-`examenes_complementarios_fotos`, con la foto en `public/img/<usuario>/<carpeta>/`, y la imagen de
-8×8 píxeles de la prueba **no** se agrandó, o sea que el redimensionado respeta la proporción.
-Lo único que queda afuera de la prueba, igual que en las fases anteriores, es la pantalla.
+`examenes_complementarios_fotos`, y la imagen de 8×8 píxeles de la prueba **no** se agrandó, o sea
+que el redimensionado respeta la proporción.
+
+**Y las tres fases están probadas desde la pantalla, contra producción** (2026-09-26). Se entró con
+un médico real desde la web compilada con `-Pentorno=release`, se dio de alta un paciente, se abrió
+una consulta, se escribió, y se adjuntó una foto y un PDF: aparecen en la web de pediatría. Con eso
+el plan queda cumplido; lo que sigue son los pendientes del paso 3 y lo que no es código.
+
+Cómo se corre esa prueba manual, que es la que importa:
+
+```
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun -Pentorno=release
+```
+
+Levanta la web en `http://localhost:8080` **apuntando a producción** (turnos y pediatría), con la
+página servida localmente. Es la forma de probar el código nuevo con datos y servidores de verdad sin
+desplegar la app.
 
 Cómo correrla (se saltea sola si no se le pasan las propiedades, así el `jvmTest` de siempre no
 necesita servidor):
@@ -85,16 +99,19 @@ necesita servidor):
 La consulta que crea la prueba se borra al terminar, salvo que haya caído sobre una consulta que ya
 existía (ver la regla de reutilización más abajo): en ese caso no borra nada.
 
-### Lo primero a verificar al retomar
+### Lo primero a hacer al retomar
 
-Lo que falta probar es **la pantalla**, no el envío: que lo que el médico teclea llegue a la base
-local. La consulta 5, la que había creado la app, estaba vacía porque no se guardó nada en el
-dispositivo, no porque el envío fallara —la prueba de punta a punta usó esa misma consulta y el
-contenido llegó sin tocar nada.
+Ya no queda nada de código por probar. Lo que queda, en orden:
 
-Queda entonces: entrar, escribir en una sección, salir de la pantalla y mirar la pestaña Red
-(¿sale el `PUT .../secciones`?). Si no sale, mirar `HcApiSync.drenar`; si sale y no aparece en la
-base, el log de Laravel de pediatría.
+1. **Pushear el repo de pediatría.** Son cuatro commits sin subir, y tres de ellos ya están corriendo
+   en producción porque se subieron los archivos por FTP. O sea que **el servidor tiene código que no
+   está en el repositorio**. Es el pendiente más importante de todos.
+2. **Los límites del hosting**, que es lo que rompe la web de a ratos. Ver la advertencia sobre la
+   saturación de conexiones. No es de código y es lo que más molesta hoy a los médicos.
+3. **`APP_DEBUG=false` en producción.** Hoy cualquier error devuelve el volcado completo, con rutas
+   absolutas del servidor y la traza entera.
+4. Los médicos que faltan dar de alta (paso 2) y las fichas de pacientes que quedaron sin vincular
+   (ver "Los pacientes y su vínculo con turnos").
 
 ### Bugs ya encontrados y corregidos
 
@@ -120,6 +137,25 @@ Ninguno salió al compilar; todos al probar:
    quedó la copia privada de `PacienteController`, y eso en PHP no es un aviso sino un error fatal:
    toda la API respondía 500. No lo agarró `php -l`, que mira un archivo por vez y no la herencia;
    lo agarró la prueba de punta a punta en el primer pedido.
+7. **Un archivo que no se subió tiraba el ingreso de todos los médicos.** En turnos faltaba
+   `app/Services/Salud360/HistoriaClinicaService.php`, que `formatearMedico` invoca al armar el
+   perfil. Como el administrador no pasa por ahí, entraba; cualquier médico recibía 500. **Ninguna
+   prueba sin credenciales lo detecta**, porque el rechazo por falta de token ocurre antes de que se
+   cargue esa clase. Si después de un despliegue "entra el admin y no los médicos", buscar ahí.
+8. **El aviso que nadie mostraba.** `HistoriaClinicaViewModel` guardaba en `mensaje` el "no se pudo
+   traer la historia clínica" y `HistoriaClinicaScreen` no lo dibujaba. Cuando la carga fallaba, la
+   pantalla quedaba idéntica a la de un paciente sin consultas previas, así que un fallo de red se veía
+   como "este paciente no tiene historia". En una historia clínica eso invita a cargar de nuevo algo
+   que ya existe. Costó medio día de diagnóstico: se buscaba la causa del fallo cuando el problema era
+   que el fallo no se veía.
+9. **Las consultas previas no se traían desde la ficha del paciente.** Solo al entrar en la historia
+   clínica de la especialidad. El médico abría la ficha, veía el listado vacío y concluía que no había
+   nada. Ahora la ficha las pide sola para las especialidades con servidor propio.
+10. **El buscador de pacientes se des-filtraba solo.** Dos búsquedas escribían sobre la misma lista: la
+    local filtra en SQL, y la de turnos pegaba su resultado arriba **sin filtrar**, unos cientos de
+    milisegundos después. Se veía filtrar bien y enseguida volver la lista entera. No se puede quitar
+    la remota, que es la que permite encontrar y vincular a un paciente que todavía no es del médico:
+    ahora se limpia al tocar una tecla y lo que llega pasa por el mismo criterio que el SQL.
 
 ---
 
@@ -131,11 +167,11 @@ En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Desde el 2026-
 producción**, subida por fuera de git; el paso 3 dice qué se verificó y qué falta.
 
 > **Ojo:** el commit de la fase 3 (`api salud360: fase 3, las fotos y los archivos adjuntos`) está
-> hecho, probado y **corriendo en producción, pero sin pushear**. O sea que el servidor tiene código
-> que no está en el repositorio, y cualquiera que clone la rama no ve las fotos. Vive en el clon de
-> `C:\Users\flor\hc_pediatria`, un commit por delante de `origin/salud360-api`, y se sube con
-> `git push origin salud360-api` desde ahí. Por las dudas quedó también como parche en
-> `C:\Users\flor\hc_pediatria-fase3.patch`.
+> **Ojo:** hay **cuatro commits sin pushear** en el clon de `C:\Users\flor\hc_pediatria`, y tres de
+> ellos ya están corriendo en producción porque se subieron los archivos por FTP. O sea que el servidor
+> tiene código que no está en el repositorio, y quien clone la rama no ve las fotos. Se sube con
+> `git push origin salud360-api` desde ahí. Son: la fase 3, el arreglo de la tabla de desarrollo
+> madurativo, la carpeta única de fotos y la ruta donde se escriben.
 >
 > La copia que sirve Apache (`C:\xampp\htdocs\HCDPediatria-salud360`) es otra: al tocar el backend
 > hay que copiar el archivo cambiado a las dos, o la prueba corre contra código viejo.
@@ -145,7 +181,7 @@ producción**, subida por fuera de git; el paso 3 dice qué se verificó y qué 
 | `app/Http/Controllers/Api/Salud360/` | `Salud360Controller` (base, con los permisos sobre una consulta), `Auth`, `Paciente`, `Consulta`, `Foto` |
 | `app/Services/Salud360/` | `TobbAuthService`, `PacienteVinculoService`, `SeccionesService` (textos, formularios y desarrollo madurativo), `RegistrosService` (las listas), `FotosService` (las galerías), `ColumnasLegacy` |
 | `app/Http/Middleware/` | `Salud360Api`, `Salud360Cors` |
-| `config/salud360.php` | URL de turnos, caché, gracia, autoprovisión |
+| `config/salud360.php` | URL de turnos, caché, gracia, autoprovisión, y `img_path` para forzar la carpeta de las fotos |
 | `database/migrations/2026_09_22_000000_add_paciente_id_tobb_to_pacientes_table.php` | |
 | `md/API_SALUD360_PEDIATRIA.md` | Contrato completo de la API |
 
@@ -170,11 +206,20 @@ En la rama `hc-pediatria-fase-2`. Todavía sin unir a `main`.
 | `core/database/.../migrations/4.sqm` | Columna `registro_clinico.remoto_id` |
 | `core/database/.../migrations/5.sqm` | Columna `archivo.remoto_id` (fase 3) |
 | `core/data/src/jvmTest/.../repos/HcPediatriaE2ETest.kt` | La prueba de punta a punta contra la API real |
+| `composeApp/src/wasmJsMain/resources/favicon.svg` | Ícono de la pestaña, el mismo isotipo que Android |
 
-Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRepository` (backends),
-`HistoriaClinica.sq`, `Consulta.kt` (campos `remotoId`), `ConsultaViewModel`, `HcModule`,
-`ArchivosSeccion.kt`, `gradle.properties` (dominio de pediatría),
-`core/data/build.gradle.kts` (propiedades de la prueba).
+Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRepository` (backends y
+`especialidadesConApi`), `HistoriaClinica.sq`, `Consulta.kt` (campos `remotoId`), `ConsultaViewModel`,
+`HcModule`, `ArchivosSeccion.kt`, `HistoriaClinicaScreen.kt` (muestra el aviso),
+`PacientesViewModel.kt` (el buscador y la precarga de la ficha), `PacientesScreens.kt`,
+`PacientesModule.kt`, `MainShell.kt`, `FormFields.kt` (`DateField` sobre fondo oscuro),
+`Calendario.kt` (elegir año y mes), `index.html` (el ícono),
+`gradle.properties` (dominio de pediatría), `core/data/build.gradle.kts` (propiedades de la prueba).
+
+**Cambios de interfaz que salieron de usarla, no de la fase 3:** el aviso cuando no se pudo traer la
+historia clínica, la precarga de consultas en la ficha del paciente, el buscador que ya no se
+des-filtra, la fecha legible sobre el panel de marca, el ícono de la pestaña y el calendario con
+elección de año y mes, que antes obligaba a pasar mes por mes hasta una fecha de nacimiento.
 
 ---
 
@@ -209,8 +254,22 @@ Cuatro cosas para entenderlo:
 - **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
   historia clínica real.
 - **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
-  máquina. La prueba recibe la URL por parámetro. Para levantar la app entera en Windows sí habría
-  que cambiar esa línea.
+  máquina. La prueba recibe la URL por parámetro, y para probar la app entera se usa
+  `-Pentorno=release`, que apunta a producción. Nunca hizo falta cambiar esa línea.
+
+Dos cosas más que aparecieron usándolo:
+
+- **La máquina se queda sin memoria y Gradle muere.** Con 7,5 GB y el navegador abierto, el proceso de
+  Gradle que sirve la web es lo primero que el sistema mata. **El servidor de Node sobrevive** y sigue
+  entregando lo último compilado, así que la web no se cae: lo que se pierde es la recompilación
+  automática. Si hace falta compilar, conviene cerrar algo antes. También falla el demonio de Kotlin,
+  y ahí Gradle compila en proceso y avisa con `Could not connect to Kotlin compile daemon`; conviene
+  correr la tarea otra vez y confirmar que quede al día.
+- **Al restaurar los volcados, ojo con la versión.** Vienen de MariaDB 11.8 y el XAMPP tiene 10.1. En
+  este caso entraron sin tocar nada, pero conviene revisar antes que no traigan collations `uca1400`,
+  columnas `json` ni columnas generadas, que 10.1 no soporta. Y el MySQL local **no está en modo
+  estricto**, así que un `INSERT` al que le falta una columna obligatoria pasa acá y falla en
+  producción: para reproducir esos casos hay que `SET SESSION sql_mode = 'STRICT_TRANS_TABLES'`.
 
 Cómo se corre acá:
 
@@ -307,34 +366,69 @@ a cada corrida (fila 1 de `antecedentes_perinatales` y de `antecedentes_neonatal
 - **`medicos.castigo_automatico` no castiga nada: decide si el médico se muestra para sacar turno.**
   Es el "Mostrar Medico" del administrador, y las vistas del paciente saltean al que tiene 0. Nada en
   el código lo usa para penalizar. Sirve para el médico que solo usa historia clínica (ver el paso 2).
-- **Las fotos van a `public/img/<usuario>/`, y esa carpeta la crea la API si no existe.** En el MAMP
-  `public/img/` solo tiene `iconos`: las carpetas por médico aparecen recién cuando alguien sube algo.
-  Si el hosting no deja escribir ahí, la subida falla con `500 no_se_pudo_guardar`.
+- **Las fotos de la app van todas a `img/salud360`, y esa carpeta hay que crearla a mano.** El PHP del
+  hosting no tiene permiso para crear directorios, y la web nunca lo necesitó porque sus carpetas
+  estaban creadas de antes. Si falta, la API responde `500 carpeta_no_escribible` **nombrando la ruta
+  exacta** que intentó escribir, que es el dato que resuelve el problema. Y no se resuelve con
+  `public_path()`: ver el paso 5.
 - **Al subir un adjunto, los límites que mandan son los del PHP del hosting**, no el de 12 MB de la
   API: `upload_max_filesize` y `post_max_size`. Cuando los pasa, PHP entrega el archivo incompleto y
   la API contesta `422 archivo_invalido`, que es distinto de `archivo_grande`.
 - **Las columnas nuevas de la base del dispositivo van siempre últimas.** `upsertX` es
   `INSERT OR REPLACE INTO x VALUES ?`, o sea posicional: si una columna se cuela en el medio, todas
   las filas se guardan corridas. Vale para `archivo.remoto_id` y para lo que venga.
+- **El hosting se queda sin conexiones y la web falla de a ratos.** Error
+  `SQLSTATE[HY000] [2002] Operation not permitted`, que **no es un permiso de archivos**: es MySQL
+  que no acepta una conexión más. Aparece en cualquier consulta, incluso en
+  `select * from users where id = ?`, que es la que Laravel hace en todos los pedidos para saber quién
+  está logueado. Si el error cae siempre en la misma consulta es un bug; si cambia de lugar, es esto.
+
+  La causa está en la web, no en la app: **abrir una consulta dispara del orden de 97 llamadas** en 25
+  secciones, cada una con su conexión. La app hace una sola por consulta —la API devuelve secciones,
+  examen y listas juntos— y las de guardado salen en secuencia, no en paralelo. Además la app tolera
+  el rechazo: guarda en el dispositivo y reintenta. La web pierde la llamada y muestra el error.
+
+  Se mitiga subiendo el tope del plan; se arregla de verdad juntando las llamadas de la web, que es
+  un trabajo grande y aparte.
+- **En producción está `APP_DEBUG=true`.** Cualquier error devuelve el volcado completo con rutas
+  absolutas del servidor y la traza entera. Credenciales no se filtran (verificado), pero hay que
+  apagarlo: `APP_DEBUG=false` y después `php artisan config:clear`.
+- **`php artisan` desde la consola escribe como el usuario de SSH, no como la web.** Si un archivo de
+  `storage/` o `bootstrap/cache/` queda con otro dueño, el proceso web ya no puede tocarlo y aparecen
+  errores de permisos que no tienen nada que ver con el código. Pasó como sospecha al correr
+  `config:clear`; conviene revisar dueños después de usar artisan en el servidor.
+- **La app recuerda a qué ficha de pediatría corresponde cada paciente y no lo revisa nunca más.** Se
+  guarda en `paciente_extra` con la clave `hc_paciente_id`, y `resolverPaciente` corta ahí. Si la ficha
+  se corrigió del lado del servidor, el dispositivo sigue apuntando a la vieja. En la versión web se
+  arregla borrando el almacenamiento del sitio; en el teléfono, reinstalando. **Queda pendiente** que
+  la app revalide ese vínculo en vez de confiar en él para siempre.
 
 ---
 
 ## Plan
 
-### Paso 1: cerrar la fase 1 (lo inmediato)
+### Paso 1: probar desde la pantalla
 
-El envío ya está confirmado por `HcPediatriaE2ETest`. Lo que queda es todo de pantalla, así que va
-con la app abierta en el navegador:
+**Hecho en lo esencial** el 2026-09-26, contra producción: se entró con un médico real, se dio de alta
+un paciente, se abrió una consulta, se escribió y se adjuntaron una foto y un PDF, y todo aparece en la
+web de pediatría.
 
-1. Escribir en una sección y confirmar que llega. Es lo que quedó sin probar desde la interfaz.
-2. Escribir treinta segundos seguidos y contar los pedidos en la pestaña Red: tienen que ser unos
+Lo que **sigue sin probarse**, y es lo que más importa de lo que queda, porque es el caso del
+consultorio sin señal:
+
+1. Modo avión: escribir, ver el indicador de pendientes, recuperar señal y confirmar que se envía solo.
+2. Abrir una consulta **sin señal**, escribir, recuperar y verificar que se creó en pediatría con todo.
+3. Escribir una palabra y salir de la pantalla **en el acto**, antes del segundo: tiene que llegar
+   igual. Es el bug 4, y no lo cubre la prueba automática.
+4. Escribir treinta segundos seguidos y contar los pedidos en la pestaña Red: tienen que ser unos
    pocos, no uno por tecla.
-3. Modo avión: escribir, ver el indicador de pendientes, recuperar señal y confirmar que se envía solo.
-4. Abrir una consulta **sin señal**, escribir, recuperar y verificar que se creó en pediatría con todo.
-5. Cerrar desde la app y verla cerrada en la web de pediatría, con fecha y edad correctas.
+5. Cerrar la consulta desde la app y verla cerrada en la web, con fecha y edad correctas.
 6. Cargar peso y talla y ver la curva de crecimiento en la web.
-7. Escribir una palabra y salir de la pantalla **en el acto**, antes del segundo: tiene que llegar
-   igual. Es el bug 4, recién corregido, y no lo cubre la prueba automática.
+
+Ojo con el indicador de pendientes de la barra lateral al hacer estas pruebas: **cuenta lo que espera
+al servidor propio de Salud 360, que no está desplegado**, así que siempre muestra pendientes y su nube
+siempre está tachada. No tiene nada que ver con pediatría. El estado de un adjunto se mira en la nube
+de su miniatura, que es la que pasa a verde cuando llegó.
 
 ### Paso 2: los médicos (bloquea usuarios, no es trabajo de código)
 
@@ -416,6 +510,50 @@ código: es carga de datos desde el administrador de turnos.
 El nombre `castigo_automatico` para "se muestra o no" es una trampa para el que venga después —
 conviene renombrarlo alguna vez, pero no mientras se dan de alta médicos.
 
+### Los pacientes y su vínculo con turnos
+
+Trabajado el 2026-09-25, a partir de un síntoma concreto: un paciente con nueve consultas en la web
+aparecía sin ninguna en la app. La causa es que **son dos bases distintas y el vínculo casi no
+existía**: de 4142 fichas de pediatría, solo 2 tenían `paciente_id_tobb`. Todo dependía de que el
+documento fuera idéntico en las dos bases, y para la mitad no lo era.
+
+Cómo quedaron clasificadas las 4142 fichas:
+
+| Situación | Cuántas | Qué se hizo |
+|---|---|---|
+| Documento único en ambas bases | 1325 | Se escribió `paciente_id_tobb` |
+| Documento repetido en alguna base | 42 | Nada: la API devuelve candidatos y elige el médico |
+| Sin par en turnos | 2076 | Nada: existen solo en pediatría, la app no las ve |
+| Documento inválido en pediatría (≤ 1000) | 719 | Nueve corregidas a mano; el resto sigue igual |
+
+**Vincular no cambia el comportamiento de hoy**, porque la API ya empareja por documento. Sirve para
+que no dependa de él: si alguien corrige un documento, el vínculo explícito sobrevive.
+
+**Lo que sí importa son los 719 con documento inválido**, casi todos con `dni = 1`. Esos no coinciden
+por ninguna vía, así que la app les crea una ficha paralela vacía y el médico ve la historia partida.
+Tienen consultas 605, pero **solo 60** pertenecen a la cartera de alguno de los once médicos que hoy
+pueden entrar, así que el daño real es chico y abordable a mano.
+
+Tres cosas que aparecieron al hacerlo, y que conviene no repetir:
+
+- **Pediatría ya venía duplicando pacientes por su cuenta**, desde antes de Salud 360. Hay 19 fichas con
+  documento inválido que tienen una gemela con el documento real, y 15 de ellas **con consultas en las
+  dos**. Un caso concreto: el mismo chico como ficha 17 (`dni = 1`, 6 consultas, de 2020) y ficha 3730
+  (documento real, 5 consultas, de marzo de 2026), con el apellido escrito distinto. Unificarlas no es
+  completar un documento: hay que decidir cuál queda y mover las consultas. Por decisión del usuario,
+  **las de `dni = 1` con gemela no se tocan ni se borran**.
+- **Antes de escribir un documento hay que ver que no exista ya en pediatría.** La primera tanda que se
+  propuso incluía uno que chocaba justamente con su gemela.
+- **La mitad de los documentos que turnos tiene para un chico son del padre o de la madre.** De 16
+  candidatos a corregir, 6 tenían documento de adulto para un chico nacido después de 2021, y uno tenía
+  nueve dígitos. Se descartaron: copiarlos le daría al chico el documento de su madre. El filtro
+  práctico es que un documento de ocho dígitos por arriba de 45 millones es plausible para un menor.
+
+La sentencia que puebla el vínculo lee de las dos bases, y en producción **el usuario de MySQL no llega
+a las dos**. Por eso se resolvió generando las 1325 actualizaciones ya calculadas, que corren solo en
+pediatría. Si hay que repetirlo, el criterio es: documento mayor a 1000, único en pediatría y único en
+turnos, y la ficha sin vínculo previo.
+
 ### Paso 3: subir a producción, en este orden
 
 **El backend ya está arriba, desde el 2026-09-24.** Se subieron los 18 archivos de la API (las tres
@@ -442,14 +580,23 @@ turnos. Sobre la copia del 2026-09-24 el cruce sumaba 4 médicos a los 8 que ya 
 quedaban 11 habilitados. El duodécimo está vinculado a un médico dado de baja en turnos, así que no
 entra igual.
 
+**Y está probado con un médico real** (2026-09-26): ingreso, alta de paciente, consulta, texto y
+adjuntos, todo visible en la web de pediatría. Para que llegara a andar hubo que corregir, en el
+camino, cuatro cosas que están descritas en la lista de bugs y en las advertencias: el archivo que
+faltaba en turnos, una columna de `pacientes` sin valor por defecto, la carpeta de las fotos y la ruta
+donde se escriben.
+
 Lo que queda:
 
 1. **Pushear el repo de pediatría.** Los archivos se subieron al servidor por fuera de git, así que
-   **producción tiene código que no está en el repositorio**. El commit espera en el clon de
-   `C:\Users\flor\hc_pediatria`.
-2. Probar con un token de verdad, que es lo único que no se puede comprobar sin credenciales: el
-   ingreso de un médico desde la app, o una fila en `salud360_tokens` de turnos.
-3. Recién ahí desplegar la app.
+   **producción tiene código que no está en el repositorio**. Son cuatro commits, esperando en el clon
+   de `C:\Users\flor\hc_pediatria`.
+2. **Subir los dos archivos del arreglo del desarrollo madurativo** (`MedicoController.php` y
+   `resources/views/medico/seccion/desarrollo_madurativo.blade.php`), si se revirtieron mientras se los
+   sospechaba del error de conexión. Quedaron descartados.
+3. **Los límites del hosting y `APP_DEBUG=false`**, que son los dos problemas vivos de producción.
+4. Desplegar la app, que es un push a `main` del repo de la app: hay un flujo de GitHub Actions que
+   publica la web en Hostinger con cada push a esa rama. **O sea que ese merge es el despliegue.**
 
 Si se despliega la app primero no se rompe nada: todo se guarda igual en el dispositivo y queda
 pendiente de envío, pero se ven avisos de que no se pudo enviar.
@@ -534,13 +681,40 @@ Cinco cosas para entenderlas:
   paciente, y no por su URL pública: `public/img/` lo abre cualquiera que tenga el enlace. La URL
   pública igual viene en la respuesta, porque es la que usa la web.
 
-Lo que queda de la fase 3: probarlo
-desde la pantalla, que es lo mismo que le falta a las fases 1 y 2 (paso 1).
+**Dónde terminan las fotos, que costó dos vueltas.** La web reparte las suyas en una carpeta por
+médico y otra por sección, y **nunca las crea**: su código asume que están porque alguien las creó a
+mano. La API sí las creaba, y el hosting no se lo permite (`mkdir permission denied`), así que ninguna
+foto llegaba. Dos correcciones:
+
+1. **Una sola carpeta para todos**, `img/salud360`, creada una vez y a mano. La sección va adelante del
+   nombre del archivo, así el contenido sigue siendo legible sin subcarpetas. La web las muestra igual
+   porque lee la ruta que está en la columna.
+2. **No se usa `public_path()`.** Con la carpeta creada y en 777 la subida seguía fallando: en este
+   hosting el contenido del `public` de Laravel se copia dentro del `public_html` del dominio, así que
+   `public_path()` apunta a una carpeta que el servidor no publica. La web no se enteró nunca porque
+   guarda con rutas **relativas** (`Image::save('img/…')`), que caen en el directorio del script. Ahora
+   la API resuelve igual: la carpeta `img` que está junto al `index.php` que atendió el pedido. Se
+   puede forzar con `SALUD360_IMG_PATH`.
+
+Y el error de esa familia nombra la ruta exacta que intentó escribir, en vez de mandar al log.
 
 ### Paso 6: fase 4
 
 Pendientes, secretarias, aviso de edición simultánea, y extraer la base común entre el cliente de turnos
 y el de historia clínica, que hoy son gemelos a propósito.
+
+Se le suman tres cosas que salieron de usar la app y que no entran en ninguna fase:
+
+- **Que la app revalide el vínculo del paciente** en lugar de confiar para siempre en el
+  `hc_paciente_id` que guardó la primera vez. Hoy, si la ficha se corrigió del lado del servidor, el
+  dispositivo sigue apuntando a la vieja y no hay forma de enterarse desde la app.
+- **Que la API no cree una ficha nueva en silencio** cuando no encuentra al paciente por documento pero
+  hay parecidos por nombre y fecha de nacimiento. Ya existe el camino de los candidatos, que se usa
+  cuando el documento está repetido: sería reutilizarlo acá, para que la app pregunte en vez de abrir
+  una historia clínica paralela.
+- **Juntar las llamadas de la web de pediatría.** Es la causa de la saturación de conexiones: 97 en 25
+  secciones al abrir una consulta. La API de la app ya devuelve todo junto y sería el modelo a seguir.
+  Es un trabajo grande y toca la web entera, pero es lo que hoy más molesta a los médicos.
 
 ---
 
@@ -558,4 +732,12 @@ Backend: `php -l` sobre los archivos tocados, y las pruebas con curl del contrat
 `md/API_SALUD360_PEDIATRIA.md` del repo de pediatría.
 
 La prueba que importa sigue siendo la de siempre: cargar algo **desde la app** y verlo en la web de
-pediatría con el mismo médico.
+pediatría con el mismo médico. Se hizo el 2026-09-26 con
+`./gradlew :composeApp:wasmJsBrowserDevelopmentRun -Pentorno=release`, que levanta la web local contra
+producción, y pasó para las tres fases.
+
+**Una advertencia sobre qué alcanza a verificar cada cosa.** Las pruebas sin credenciales —`php -l`, los
+curl contra producción, el compilar— no detectan una clase que falta ni un archivo que no se subió,
+porque el rechazo por falta de token ocurre antes. Lo aprendimos dos veces: con
+`HistoriaClinicaService.php` en turnos y con la sospecha sobre `FotosService.php`. Un 401 correcto en
+una ruta **no** prueba que el controlador de esa ruta exista.
