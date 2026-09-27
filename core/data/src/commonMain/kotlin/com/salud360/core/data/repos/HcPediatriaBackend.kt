@@ -194,13 +194,31 @@ class HcPediatriaBackend(
             if (local != null && local.id in pendientes) continue
             val registro = (local ?: RegistroClinico(newId(), consulta.pacienteId, consultaLocalId, especialidad, remoto.tipo))
                 .copy(
-                    consultaId = local?.consultaId ?: consultaLocalId,
+                    consultaId = local?.consultaId ?: consultaDeOrigen(remoto, consultaLocalId),
                     fecha = remoto.fecha?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: local?.fecha,
                     campos = remoto.campos,
                     remotoId = remoto.id,
                 )
             hq.upsertRegistro(registro.toRow(ahora, dirty = false))
         }
+    }
+
+    /**
+     * En qué consulta del dispositivo se pidió este registro.
+     *
+     * Los exámenes complementarios y las interconsultas llegan **acumulativos**: al leer una consulta
+     * viene también lo que se pidió en las anteriores, porque el estudio se pide una vez y el resultado
+     * aparece semanas después. Guardarlos todos con la consulta que se está abriendo los haría pasar por
+     * propios de ella, y el médico los vería como si los hubiera pedido hoy.
+     *
+     * Si la consulta de origen no está en este dispositivo —el médico nunca la abrió acá— queda en null,
+     * que es como se guardan los registros que son del paciente y no de una consulta. La pantalla los
+     * muestra igual, marcados como anteriores.
+     */
+    private suspend fun consultaDeOrigen(remoto: HcRegistroRemoto, consultaLocalId: Id): Id? {
+        val origen = remoto.consultaId.takeIf { it.isNotBlank() && it != "0" } ?: return consultaLocalId
+        val local = hq.consultaPorRemotoId(especialidad, origen).uno { it.id }
+        return local
     }
 
     /**

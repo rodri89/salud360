@@ -187,6 +187,9 @@ class HcRepository(
      * El vínculo con la API de la especialidad se conserva aunque el que llama arme el registro de
      * cero: la pantalla no lo conoce, y perderlo duplicaría la fila del otro lado en el próximo envío.
      */
+    /** Un registro por su id local, para conservar lo que no se está editando (la consulta de origen). */
+    suspend fun registro(id: Id): RegistroClinico? = q.registroPorId(id).uno { it.toModel() }
+
     suspend fun guardarRegistro(registro: RegistroClinico) {
         val remoto = registro.remotoId.ifBlank { q.registroPorId(registro.id).uno { it.remoto_id }.orEmpty() }
         q.upsertRegistro(registro.copy(remotoId = remoto).toRow(ahoraMillis()))

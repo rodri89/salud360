@@ -194,7 +194,12 @@ class ConsultaViewModel(
 
     fun guardarRegistro(tipo: String, id: Id?, fecha: LocalDate?, campos: Map<String, String>, porPaciente: Boolean) = viewModelScope.launch {
         val c = ui.value.consulta ?: return@launch
-        hc.guardarRegistro(RegistroClinico(id ?: newId(), c.pacienteId, if (porPaciente) null else c.id, c.especialidad, tipo, fecha, campos))
+        // Al editar se conserva la consulta de origen. Un examen pedido en otra consulta se puede
+        // completar desde esta, y moverlo acá lo haría pasar por pedido hoy: pediatría anota la consulta
+        // donde se cargó la respuesta en una columna aparte, y el pedido queda donde estaba.
+        val consultaOriginal = id?.let { hc.registro(it)?.consultaId }
+        val deLaConsulta = if (porPaciente) null else consultaOriginal ?: c.id
+        hc.guardarRegistro(RegistroClinico(id ?: newId(), c.pacienteId, deLaConsulta, c.especialidad, tipo, fecha, campos))
         hcApi.marcarSucia(consultaId)
     }
 

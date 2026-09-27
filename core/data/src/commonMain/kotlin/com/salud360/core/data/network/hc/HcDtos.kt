@@ -106,6 +106,14 @@ data class HcRegistroRemoto(
     val tipo: String,
     val fecha: String? = null,
     val campos: Map<String, String> = emptyMap(),
+    /**
+     * Consulta donde se pidió, que no es necesariamente la que se está leyendo: los exámenes
+     * complementarios y las interconsultas llegan acumulativos, con toda la historia del paciente.
+     * Vacío en las listas que no llevan consulta (los screenings).
+     */
+    @SerialName("consulta_id") val consultaId: String = "",
+    /** Consulta donde se cargó el resultado, o "0" mientras no hay. */
+    @SerialName("consulta_respuesta") val consultaRespuesta: String = "",
 )
 
 /** Cuerpo de `PUT consultas/{id}/examen`. */
