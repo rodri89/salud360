@@ -25,7 +25,7 @@ fun hcFeatureModule(contribuciones: List<EspecialidadContribution>) = module {
             renderers = renderersBase + contribuciones.flatMap { it.renderers.entries }.associate { it.key to it.value },
         )
     }
-    viewModel { (consultaId: Id, medicoId: Id) -> ConsultaViewModel(get(), get(), get(), get(), get(), consultaId, medicoId) }
+    viewModel { (consultaId: Id, medicoId: Id) -> ConsultaViewModel(get(), get(), get(), get(), get(), get(), consultaId, medicoId) }
     viewModel { (pacienteId: Id, especialidad: String, medicoId: Id) -> HistoriaClinicaViewModel(get(), get(), get(), pacienteId, especialidad, medicoId) }
     viewModel { (medicoId: Id, especialidades: List<String>) -> ConfigSeccionesHcViewModel(get(), get(), medicoId, especialidades) }
 }

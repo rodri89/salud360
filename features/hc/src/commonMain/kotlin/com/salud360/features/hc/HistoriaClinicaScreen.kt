@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PregnantWoman
 import androidx.compose.material.icons.filled.Psychology
@@ -91,6 +92,7 @@ fun HistoriaClinicaScreen(
     val paciente by vm.paciente.collectAsState()
     val consultas by vm.consultas.collectAsState()
     val pendientes by vm.pendientes.collectAsState()
+    val mensaje by vm.mensaje.collectAsState()
     val def = vm.definicion
     var elegirTipo by remember { mutableStateOf(false) }
     var anular by remember { mutableStateOf<Consulta?>(null) }
@@ -113,6 +115,20 @@ fun HistoriaClinicaScreen(
 
         if (pendientes.isNotEmpty()) SectionCard("Pendientes", icon = Icons.Default.NotificationsActive) {
             pendientes.forEach { p -> p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it", color = Salud360Colors.Danger) } }
+        }
+
+        // Si no se pudo traer la historia clínica del servidor de la especialidad hay que decirlo: si no,
+        // la pantalla queda igual que la de un paciente sin consultas previas y el médico no distingue
+        // "no tiene" de "no se pudo traer".
+        mensaje?.let { m ->
+            SectionCard("No se pudo traer la historia clínica", icon = Icons.Default.CloudOff, collapsible = false) {
+                Text(m, color = Salud360Colors.Danger)
+                Text(
+                    "Lo que está cargado en este dispositivo se sigue viendo y nada se pierde.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         if (def == null) {

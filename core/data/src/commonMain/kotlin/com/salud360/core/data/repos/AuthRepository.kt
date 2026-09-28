@@ -7,6 +7,7 @@ import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.auth.Credenciales
@@ -53,6 +54,11 @@ class AuthRepository(
     private val api: ApiClient,
     private val turnos: TurnosOnlineClient = TurnosOnlineClient(),
     private val settings: Settings? = null,
+    /**
+     * Clientes de las historias clínicas con API propia. Usan el mismo token de turnosonlinebb, que es
+     * la identidad única: esas APIs no tienen login, validan este token contra turnos.
+     */
+    private val hcClients: Map<String, HcApiClient> = emptyMap(),
 ) {
     private val importador = TurnosImportador(db)
     private val _sesion = MutableStateFlow<Sesion?>(null)
@@ -71,6 +77,7 @@ class AuthRepository(
         val guardada = runCatching { json.decodeFromString<Sesion>(texto) }.getOrNull() ?: return null
         api.token = guardada.token
         turnos.token = guardada.token
+        hcClients.values.forEach { it.token = guardada.token }
         // El perfil se rearma desde la base: el administrador pudo dar de baja la licencia después del último ingreso,
         // y la copia guardada en JSON todavía la tendría vigente.
         val s = resolverPerfilLocal(guardada.usuario)?.copy(token = guardada.token) ?: guardada
@@ -116,6 +123,7 @@ class AuthRepository(
                         _sesion.value = actualizada
                         api.token = actualizada.token
                         turnos.token = actualizada.token
+                        hcClients.values.forEach { it.token = actualizada.token }
                         return ResultadoLogin.Ok(actualizada, offline = true)
                     }
                 }
@@ -135,6 +143,7 @@ class AuthRepository(
         settings?.remove(CLAVE_SESION)
         api.token = null
         turnos.token = null
+        hcClients.values.forEach { it.token = null }
         _sesion.value = null
     }
 
@@ -152,6 +161,7 @@ class AuthRepository(
     private suspend fun guardarSesion(s: Sesion) {
         api.token = s.token
         turnos.token = s.token
+        hcClients.values.forEach { it.token = s.token }
         _sesion.value = s
         val texto = json.encodeToString(s)
         db.authQueries.guardarSesion(s.usuario.id, s.token, texto, ahoraMillis())

@@ -13,6 +13,7 @@ import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -82,11 +83,32 @@ class PacientesListViewModel(
                 _cargandoCartera.value = false
             }
             viewModelScope.launch {
-                busqueda.debounce(300).collectLatest { q ->
-                    remotos.value = if (q.trim().length >= 2) runCatching { turnos.buscarPacientesRemotos(medicoId!!, q) }.getOrNull() else null
+                busqueda.collectLatest { q ->
+                    val t = q.trim()
+                    // Se limpia apenas cambia lo tecleado, antes de esperar: si no, mientras vuelve la
+                    // búsqueda nueva se sigue viendo el resultado de la anterior, que es más ancho, y
+                    // parece que el filtro se perdió.
+                    remotos.value = null
+                    if (t.length < 2) return@collectLatest
+                    delay(300)
+                    remotos.value = runCatching { turnos.buscarPacientesRemotos(medicoId!!, t) }
+                        .getOrNull()?.filter { coincide(it, t) }
                 }
             }
         }
+    }
+
+    /**
+     * El mismo criterio que la consulta local, aplicado a lo que devuelve turnos.
+     *
+     * Lo remoto se agrega arriba de la lista para que el médico pueda encontrar y vincular a un paciente
+     * que todavía no es suyo. Pero si viene más ancho que lo que se tecleó —y el buscador de turnos
+     * matchea más suelto—, la lista filtrada se ensancha sola unos cientos de milisegundos después y
+     * parece que el filtro se perdió. Por eso se lo filtra igual que en SQL antes de mostrarlo.
+     */
+    private fun coincide(p: Paciente, q: String): Boolean {
+        val t = q.lowercase()
+        return p.dni.startsWith(q) || p.apellido.lowercase().contains(t) || p.nombre.lowercase().contains(t)
     }
 
     /** Búsqueda global por DNI en toda la base (para vincular un paciente ya existente de otro médico). */
@@ -188,13 +210,27 @@ class PacienteFormViewModel(
 /** Ficha del paciente con su actividad: consultas por especialidad y turnos. */
 class PacienteDetalleViewModel(
     pacientes: PacientesRepository,
-    hc: HcRepository,
+    private val hc: HcRepository,
     turnos: TurnosRepository,
     private val pacienteId: Id,
+    private val medicoId: Id,
 ) : ViewModel() {
     val paciente: StateFlow<Paciente?> = pacientes.observar(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val consultas: StateFlow<List<Consulta>> = hc.observarConsultasTodas(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val turnos: StateFlow<List<Turno>> = turnos.observarTurnosDePaciente(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // Las historias clínicas con sistema propio se traen acá y no recién al entrar en cada una: el
+        // médico abre la ficha para ver qué pasó con el paciente, y hasta ahora la lista salía vacía
+        // aunque del otro lado hubiera consultas. La lista se observa de la base, así que aparecen solas.
+        if (medicoId.isNotBlank()) {
+            viewModelScope.launch {
+                hc.especialidadesConApi.forEach { especialidad ->
+                    runCatching { hc.traerConsultasRemotas(pacienteId, medicoId, especialidad) }
+                }
+            }
+        }
+    }
 }
 
 private fun <T> MutableStateFlow<T>.asStateFlowCompat(): StateFlow<T> = this

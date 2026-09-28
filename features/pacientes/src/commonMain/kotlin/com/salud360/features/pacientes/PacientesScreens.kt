@@ -269,12 +269,13 @@ fun PacienteFormScreen(
 fun PacienteDetalleScreen(
     pacienteId: Id,
     especialidadesDisponibles: List<Pair<String, String>>,
+    medicoId: Id,
     onEditar: () -> Unit,
     onAbrirHc: (especialidad: String) -> Unit,
     onVerConsulta: (Consulta) -> Unit,
     onNuevoTurno: (() -> Unit)?,
     onVolver: () -> Unit,
-    vm: PacienteDetalleViewModel = koinViewModel(key = "paciente-$pacienteId") { parametersOf(pacienteId) },
+    vm: PacienteDetalleViewModel = koinViewModel(key = "paciente-$pacienteId") { parametersOf(pacienteId, medicoId) },
 ) {
     val paciente by vm.paciente.collectAsState()
     val consultas by vm.consultas.collectAsState()

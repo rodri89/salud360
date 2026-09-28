@@ -1,0 +1,4 @@
+-- v3 -> v4: id de la consulta en la API de la especialidad (hc_pediatria, ...).
+-- La consulta se abre en el dispositivo aunque no haya señal; cuando se envía, la API devuelve su id
+-- y se guarda acá, de modo que el id local nunca cambia.
+ALTER TABLE consulta ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';

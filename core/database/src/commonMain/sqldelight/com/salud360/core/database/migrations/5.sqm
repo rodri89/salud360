@@ -1,0 +1,6 @@
+-- v5 -> v6: id del adjunto en la API de la especialidad (hc_pediatria, ...).
+-- Mismo criterio que `consulta.remoto_id` y `registro_clinico.remoto_id`: la foto se saca en el
+-- consultorio, donde la señal es mala, y queda en el dispositivo hasta que se puede subir. Sin
+-- saber con qué id quedó del otro lado, el segundo envío subiría la misma foto otra vez.
+-- `subido` y `url_remota`, que ya estaban, son del servidor propio de Salud 360: otro camino.
+ALTER TABLE archivo ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';

@@ -138,7 +138,7 @@ fun ConsultaScreen(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DateField("Fecha de consulta", consulta.fecha, { it?.let(vm::cambiarFecha) }, Modifier.width(220.dp), readOnly = soloLectura)
+                DateField("Fecha de consulta", consulta.fecha, { it?.let(vm::cambiarFecha) }, Modifier.width(220.dp), readOnly = soloLectura, sobreMarca = true)
                 if (pendientesPrevios.isNotEmpty()) {
                     Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Salud360Colors.Warning)
                     Text("Con pendientes", color = Color.White)
