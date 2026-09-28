@@ -10,6 +10,7 @@ import com.salud360.core.data.network.hc.HcAbrirConsulta
 import com.salud360.core.data.network.hc.HcCerrarConsulta
 import com.salud360.core.data.network.hc.HcConsulta
 import com.salud360.core.data.network.hc.HcExamenRequest
+import com.salud360.core.data.network.hc.HcFotoRemota
 import com.salud360.core.data.network.hc.HcPaciente
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.data.network.hc.HcRegistro
@@ -23,6 +24,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.data.files.mimeDe
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
@@ -179,6 +181,60 @@ class HcPediatriaBackend(
 
         val registros = api.leerOpcional(ListSerializer(HcRegistroRemoto.serializer()), r, "registros").orEmpty()
         if (registros.isNotEmpty()) guardarRegistros(consultaLocalId, registros, ahora)
+
+        // Después de los registros: una foto de un examen cuelga de su fila, que tiene que estar.
+        val fotos = api.leerOpcional(ListSerializer(HcFotoRemota.serializer()), r, "fotos").orEmpty()
+        if (fotos.isNotEmpty()) guardarArchivos(consultaLocalId, fotos, ahora)
+    }
+
+    /**
+     * Adjuntos que ya están en pediatría: los que subió la web, otro dispositivo, o este mismo antes de
+     * reinstalar. Se crea la fila local sin archivo —`ruta_local` en null— y el contenido se baja recién
+     * cuando hay que mostrarlo, porque una consulta con diez fotos no puede costar diez descargas al
+     * abrirla. Lo que todavía no se pudo enviar no se toca.
+     */
+    private suspend fun guardarArchivos(consultaLocalId: Id, remotas: List<HcFotoRemota>, ahora: Long) {
+        val consulta = hq.consultaPorId(consultaLocalId).uno { it.toModel() } ?: return
+        val locales = hq.archivosDePacienteTodos(consulta.pacienteId).lista { it.toModel() }
+        val pendientes = hq.archivosDirty().lista { it.id }.toSet()
+        for (remota in remotas) {
+            val local = locales.firstOrNull { it.remotoId == remota.id }
+            if (local != null && local.id in pendientes) continue
+
+            // Las que cuelgan de una lista necesitan su fila; sin ella no habría dónde mostrarlas.
+            val registroId = if (remota.tipo in TIPOS_DE_REGISTRO) {
+                hq.registrosDePacienteTodos(consulta.pacienteId, especialidad).lista { it.toModel() }
+                    .firstOrNull { it.remotoId == remota.padreId }?.id
+                    ?: continue
+            } else {
+                null
+            }
+            val nombre = remota.nombre.ifBlank { "adjunto" }
+            val archivo = (local ?: Archivo(newId(), consulta.pacienteId, null, registroId, seccionDe(remota.tipo), nombre, mimeDe(nombre)))
+                .copy(
+                    consultaId = local?.consultaId ?: consultaDeFoto(remota, consultaLocalId),
+                    registroId = local?.registroId ?: registroId,
+                    nombre = nombre,
+                    mime = mimeDe(nombre),
+                    urlRemota = remota.url,
+                    remotoId = remota.id,
+                )
+            hq.upsertArchivo(archivo.toRow(ahora, dirty = false))
+        }
+    }
+
+    /** En qué sección de la app se muestra un adjunto según el tipo con el que lo guarda pediatría. */
+    private fun seccionDe(tipo: String): String = when (tipo) {
+        in TIPOS_DE_REGISTRO -> "registro"
+        "neonatales" -> "neonatales"
+        "familigrama" -> "familigrama"
+        else -> SeccionesComunes.FOTOS
+    }
+
+    /** La consulta del dispositivo donde se subió, o null si esa consulta no está acá. */
+    private suspend fun consultaDeFoto(remota: HcFotoRemota, consultaLocalId: Id): Id? {
+        val origen = remota.consultaId.takeIf { it.isNotBlank() && it != "0" } ?: return consultaLocalId
+        return hq.consultaPorRemotoId(especialidad, origen).uno { it.id }
     }
 
     /**

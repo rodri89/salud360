@@ -197,6 +197,7 @@ archivosDeRegistro: SELECT * FROM archivo WHERE registro_id = ? AND deleted = 0 
 archivosPendientesDeSubir: SELECT * FROM archivo WHERE subido = 0 AND length(ruta_local) > 0 AND deleted = 0;
 archivoPorId: SELECT * FROM archivo WHERE id = ?;
 upsertArchivo: INSERT OR REPLACE INTO archivo VALUES ?;
+archivosDePacienteTodos: SELECT * FROM archivo WHERE paciente_id = ? AND deleted = 0;
 archivosDirty: SELECT * FROM archivo WHERE dirty = 1;
 limpiarArchivo: UPDATE archivo SET dirty = 0 WHERE id = ?;
 

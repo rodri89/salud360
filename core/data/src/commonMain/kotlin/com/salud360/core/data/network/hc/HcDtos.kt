@@ -116,6 +116,22 @@ data class HcRegistroRemoto(
     @SerialName("consulta_respuesta") val consultaRespuesta: String = "",
 )
 
+/**
+ * Un adjunto tal como lo devuelve pediatría. Puede venir de la web o de otro dispositivo, así que el
+ * archivo no está necesariamente en éste: se baja cuando hace falta mostrarlo.
+ */
+@Serializable
+data class HcFotoRemota(
+    val id: String,
+    val tipo: String,
+    val nombre: String = "",
+    val url: String = "",
+    /** Consulta donde se subió, que no es la del estudio si el resultado llegó después. */
+    @SerialName("consulta_id") val consultaId: String = "",
+    /** Fila de la lista de la que cuelga (el examen, la internación). */
+    @SerialName("padre_id") val padreId: String = "",
+)
+
 /** Cuerpo de `PUT consultas/{id}/examen`. */
 @Serializable
 data class HcExamenRequest(@SerialName("examen_fisico") val examenFisico: Map<String, String>)

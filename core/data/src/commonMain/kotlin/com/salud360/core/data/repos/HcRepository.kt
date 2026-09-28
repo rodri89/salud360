@@ -187,6 +187,21 @@ class HcRepository(
      * El vínculo con la API de la especialidad se conserva aunque el que llama arme el registro de
      * cero: la pantalla no lo conoce, y perderlo duplicaría la fila del otro lado en el próximo envío.
      */
+    /**
+     * Baja de la API de la especialidad el contenido de un adjunto que no está en este dispositivo,
+     * porque lo subió la web o alguien desde otro teléfono. Null si no hay API o no se pudo.
+     */
+    suspend fun bajarArchivo(consulta: Consulta, archivo: Archivo): ByteArray? {
+        val backend = backends[consulta.especialidad] ?: return null
+        if (consulta.remotoId.isBlank() || archivo.remotoId.isBlank()) return null
+        return backend.bajarArchivo(consulta.remotoId, archivo)
+    }
+
+    /** Anota dónde quedó guardado en este dispositivo un adjunto que se acaba de bajar: no hay nada que enviar. */
+    suspend fun guardarRutaLocal(archivo: Archivo, ruta: String) {
+        q.upsertArchivo(archivo.copy(rutaLocal = ruta).toRow(ahoraMillis(), dirty = false))
+    }
+
     /** Un registro por su id local, para conservar lo que no se está editando (la consulta de origen). */
     suspend fun registro(id: Id): RegistroClinico? = q.registroPorId(id).uno { it.toModel() }
 

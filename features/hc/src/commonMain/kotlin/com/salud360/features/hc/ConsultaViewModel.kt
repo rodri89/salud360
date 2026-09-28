@@ -238,6 +238,15 @@ class ConsultaViewModel(
 
     suspend fun bytesDe(archivo: Archivo): ByteArray? {
         archivo.rutaLocal?.let { archivos.leer(it) }?.let { return it }
+        // Lo que subió la web u otro dispositivo llega sin archivo: se baja la primera vez que hay que
+        // mostrarlo y queda guardado acá, así no se vuelve a pedir en cada recomposición.
+        val consulta = ui.value.consulta
+        if (consulta != null && archivo.remotoId.isNotBlank()) {
+            hc.bajarArchivo(consulta, archivo)?.let { bytes ->
+                hc.guardarRutaLocal(archivo, archivos.guardar(archivo.id, archivo.nombre, bytes))
+                return bytes
+            }
+        }
         val ruta = sync.descargarArchivo(archivo.id) ?: return null
         return archivos.leer(ruta)
     }
