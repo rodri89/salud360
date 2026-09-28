@@ -259,19 +259,34 @@ private fun FeriadosTab(vm: AdminViewModel) {
 private fun LicenciasTab(vm: AdminViewModel) {
     val medicos by vm.medicos.collectAsState()
     val licencias by vm.licencias.collectAsState()
+    // La licencia es el permiso para entrar a una historia clínica, así que solo tiene sentido para
+    // los médicos que tienen alguna habilitada. Al resto no se les cobra ni se les vence nada.
+    val conHc = medicos.filter { it.especialidadesHc.isNotEmpty() }
     Text("La licencia controla el acceso del médico a la historia clínica (vencida = no puede ingresar; aviso = se le muestra un recordatorio).", style = MaterialTheme.typography.bodyMedium)
-    medicos.forEach { m ->
-        val l = licencias.firstOrNull { it.medicoId == m.id } ?: Licencia(m.id, hoy().toString(), hoy().toString())
+    if (conHc.isEmpty()) {
+        Text("Ningún médico tiene historia clínica habilitada.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    conHc.forEach { m ->
+        val l = licencias.firstOrNull { it.medicoId == m.id }
         PlainCard {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(220.dp))
-                DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
-                DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
-                var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
-                NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
-                Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
-                val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
-                StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                if (l == null) {
+                    // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como
+                    // si la licencia venciera hoy. La licencia vive en la base de la historia clínica
+                    // y la app todavía no la trae.
+                    Text("Sin licencia cargada", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    StatusChip("Sin dato", Salud360Colors.Grey)
+                } else {
+                    DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
+                    DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
+                    var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
+                    NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
+                    Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
+                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
+                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                }
             }
         }
     }
