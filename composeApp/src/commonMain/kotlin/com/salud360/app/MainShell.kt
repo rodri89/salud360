@@ -332,6 +332,15 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
     }
 }
 
+/**
+ * Si se muestra el estado de sincronización con el servidor propio de Salud 360.
+ *
+ * Apagado mientras ese servidor no esté desplegado: hoy cuenta filas que esperan a un destino que no
+ * existe, así que marca pendientes para siempre. Lo de pediatría viaja por otro camino y tiene su
+ * propio aviso, el de la historia clínica. Poner en true cuando el servidor esté arriba.
+ */
+private const val MOSTRAR_ESTADO_SYNC = false
+
 @Composable
 private fun BarraLateral(
     items: List<ItemNav>, rutaActual: String?, sesion: Sesion, contexto: ContextoMedico?, online: Boolean, pendientes: Int,
@@ -361,8 +370,14 @@ private fun BarraLateral(
         }
         Spacer(Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 12.dp)) {
-            Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, contentDescription = null, tint = if (online) Salud360Colors.NeonGreen else Salud360Colors.Warning)
-            Text(if (pendientes > 0) "$pendientes por sincronizar" else if (online) "Sincronizado" else "Sin conexión", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            // Oculto por ahora. Este indicador es del servidor propio de Salud 360, que no está
+            // desplegado, así que siempre muestra pendientes y la nube tachada: el médico lee que algo
+            // no se guardó, cuando en realidad su historia clínica ya viajó a pediatría por otro camino.
+            // Se vuelve a mostrar cuando ese servidor exista.
+            if (MOSTRAR_ESTADO_SYNC) {
+                Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, contentDescription = null, tint = if (online) Salud360Colors.NeonGreen else Salud360Colors.Warning)
+                Text(if (pendientes > 0) "$pendientes por sincronizar" else if (online) "Sincronizado" else "Sin conexión", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
             IconButton(onClick = onLogout) { Icon(Icons.Default.Logout, contentDescription = "Cerrar sesión", tint = Color.White) }
         }
     }
