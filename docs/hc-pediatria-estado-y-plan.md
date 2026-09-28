@@ -1,7 +1,8 @@
 # Historia clínica de pediatría contra su propia base: estado y plan
 
 Documento de continuidad. Lo que sigue alcanza para retomar sin el historial de la conversación
-donde se hizo. Última actualización: 2026-09-26 (las tres fases terminadas y probadas desde la pantalla).
+donde se hizo. Última actualización: 2026-09-28 (las tres fases terminadas, probadas desde la pantalla
+y desplegadas).
 
 ## Qué se está haciendo y por qué
 
@@ -101,17 +102,17 @@ existía (ver la regla de reutilización más abajo): en ese caso no borra nada.
 
 ### Lo primero a hacer al retomar
 
-Ya no queda nada de código por probar. Lo que queda, en orden:
+Los dos repositorios están al día y la app está desplegada. Lo que queda no es código:
 
-1. **Pushear el repo de pediatría.** Son cuatro commits sin subir, y tres de ellos ya están corriendo
-   en producción porque se subieron los archivos por FTP. O sea que **el servidor tiene código que no
-   está en el repositorio**. Es el pendiente más importante de todos.
-2. **Los límites del hosting**, que es lo que rompe la web de a ratos. Ver la advertencia sobre la
-   saturación de conexiones. No es de código y es lo que más molesta hoy a los médicos.
-3. **`APP_DEBUG=false` en producción.** Hoy cualquier error devuelve el volcado completo, con rutas
+1. **Los límites del hosting**, que es lo que rompe la web de a ratos. Ver la advertencia sobre la
+   saturación de conexiones. Hay una mitigación puesta —el conector reintenta— pero el arreglo de
+   fondo es juntar las llamadas de la web, y es lo que más molesta hoy a los médicos.
+2. **`APP_DEBUG=false` en producción.** Hoy cualquier error devuelve el volcado completo, con rutas
    absolutas del servidor y la traza entera.
-4. Los médicos que faltan dar de alta (paso 2) y las fichas de pacientes que quedaron sin vincular
+3. Los médicos que faltan dar de alta (paso 2) y las fichas de pacientes que quedaron sin vincular
    (ver "Los pacientes y su vínculo con turnos").
+4. Las pruebas sin señal, que es lo único de la app que nunca se probó: modo avión, escribir, recuperar
+   y confirmar que se envía solo. Ver el paso 1.
 
 ### Bugs ya encontrados y corregidos
 
@@ -163,18 +164,17 @@ Ninguno salió al compilar; todos al probar:
 
 ### Repo de pediatría (`/Applications/MAMP/htdocs/HCPediatria/public_html/pediatria/HCDPediatria`)
 
-En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`. **Desde el 2026-09-24 está en
-producción**, subida por fuera de git; el paso 3 dice qué se verificó y qué falta.
+En la rama `salud360-api` de `github.com/rodri89/hc_pediatria`, ya pusheada. **Desde el 2026-09-24 está
+en producción**, subida por FTP; el paso 3 dice qué se verificó.
 
-> **Ojo:** el commit de la fase 3 (`api salud360: fase 3, las fotos y los archivos adjuntos`) está
-> **Ojo:** hay **cuatro commits sin pushear** en el clon de `C:\Users\flor\hc_pediatria`, y tres de
-> ellos ya están corriendo en producción porque se subieron los archivos por FTP. O sea que el servidor
-> tiene código que no está en el repositorio, y quien clone la rama no ve las fotos. Se sube con
-> `git push origin salud360-api` desde ahí. Son: la fase 3, el arreglo de la tabla de desarrollo
-> madurativo, la carpeta única de fotos y la ruta donde se escriben.
+> **Al trabajar acá hay tres copias, y es fácil confundirlas.** El clon para commitear es
+> `C:\Users\flor\hc_pediatria`; la que sirve Apache para probar es
+> `C:\xampp\htdocs\HCDPediatria-salud360`; y la tercera es el servidor. Al tocar el backend hay que
+> copiar el archivo cambiado a las dos primeras, o la prueba corre contra código viejo, y después
+> subirlo a la tercera.
 >
-> La copia que sirve Apache (`C:\xampp\htdocs\HCDPediatria-salud360`) es otra: al tocar el backend
-> hay que copiar el archivo cambiado a las dos, o la prueba corre contra código viejo.
+> **Pushear antes de subir por FTP.** Durante varios días producción tuvo código que no estaba en el
+> repositorio, y dos diagnósticos largos salieron de archivos que quedaron sin subir.
 
 | Nuevos | |
 |---|---|
@@ -218,8 +218,10 @@ Modificados: `DataModule`, `Mappers`, `AuthRepository` (propaga el token), `HcRe
 
 **Cambios de interfaz que salieron de usarla, no de la fase 3:** el aviso cuando no se pudo traer la
 historia clínica, la precarga de consultas en la ficha del paciente, el buscador que ya no se
-des-filtra, la fecha legible sobre el panel de marca, el ícono de la pestaña y el calendario con
-elección de año y mes, que antes obligaba a pasar mes por mes hasta una fecha de nacimiento.
+des-filtra, la fecha legible sobre el panel de marca, el ícono de la pestaña, el calendario con
+elección de año y mes —antes había que pasar mes por mes hasta una fecha de nacimiento— y el estado de
+sincronización del servidor propio, que quedó **oculto** detrás de una constante en `MainShell.kt`
+porque contaba pendientes de un servidor que no existe y se leía como que algo no se había guardado.
 
 ---
 
@@ -554,6 +556,38 @@ a las dos**. Por eso se resolvió generando las 1325 actualizaciones ya calculad
 pediatría. Si hay que repetirlo, el criterio es: documento mayor a 1000, único en pediatría y único en
 turnos, y la ficha sin vínculo previo.
 
+### Los exámenes de otras consultas, y las fotos que ya estaban
+
+Hecho el 2026-09-28, a partir de un pedido concreto: poder adjuntarle la foto del resultado a un
+estudio pedido en una consulta anterior. Es el flujo real —el estudio se pide una vez y el resultado
+llega semanas después— y **la web ya lo hacía**, así que lo que se hizo fue que la app se comportara
+igual y no inventara un camino propio.
+
+Tres cosas para entenderlo:
+
+- **La lectura de exámenes complementarios e interconsultas es acumulativa.** La API devolvía solo los
+  de la consulta pedida, así que desde una consulta nueva el estudio anterior no existía. Ahora
+  devuelve toda la historia del paciente más lo cargado en la consulta abierta, que es lo que hacen
+  `cargarExamenesComplementarios` y `cargarInterconsulta` de la web (esta última tiene el filtro por
+  consulta comentado a propósito). Sobre producción, una consulta que devolvía 3 exámenes devuelve 14.
+- **Cada registro viaja con su consulta de origen y su consulta de respuesta.** Lo primero es
+  imprescindible: sin eso la app etiqueta como propios de la consulta abierta todos los exámenes
+  viejos que bajen, y el médico los ve como si los hubiera pedido hoy. Al editar uno anterior se
+  conserva su consulta original, y pediatría anota aparte dónde se cargó la respuesta.
+- **En la pantalla, un registro anterior se puede completar y se le pueden adjuntar fotos, pero no
+  quitar.** Cargar el resultado de un pedido ajeno es parte del trabajo; borrar lo que pidió otra
+  consulta, no.
+
+**Y la app ahora muestra los adjuntos que ya están en pediatría**, que antes no existían para ella: lo
+subido desde la web, desde otro teléfono, o desde el mismo antes de reinstalar. Las fotos vienen en la
+misma lectura de la consulta y se guardan como filas locales **sin archivo**; el contenido se baja
+recién cuando hay que mostrarlo y queda en el dispositivo. Una consulta con diez fotos no puede costar
+diez descargas al abrirla, ni una por cada vez que se dibuja la miniatura.
+
+Para que eso funcionara, las fotos de un examen pasaron a leerse **por paciente y no por consulta**: el
+vínculo real es el estudio. Filtrar por consulta las escondía justo en el caso para el que existen, y
+es por eso que la web ignora a propósito el `consulta_id` de la foto.
+
 ### Paso 3: subir a producción, en este orden
 
 **El backend ya está arriba, desde el 2026-09-24.** Se subieron los 18 archivos de la API (las tres
@@ -586,20 +620,21 @@ camino, cuatro cosas que están descritas en la lista de bugs y en las advertenc
 faltaba en turnos, una columna de `pacientes` sin valor por defecto, la carpeta de las fotos y la ruta
 donde se escriben.
 
-Lo que queda:
+**Todo esto ya se hizo.** El repo de pediatría está pusheado, los archivos están en el servidor y la
+app se desplegó el 2026-09-28 uniendo la rama a `main`.
 
-1. **Pushear el repo de pediatría.** Los archivos se subieron al servidor por fuera de git, así que
-   **producción tiene código que no está en el repositorio**. Son cuatro commits, esperando en el clon
-   de `C:\Users\flor\hc_pediatria`.
-2. **Subir los dos archivos del arreglo del desarrollo madurativo** (`MedicoController.php` y
-   `resources/views/medico/seccion/desarrollo_madurativo.blade.php`), si se revirtieron mientras se los
-   sospechaba del error de conexión. Quedaron descartados.
-3. **Los límites del hosting y `APP_DEBUG=false`**, que son los dos problemas vivos de producción.
-4. Desplegar la app, que es un push a `main` del repo de la app: hay un flujo de GitHub Actions que
-   publica la web en Hostinger con cada push a esa rama. **O sea que ese merge es el despliegue.**
+**Para la próxima vez, lo que hay que saber del despliegue de la app:** es un push a `main` del repo
+de la app. Hay un flujo de GitHub Actions que compila la web y la sube a Hostinger por SSH con cada
+push a esa rama, filtrando por los directorios de código. **O sea que ese merge es el despliegue**, no
+un paso previo. Conviene probar antes con `-Pentorno=release`, que es lo mismo que va a quedar
+publicado pero servido desde la máquina.
 
-Si se despliega la app primero no se rompe nada: todo se guarda igual en el dispositivo y queda
-pendiente de envío, pero se ven avisos de que no se pudo enviar.
+Y del backend de pediatría: **se sube por FTP, archivo por archivo**. Eso es lo que hizo que producción
+tuviera durante días código que no estaba en el repositorio, y lo que llevó a dos diagnósticos largos
+por archivos que quedaron sin subir. Conviene pushear antes de subir, no después.
+
+Si se despliega la app antes que el backend no se rompe nada: todo se guarda igual en el dispositivo y
+queda pendiente de envío, pero se ven avisos de que no se pudo enviar.
 
 ### Paso 4: fase 2, las secciones estructuradas
 
