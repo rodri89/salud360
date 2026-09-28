@@ -28,6 +28,8 @@ import com.salud360.core.data.network.tobb.TobbPacientesVinculadosResponse
 import com.salud360.core.data.network.tobb.TobbTurno
 import com.salud360.core.data.network.tobb.TobbTurnoResponse
 import com.salud360.core.data.network.tobb.TobbTurnosResponse
+import com.salud360.core.data.network.tobb.TobbUsuariosResponse
+import com.salud360.core.data.network.tobb.TobbSecretariasResponse
 import com.salud360.core.data.network.tobb.aFechaTobb
 import com.salud360.core.data.network.tobb.aCodigoTobb
 import com.salud360.core.data.network.tobb.esBloqueo
@@ -42,7 +44,13 @@ import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
+import com.salud360.core.model.auth.Medico
+import com.salud360.core.model.auth.Rol
+import com.salud360.core.model.auth.Secretaria
+import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.pacientes.MedicoPaciente
+import com.salud360.core.model.turnos.Consultorio
+import com.salud360.core.model.turnos.EspecialidadTurnos
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.pacientes.PacienteExtra
 import com.salud360.core.model.turnos.Asistencia
@@ -89,6 +97,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     private val log = Logger.withTag("TurnosOnline")
     private val q get() = db.turnosQueries
     private val pq get() = db.pacientesQueries
+    private val aq get() = db.authQueries
 
     /** Feriados informados por la API en las consultas de agenda (la tabla local no tiene los de la web). */
     private val feriados = mutableMapOf<LocalDate, Boolean>()
@@ -346,6 +355,89 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     } catch (e: TobbException) {
         if (e.codigo == null && (e.status == 404 || e.status == 405)) throw TobbException(e.status, "sin_ruta", "La web de turnos todavía no permite $funcion desde la app (falta actualizar turnosonlinebb).")
         throw e
+    }
+
+    // ------------------------------------------------------------------
+    // Panel de administración
+    // ------------------------------------------------------------------
+
+    /**
+     * Trae de turnosonlinebb lo que muestra el panel de administración y lo deja en la base del
+     * dispositivo: médicos, consultorios y especialidades del `catalogos`, y los usuarios y las
+     * secretarias de sus dos endpoints.
+     *
+     * Estas tablas las llenaba el servidor propio de Salud 360, que no está desplegado, así que el
+     * panel se veía vacío. Turnos ya es el dueño de estos datos, así que se leen de ahí. Todo entra
+     * con ids `tobb-…` y `dirty = false`: es una copia para mostrar, no algo que la app edite.
+     *
+     * Los dos últimos endpoints son solo para el administrador; si el que pregunta no lo es, se
+     * guardan igual el catálogo y se deja constancia en el log.
+     */
+    suspend fun sincronizarAdministracion() {
+        val catalogo = decodificar(TobbCatalogosResponse.serializer(), turnos.tobbGet("catalogos"))
+        val usuarios = runCatching { decodificar(TobbUsuariosResponse.serializer(), turnos.tobbGet("usuarios")).usuarios }
+            .onFailure { log.w { "no se pudieron traer los usuarios de turnos: ${it.message}" } }
+            .getOrDefault(emptyList())
+        val secretarias = runCatching { decodificar(TobbSecretariasResponse.serializer(), turnos.tobbGet("secretarias")).secretarias }
+            .onFailure { log.w { "no se pudieron traer las secretarias de turnos: ${it.message}" } }
+            .getOrDefault(emptyList())
+        val ahora = ahoraMillis()
+
+        // El usuario de cada médico, para no dejar el vínculo vacío: el catálogo no lo informa.
+        val usuarioDeMedico = usuarios.filter { it.medicoId != null }.associate { it.medicoId!! to it.id }
+
+        db.transaction {
+            catalogo.consultorios.forEach {
+                q.upsertConsultorio(Consultorio(TobbIds.consultorio(it.id), it.nombre, it.direccion, it.telefono).toRow(ahora, dirty = false))
+            }
+            catalogo.especialidades.forEach {
+                aq.upsertEspecialidad(EspecialidadTurnos(TobbIds.especialidad(it.id), it.nombre, it.color).toRow(ahora, dirty = false))
+            }
+            catalogo.medicos.forEach { m ->
+                aq.upsertMedico(
+                    Medico(
+                        id = TobbIds.medico(m.id),
+                        usuarioId = usuarioDeMedico[m.id]?.let { TobbIds.usuario(it) }.orEmpty(),
+                        nombre = m.nombre, apellido = m.apellido, telefono = m.telefono, mail = m.mail,
+                        sexo = m.sexo.orEmpty(), foto = m.foto,
+                        consultorioId = TobbIds.consultorio(m.consultorioId),
+                        especialidadId = TobbIds.especialidad(m.especialidadId),
+                        especialidadesHc = m.historiasClinicas,
+                        tieneTurnos = true,
+                        activo = m.activo == 1,
+                    ).toRow(ahora, dirty = false),
+                )
+            }
+            usuarios.forEach { u ->
+                val rol = runCatching { Rol.valueOf(u.rol.uppercase()) }.getOrNull() ?: return@forEach
+                // Turnos guarda un nombre solo; se parte para mostrarlo como el resto de la app.
+                val partes = u.nombre.trim().split(" ", limit = 2)
+                aq.upsertUsuario(
+                    Usuario(
+                        id = TobbIds.usuario(u.id),
+                        email = u.email,
+                        nombre = partes.firstOrNull().orEmpty(),
+                        apellido = partes.getOrNull(1).orEmpty(),
+                        rol = rol,
+                        activo = u.activo == 1,
+                    ).toRow(ahora, dirty = false),
+                )
+            }
+            secretarias.forEach { s ->
+                aq.upsertSecretaria(
+                    Secretaria(
+                        id = TobbIds.secretaria(s.id),
+                        usuarioId = TobbIds.usuario(s.userId),
+                        nombre = s.nombre, apellido = s.apellido,
+                        consultorioIds = s.consultorios.map { TobbIds.consultorio(it) },
+                    ).toRow(ahora, dirty = false),
+                )
+            }
+        }
+        log.d {
+            "Panel: ${catalogo.medicos.size} médicos, ${catalogo.consultorios.size} consultorios, " +
+                "${catalogo.especialidades.size} especialidades, ${usuarios.size} usuarios, ${secretarias.size} secretarias"
+        }
     }
 
     // ------------------------------------------------------------------

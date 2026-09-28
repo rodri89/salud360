@@ -200,7 +200,63 @@ data class TobbObraSocial(val id: Long, val nombre: String = "")
 
 /** Parte de `GET catalogos` que usa la app (el resto se ignora). */
 @Serializable
-data class TobbCatalogosResponse(@SerialName("obras_sociales") val obrasSociales: List<TobbObraSocial> = emptyList())
+data class TobbCatalogosResponse(
+    @SerialName("obras_sociales") val obrasSociales: List<TobbObraSocial> = emptyList(),
+    val medicos: List<TobbMedicoCatalogo> = emptyList(),
+    val consultorios: List<TobbConsultorio> = emptyList(),
+    val especialidades: List<TobbEspecialidad> = emptyList(),
+)
+
+/** Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. */
+@Serializable
+data class TobbMedicoCatalogo(
+    val id: Long,
+    val nombre: String = "",
+    val apellido: String = "",
+    val mail: String = "",
+    val telefono: String = "",
+    val sexo: String? = null,
+    val foto: String? = null,
+    @SerialName("especialidad_id") val especialidadId: Long = 0,
+    @SerialName("consultorio_id") val consultorioId: Long = 0,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+    val activo: Int = 1,
+)
+
+@Serializable
+data class TobbConsultorio(val id: Long, val nombre: String = "", val direccion: String = "", val telefono: String = "")
+
+@Serializable
+data class TobbEspecialidad(val id: Long, val nombre: String = "", val color: String? = null)
+
+/** Fila de `GET usuarios`: quién puede entrar. En turnosonlinebb los pacientes no están acá. */
+@Serializable
+data class TobbUsuario(
+    val id: Long,
+    val nombre: String = "",
+    val email: String = "",
+    val rol: String = "",
+    @SerialName("medico_id") val medicoId: Long? = null,
+    @SerialName("secretaria_id") val secretariaId: Long? = null,
+    val activo: Int = 1,
+)
+
+/** Fila de `GET secretarias`, con los consultorios que atiende. */
+@Serializable
+data class TobbSecretaria(
+    val id: Long,
+    val nombre: String = "",
+    val apellido: String = "",
+    @SerialName("user_id") val userId: Long = 0,
+    val email: String = "",
+    val consultorios: List<Long> = emptyList(),
+)
+
+@Serializable
+data class TobbUsuariosResponse(val usuarios: List<TobbUsuario> = emptyList())
+
+@Serializable
+data class TobbSecretariasResponse(val secretarias: List<TobbSecretaria> = emptyList())
 
 /** Fila de `GET obras-sociales?medico_id` (`obra_social_medicos` + nombre). */
 @Serializable

@@ -105,6 +105,13 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Trae de turnosonlinebb el catálogo de obras sociales y las del médico (caché local). Para médicos locales no hace nada. */
     suspend fun sincronizarObrasSociales(medicoId: Id) { remota(medicoId)?.sincronizarObrasSociales(medicoId) }
 
+    /**
+     * Trae de turnosonlinebb lo que muestra el panel de administración: médicos, consultorios,
+     * especialidades, usuarios y secretarias. No depende de un médico, porque el panel es del
+     * administrador; si no hay conexión con turnos no hace nada y el panel muestra lo que ya tenía.
+     */
+    suspend fun sincronizarAdministracion() { online?.sincronizarAdministracion() }
+
     /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
     suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {
         val r = remota(o.medicoId)?.takeIf { TobbIds.esTobb(o.obraSocialId) }

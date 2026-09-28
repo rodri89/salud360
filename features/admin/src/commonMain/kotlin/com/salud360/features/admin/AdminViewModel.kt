@@ -39,6 +39,17 @@ class AdminViewModel(
     val licencias: StateFlow<List<Licencia>> = admin.observarLicencias().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val mensaje = MutableStateFlow<String?>(null)
 
+    init {
+        // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
+        // su dueño. Se traen al abrir el panel y quedan en la base del dispositivo; las listas se
+        // observan de ahí, así que aparecen solas. Antes esto lo llenaba el servidor propio de
+        // Salud 360, que no está desplegado, y el panel se veía vacío.
+        viewModelScope.launch {
+            runCatching { turnos.sincronizarAdministracion() }
+                .onFailure { mensaje.value = "No se pudo traer la administración de turnos: ${it.message ?: "sin conexión"}" }
+        }
+    }
+
     fun crearUsuario(nombre: String, apellido: String, email: String, password: String, rol: Rol) = viewModelScope.launch {
         runCatching { admin.crearUsuario(nombre, apellido, email, password, rol) }
             .onSuccess { mensaje.value = "Usuario ${it.email} creado"; launch { sync.sincronizar() } }
