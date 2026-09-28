@@ -261,7 +261,8 @@ Cuatro cosas para entenderlo:
   propósito, para que ningún pedido salga a producción. La sesión vale igual porque hay una fila
   sembrada en `salud360_token_cache`, que es el camino que la API ya usa cuando turnos no responde.
   El token en claro es `salud360-prueba-fase3` y corresponde al usuario 2 de pediatría (médico 1 de
-  turnos). **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
+  turnos), y `salud360-prueba-admin` al administrador (usuario 1), que es el que hace falta para las
+  licencias. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
 - **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
   historia clínica real.
 - **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
@@ -288,6 +289,15 @@ Cómo se corre acá:
 ./gradlew :core:data:jvmTest --rerun --tests '*HcPediatriaE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
   -Psalud360.test.hc.token=salud360-prueba-fase3
+```
+
+Y las licencias, que van con el token del administrador porque a un médico la API no le informa
+ninguna. La prueba le cambia la fecha a la primera, la vuelve a leer y la deja como estaba:
+
+```
+./gradlew :core:data:jvmTest --rerun --tests '*HcLicenciasE2ETest*' \
+  -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
+  -Psalud360.test.hc.token.admin=salud360-prueba-admin
 ```
 
 **Cuando terminemos, borrar las dos bases y `bd_test/`**: son pacientes, contraseñas y credenciales
@@ -798,7 +808,7 @@ Se le suman tres cosas que salieron de usar la app y que no entran en ninguna fa
 App: `./gradlew :androidApp:compileDebugKotlin`, `:composeApp:compileKotlinWasmJs`,
 `:server:compileKotlin`, `:core:data:jvmTest`.
 
-Punta a punta contra el MAMP (`HcPediatriaE2ETest`, ver arriba cómo se corre): es la versión
+Punta a punta contra el MAMP (`HcPediatriaE2ETest` y `HcLicenciasE2ETest`, ver arriba cómo se corren): es la versión
 automática de "cargar algo y verlo del otro lado", sin la pantalla. Desde la fase 3 también manda dos
 adjuntos —uno de la consulta y otro colgado de un examen complementario—, los busca en la galería y
 los vuelve a bajar. Los da de baja al terminar, como a las listas.
