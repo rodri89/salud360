@@ -81,5 +81,5 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
     single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
-    single { AdminRepository(get(), get()) }
+    single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }
 }

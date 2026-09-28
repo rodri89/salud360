@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.auth.Licencia
@@ -20,7 +21,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 
 /** Panel del administrador: usuarios, médicos, secretarias, consultorios, especialidades, feriados y licencias. */
 class AdminViewModel(
@@ -48,6 +52,12 @@ class AdminViewModel(
             runCatching { turnos.sincronizarAdministracion() }
                 .onFailure { mensaje.value = "No se pudo traer la administración de turnos: ${it.message ?: "sin conexión"}" }
         }
+        // Las licencias son de la historia clínica, no de turnos: las trae su propia API y solo las
+        // informa al administrador. Un médico no ve ninguna y la pestaña se comporta como antes.
+        viewModelScope.launch {
+            runCatching { admin.sincronizarLicencias() }
+                .onFailure { mensaje.value = "No se pudieron traer las licencias: ${it.message ?: "sin conexión"}" }
+        }
     }
 
     fun crearUsuario(nombre: String, apellido: String, email: String, password: String, rol: Rol) = viewModelScope.launch {
@@ -66,6 +76,24 @@ class AdminViewModel(
     fun nuevaEspecialidad(nombre: String, codigoHc: String?) = guardarEspecialidad(EspecialidadTurnos(newId(), nombre, codigoHc))
     fun agregarFeriado(fecha: LocalDate, descripcion: String) = viewModelScope.launch { turnos.guardarFeriado(Feriado(newId(), fecha, descripcion)) }
     fun eliminarFeriado(f: Feriado) = viewModelScope.launch { turnos.eliminarFeriado(f) }
-    fun guardarLicencia(l: Licencia) = viewModelScope.launch { admin.guardarLicencia(l) }
+    /**
+     * La licencia manda sobre el ingreso del médico a la historia clínica, así que el guardado que
+     * importa es el de allá: si no llegó, se avisa en vez de dejar la pantalla como si hubiera andado.
+     */
+    fun guardarLicencia(l: Licencia) = viewModelScope.launch {
+        runCatching { admin.guardarLicencia(l) }
+            .onSuccess { if (!it) mensaje.value = "La licencia quedó guardada en este dispositivo, pero la historia clínica no la aceptó." }
+            .onFailure { mensaje.value = "No se pudo guardar la licencia: ${it.message ?: "sin conexión"}" }
+    }
+
+    /**
+     * Da de alta la licencia de un médico que no tenía ninguna. Sin licencia no entra a la historia
+     * clínica, así que cargarla es el paso de habilitarlo: un año, con aviso el último mes.
+     */
+    fun nuevaLicencia(medicoId: Id) {
+        val vence = hoy().plus(DatePeriod(years = 1))
+        guardarLicencia(Licencia(medicoId, vence.toString(), vence.minus(DatePeriod(months = 1)).toString()))
+    }
+
     fun sincronizar() = viewModelScope.launch { mensaje.value = if (sync.sincronizar()) "Sincronizado" else "No se pudo sincronizar" }
 }

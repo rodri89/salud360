@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.model.Id
+import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.RegistroClinico
@@ -62,6 +63,15 @@ interface HcBackend {
 
     /** Baja de la API un adjunto que no está en el dispositivo (lo subió otro, o se reinstaló la app). */
     suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray?
+
+    /**
+     * Licencias de la historia clínica: el permiso del médico para entrar. Viven en la base de la
+     * especialidad, no en turnos, y solo las ve el administrador. Vacío si el que pregunta no lo es.
+     */
+    suspend fun traerLicencias(): List<Licencia> = emptyList()
+
+    /** Guarda una licencia en la API de la especialidad. false si no se pudo. */
+    suspend fun guardarLicencia(licencia: Licencia): Boolean = false
 
     /** Trae de la API las consultas del paciente y las deja en la base del dispositivo. */
     suspend fun traerConsultas(pacienteId: Id, medicoId: Id): List<Consulta>

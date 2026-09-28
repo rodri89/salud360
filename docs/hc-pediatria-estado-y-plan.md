@@ -35,6 +35,12 @@ Hacen falta **dos interruptores independientes**, cada uno con su código de err
 
 1. El administrador habilita `pediatria` al médico en turnos (`salud360_medico_hc`) → si falta, `hc_no_habilitada`.
 2. El usuario de pediatría tiene cargado el número de médico de turnos → si falta, `medico_no_vinculado`.
+3. La licencia de pediatría está vigente → si no, `licencia_vencida`.
+
+La licencia es el tercero y es distinto de los otros dos: no lo decide la app ni turnos, lo decide la
+base de pediatría (`medico_licencias`), que es donde se cobra. Es la misma regla que la web aplica al
+iniciar sesión, así que un médico que no puede entrar por la web tampoco entra por la app.
+**El administrador no tiene licencia y entra siempre**: la licencia es del médico.
 
 ---
 
@@ -113,6 +119,9 @@ Los dos repositorios están al día y la app está desplegada. Lo que queda no e
    (ver "Los pacientes y su vínculo con turnos").
 4. Las pruebas sin señal, que es lo único de la app que nunca se probó: modo avión, escribir, recuperar
    y confirmar que se envía solo. Ver el paso 1.
+5. **Subir las licencias a pediatría**: `TobbAuthService.php`, `Salud360Api.php`,
+   `LicenciaController.php` y `routes/api.php`, con el `config:clear` de siempre. Revisar antes las
+   fechas vencidas, porque desde ese momento bloquean. Ver "Las licencias".
 
 ### Bugs ya encontrados y corregidos
 
@@ -732,6 +741,37 @@ foto llegaba. Dos correcciones:
    puede forzar con `SALUD360_IMG_PATH`.
 
 Y el error de esa familia nombra la ruta exacta que intentó escribir, en vez de mandar al log.
+
+### Las licencias
+
+La licencia es el permiso del médico para entrar a la historia clínica. Estaba solo en la web de
+pediatría; ahora la aplican las dos puntas y la administra el panel de la app.
+
+**En pediatría.** `TobbAuthService::conLicencia` repite la regla de `LoginController::validarLicencia`:
+sin fila no entra, vencida o desactivada no entra (y se le baja el `activo`), y dentro de la ventana de
+aviso entra con la fecha a la vista. El administrador se resuelve antes, así que nunca se le mira la
+licencia. El rechazo sale como `403 licencia_vencida` con la fecha, para que el mensaje diga qué pasó y
+no "no anda". `LicenciaController` agrega `GET licencias` y `PUT licencias/{medicoIdTobb}`, las dos solo
+para el administrador; viajan con el **número de médico de turnos**, que es como la app nombra a los
+médicos, y por eso los que todavía no están vinculados no se informan.
+
+`vencida` y `por_vencer` los resuelve la API, para que las dos puntas usen la misma regla y la misma
+fecha de hoy.
+
+**En la app.** El panel de administración las lee de pediatría al abrirse y las escribe ahí mismo: la
+tabla del dispositivo queda como copia (`dirty = false`), porque el dueño del dato es la especialidad.
+La pestaña muestra solo a los médicos con historia clínica habilitada —al resto no se le vence ni se le
+cobra nada— y al que no tiene licencia le ofrece cargarla, que es el paso de habilitarlo. Si el guardado
+no llega a pediatría se avisa, en vez de dejar la pantalla como si hubiera andado: lo que manda es lo
+que quedó allá.
+
+Al médico, el rechazo le llega con el texto de la API cuando la pantalla trae la historia clínica, así
+que lee "Tu licencia de la historia clínica está vencida. Avisale al administrador."
+
+**Antes de subirlo hay que mirar las fechas.** Al quedar en línea, los médicos ya vinculados con la
+licencia vencida dejan de entrar por la app en el mismo momento (hoy son cuatro, y otros cinco entre los
+que faltan dar de alta). Es la regla pedida, pero conviene renovarlas antes y no descubrirlo con el
+médico en el consultorio.
 
 ### Paso 6: fase 4
 

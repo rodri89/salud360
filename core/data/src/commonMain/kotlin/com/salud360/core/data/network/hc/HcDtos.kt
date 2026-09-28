@@ -139,3 +139,32 @@ data class HcExamenRequest(@SerialName("examen_fisico") val examenFisico: Map<St
 /** Cuerpo de `POST consultas/{id}/cerrar`. */
 @Serializable
 data class HcCerrarConsulta(val fecha: String? = null, @SerialName("edad_mostrar") val edadMostrar: String = "")
+
+/**
+ * Una licencia tal como la devuelve la historia clínica: el permiso del médico para entrar.
+ *
+ * Vive en la base de la especialidad, no en turnos, y se identifica con el **número de médico de
+ * turnosonlinebb**, que es como la app conoce a los médicos.
+ *
+ * `vencida` y `por_vencer` los resuelve la API para que las dos puntas usen la misma regla y la misma
+ * fecha de hoy; la app igual las recalcula al mostrar, porque la fecha se puede editar sin recargar.
+ */
+@Serializable
+data class HcLicenciaRemota(
+    @SerialName("medico_id_tobb") val medicoIdTobb: Long,
+    val vence: String = "",
+    @SerialName("aviso_desde") val avisoDesde: String = "",
+    val importe: Double = 0.0,
+    val activo: Int = 1,
+    val vencida: Int = 0,
+    @SerialName("por_vencer") val porVencer: Int = 0,
+)
+
+/** Cuerpo de `PUT licencias/{medicoIdTobb}`. */
+@Serializable
+data class HcLicenciaRequest(
+    val vence: String,
+    @SerialName("aviso_desde") val avisoDesde: String,
+    val importe: Double,
+    val activo: Int,
+)

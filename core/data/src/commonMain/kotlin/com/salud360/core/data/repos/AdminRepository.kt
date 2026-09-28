@@ -23,7 +23,16 @@ import kotlinx.coroutines.flow.Flow
  * Administración: usuarios, médicos, secretarias, especialidades y licencias.
  * El alta de usuario (con contraseña) requiere conexión porque la contraseña se guarda solo en el servidor.
  */
-class AdminRepository(private val db: Salud360Db, private val api: ApiClient) {
+class AdminRepository(
+    private val db: Salud360Db,
+    private val api: ApiClient,
+    /**
+     * Historias clínicas con API propia (hoy pediatría). Son ellas las dueñas de las licencias: la
+     * licencia es el permiso para entrar a *esa* historia clínica y se cobra ahí, así que el panel la
+     * lee y la escribe contra la especialidad, no contra la base del dispositivo.
+     */
+    private val backends: Map<String, HcBackend> = emptyMap(),
+) {
     private val q get() = db.authQueries
 
     fun observarUsuarios(): Flow<List<Usuario>> = q.usuarios().flujoLista { it.toModel() }
@@ -46,7 +55,36 @@ class AdminRepository(private val db: Salud360Db, private val api: ApiClient) {
 
     fun observarLicencias(): Flow<List<Licencia>> = q.licencias().flujoLista { it.toModel() }
     suspend fun licencia(medicoId: Id): Licencia? = q.licenciaPorMedico(medicoId).uno { it.toModel() }
-    suspend fun guardarLicencia(l: Licencia) = q.upsertLicencia(l.toRow(ahoraMillis()))
+
+    /**
+     * Trae las licencias de cada historia clínica y las deja en el dispositivo.
+     *
+     * Quedan limpias (`dirty = false`): el dueño del dato es la especialidad, no este dispositivo, así
+     * que no hay nada que empujar después. Las escribe solamente el administrador; para un médico la
+     * API no informa ninguna y la pestaña queda como estaba.
+     */
+    suspend fun sincronizarLicencias() {
+        backends.values.forEach { backend ->
+            val ahora = ahoraMillis()
+            backend.traerLicencias().forEach { q.upsertLicencia(it.toRow(ahora, dirty = false)) }
+        }
+    }
+
+    /**
+     * Guarda la licencia en el dispositivo y en la historia clínica que la cobra.
+     *
+     * Primero local, para que la pantalla no espere a la red, y después el envío. Devuelve false si la
+     * especialidad no la aceptó: el médico seguiría entrando (o sin entrar) con lo que hay allá, que
+     * es lo que manda, así que ese caso hay que mostrarlo y no dejarlo pasar en silencio.
+     */
+    suspend fun guardarLicencia(l: Licencia): Boolean {
+        q.upsertLicencia(l.toRow(ahoraMillis()))
+        val destinos = (medico(l.medicoId)?.especialidadesHc ?: emptyList()).mapNotNull { backends[it] }
+        if (destinos.isEmpty()) return true
+        val guardada = destinos.map { it.guardarLicencia(l) }.any { it }
+        if (guardada) q.upsertLicencia(l.toRow(ahoraMillis(), dirty = false))
+        return guardada
+    }
 
     /**
      * Crea un usuario en el servidor (con contraseña) y su perfil de médico o secretaria.

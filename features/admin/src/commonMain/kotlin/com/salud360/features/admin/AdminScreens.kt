@@ -277,6 +277,9 @@ private fun LicenciasTab(vm: AdminViewModel) {
                     // si la licencia venciera hoy. La licencia vive en la base de la historia clínica
                     // y la app todavía no la trae.
                     Text("Sin licencia cargada", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    // Sin licencia el médico no entra a la historia clínica, así que darla de alta es
+                    // parte de habilitarlo y tiene que poder hacerse desde acá.
+                    TextButton(onClick = { vm.nuevaLicencia(m.id) }) { Text("Cargar licencia") }
                     StatusChip("Sin dato", Salud360Colors.Grey)
                 } else {
                     DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))

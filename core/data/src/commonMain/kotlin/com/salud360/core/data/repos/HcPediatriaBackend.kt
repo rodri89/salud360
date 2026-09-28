@@ -11,6 +11,8 @@ import com.salud360.core.data.network.hc.HcCerrarConsulta
 import com.salud360.core.data.network.hc.HcConsulta
 import com.salud360.core.data.network.hc.HcExamenRequest
 import com.salud360.core.data.network.hc.HcFotoRemota
+import com.salud360.core.data.network.hc.HcLicenciaRemota
+import com.salud360.core.data.network.hc.HcLicenciaRequest
 import com.salud360.core.data.network.hc.HcPaciente
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.data.network.hc.HcRegistro
@@ -22,6 +24,7 @@ import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
+import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.data.files.mimeDe
@@ -412,6 +415,58 @@ class HcPediatriaBackend(
         }.getOrElse {
             log.w(it) { "no se pudo bajar el adjunto ${archivo.nombre}" }
             null
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Licencias
+    // ------------------------------------------------------------------
+
+    /**
+     * Las licencias viven en la base de pediatría, no en turnos: es esa historia clínica la que se
+     * cobra y la que deja entrar o no. La API las devuelve con el número de médico de turnos, que es
+     * el que tiene la app; los médicos todavía no vinculados no vienen, porque no hay cómo nombrarlos.
+     *
+     * Solo las ve el administrador. Si el que pregunta es un médico, la API responde 403 y acá queda
+     * la lista vacía: no es un error que haya que mostrarle a nadie.
+     */
+    override suspend fun traerLicencias(): List<Licencia> {
+        val r = try {
+            api.get("licencias")
+        } catch (e: TobbException) {
+            if (e.codigo == "sin_permiso") return emptyList()
+            throw e
+        }
+        val remotas = api.leerOpcional(ListSerializer(HcLicenciaRemota.serializer()), r, "licencias").orEmpty()
+        return remotas.map {
+            Licencia(
+                medicoId = TobbIds.medico(it.medicoIdTobb),
+                fechaExpiracion = it.vence,
+                fechaAviso = it.avisoDesde,
+                importe = it.importe,
+                activo = it.activo == 1,
+            )
+        }
+    }
+
+    /**
+     * Guarda la licencia en pediatría. Se identifica por el número de médico de turnos; si ese médico
+     * no está vinculado del otro lado no hay nada que guardar (la API responde 404) y devuelve false.
+     */
+    override suspend fun guardarLicencia(licencia: Licencia): Boolean {
+        val numero = TobbIds.numero(licencia.medicoId) ?: return false
+        val cuerpo = HcLicenciaRequest(
+            vence = licencia.fechaExpiracion,
+            avisoDesde = licencia.fechaAviso,
+            importe = licencia.importe,
+            activo = if (licencia.activo) 1 else 0,
+        )
+        return try {
+            api.put("licencias/$numero", api.cuerpo(HcLicenciaRequest.serializer(), cuerpo))
+            true
+        } catch (e: TobbException) {
+            log.w(e) { "pediatría no guardó la licencia de ${licencia.medicoId}" }
+            false
         }
     }
 
