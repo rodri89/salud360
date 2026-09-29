@@ -50,6 +50,10 @@ class PacientesListViewModel(
     private val _cargandoCartera = MutableStateFlow(false)
     val cargandoCartera: StateFlow<Boolean> = _cargandoCartera
 
+    /** Por qué la lista puede estar vacía sin que sea culpa del médico. Null si no hubo problema. */
+    private val _mensaje = MutableStateFlow<String?>(null)
+    val mensaje: StateFlow<String?> = _mensaje
+
     /**
      * Paginado: la lista observa solo los primeros `limite` pacientes (filtro resuelto en SQL) y el límite crece de a
      * [PAGINA] cuando la pantalla llega al final. Así una cartera de miles de pacientes no se mapea ni recompone entera.
@@ -84,7 +88,12 @@ class PacientesListViewModel(
                 // Y la cartera de cada historia clínica. Para el médico que no atiende por agenda es
                 // la única que tiene: en turnos no le dieron ningún turno, así que no hay pacientes
                 // de dónde sacarlos, y la lista le quedaba vacía.
+                //
+                // Si falla se avisa. Una lista vacía y un error acá se ven igual —no hay pacientes—,
+                // y el motivo real (el médico sin vincular, la historia clínica sin habilitar) queda
+                // escondido en el log, donde no lo ve nadie.
                 runCatching { hc.sincronizarPacientes(medicoId) }
+                    .onFailure { _mensaje.value = "No se pudo traer tu cartera de la historia clínica: ${it.message ?: "sin conexión"}" }
                 _cargandoCartera.value = false
             }
         }

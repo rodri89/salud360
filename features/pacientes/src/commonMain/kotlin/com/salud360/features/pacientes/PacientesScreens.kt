@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PersonAdd
@@ -95,6 +96,7 @@ fun PacientesListScreen(
     val lista by vm.lista.collectAsState()
     val busqueda by vm.busqueda.collectAsState()
     val cargandoCartera by vm.cargandoCartera.collectAsState()
+    val mensaje by vm.mensaje.collectAsState()
     val total by vm.total.collectAsState()
     val hayMas by vm.hayMas.collectAsState()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -115,6 +117,14 @@ fun PacientesListScreen(
             ScreenTitle(titulo, if (hayMas) "$total pacientes · mostrando ${lista.size}" else "$total pacientes")
             SearchBar(value = busqueda, onValueChange = { vm.busqueda.value = it })
             Spacer(Modifier.height(12.dp))
+            // El aviso va antes de la lista y no en lugar de ella: puede haber pacientes viejos en el
+            // dispositivo y aun así no haberse podido traer los de la historia clínica.
+            mensaje?.let { texto ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+                    Icon(Icons.Default.CloudOff, contentDescription = null, tint = Salud360Colors.Warning)
+                    Text(texto, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             if (lista.isEmpty() && cargandoCartera) {
                 LoadingIndicator(text = "Cargando pacientes...")
             } else if (lista.isEmpty()) {
