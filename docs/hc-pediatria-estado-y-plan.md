@@ -124,6 +124,9 @@ Los dos repositorios están al día y la app está desplegada. Lo que queda no e
    fecha no viaja. Lo demás de licencias ya está arriba desde el 2026-09-29.
 6. **Subir el alta de usuarios a turnos**: `AltaUsuarioController.php` y `routes/api.php`. Con eso el
    panel da de alta médicos y secretarias, que es el paso 2 hecho desde la app.
+7. **Subir la cartera y la agenda**: `PacienteController.php` y `routes/api.php` de pediatría, y
+   `Salud360Controller.php` de turnos. Es lo que hace usable al médico que solo tiene historia
+   clínica: sin lo primero no ve ningún paciente, y sin lo segundo le aparece una agenda vacía.
 
 ### Bugs ya encontrados y corregidos
 
@@ -553,6 +556,19 @@ Antes ese botón pegaba contra el servidor propio de Salud 360, que no está des
 
 Se probó primero con uno y se mira la web pública antes de seguir con el resto. Nada de esto toca
 código: es carga de datos desde el administrador de turnos.
+
+**Dos cosas más que aparecieron al dar de alta al primero de ellos**, las dos del 2026-09-29:
+
+- **Sus pacientes salen de la historia clínica, no de turnos.** El resto los recibe por los turnos
+  que le dieron; el que no atiende por agenda no tiene ninguno ahí, y la lista le quedaba vacía
+  aunque del otro lado tenga cientos. `GET pacientes` de pediatría devuelve su cartera y la app la
+  vincula en el dispositivo, de a páginas de 300, sin pisar la ficha del que ya estaba y sin
+  duplicar al repetirla. Ojo con el `distinct`: un paciente puede tener más de una fila activa en
+  `medico_pacientes` con el mismo médico, y sin eso viene repetido.
+- **La agenda no la decide el consultorio.** Turnos lo exige en toda ficha, así que tenerlo no
+  distingue a nadie; lo que distingue es no tener horarios cargados. El catálogo informa ahora
+  `tiene_horarios` y la app decide con eso. Por omisión 1, para no esconderle la agenda a nadie
+  mientras el servidor no informe el dato.
 
 El nombre `castigo_automatico` para "se muestra o no" es una trampa para el que venga después —
 conviene renombrarlo alguna vez, pero no mientras se dan de alta médicos.
