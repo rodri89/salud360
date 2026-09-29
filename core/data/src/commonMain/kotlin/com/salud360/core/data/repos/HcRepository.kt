@@ -66,6 +66,16 @@ class HcRepository(
     suspend fun avisosDeLicencia(): List<AvisoLicencia> =
         backends.values.mapNotNull { runCatching { it.avisoDeLicencia() }.getOrNull() }
 
+    /**
+     * Trae la cartera del médico de cada historia clínica con API y la deja en el dispositivo.
+     * Devuelve cuántos pacientes llegaron en total.
+     *
+     * Si alguna no contesta se la deja afuera: la lista muestra lo que ya había, que es lo que la app
+     * hace sin señal en todo lo demás.
+     */
+    suspend fun sincronizarPacientes(medicoId: Id): Int =
+        backends.values.sumOf { runCatching { it.traerPacientes(medicoId) }.getOrDefault(0) }
+
     /** Trae del servidor las consultas del paciente y las deja en el dispositivo. Null si no hay API. */
     suspend fun traerConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =
         backends[especialidad]?.traerConsultas(pacienteId, medicoId)

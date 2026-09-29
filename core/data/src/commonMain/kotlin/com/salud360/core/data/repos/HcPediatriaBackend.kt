@@ -15,6 +15,7 @@ import com.salud360.core.data.network.hc.HcLicenciaRemota
 import com.salud360.core.data.network.hc.HcPerfilRemoto
 import com.salud360.core.data.network.hc.HcLicenciaRequest
 import com.salud360.core.data.network.hc.HcPaciente
+import com.salud360.core.data.network.hc.HcPacienteFicha
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.data.network.hc.HcRegistro
 import com.salud360.core.data.network.hc.HcRegistroRemoto
@@ -37,7 +38,10 @@ import com.salud360.core.model.hc.ExamenFisico
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import com.salud360.core.model.newId
+import com.salud360.core.model.pacientes.MedicoPaciente
+import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.pacientes.PacienteExtra
+import com.salud360.core.model.pacientes.Sexo
 import io.ktor.http.HttpMethod
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
@@ -421,6 +425,81 @@ class HcPediatriaBackend(
     }
 
     // ------------------------------------------------------------------
+    // Cartera del médico
+    // ------------------------------------------------------------------
+
+    /**
+     * Trae la cartera del médico en pediatría, de a páginas, y la deja vinculada en el dispositivo.
+     *
+     * El paciente que ya está no se pisa: acá llega la ficha de pediatría, y la de turnos suele
+     * tener más cosas (la obra social con su plan, el teléfono actualizado). Lo que sí se asegura
+     * siempre es el vínculo con el médico, que es lo que hace que aparezca en su lista.
+     *
+     * Se anota además el id de pediatría de cada uno, así abrir la historia clínica no tiene que
+     * volver a resolverlo por documento.
+     */
+    override suspend fun traerPacientes(medicoId: Id): Int {
+        var desde = 0
+        var total = 0
+        while (true) {
+            val r = api.get("pacientes", mapOf("desde" to desde, "limite" to PAGINA_PACIENTES))
+            val pagina = api.leerOpcional(ListSerializer(HcPacienteFicha.serializer()), r, "pacientes").orEmpty()
+            if (pagina.isEmpty()) break
+            val ahora = ahoraMillis()
+            // En una transacción por página: de a una fila, quinientos pacientes tardan casi un
+            // minuto, y esto corre al abrir la pantalla.
+            db.transaction {
+                for (ficha in pagina) guardarPacienteDeCartera(ficha, medicoId, ahora)
+            }
+            total += pagina.size
+            if (pagina.size < PAGINA_PACIENTES) break
+            desde += pagina.size
+        }
+        log.i { "llegaron $total pacientes de la cartera de $medicoId en $especialidad" }
+        return total
+    }
+
+    private suspend fun guardarPacienteDeCartera(ficha: HcPacienteFicha, medicoId: Id, ahora: Long) {
+        val id = idLocalDe(ficha)
+        if (pq.pacientePorId(id).uno { it } == null) {
+            pq.upsertPaciente(
+                Paciente(
+                    id = id,
+                    dni = ficha.dni.trim(),
+                    nombre = ficha.nombre.trim(),
+                    apellido = ficha.apellido.trim(),
+                    sexo = ficha.sexo?.trim()?.uppercase()?.let { s -> runCatching { Sexo.valueOf(s) }.getOrNull() },
+                    fechaNacimiento = ficha.fechaNacimiento?.let { f -> runCatching { LocalDate.parse(f) }.getOrNull() },
+                    telefono = ficha.telefono, mail = ficha.mail,
+                    domicilio = ficha.domicilio, localidad = ficha.localidad,
+                    obraSocial = ficha.obraSocial, numeroAfiliado = ficha.numeroAfiliado,
+                    obraSocialPlan = ficha.obraSocialPlan,
+                    nombrePadre = ficha.nombrePadre, nombreMadre = ficha.nombreMadre,
+                    cantidadHermanos = ficha.cantidadHermanos.takeIf { h -> h > 0 },
+                ).toRow(ahora, dirty = false),
+            )
+        }
+        if (pq.vinculo(medicoId, id).uno { it } == null) {
+            pq.upsertMedicoPaciente(MedicoPaciente(medicoId, id).toRow(ahora, dirty = false))
+        }
+        if (idConocido(id) == null) {
+            pq.upsertPacienteExtra(
+                PacienteExtra(id, especialidad, EXTRA_HC_PACIENTE_ID, ficha.id.toString()).toRow(ahora, dirty = false),
+            )
+        }
+    }
+
+    /**
+     * Con qué id vive este paciente en el dispositivo.
+     *
+     * Si pediatría ya sabe cuál es en turnos se usa ese, que es el que va a traer la agenda y así no
+     * queda duplicado. Si no, uno derivado del id de pediatría: tiene que ser siempre el mismo, o
+     * cada sincronización crearía un paciente nuevo.
+     */
+    private fun idLocalDe(ficha: HcPacienteFicha): Id =
+        if (ficha.pacienteIdTobb > 0) TobbIds.paciente(ficha.pacienteIdTobb) else "hc-$especialidad-p${ficha.id}"
+
+    // ------------------------------------------------------------------
     // Licencias
     // ------------------------------------------------------------------
 
@@ -514,6 +593,9 @@ class HcPediatriaBackend(
 
         /** Clave de `paciente_extra` donde se guarda el id del paciente en la historia clínica. */
         const val EXTRA_HC_PACIENTE_ID = "hc_paciente_id"
+
+        /** Cuántos pacientes por pedido al traer la cartera; el que más tiene ronda los novecientos. */
+        const val PAGINA_PACIENTES = 300L
 
         /** Listas cuyas filas aceptan adjuntos: la foto cuelga de la fila, no de la consulta. */
         val TIPOS_DE_REGISTRO = setOf("examen_complementario", "internacion")

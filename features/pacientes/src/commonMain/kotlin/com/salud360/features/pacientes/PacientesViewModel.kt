@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 class PacientesListViewModel(
     private val pacientes: PacientesRepository,
     private val turnos: TurnosRepository,
+    private val hc: HcRepository,
     private val medicoId: Id?,
 ) : ViewModel() {
     val busqueda = MutableStateFlow("")
@@ -76,12 +77,18 @@ class PacientesListViewModel(
     init {
         // Al cambiar la búsqueda se vuelve a la primera página.
         viewModelScope.launch { filtro.collect { limite.value = PAGINA } }
-        if (remota) {
+        if (medicoId != null) {
             viewModelScope.launch {
                 _cargandoCartera.value = true
-                runCatching { turnos.sincronizarPacientesVinculados(medicoId!!) }
+                if (remota) runCatching { turnos.sincronizarPacientesVinculados(medicoId) }
+                // Y la cartera de cada historia clínica. Para el médico que no atiende por agenda es
+                // la única que tiene: en turnos no le dieron ningún turno, así que no hay pacientes
+                // de dónde sacarlos, y la lista le quedaba vacía.
+                runCatching { hc.sincronizarPacientes(medicoId) }
                 _cargandoCartera.value = false
             }
+        }
+        if (remota) {
             viewModelScope.launch {
                 busqueda.collectLatest { q ->
                     val t = q.trim()

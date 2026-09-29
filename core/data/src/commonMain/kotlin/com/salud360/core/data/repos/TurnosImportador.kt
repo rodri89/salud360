@@ -72,8 +72,10 @@ class TurnosImportador(private val db: Salud360Db) {
             foto = m.foto?.takeIf { it.isNotBlank() && it != "medico_sin_foto.png" } ?: previo?.foto,
             consultorioId = consultorioId, especialidadId = especialidadId,
             especialidadesHc = historiasClinicasDe(m, previo),
-            // Tiene agenda solo si turnosonlinebb le asignó consultorio; un médico "solo historia clínica" no la tiene.
-            tieneTurnos = consultorioId != null, visibleEnTurnos = previo?.visibleEnTurnos ?: true, activo = m.activo == 1,
+            // Tiene agenda si turnos le asignó consultorio **y** tiene horarios cargados. El
+            // consultorio solo no alcanza: la ficha de turnos lo exige siempre, así que el médico
+            // que solo usa historia clínica también tiene uno, y le aparecía una agenda vacía.
+            tieneTurnos = consultorioId != null && m.tieneHorarios == 1, visibleEnTurnos = previo?.visibleEnTurnos ?: true, activo = m.activo == 1,
         )
         db.authQueries.upsertMedico(medico.toRow(ahoraMillis(), dirty = false))
 

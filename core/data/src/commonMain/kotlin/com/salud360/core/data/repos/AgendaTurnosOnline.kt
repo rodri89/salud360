@@ -431,7 +431,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                         consultorioId = TobbIds.consultorio(m.consultorioId),
                         especialidadId = TobbIds.especialidad(m.especialidadId),
                         especialidadesHc = m.historiasClinicas,
-                        tieneTurnos = true,
+                        // Solo el que tiene horarios cargados: ver la nota en `TurnosImportador`.
+                        tieneTurnos = m.tieneHorarios == 1,
                         activo = m.activo == 1,
                     ).toRow(ahora, dirty = false),
                 )

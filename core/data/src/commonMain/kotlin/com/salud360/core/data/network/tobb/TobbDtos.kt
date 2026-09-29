@@ -219,6 +219,13 @@ data class TobbMedicoCatalogo(
     val foto: String? = null,
     @SerialName("especialidad_id") val especialidadId: Long = 0,
     @SerialName("consultorio_id") val consultorioId: Long = 0,
+    /**
+     * Si atiende por agenda. No alcanza con el consultorio: turnos lo exige siempre, así que el
+     * médico que solo usa historia clínica también tiene uno. Lo que lo distingue es no tener ningún
+     * horario cargado. Por omisión 1, para no esconderle la agenda a nadie si el servidor todavía no
+     * informa el dato.
+     */
+    @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
     @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
     val activo: Int = 1,
 )

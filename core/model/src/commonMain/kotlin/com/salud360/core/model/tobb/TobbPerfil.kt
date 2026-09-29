@@ -37,6 +37,8 @@ data class TobbMedico(
     val especialidad: String? = null,
     @SerialName("consultorio_id") val consultorioId: Long? = null,
     val activo: Int = 1,
+    /** Si atiende por agenda: tiene horarios cargados. Ver [com.salud360.core.data.network.tobb.TobbMedicoCatalogo]. */
+    @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
     val consultorio: TobbConsultorio? = null,
     val modulos: List<Int> = emptyList(),
     @SerialName("ventana_dias") val ventanaDias: Int = 180,

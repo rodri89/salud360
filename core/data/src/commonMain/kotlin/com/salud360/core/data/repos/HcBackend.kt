@@ -80,6 +80,16 @@ interface HcBackend {
      */
     suspend fun avisoDeLicencia(): AvisoLicencia? = null
 
+    /**
+     * Trae la cartera del médico en esta historia clínica y la deja en la base del dispositivo.
+     * Devuelve cuántos pacientes llegaron.
+     *
+     * Hace falta para el médico que **solo** usa la historia clínica: el resto recibe sus pacientes
+     * desde turnos, por los turnos que le dieron, y el que no atiende por agenda no tiene ninguno
+     * ahí. Sin esto la lista le queda vacía aunque del otro lado tenga cientos.
+     */
+    suspend fun traerPacientes(medicoId: Id): Int = 0
+
     /** Trae de la API las consultas del paciente y las deja en la base del dispositivo. */
     suspend fun traerConsultas(pacienteId: Id, medicoId: Id): List<Consulta>
 

@@ -186,3 +186,31 @@ data class HcLicenciaPropia(
     @SerialName("aviso_desde") val avisoDesde: String = "",
     @SerialName("por_vencer") val porVencer: Boolean = false,
 )
+
+/**
+ * La ficha de un paciente tal como la devuelve `GET pacientes`, la cartera del médico.
+ *
+ * Es la misma forma que usa el resto de la API de pediatría para un paciente. Hace falta completa
+ * porque para el médico que solo usa historia clínica **este es el único lugar de donde salen sus
+ * pacientes**: en turnos no tiene ninguno.
+ */
+@Serializable
+data class HcPacienteFicha(
+    val id: Long,
+    @SerialName("paciente_id_tobb") val pacienteIdTobb: Long = 0,
+    val nombre: String = "",
+    val apellido: String = "",
+    val dni: String = "",
+    val sexo: String? = null,
+    @SerialName("fecha_nacimiento") val fechaNacimiento: String? = null,
+    val telefono: String = "",
+    val mail: String = "",
+    val domicilio: String = "",
+    val localidad: String = "",
+    @SerialName("obra_social") val obraSocial: String = "",
+    @SerialName("numero_afiliado") val numeroAfiliado: String = "",
+    @SerialName("obra_social_plan") val obraSocialPlan: String = "",
+    @SerialName("nombre_padre") val nombrePadre: String = "",
+    @SerialName("nombre_madre") val nombreMadre: String = "",
+    @SerialName("cantidad_hermanos") val cantidadHermanos: Int = 0,
+)
