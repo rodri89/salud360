@@ -99,8 +99,19 @@ private fun UsuariosTab(vm: AdminViewModel) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var rol by remember { mutableStateOf(Rol.MEDICO) }
+    val consultorios by vm.consultorios.collectAsState()
+    val especialidades by vm.especialidades.collectAsState()
+    var consultorioId by remember { mutableStateOf<String?>(null) }
+    var especialidadId by remember { mutableStateOf<String?>(null) }
+    // Por defecto no se publica: el que se da de alta desde acá suele ser el que solo usa historia
+    // clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    var mostrarEnTurnos by remember { mutableStateOf(false) }
+    var hcElegidas by remember { mutableStateOf(emptySet<String>()) }
+    val esMedico = rol == Rol.MEDICO
+    val completo = nombre.isNotBlank() && apellido.isNotBlank() && email.contains('@') && password.length >= 6 &&
+        (!esMedico || (consultorioId != null && especialidadId != null))
     SectionCard("Nuevo usuario", collapsible = false) {
-        Text("El médico no elige especialidad al ingresar: se le asignan desde la solapa Médicos y la app la reconoce por su mail.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("El alta se hace en turnos, que es donde vive la contraseña con la que se entra a la app y a la historia clínica.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TextField("Nombre", nombre, { nombre = it }, Modifier.weight(1f))
             TextField("Apellido", apellido, { apellido = it }, Modifier.weight(1f))
@@ -110,9 +121,28 @@ private fun UsuariosTab(vm: AdminViewModel) {
             androidx.compose.material3.OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.weight(1f))
         }
         RadioGroupField("Rol", rol.etiqueta(), Rol.entries.map { it.etiqueta() }, { v -> rol = Rol.entries.first { it.etiqueta() == v } })
+        if (esMedico) {
+            // Las dos son obligatorias del otro lado. El consultorio es dónde figura, no dónde
+            // atiende: el que solo usa historia clínica no tiene horarios en ninguno.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SelectField("Especialidad (turnos)", especialidades.firstOrNull { it.id == especialidadId }?.nombre, especialidades.map { it.nombre },
+                    { v -> especialidadId = especialidades.firstOrNull { it.nombre == v }?.id }, Modifier.weight(1f))
+                SelectField("Consultorio", consultorios.firstOrNull { it.id == consultorioId }?.nombre, consultorios.map { it.nombre },
+                    { v -> consultorioId = consultorios.firstOrNull { it.nombre == v }?.id }, Modifier.weight(1f))
+            }
+            Text("Historias clínicas habilitadas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                vm.especialidadesHc.forEach { (codigo, nombreHc) ->
+                    CheckboxField(nombreHc, codigo in hcElegidas, { marcada -> hcElegidas = if (marcada) hcElegidas + codigo else hcElegidas - codigo })
+                }
+            }
+            CheckboxField("Mostrar para pedir turno", mostrarEnTurnos, { mostrarEnTurnos = it })
+        }
         ActionRow {
-            PillButton("Crear usuario", enabled = nombre.isNotBlank() && apellido.isNotBlank() && email.contains('@') && password.length >= 6, onClick = {
-                vm.crearUsuario(nombre, apellido, email, password, rol); nombre = ""; apellido = ""; email = ""; password = ""
+            PillButton("Crear usuario", enabled = completo, onClick = {
+                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList())
+                nombre = ""; apellido = ""; email = ""; password = ""
+                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet()
             })
         }
     }

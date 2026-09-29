@@ -3,10 +3,12 @@ package com.salud360.features.admin
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
+import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
+import com.salud360.core.model.TobbIds
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
@@ -60,9 +62,34 @@ class AdminViewModel(
         }
     }
 
-    fun crearUsuario(nombre: String, apellido: String, email: String, password: String, rol: Rol) = viewModelScope.launch {
-        runCatching { admin.crearUsuario(nombre, apellido, email, password, rol) }
-            .onSuccess { mensaje.value = "Usuario ${it.email} creado"; launch { sync.sincronizar() } }
+    /**
+     * Da de alta a quien va a usar la app. Va a turnosonlinebb, que es el dueño de la identidad: es
+     * la contraseña con la que se entra, y la historia clínica valida la sesión contra ese sistema.
+     *
+     * El médico que solo usa historia clínica se crea con [mostrarEnTurnos] en false: queda activo,
+     * que es lo que le permite entrar, pero no aparece en las listas para pedirle turno.
+     */
+    fun crearUsuario(
+        nombre: String,
+        apellido: String,
+        email: String,
+        password: String,
+        rol: Rol,
+        especialidadId: Id? = null,
+        consultorioId: Id? = null,
+        mostrarEnTurnos: Boolean = false,
+        historiasClinicas: List<String> = emptyList(),
+    ) = viewModelScope.launch {
+        val alta = TobbAltaUsuario(
+            nombre = nombre.trim(), apellido = apellido.trim(), email = email.trim().lowercase(), password = password,
+            rol = rol.name.lowercase(),
+            especialidadId = TobbIds.numero(especialidadId),
+            consultorioId = TobbIds.numero(consultorioId),
+            mostrarEnTurnos = mostrarEnTurnos,
+            historiasClinicas = historiasClinicas,
+        )
+        runCatching { turnos.crearUsuario(alta) }
+            .onSuccess { mensaje.value = "Usuario ${it.email} creado" }
             .onFailure { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}" }
     }
 

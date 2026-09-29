@@ -11,6 +11,8 @@ import com.salud360.core.data.network.tobb.TOBB_DNI_BLOQUEO
 import com.salud360.core.data.network.tobb.TobbAgendaDia
 import com.salud360.core.data.network.tobb.TobbAgendaSemana
 import com.salud360.core.data.network.tobb.TobbAltaResponse
+import com.salud360.core.data.network.tobb.TobbAltaUsuario
+import com.salud360.core.data.network.tobb.TobbAltaUsuarioResponse
 import com.salud360.core.data.network.tobb.TobbCatalogosResponse
 import com.salud360.core.data.network.tobb.TobbDiasAtencion
 import com.salud360.core.data.network.tobb.TobbObrasSocialesMedicoResponse
@@ -373,6 +375,32 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
      * Los dos últimos endpoints son solo para el administrador; si el que pregunta no lo es, se
      * guardan igual el catálogo y se deja constancia en el log.
      */
+    /**
+     * Da de alta en turnos a quien va a usar la app, y vuelve a traer la administración para que
+     * aparezca en las listas con los números que le asignó turnos.
+     *
+     * El alta va allá y no a la base del dispositivo porque **la identidad es de turnosonlinebb**:
+     * esa es la contraseña con la que se entra, y la historia clínica resuelve la sesión contra ese
+     * sistema. Un usuario creado solo acá no podría iniciar sesión en ningún lado.
+     *
+     * El médico que solo usa historia clínica va con `mostrarEnTurnos = false`: queda activo, que es
+     * lo que le permite entrar, pero no aparece en las listas para pedirle turno.
+     *
+     * Devuelve el usuario ya guardado en el dispositivo.
+     */
+    suspend fun crearUsuario(alta: TobbAltaUsuario): Usuario {
+        val r = decodificar(TobbAltaUsuarioResponse.serializer(), turnos.tobbPost("usuarios", cuerpo(TobbAltaUsuario.serializer(), alta)))
+        sincronizarAdministracion()
+        val creado = r.usuario
+        return Usuario(
+            id = TobbIds.usuario(creado.id),
+            email = creado.email,
+            nombre = creado.nombre,
+            apellido = creado.apellido,
+            rol = runCatching { Rol.valueOf(creado.rol.uppercase()) }.getOrNull() ?: Rol.MEDICO,
+        )
+    }
+
     suspend fun sincronizarAdministracion() {
         val catalogo = decodificar(TobbCatalogosResponse.serializer(), turnos.tobbGet("catalogos"))
         val usuarios = runCatching { decodificar(TobbUsuariosResponse.serializer(), turnos.tobbGet("usuarios")).usuarios }

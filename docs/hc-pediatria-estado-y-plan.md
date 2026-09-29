@@ -122,6 +122,8 @@ Los dos repositorios están al día y la app está desplegada. Lo que queda no e
 5. **Subir el aviso de licencia a pediatría**: `Salud360Api.php` y `AuthController.php`, con el
    `config:clear` de siempre. Sin eso el cartel de "está por vencer" no aparece nunca, porque la
    fecha no viaja. Lo demás de licencias ya está arriba desde el 2026-09-29.
+6. **Subir el alta de usuarios a turnos**: `AltaUsuarioController.php` y `routes/api.php`. Con eso el
+   panel da de alta médicos y secretarias, que es el paso 2 hecho desde la app.
 
 ### Bugs ya encontrados y corregidos
 
@@ -524,6 +526,14 @@ Entonces el alta de estos diez es:
 2. Fila en `tobb.medicos` con ese `user_id`, especialidad Pediatría, un consultorio cualquiera,
    **`activo = 1` y `castigo_automatico = 0`** ("Mostrar Medico: No").
 3. Las dos sentencias de arriba, que los vinculan y les habilitan la historia clínica.
+
+**Los pasos 1 y 2 ya se hacen desde el panel de la app**, solapa Usuarios: `POST usuarios` de la API
+de turnos (`AltaUsuarioController`) crea el usuario con su contraseña, la ficha de médico con
+"Mostrar para pedir turno" apagado, y habilita las historias clínicas que se marquen. El paso 3, que
+es el que toca la base de pediatría, sigue siendo manual.
+
+Antes ese botón pegaba contra el servidor propio de Salud 360, que no está desplegado: la app pedía
+`api/salud360/admin/usuarios`, que en turnos no existe, y el alta moría en un 404 sin mensaje.
 
 Se probó primero con uno y se mira la web pública antes de seguir con el resto. Nada de esto toca
 código: es carga de datos desde el administrador de turnos.

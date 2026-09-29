@@ -86,24 +86,9 @@ class AdminRepository(
         return guardada
     }
 
-    /**
-     * Crea un usuario en el servidor (con contraseña) y su perfil de médico o secretaria.
-     * Devuelve el usuario creado. Requiere conexión.
-     */
-    suspend fun crearUsuario(nombre: String, apellido: String, email: String, password: String, rol: Rol): Usuario {
-        val creado = api.crearUsuario(nombre.trim(), apellido.trim(), email.trim().lowercase(), password, rol)
-        q.upsertUsuario(creado.toRow(ahoraMillis(), dirty = false))
-        when (rol) {
-            Rol.MEDICO -> if (medicoDeUsuario(creado.id) == null) {
-                q.upsertMedico(Medico(newId(), creado.id, creado.nombre, creado.apellido, mail = creado.email).toRow(ahoraMillis()))
-            }
-            Rol.SECRETARIA -> if (q.secretariaPorUsuario(creado.id).uno { it } == null) {
-                q.upsertSecretaria(Secretaria(newId(), creado.id, creado.nombre, creado.apellido).toRow(ahoraMillis()))
-            }
-            Rol.ADMIN -> Unit
-        }
-        return creado
-    }
+    // El alta de usuarios no está acá: va a turnosonlinebb, que es el dueño de la identidad, por
+    // `TurnosRepository.crearUsuario`. La que había pegaba contra el servidor propio de Salud 360,
+    // que no está desplegado, y el botón del panel respondía 404 sin explicación.
 
     suspend fun guardarUsuario(u: Usuario) = q.upsertUsuario(u.toRow(ahoraMillis()))
     suspend fun guardarMedico(m: Medico) = q.upsertMedico(m.toRow(ahoraMillis()))
