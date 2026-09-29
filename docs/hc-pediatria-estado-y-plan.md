@@ -1,8 +1,8 @@
 # Historia clínica de pediatría contra su propia base: estado y plan
 
 Documento de continuidad. Lo que sigue alcanza para retomar sin el historial de la conversación
-donde se hizo. Última actualización: 2026-09-28 (las tres fases terminadas, probadas desde la pantalla
-y desplegadas).
+donde se hizo. Última actualización: 2026-09-29 (las tres fases terminadas, probadas desde la pantalla
+y desplegadas; las licencias en la API y en el panel).
 
 ## Qué se está haciendo y por qué
 
@@ -119,9 +119,9 @@ Los dos repositorios están al día y la app está desplegada. Lo que queda no e
    (ver "Los pacientes y su vínculo con turnos").
 4. Las pruebas sin señal, que es lo único de la app que nunca se probó: modo avión, escribir, recuperar
    y confirmar que se envía solo. Ver el paso 1.
-5. **Subir las licencias a pediatría**: `TobbAuthService.php`, `Salud360Api.php`,
-   `LicenciaController.php` y `routes/api.php`, con el `config:clear` de siempre. Revisar antes las
-   fechas vencidas, porque desde ese momento bloquean. Ver "Las licencias".
+5. **Subir el aviso de licencia a pediatría**: `Salud360Api.php` y `AuthController.php`, con el
+   `config:clear` de siempre. Sin eso el cartel de "está por vencer" no aparece nunca, porque la
+   fecha no viaja. Lo demás de licencias ya está arriba desde el 2026-09-29.
 
 ### Bugs ya encontrados y corregidos
 
@@ -260,9 +260,9 @@ Cuatro cosas para entenderlo:
 - **Turnos no se consulta desde esta máquina.** `SALUD360_TOBB_URL` apunta a un puerto muerto a
   propósito, para que ningún pedido salga a producción. La sesión vale igual porque hay una fila
   sembrada en `salud360_token_cache`, que es el camino que la API ya usa cuando turnos no responde.
-  El token en claro es `salud360-prueba-fase3` y corresponde al usuario 2 de pediatría (médico 1 de
-  turnos), y `salud360-prueba-admin` al administrador (usuario 1), que es el que hace falta para las
-  licencias. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
+  Los tokens en claro son `salud360-prueba-medico`, del usuario 2 de pediatría (médico 1 de turnos),
+  y `salud360-prueba-admin`, del administrador (usuario 1); el segundo es el que hace falta para las
+  licencias. De un hash no se vuelve al texto, así que si alguno deja de servir se siembra otro. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
 - **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
   historia clínica real.
 - **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
@@ -288,7 +288,7 @@ Cómo se corre acá:
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcPediatriaE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token=salud360-prueba-fase3
+  -Psalud360.test.hc.token=salud360-prueba-medico
 ```
 
 Y las licencias, que van con el token del administrador porque a un médico la API no le informa
@@ -297,7 +297,7 @@ ninguna. La prueba le cambia la fecha a la primera, la vuelve a leer y la deja c
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcLicenciasE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token.admin=salud360-prueba-admin
+  -Psalud360.test.hc.token.admin=salud360-prueba-admin   -Psalud360.test.hc.token=salud360-prueba-medico
 ```
 
 **Cuando terminemos, borrar las dos bases y `bd_test/`**: son pacientes, contraseñas y credenciales
@@ -777,6 +777,13 @@ que quedó allá.
 
 Al médico, el rechazo le llega con el texto de la API cuando la pantalla trae la historia clínica, así
 que lee "Tu licencia de la historia clínica está vencida. Avisale al administrador."
+
+**El aviso previo.** Enterarse el día que vence no sirve de nada, así que `auth/perfil` de pediatría
+devuelve también cómo está la licencia del que entró (`vence`, `aviso_desde`, `por_vencer`), y la app
+lo pregunta una vez al iniciar sesión. Dentro de la ventana de aviso muestra un cartel ámbar arriba a
+la izquierda con la fecha. El estado viaja por los atributos del pedido y no pidiéndole el servicio al
+contenedor desde el controlador: `TobbAuthService` no está registrado como singleton, así que allá
+llegaría otra instancia, sin nada resuelto.
 
 **Antes de subirlo hay que mirar las fechas.** Al quedar en línea, los médicos ya vinculados con la
 licencia vencida dejan de entrar por la app en el mismo momento (hoy son cuatro, y otros cinco entre los

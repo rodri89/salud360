@@ -1,6 +1,8 @@
 package com.salud360.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -60,10 +65,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.sync.SyncEngine
+import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Sesion
 import com.salud360.core.ui.components.InitialsAvatar
+import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.admin.AdminScreen
 import com.salud360.features.hc.ConfigSeccionesHcScreen
@@ -83,6 +91,7 @@ import com.salud360.features.turnos.ObrasSocialesScreen
 import com.salud360.features.turnos.RecetasScreen
 import com.salud360.features.turnos.SeccionConfig
 import com.salud360.features.turnos.SelectorMedicoScreen
+import kotlinx.datetime.LocalDate
 import org.koin.compose.koinInject
 
 /** Destinos de navegación. */
@@ -143,6 +152,7 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
     LaunchedEffect(nav) { alIniciarNavegacion?.invoke(nav) }
     val registry = koinInject<EspecialidadRegistry>()
     val sync = koinInject<SyncEngine>()
+    val hc = koinInject<HcRepository>()
     val estadoSync by sync.estado.collectAsState()
     val rol = sesion.usuario.rol
     val operador = sesion.usuario.nombreCompleto
@@ -177,6 +187,14 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
         }
     }
     val inicio = items.firstOrNull()?.ruta ?: Rutas.PACIENTES
+
+    // El aviso de licencia lo informa cada historia clínica al validar la sesión: la fecha vive en su
+    // base, no en la del dispositivo. Se pregunta una vez al entrar, y si no se puede no pasa nada:
+    // es un recordatorio. La licencia ya vencida no llega hasta acá, porque no deja entrar.
+    var avisos by remember(sesion) { mutableStateOf(emptyList<AvisoLicencia>()) }
+    LaunchedEffect(sesion, rol) {
+        if (rol == Rol.MEDICO) avisos = runCatching { hc.avisosDeLicencia() }.getOrDefault(emptyList())
+    }
     val backStack by nav.currentBackStackEntryAsState()
     val rutaActual = backStack?.destination?.route
 
@@ -206,7 +224,11 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                 Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     // widthIn va antes de fillMaxSize: al revés, fillMaxSize fija el ancho del padre y el máximo no se aplica.
                     val contenido = if (anchoMaximoContenido != null) Modifier.widthIn(max = anchoMaximoContenido).fillMaxSize() else Modifier.fillMaxSize()
-                    Box(contenido) {
+                    Column(contenido) {
+                    // Arriba de todo y pegado a la izquierda: que se vea al entrar sin taparle nada a
+                    // la pantalla, que sigue abajo con el resto del alto.
+                    avisos.forEach { AvisoDeLicencia(it) }
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
                     NavHost(navController = nav, startDestination = inicio) {
                         composable(Rutas.SELECTOR) {
                             val s = sesion.secretaria
@@ -326,9 +348,31 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         }
                     }
                     }
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * "Tu licencia está por vencer", con la fecha. Ámbar: no impide trabajar, pero si llega el día el
+ * médico deja de entrar a la historia clínica, así que tiene que enterarse antes y no ese día.
+ */
+@Composable
+private fun AvisoDeLicencia(aviso: AvisoLicencia) {
+    val fecha = runCatching { LocalDate.parse(aviso.vence).toDisplay() }.getOrDefault(aviso.vence)
+    Row(
+        Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Salud360Colors.Warning.copy(alpha = 0.18f))
+            .border(1.dp, Salud360Colors.Warning, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Default.Warning, contentDescription = null, tint = Salud360Colors.Warning)
+        Text("Tu licencia está por vencer el $fecha", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

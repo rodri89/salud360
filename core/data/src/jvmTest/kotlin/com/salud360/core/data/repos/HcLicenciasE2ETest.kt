@@ -10,9 +10,16 @@ import com.salud360.core.database.createDatabase
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.auth.Medico
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -35,6 +42,7 @@ class HcLicenciasE2ETest {
 
     private val url = System.getProperty("salud360.test.hc.pediatria").orEmpty()
     private val token = System.getProperty("salud360.test.hc.token.admin").orEmpty()
+    private val tokenMedico = System.getProperty("salud360.test.hc.token").orEmpty()
 
     @Test
     fun elPanelLeeYEscribeLasLicenciasDePediatria() {
@@ -91,6 +99,54 @@ class HcLicenciasE2ETest {
             }
         }
     }
+
+    /**
+     * El otro lado de la misma regla: al médico le tiene que llegar el aviso de que su licencia está
+     * por vencer, con la fecha. La fecha vive en la base de pediatría, así que la prueba la mueve con
+     * el token del administrador y la lee con el del médico, que es como pasa de verdad.
+     */
+    @Test
+    fun elMedicoSeEnteraDeQueSuLicenciaEstaPorVencer() {
+        if (url.isBlank() || token.isBlank() || tokenMedico.isBlank()) {
+            println("HcLicenciasE2ETest: sin -Psalud360.test.hc.token (médico) además del de administrador, no se corre.")
+            return
+        }
+        val archivo = File.createTempFile("salud360-aviso", ".db").also { it.delete() }
+        runBlocking {
+            val db = createDatabase(DriverFactory(archivo.absolutePath))
+            val comoAdmin = HcPediatriaBackend(db, HcApiClient(url, "pediatria").also { it.token = token })
+            val apiMedico = HcApiClient(url, "pediatria").also { it.token = tokenMedico }
+            val comoMedico = HcPediatriaBackend(db, apiMedico)
+
+            // De quién es el token del médico: la licencia que hay que mover es la suya y no otra.
+            val perfil = apiMedico.leer(PerfilDePrueba.serializer(), apiMedico.get("auth/perfil"), "perfil")
+            val medicoId = TobbIds.medico(perfil.medicoIdTobb)
+            val original = assertNotNull(
+                comoAdmin.traerLicencias().firstOrNull { it.medicoId == medicoId },
+                "el médico del token tiene que tener licencia, si no no habría entrado",
+            )
+
+            val cerca = hoy().plus(DatePeriod(days = 10)).toString()
+            val lejos = hoy().plus(DatePeriod(years = 2)).toString()
+            try {
+                // Dentro de la ventana de aviso: entra igual, pero se lo avisa.
+                assertTrue(comoAdmin.guardarLicencia(original.copy(fechaExpiracion = cerca, fechaAviso = hoy().minus(DatePeriod(days = 1)).toString())))
+                val aviso = comoMedico.avisoDeLicencia()
+                assertEquals(cerca, aviso?.vence, "el médico tiene que recibir la fecha en la que vence")
+                assertEquals("pediatria", aviso?.especialidad)
+
+                // Fuera de la ventana no molesta.
+                assertTrue(comoAdmin.guardarLicencia(original.copy(fechaExpiracion = lejos, fechaAviso = lejos)))
+                assertNull(comoMedico.avisoDeLicencia(), "sin aviso pendiente no se le muestra nada")
+            } finally {
+                comoAdmin.guardarLicencia(original)
+            }
+        }
+    }
+
+    /** Lo único que la prueba necesita del perfil de pediatría. */
+    @Serializable
+    private data class PerfilDePrueba(@SerialName("medico_id_tobb") val medicoIdTobb: Long = 0)
 
     private companion object {
         /** Lejos, para que se note si quedó, y sin bloquear a nadie mientras la prueba corre. */

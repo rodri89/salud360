@@ -9,6 +9,7 @@ import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
+import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
@@ -55,6 +56,15 @@ class HcRepository(
 
     /** Especialidades que guardan también en su propio sistema, para traerlas sin que el médico las pida. */
     val especialidadesConApi: Set<String> get() = backends.keys
+
+    /**
+     * Licencias del que está usando la app que están por vencer, una por historia clínica.
+     *
+     * La fecha vive en la base de cada especialidad, que la informa al validar la sesión. Si alguna no
+     * contesta se la deja afuera: es un recordatorio, no algo que deba frenar el trabajo.
+     */
+    suspend fun avisosDeLicencia(): List<AvisoLicencia> =
+        backends.values.mapNotNull { runCatching { it.avisoDeLicencia() }.getOrNull() }
 
     /** Trae del servidor las consultas del paciente y las deja en el dispositivo. Null si no hay API. */
     suspend fun traerConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =

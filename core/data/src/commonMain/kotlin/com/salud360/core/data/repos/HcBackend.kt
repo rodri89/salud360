@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.model.Id
+import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
@@ -72,6 +73,12 @@ interface HcBackend {
 
     /** Guarda una licencia en la API de la especialidad. false si no se pudo. */
     suspend fun guardarLicencia(licencia: Licencia): Boolean = false
+
+    /**
+     * La licencia del que está usando la app está por vencer, con la fecha en la que vence. Null si
+     * no lo está, si no tiene licencia (el administrador) o si no se pudo preguntar.
+     */
+    suspend fun avisoDeLicencia(): AvisoLicencia? = null
 
     /** Trae de la API las consultas del paciente y las deja en la base del dispositivo. */
     suspend fun traerConsultas(pacienteId: Id, medicoId: Id): List<Consulta>

@@ -168,3 +168,21 @@ data class HcLicenciaRequest(
     val importe: Double,
     val activo: Int,
 )
+
+/**
+ * El perfil que devuelve la historia clínica al validar la sesión. Se lee solo por la licencia: lo
+ * demás ya lo sabe la app, que se identifica contra turnosonlinebb.
+ */
+@Serializable
+data class HcPerfilRemoto(val licencia: HcLicenciaPropia? = null)
+
+/**
+ * Cómo está la licencia del médico que entró. Vencida no llega: el pedido habría sido rechazado
+ * antes. Null para el administrador, que no tiene licencia.
+ */
+@Serializable
+data class HcLicenciaPropia(
+    val vence: String = "",
+    @SerialName("aviso_desde") val avisoDesde: String = "",
+    @SerialName("por_vencer") val porVencer: Boolean = false,
+)

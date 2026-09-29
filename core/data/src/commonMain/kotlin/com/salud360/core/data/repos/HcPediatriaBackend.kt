@@ -12,6 +12,7 @@ import com.salud360.core.data.network.hc.HcConsulta
 import com.salud360.core.data.network.hc.HcExamenRequest
 import com.salud360.core.data.network.hc.HcFotoRemota
 import com.salud360.core.data.network.hc.HcLicenciaRemota
+import com.salud360.core.data.network.hc.HcPerfilRemoto
 import com.salud360.core.data.network.hc.HcLicenciaRequest
 import com.salud360.core.data.network.hc.HcPaciente
 import com.salud360.core.data.network.hc.HcPacienteRequest
@@ -24,6 +25,7 @@ import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
+import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.hc.Antecedente
@@ -421,6 +423,22 @@ class HcPediatriaBackend(
     // ------------------------------------------------------------------
     // Licencias
     // ------------------------------------------------------------------
+
+    /**
+     * Pediatría informa cómo está la licencia del médico al validar la sesión, en el mismo perfil que
+     * confirma que el token sirve. La fecha vive en su base, así que no hay otra forma de saberla, y
+     * la vencida no llega nunca hasta acá: ese pedido lo rechaza el middleware.
+     */
+    override suspend fun avisoDeLicencia(): AvisoLicencia? {
+        val perfil = runCatching { api.leerOpcional(HcPerfilRemoto.serializer(), api.get("auth/perfil"), "perfil") }
+            .getOrElse {
+                log.w(it) { "no se pudo preguntar por la licencia" }
+                null
+            }
+        val licencia = perfil?.licencia ?: return null
+        if (!licencia.porVencer || licencia.vence.isBlank()) return null
+        return AvisoLicencia(especialidad, licencia.vence)
+    }
 
     /**
      * Las licencias viven en la base de pediatría, no en turnos: es esa historia clínica la que se
