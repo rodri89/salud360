@@ -491,18 +491,26 @@ tamaño de cartera en pediatría, que es lo que se deja afuera mientras no esté
 Van por id de `hc_pediatrica.users`, no por nombre: este repo es público y son personas reales. El
 nombre sale de la base.
 
-| Usuario de pediatría | Pacientes |
-|---|---|
-| 10 | 850 |
-| 13 | 466 |
-| 29 | 384 |
-| 8 | 230 |
-| 34 | 84 |
-| 9 | 73 |
-| 36 | 11 |
-| 26 | 1 |
-| 14 | 0 |
-| 35 | 0 |
+Estado al 2026-09-29, contando `medico_pacientes` y con la fecha de la licencia, que es lo que
+decide si entran una vez vinculados. Los dos de prueba van marcados.
+
+| Usuario de pediatría | Pacientes | Licencia vence |
+|---|---|---|
+| 10 | 889 | 2027-09-05 |
+| 13 | 482 | 2026-11-15 |
+| 29 | 456 | 2026-12-15 |
+| 34 | 135 | 2026-10-10 |
+| 39 | 99 | 2026-10-10 |
+| 9 | 73 | **2022-03-11, vencida** |
+| 38 | 25 | 2026-10-10 |
+| 36 | 23 | **2026-03-10, vencida** |
+| 26 | 1 | **2024-03-10, vencida** |
+| 14 | 0 | **2022-02-10, vencida** |
+| 6 | 25 | de prueba |
+| 7 | 4 | de prueba |
+
+**A los cuatro de licencia vencida hay que renovársela** desde la solapa Licencias del panel, o no
+entran igual. Y tres vencen el 2026-10-10, así que van a ver el cartel ámbar enseguida.
 
 También queda afuera el usuario 12, que sí está vinculado (médico 6 de turnos) pero está dado de baja
 allá (`medicos.activo = 0`). Por eso no se le habilitó nada: con la baja no puede entrar.
@@ -531,6 +539,14 @@ Entonces el alta de estos diez es:
 de turnos (`AltaUsuarioController`) crea el usuario con su contraseña, la ficha de médico con
 "Mostrar para pedir turno" apagado, y habilita las historias clínicas que se marquen. El paso 3, que
 es el que toca la base de pediatría, sigue siendo manual.
+
+**Para los de la tabla de abajo el paso 3 se reduce al cruce por mail**, porque ya tienen su usuario
+de pediatría: alcanza con darlos de alta en turnos **con el mismo mail** y correr la primera
+sentencia. La segunda ya no hace falta: el alta del panel habilita la historia clínica.
+
+Probado de punta a punta el 2026-09-29 con el usuario 29, en la copia de producción: alta por la API,
+cruce por mail, y la sesión de turnos resolviendo contra su ficha de pediatría. Se revirtió todo al
+terminar.
 
 Antes ese botón pegaba contra el servidor propio de Salud 360, que no está desplegado: la app pedía
 `api/salud360/admin/usuarios`, que en turnos no existe, y el alta moría en un 404 sin mensaje.
