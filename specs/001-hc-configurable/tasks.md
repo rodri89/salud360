@@ -269,7 +269,7 @@ Reglas de la tanda:
     oculta por el médico pero en el perfil → no aparece como solo lectura (RF-28).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*SeccionesSoloLecturaTest*'` en verde.
 
-- [ ] **T19. Catálogo de la HC general en la app.** RF-31, RF-33
+- [x] **T19. Catálogo de la HC general en la app.** RF-31, RF-33
   - `especialidades/clinica/.../HcGeneral.kt` (nuevo; **convive** con `ClinicaMedica.kt` hasta la tanda C):
     `catalogoHcGeneral: CatalogoHc` con las 24 secciones de `CatalogoSecciones.php`, mismos ids, orden y **nombres**:
     el título por defecto de cada sección es el del catálogo del servidor ("Decidido" B1); reutiliza las `SeccionDef`

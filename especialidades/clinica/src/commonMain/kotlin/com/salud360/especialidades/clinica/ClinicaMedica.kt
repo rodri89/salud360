@@ -18,7 +18,7 @@ import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas
 
 
-private val labGeneralClinica = LaboratorioDef(
+internal val labGeneralClinica = LaboratorioDef(
     "laboratorio_general", "Laboratorio general",
     listOf("HTO", "HB", "Blancos", "Plaquetas", "Glucemia", "Urea", "Creatinina", "NA", "K", "CL", "CA", "MG", "Albúmina", "Fósforo", "TGO", "TGP", "FAL",
         "BT", "BD", "BI", "GGT", "TP", "RIN", "Concentración", "KPTT", "LDH", "PCR", "VSG", "CT", "LDL", "TGC", "HDL", "Ferritina", "Sat de Transf", "MELD",
@@ -27,7 +27,7 @@ private val labGeneralClinica = LaboratorioDef(
         .map { AnalitoDef(it.lowercase().replace(Regex("[^a-z0-9]+"), "_"), it) },
 )
 
-private val alimentacionClinica = SeccionDef(
+internal val alimentacionClinica = SeccionDef(
     "alimentacion", "Alimentación", TipoSeccion.FORM, icono = "alimentacion", inicialmenteExpandida = false,
     campos = listOf(
         CampoDef("hiposodica", "Hiposódica", TipoCampo.CHECK_DETALLE), CampoDef("diabetes", "Diabetes", TipoCampo.CHECK_DETALLE),
