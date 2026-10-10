@@ -23,7 +23,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `claveDeNombre` pública para T16). T16 hecha (`PerfilCopia.kt`: `nombreCopia` recorta X, nunca el número;
   `CatalogoAdmin.kt`: `catalogoParaAdmin` + `seccionesParaAgregar`). T17 hecha (`DefinicionHcGeneral.kt`: tipos
   con `pestanias` = solo la ficha, `grupos` con id `pestania_<índice en el perfil>`, `secciones` = las de los grupos,
-  `foto` vacío; legadas en el perfil = desconocidas; `EstadoConfig.kt`: `ConfigGuardada?`/`ConfigRemota`). Después C admin + médico, D hepatología + E2E.
+  `foto` vacío; legadas en el perfil = desconocidas; `EstadoConfig.kt`: `ConfigGuardada?`/`ConfigRemota`). T18 hecha (`SeccionesSoloLectura.kt`:
+  `DatosConsulta` que llena la tanda C —antecedentes del paciente, el resto de la consulta—; `seccionesSoloLectura`
+  con `enPerfil` opcional para no mostrar ocultas del perfil). Después C admin + médico, D hepatología + E2E.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

@@ -257,7 +257,7 @@ Reglas de la tanda:
     sin caché con motivo `red` y con un motivo de la API como licencia vencida, remota con perfil `null`).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*DefinicionHcGeneralTest*' --tests '*EstadoConfigTest*'` en verde.
 
-- [ ] **T18. Secciones con datos fuera del perfil, solo para leer.** RF-22, RF-28, RF-30
+- [x] **T18. Secciones con datos fuera del perfil, solo para leer.** RF-22, RF-28, RF-30
   - `hcgeneral/SeccionesSoloLectura.kt`: `campoTieneDato(campo, valor)` (`0`, `0|` y vacío no cuentan) y
     `seccionesConDatos(datos, def)` según el tipo de sección (texto/form, examen físico, registros, laboratorios,
     archivos, antecedentes, diagnósticos de esa consulta), con `datos` como un tipo propio que la tanda C llena desde
