@@ -192,7 +192,7 @@ Reglas de la tanda:
 - `normalizarHistoriasClinicas` (RF-29) queda para la tanda D, junto con `7.sqm` (fase 6 del plan), y las consultas
   de lectura de `HistoriaClinica.sq` para RF-22 van en la tanda C, con su pantalla.
 
-- [ ] **T14. Tipos del modelo para perfiles y pestañas agrupadas.** RF-7, RF-20 (base), RF-33
+- [x] **T14. Tipos del modelo para perfiles y pestañas agrupadas.** RF-7, RF-20 (base), RF-33
   - Rama `hc-general` desde `main`.
   - `core/model/.../especialidad/EspecialidadDefinition.kt`: `data class PestaniaDef(id, titulo, secciones: List<String>)`
     y `TipoConsultaDef.grupos: List<PestaniaDef> = emptyList()` **como último parámetro** (los constructores

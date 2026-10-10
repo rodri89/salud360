@@ -56,6 +56,18 @@ data class TipoConsultaDef(
     /** Pestañas superiores (datos del paciente, antecedentes...). */
     val pestanias: List<String> = listOf(SeccionesComunes.DATOS_PACIENTE),
     val descripcion: String = "",
+    /**
+     * Pestañas que agrupan [secciones], en orden (HC general: las arma el perfil del médico). Vacío = la pantalla de
+     * siempre, con todas las secciones juntas.
+     */
+    val grupos: List<PestaniaDef> = emptyList(),
+)
+
+/** Pestaña de un tipo de consulta con las secciones que muestra, en orden. */
+data class PestaniaDef(
+    val id: String,
+    val titulo: String,
+    val secciones: List<String>,
 )
 
 enum class TipoSeccion {
