@@ -237,7 +237,7 @@ Reglas de la tanda:
     no soportada; orden del remoto).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PerfilCopiaTest*' --tests '*CatalogoAdminTest*'` en verde.
 
-- [ ] **T17. Definición de la HC general, visibles y estado de la configuración.** RF-7, RF-19, RF-20, RF-21, RF-23,
+- [x] **T17. Definición de la HC general, visibles y estado de la configuración.** RF-7, RF-19, RF-20, RF-21, RF-23,
   RF-24, RF-25, RF-26, RF-27, RF-28
   - `hcgeneral/DefinicionHcGeneral.kt`: `armarDefinicion(catalogo, perfil?): DefinicionArmada` → definición
     "clinica" con todas las secciones que la app conoce (título del perfil si está en él, si no el por defecto),
