@@ -1,0 +1,15 @@
+-- Configuración de la historia clínica del médico (perfil de la HC general, spec 001): copia de la última respuesta
+-- buena de `GET config`, para abrir la HC sin conexión (RF-25). Sin dirty ni deleted: el dueño es la base de la
+-- especialidad y acá nunca se edita.
+-- config_json es el perfil en JSON o `null` (sin perfil, RF-19); sin fila = nunca se recibió (RF-26).
+-- Misma tabla que migrations/6.sqm.
+CREATE TABLE hc_config (
+    medico_id TEXT NOT NULL,
+    hc_codigo TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    recibida_en INTEGER NOT NULL,
+    PRIMARY KEY (medico_id, hc_codigo)
+);
+
+configGuardada: SELECT * FROM hc_config WHERE medico_id = ? AND hc_codigo = ?;
+guardarConfig: INSERT OR REPLACE INTO hc_config(medico_id, hc_codigo, config_json, recibida_en) VALUES (?, ?, ?, ?);

@@ -1,0 +1,10 @@
+-- v6 -> v7: configuración de la historia clínica del médico (perfil de la HC general, spec 001).
+-- Copia de la última respuesta buena de la API para abrir la HC sin conexión; sin dirty ni deleted porque el
+-- dueño es la base de la especialidad. Tiene que quedar igual que en HcConfig.sq.
+CREATE TABLE hc_config (
+    medico_id TEXT NOT NULL,
+    hc_codigo TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    recibida_en INTEGER NOT NULL,
+    PRIMARY KEY (medico_id, hc_codigo)
+);

@@ -27,7 +27,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `DatosConsulta` que llena la tanda C —antecedentes del paciente, el resto de la consulta—; `seccionesSoloLectura`
   con `enPerfil` opcional para no mostrar ocultas del perfil). T19 hecha (`especialidades/clinica/HcGeneral.kt`:
   `catalogoHcGeneral` + `hcGeneralBase`, sin contribución todavía; primer test del módulo, `CatalogoHcGeneralTest`;
-  legada `antecedentes_personales` con `personalesEstandar`, que también muestra la nota libre de clínica). Después C admin + médico, D hepatología + E2E.
+  legada `antecedentes_personales` con `personalesEstandar`, que también muestra la nota libre de clínica).
+  T20 hecha (`6.sqm` + `HcConfig.sq`, esquema ahora v7; `ConfigHcRepository(db, api: ConfigHcApi?)`: sin cliente o
+  sin red = `red`; fallos no Tobb de la API → `TobbException` `respuesta`; JSON guardado ilegible = sin fila). Después C admin + médico, D hepatología + E2E.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

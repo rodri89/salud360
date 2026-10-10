@@ -287,7 +287,7 @@ Reglas de la tanda:
   - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest --tests '*CatalogoHcGeneralTest*'` en verde y
     `.\gradlew :composeApp:compileKotlinWasmJs` compila.
 
-- [ ] **T20. Caché de la configuración del médico.** RF-23, RF-25, RF-26
+- [x] **T20. Caché de la configuración del médico.** RF-23, RF-25, RF-26
   - `core/database/.../migrations/6.sqm` + `HcConfig.sq` (nuevo) con la misma tabla:
     `hc_config(medico_id TEXT, hc_codigo TEXT, config_json TEXT NOT NULL, recibida_en INTEGER NOT NULL,
     PRIMARY KEY(medico_id, hc_codigo))`, sin `dirty`/`deleted` (dueño remoto); consultas `configGuardada` y
