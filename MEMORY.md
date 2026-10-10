@@ -19,9 +19,10 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   local queda con la carga inicial aplicada (perfiles 1 Clínica general y 2 Hepatología, asignaciones, marcador);
   no vaciarla. T13 hecha (`97e7fe4` md completo; humo de los 9 endpoints OK, base igual que tras T12). Tanda A2
   validada. Tanda B en la rama `hc-general` de este repo (sin push): T14 hecha (tipos `PerfilHc.kt`,
-  `TipoConsultaDef.grupos`). Después C admin + médico, D hepatología + E2E.
+  `TipoConsultaDef.grupos`). T15 hecha (`hcgeneral/PerfilValidacion.kt`: `validarPerfil`, `nuevaSeccion`,
+  `claveDeNombre` pública para T16). Después C admin + médico, D hepatología + E2E.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
-  contesta 422 igual. La validación de la app (tanda B) podría ignorar tildes para avisar antes.
+  contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.
 
 ## Entorno local (Windows + XAMPP)

@@ -208,7 +208,7 @@ Reglas de la tanda:
   - Hecho cuando: `.\gradlew :core:model:compileKotlinJvm` compila, y `.\gradlew :core:data:jvmTest` y
     `.\gradlew :composeApp:compileKotlinWasmJs` siguen en verde sin tocar ninguna especialidad.
 
-- [ ] **T15. Validación del perfil y sección nueva.** RF-2, RF-4, RF-8, RF-9
+- [x] **T15. Validación del perfil y sección nueva.** RF-2, RF-4, RF-8, RF-9
   - `hcgeneral/PerfilValidacion.kt`: `validarPerfil(perfil, otrosNombres, catalogoIds): List<ErrorPerfil>` espejo de
     `PerfilesService::validar` de hclinica: mismas reglas, mismos `campo` (`nombre`, `pestanias`,
     `pestanias.i.nombre`, `pestanias.i.secciones.j.nombre`, `pestanias.i.secciones.j.seccion`,
