@@ -114,7 +114,7 @@ private fun errorDeNombre(nombre: String, que: String): String? = when {
 }
 
 /** Largo en caracteres como `mb_strlen` (code points): un par sustituto UTF-16 cuenta uno. */
-private fun caracteres(texto: String): Int {
+internal fun caracteres(texto: String): Int {
     var n = 0
     var i = 0
     while (i < texto.length) {

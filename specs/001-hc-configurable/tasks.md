@@ -226,7 +226,7 @@ Reglas de la tanda:
     Consulta y el nombre por defecto. Cada caso comprueba el `campo` exacto.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PerfilValidacionTest*'` en verde.
 
-- [ ] **T16. Duplicar, borrar y catálogo del administrador.** RF-1, RF-11, RF-12, RF-16
+- [x] **T16. Duplicar, borrar y catálogo del administrador.** RF-1, RF-11, RF-12, RF-16
   - `hcgeneral/PerfilCopia.kt`: `nombreCopia(nombre, existentes)` ("Copia de X", "Copia de X (2)", …, comparando
     como `validarPerfil`; recorta X para no pasar 60 con el sufijo) y `duplicarPerfil(perfil, existentes)` (mismas
     pestañas, secciones, nombres y tipos; `id` null). `puedeBorrar(perfil, asignaciones)` = ningún médico asignado.
