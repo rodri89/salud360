@@ -48,7 +48,7 @@ La app se compila contra un entorno fijo. Las URLs están en `gradle.properties`
 | Entorno | turnosonlinebb | HC pediatría |
 |---|---|---|
 | `dev` | `http://{host}:8888/TurnosOnlineBB/TurnosImage/public/index.php` (MAMP) | `http://{host}:8888/HCPediatria/public_html/pediatria/HCDPediatria/public/index.php` |
-| `release` | `https://turnosonlinebb.com` | `https://hcpediatrica.com` |
+| `release` | `https://turnosonlinebb.com` | `https://pediatria.hclinicadigital.com` |
 
 `{host}` se reemplaza en cada plataforma: `localhost` en web y simulador iOS, `10.0.2.2` en el emulador Android
 (así ve a la Mac), o lo que se pase con `-PdevHost=192.168.x.x` para probar en un teléfono físico contra la Mac

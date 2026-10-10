@@ -208,7 +208,7 @@ El `.env` local se tocó para apuntar a turnos del MAMP. Está ignorado por git.
 
 ### Repo de la app
 
-En la rama `hc-pediatria-fase-2`. Todavía sin unir a `main`.
+Hecho en la rama `hc-pediatria-fase-2`, ya unida a `main` (merge `e601352`).
 
 | Nuevos | |
 |---|---|
