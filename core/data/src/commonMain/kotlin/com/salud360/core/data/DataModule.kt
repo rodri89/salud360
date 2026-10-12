@@ -7,15 +7,19 @@ import com.salud360.core.data.network.hc.HcApiClients
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
+import com.salud360.core.data.repos.ConfigHcApiRemota
+import com.salud360.core.data.repos.ConfigHcRepository
 import com.salud360.core.data.repos.HcBackends
 import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
+import com.salud360.core.data.repos.PerfilesHcRepository
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.Salud360Db
 import com.russhwolf.settings.Settings
+import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.newId
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -82,4 +86,8 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
     single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }
+    // HC general (hclinica): configuración por perfiles, fuera de `HcBackends` (sus consultas son de la spec 002).
+    // Sin URL de hclinica en el entorno los dos se comportan como sin conexión.
+    single { ConfigHcRepository(get(), get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ConfigHcApiRemota(it) }) }
+    single { PerfilesHcRepository(get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]) }
 }

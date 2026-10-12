@@ -306,7 +306,7 @@ Reglas de la tanda:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*ConfigHcRepositoryTest*'` y `.\gradlew :core:data:jvmTest`
     completos en verde.
 
-- [ ] **T21. DTOs, repositorio del administrador, Koin y URL de producción.** RF-1 a RF-17 (datos), RF-13, RF-23, RF-25
+- [x] **T21. DTOs, repositorio del administrador, Koin y URL de producción.** RF-1 a RF-17 (datos), RF-13, RF-23, RF-25
   - `core/data/.../network/hc/HcConfigDtos.kt`: DTOs del contrato real (`md/API_SALUD360_CLINICA.md`): perfil
     `{id, nombre, pestanias: [{nombre, secciones: [{seccion, nombre, consulta, telemedicina}]}]}`, catálogo, resumen
     (`medicos`), asignación (con nulos) y errores `{campo, mensaje}`, y su paso a/desde `PerfilHc`. `ConfigHcApi`

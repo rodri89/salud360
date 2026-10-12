@@ -7,6 +7,9 @@ import com.salud360.core.data.hcgeneral.EstadoConfigHc
 import com.salud360.core.data.hcgeneral.estadoConfig
 import com.salud360.core.data.mappers.json
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.HcApiClient
+import com.salud360.core.data.network.hc.HcPerfilDto
+import com.salud360.core.data.network.hc.toModel
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
@@ -21,6 +24,12 @@ import kotlinx.serialization.builtins.nullable
  */
 fun interface ConfigHcApi {
     suspend fun config(): PerfilHc?
+}
+
+/** [ConfigHcApi] contra hclinica: `{perfil}` o `perfil: null`. */
+class ConfigHcApiRemota(private val cliente: HcApiClient) : ConfigHcApi {
+    override suspend fun config(): PerfilHc? =
+        cliente.leer(HcPerfilDto.serializer().nullable, cliente.get("config"), "perfil")?.toModel()
 }
 
 /**

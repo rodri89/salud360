@@ -4,6 +4,7 @@ import com.salud360.core.model.especialidad.PerfilHc
 import com.salud360.core.model.especialidad.SeccionCatalogoRemota
 import com.salud360.core.model.especialidad.SeccionPerfil
 import com.salud360.core.model.especialidad.TipoConsultaHc
+import kotlinx.serialization.Serializable
 
 /** Largo máximo de los nombres de perfil, pestaña y sección (`PerfilesService::LARGO_NOMBRE` de hclinica). */
 const val LARGO_NOMBRE_PERFIL = 60
@@ -13,6 +14,7 @@ const val LARGO_NOMBRE_PERFIL = 60
  * pantalla muestra igual los de la app y los del servidor. [campo] dice dónde (`nombre`, `pestanias.1.nombre`,
  * `pestanias.1.secciones.0.seccion`...) y [mensaje] qué corregir.
  */
+@Serializable
 data class ErrorPerfil(val campo: String, val mensaje: String)
 
 /**
