@@ -413,7 +413,8 @@ Reglas de la tanda:
     adentro (se va con ella; mover o renombrar otras no la toca), la sección agregada sale con Consulta.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EditorPerfilTest*'` en verde.
 
-- [ ] **T23. Solapa "Perfiles HC": lista, duplicar y borrar.** RF-1 (lectura), RF-11, RF-12, RF-13, RF-14; C4, C6
+- [x] **T23. Solapa "Perfiles HC": lista, duplicar y borrar.** RF-1 (lectura), RF-11, RF-12, RF-13, RF-14; C4, C6
+  (compila; falta que el usuario confirme los pasos manuales 1 a 4)
   - `features/admin/.../PerfilesHcViewModel.kt` (registrado en `AdminModule.kt`; recibe `PerfilesHcRepository` y el
     `CatalogoHc`): al abrir pide catálogo, perfiles y asignaciones; estado con la lista, `cargando`, `mensaje` y
     `sinConexion` (fallo con `codigo` `red`, RF-14) y `reintentar()`. Duplicar = `perfil(id)` → `duplicarPerfil` con

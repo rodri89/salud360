@@ -60,7 +60,7 @@ import com.salud360.core.ui.theme.Salud360Colors
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
-private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorios", "Especialidades", "Feriados", "Licencias")
+private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorios", "Especialidades", "Feriados", "Licencias", "Perfiles HC")
 
 /** Panel de administración con solapas. */
 @Composable
@@ -85,6 +85,7 @@ fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios
                 4 -> EspecialidadesTab(vm)
                 5 -> FeriadosTab(vm)
                 6 -> LicenciasTab(vm)
+                7 -> PerfilesHcTab()
             }
             Spacer(Modifier.height(24.dp))
         }

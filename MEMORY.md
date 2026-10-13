@@ -35,7 +35,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   URL release de hclinica en `gradle.properties`: la web release ya crea ese cliente). Tanda B completa, falta
   validación del reviewer. Después C admin + médico, D hepatología + E2E.
 - Tanda C: T22 hecha (`hcgeneral/EditorPerfil.kt`: extensiones de `PerfilHc`; `agregarSeccion` ignora ids fuera
-  del catálogo o ya en el perfil; "Pestaña N" con el primer N libre).
+  del catálogo o ya en el perfil; "Pestaña N" con el primer N libre). T23 hecha, falta la prueba manual
+  (`PerfilesHcViewModel`/`PerfilesHcScreens.kt`, solapa "Perfiles HC"; `CatalogoHc` como `single` en `AppDi.kt`).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

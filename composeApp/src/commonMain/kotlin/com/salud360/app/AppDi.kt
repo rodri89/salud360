@@ -3,7 +3,9 @@ package com.salud360.app
 import com.salud360.core.data.AppConfig
 import com.salud360.core.data.dataModule
 import com.salud360.core.database.Salud360Db
+import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.especialidades.cardiologia.cardiologiaContribution
+import com.salud360.especialidades.clinica.catalogoHcGeneral
 import com.salud360.especialidades.clinica.clinicaContribution
 import com.salud360.especialidades.clinica.hepatologiaContribution
 import com.salud360.especialidades.desarrolloinfantil.desarrolloInfantilContribution
@@ -20,6 +22,7 @@ import com.salud360.features.turnos.turnosFeatureModule
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
+import org.koin.dsl.module
 
 /** Todas las historias clínicas compiladas en la app. Para agregar una especialidad, sumarla acá. */
 val especialidades: List<EspecialidadContribution> = listOf(
@@ -43,10 +46,13 @@ fun configEntorno(hostLocal: String): AppConfig {
     )
 }
 
+/** Catálogo de la HC general, para el administrador de perfiles (y la HC del médico). */
+private val catalogoModule = module { single<CatalogoHc> { catalogoHcGeneral } }
+
 fun iniciarKoin(db: Salud360Db, modulosPlataforma: List<Module>, config: AppConfig): KoinApplication = startKoin {
     modules(
         modulosPlataforma +
-            dataModule(db, config) +
+            dataModule(db, config) + catalogoModule +
             authFeatureModule + pacientesFeatureModule + turnosFeatureModule +
             hcFeatureModule(especialidades) +
             adminFeatureModule(especialidades.map { it.definicion.codigo to it.definicion.nombre }),
