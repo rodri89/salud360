@@ -437,7 +437,8 @@ Reglas de la tanda:
     4. Con Apache de XAMPP detenido, "Reintentar" → aviso de sin conexión y nada se puede tocar; prendido otra vez,
        "Reintentar" → vuelve la lista.
 
-- [ ] **T24. Editor de perfiles.** RF-1 a RF-9, RF-13, RF-14, RF-15, RF-16
+- [x] **T24. Editor de perfiles.** RF-1 a RF-9, RF-13, RF-14, RF-15, RF-16
+  (compila; falta prueba manual del usuario, pasos 1 a 6)
   - En `PerfilesHcViewModel`: borrador del perfil en edición ("Nuevo perfil" arranca con una pestaña vacía; Editar
     lo lee con `perfil(id)`), operaciones de T22, y Guardar: primero `validarPerfil(perfil, otros nombres de la
     lista, ids del catálogo remoto)`; si pasa, `guardar` (POST o PUT). Errores locales o del 422
