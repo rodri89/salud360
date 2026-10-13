@@ -6,6 +6,7 @@ import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
+import com.salud360.core.data.hcgeneral.pestaniasConsulta
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.hoy
@@ -13,6 +14,7 @@ import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.EspecialidadDefinition
+import com.salud360.core.model.especialidad.PestaniaDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.hc.Antecedente
@@ -56,8 +58,13 @@ data class ConsultaUi(
     val pendientes: List<Pendiente> = emptyList(),
     val vacunas: List<VacunaAplicada> = emptyList(),
     val preferencias: Map<String, String> = emptyMap(),
+    /** Con qué se abrió la consulta: la definición y, en la HC general, si falta perfil o la configuración (RF-19, RF-26). */
+    val resuelta: DefinicionResuelta? = null,
 ) {
-    val soloLectura: Boolean get() = consulta?.estado != EstadoConsulta.ABIERTA
+    /** "HC digitalizada" en la HC general: se lee aunque haya quedado abierta ("Decidido" 5 del plan). */
+    val soloLecturaPorTipo: Boolean get() = consulta?.let { resuelta?.soloLecturaPorTipo(it.tipo) } == true
+    val soloLectura: Boolean get() = consulta?.estado != EstadoConsulta.ABIERTA || soloLecturaPorTipo
+    val puedeReabrir: Boolean get() = consulta?.let { resuelta?.puedeReabrir(it.tipo) } != false
     val edadMeses: Int? get() {
         val nac = paciente?.fechaNacimiento ?: return null
         val fecha = consulta?.fecha ?: return null
@@ -75,7 +82,7 @@ class ConsultaViewModel(
     private val pacientes: PacientesRepository,
     private val archivos: ArchivoStore,
     private val sync: SyncEngine,
-    private val registry: EspecialidadRegistry,
+    private val definiciones: DefinicionesHc,
     /** Envío diferido a la API de la especialidad, cuando la tiene (hoy pediatría). */
     private val hcApi: HcApiSync,
     val consultaId: Id,
@@ -104,9 +111,24 @@ class ConsultaViewModel(
         }
     }
 
-    val ui: StateFlow<ConsultaUi> = consultaFlow.flatMapLatest { c ->
+    /**
+     * HC general: la definición se resuelve una sola vez, al abrir, y queda fija para esta pantalla (RF-23): un cambio
+     * de perfil con la consulta abierta se ve la próxima vez y no se pierde lo cargado. Nunca desde el autoguardado.
+     */
+    private val generalResuelta = MutableStateFlow<DefinicionResuelta?>(null)
+
+    init {
+        viewModelScope.launch {
+            val c = consultaFlow.first { it != null } ?: return@launch
+            if (definiciones.estatica(c.especialidad) == null) generalResuelta.value = definiciones.resolver(c.especialidad, medicoId)
+        }
+    }
+
+    val ui: StateFlow<ConsultaUi> = consultaFlow.combine(generalResuelta) { c, g -> c to g }.flatMapLatest { (c, general) ->
         if (c == null) flowOf(ConsultaUi()) else {
-            val def = registry.definicion(c.especialidad)
+            // Las especialidades de siempre, la registrada, como hasta ahora (RF-33).
+            val resuelta = definiciones.estatica(c.especialidad) ?: general
+            val def = resuelta?.definicion
             combine(
                 pacientes.observar(c.pacienteId),
                 hc.observarExamenFisico(c.id),
@@ -123,6 +145,7 @@ class ConsultaViewModel(
                     examen = arr[1] as ExamenFisico?, antecedentes = arr[2] as List<Antecedente>,
                     diagnosticosCatalogo = arr[3] as List<Diagnostico>, diagnosticosConsulta = (arr[4] as List<Diagnostico>).map { it.id }.toSet(),
                     pendientes = arr[5] as List<Pendiente>, vacunas = arr[6] as List<VacunaAplicada>, preferencias = arr[7] as Map<String, String>,
+                    resuelta = resuelta,
                 )
             }
         }
@@ -318,9 +341,21 @@ class ConsultaViewModel(
     fun seccionesVisibles(ui: ConsultaUi): List<SeccionDef> {
         val def = ui.definicion ?: return emptyList()
         val tipo = ui.tipo ?: return emptyList()
-        val ocultas = ui.preferencias["secciones_ocultas_${def.codigo}"]?.split(',')?.toSet() ?: emptySet()
+        // Agrupada (HC general): las de sus pestañas, nunca algo fuera del perfil (RF-21, RF-28).
+        if (tipo.grupos.isNotEmpty()) return pestanias(ui).flatMap { it.secciones }.mapNotNull { def.seccion(it) }
+        val ocultas = ocultas(ui)
         return tipo.secciones.mapNotNull { def.seccion(it) }.filter { s -> s.id !in ocultas && cumpleCondicion(s, ui) }
     }
+
+    /** Pestañas de una consulta agrupada: "Datos" y las del perfil con algo visible; vacío = la pantalla de siempre. */
+    fun pestanias(ui: ConsultaUi): List<PestaniaDef> {
+        val def = ui.definicion ?: return emptyList()
+        val tipo = ui.tipo ?: return emptyList()
+        return pestaniasConsulta(tipo, ocultas(ui)) { id -> def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
+    }
+
+    private fun ocultas(ui: ConsultaUi): Set<String> =
+        ui.definicion?.let { ui.preferencias["secciones_ocultas_${it.codigo}"]?.split(',')?.toSet() } ?: emptySet()
 
     fun cumpleCondicion(s: SeccionDef, ui: ConsultaUi): Boolean = when (val c = s.condicion) {
         null -> true

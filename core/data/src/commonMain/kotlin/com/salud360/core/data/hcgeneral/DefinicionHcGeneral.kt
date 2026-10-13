@@ -83,6 +83,21 @@ fun seccionesVisibles(tipo: TipoConsultaDef, ocultas: Set<String>): List<Pestani
         if (visibles.isEmpty()) null else g.copy(secciones = visibles)
     }
 
+/**
+ * Pestañas de una consulta de [tipo] agrupado ("Decidido" 7 del plan): "Datos" (la ficha del paciente, en la que abre)
+ * y después las del perfil con alguna sección visible, sin las [ocultas] por el médico ni las que no [cumple]n su
+ * condición (sexo, edad). Vacío si el tipo no tiene grupos: la pantalla de siempre (sin perfil, HC digitalizada y las
+ * demás especialidades, RF-33).
+ */
+fun pestaniasConsulta(tipo: TipoConsultaDef, ocultas: Set<String>, cumple: (String) -> Boolean = { true }): List<PestaniaDef> {
+    if (tipo.grupos.isEmpty()) return emptyList()
+    val delPerfil = seccionesVisibles(tipo, ocultas).mapNotNull { g ->
+        val visibles = g.secciones.filter(cumple)
+        if (visibles.isEmpty()) null else g.copy(secciones = visibles)
+    }
+    return listOf(PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())) + delPerfil
+}
+
 /** Id de la pestaña por su lugar en el perfil: el mismo en Consulta y en Telemedicina aunque una no la muestre. */
 private fun idPestania(indice: Int) = "pestania_$indice"
 
@@ -119,6 +134,21 @@ data class DefinicionResuelta(
             sinPerfil || primeraVezSinConexion != null -> emptyList()
             else -> definicion.tiposConsulta.filter { it.grupos.isNotEmpty() }
         }
+
+    /** Sin perfil o sin la configuración la primera vez: lo guardado solo se lee. */
+    private val sinConfiguracion: Boolean get() = porPerfil && (sinPerfil || primeraVezSinConexion != null)
+
+    /**
+     * Consultas de un tipo que ya no se carga y se abren solo para leer aunque hayan quedado abiertas: "HC digitalizada"
+     * en la HC general ("Decidido" 5 del plan).
+     */
+    fun soloLecturaPorTipo(tipo: String): Boolean = porPerfil && tipo == SeccionesComunes.TIPO_FOTO
+
+    /**
+     * Si una consulta cerrada de [tipo] se puede reabrir. Sin configuración no ("Decidido" 8, RF-19, RF-26): las
+     * anteriores solo se leen; la que ya estaba abierta se sigue y se cierra igual (C10).
+     */
+    fun puedeReabrir(tipo: String): Boolean = !soloLecturaPorTipo(tipo) && !sinConfiguracion
 
     companion object {
         /** Especialidad sin perfiles: la definición de siempre, sin cambios (RF-33). */

@@ -19,6 +19,8 @@ val hcGeneralBase = EspecialidadDefinition(
     codigo = CodigosHc.GENERAL, nombre = "Clínica", nombreLegacy = "hclinica",
     tiposConsulta = emptyList(), secciones = emptyList(),
     examenFisicoCampos = setOf(CampoExamenFisico.PESO, CampoExamenFisico.TALLA, CampoExamenFisico.IMC, CampoExamenFisico.TENSION_ARTERIAL, CampoExamenFisico.NOTA),
+    // La clínica de antes los cargaba: lo ya cargado se sigue leyendo ("Decidido" 6 del plan).
+    examenFisicoSoloLectura = setOf(CampoExamenFisico.FRECUENCIA_CARDIACA, CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL),
 )
 
 /** Sección con el título por defecto del catálogo de hclinica ("Decidido" B1). */

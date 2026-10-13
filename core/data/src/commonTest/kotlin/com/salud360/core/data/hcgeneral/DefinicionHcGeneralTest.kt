@@ -210,6 +210,77 @@ class DefinicionHcGeneralTest {
         assertEquals(setOf("conductas"), ocultas)
     }
 
+    // ---- pestañas de la consulta (RF-20, RF-21, "Decidido" 7) ----
+
+    private val datos = PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())
+
+    @Test
+    fun consulta_con_datos_primero_y_despues_las_pestanias_del_perfil() {
+        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
+        // Abre en la primera: "Datos".
+        assertEquals(listOf(datos) + tipo.grupos, pestaniasConsulta(tipo, emptySet()))
+    }
+
+    @Test
+    fun telemedicina_solo_con_las_pestanias_que_tienen_secciones_de_telemedicina() {
+        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_TELEMEDICINA))
+        assertEquals(listOf("Datos", "Antecedentes", "Consulta del día"), pestaniasConsulta(tipo, emptySet()).map { it.titulo })
+    }
+
+    @Test
+    fun pestania_sin_secciones_visibles_por_ocultas_o_por_condicion_no_se_muestra() {
+        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
+        assertEquals(
+            listOf(datos, PestaniaDef("pestania_1", "Consulta del día", listOf("motivo_consulta"))),
+            pestaniasConsulta(tipo, setOf("laboratorio_general", "conductas")) { it != "antecedentes_familiares" },
+        )
+    }
+
+    @Test
+    fun todo_oculto_queda_solo_datos() {
+        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
+        assertEquals(listOf(datos), pestaniasConsulta(tipo, tipo.secciones.toSet()))
+    }
+
+    @Test
+    fun sin_grupos_ninguna_pestania_y_queda_la_pantalla_de_siempre() {
+        // Sin perfil, HC digitalizada y las especialidades de siempre (RF-33).
+        armada(null).definicion.tiposConsulta.forEach { t -> assertEquals(emptyList(), pestaniasConsulta(t, emptySet()), t.codigo) }
+        conDiagnosticoEnUnTipo.tiposConsulta.forEach { t -> assertEquals(emptyList(), pestaniasConsulta(t, emptySet()), t.codigo) }
+    }
+
+    // ---- consultas viejas y sin configuración ("Decidido" 5 y 8, C10) ----
+
+    @Test
+    fun hc_digitalizada_de_la_hc_general_solo_para_leer_y_sin_reabrir() {
+        val r = resolverDefinicion(catalogo, EstadoConfigHc.ConPerfil(perfil))
+        assertTrue(r.soloLecturaPorTipo(SeccionesComunes.TIPO_FOTO))
+        assertFalse(r.puedeReabrir(SeccionesComunes.TIPO_FOTO))
+        assertFalse(r.soloLecturaPorTipo(SeccionesComunes.TIPO_CONTROL))
+        assertTrue(r.puedeReabrir(SeccionesComunes.TIPO_CONTROL))
+        assertTrue(r.puedeReabrir(SeccionesComunes.TIPO_TELEMEDICINA))
+    }
+
+    @Test
+    fun sin_perfil_o_primera_vez_las_cerradas_no_se_reabren_y_la_abierta_se_sigue() {
+        listOf(
+            resolverDefinicion(catalogo, EstadoConfigHc.SinPerfil),
+            resolverDefinicion(catalogo, EstadoConfigHc.PrimeraVezSinConexion("red", "Sin conexión")),
+        ).forEach { r ->
+            assertFalse(r.puedeReabrir(SeccionesComunes.TIPO_CONTROL))
+            // La que ya estaba abierta no queda en lectura: se sigue en "Datos" y se cierra (C10).
+            assertFalse(r.soloLecturaPorTipo(SeccionesComunes.TIPO_CONTROL))
+        }
+    }
+
+    @Test
+    fun especialidad_de_siempre_igual_que_antes() {
+        val r = DefinicionResuelta.estatica(conDiagnosticoEnUnTipo.copy(tiposConsulta = conDiagnosticoEnUnTipo.tiposConsulta + TipoConsultaDef(SeccionesComunes.TIPO_FOTO, "Foto", "foto", emptyList())))
+        assertFalse(r.soloLecturaPorTipo(SeccionesComunes.TIPO_FOTO))
+        assertTrue(r.puedeReabrir(SeccionesComunes.TIPO_FOTO))
+        assertTrue(r.puedeReabrir(SeccionesComunes.TIPO_CONTROL))
+    }
+
     // ---- copia de diagnósticos ("Decidido" C2) ----
 
     /** Como hematología: diagnósticos solo en Control, no en Telemedicina. */

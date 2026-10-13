@@ -551,8 +551,9 @@ Reglas de la tanda:
     `-Psalud360.entorno.dev.hc.clinica` apuntando a un puerto sin servicio: en un navegador sin datos del sitio →
     aviso de RF-26, y en el navegador que ya recibió la configuración → se arma con la guardada (RF-25).
 
-- [ ] **T29. Consulta con las pestañas del perfil y definición congelada.** RF-19, RF-20, RF-21, RF-23, RF-24,
+- [x] **T29. Consulta con las pestañas del perfil y definición congelada.** RF-19, RF-20, RF-21, RF-23, RF-24,
   RF-33; C10
+  (compila; falta prueba manual del usuario)
   - `ConsultaViewModel`: resuelve la definición **una vez** al abrir con `DefinicionesHc` y la guarda fuera del
     `flatMapLatest` de `ui` (RF-23: un cambio de perfil con la consulta abierta se ve la próxima vez, sin perder lo
     cargado); `ConsultaUi` suma lo resuelto (sin perfil, primera vez). `seccionesVisibles` delega en la función pura

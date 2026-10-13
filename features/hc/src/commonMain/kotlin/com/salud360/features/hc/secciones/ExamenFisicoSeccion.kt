@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import com.salud360.core.crecimiento.CalculadoraOms
 import com.salud360.core.crecimiento.Medida
 import com.salud360.core.crecimiento.SexoOms
+import com.salud360.core.data.hcgeneral.ModoCampoExamen
+import com.salud360.core.data.hcgeneral.modoCampoExamen
 import com.salud360.core.model.especialidad.CampoExamenFisico
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.ExamenFisico
@@ -38,7 +40,6 @@ import kotlinx.datetime.daysUntil
 @Composable
 fun ExamenFisicoSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, extras: Map<String, String>) {
     val def = ui.definicion ?: return
-    val campos = def.examenFisicoCampos
     var ex by remember(ui.examen?.consultaId) { mutableStateOf(ui.examen ?: ExamenFisico(ctx.consultaId)) }
     var dirty by remember { mutableStateOf(false) }
     var verCurvas by remember { mutableStateOf(false) }
@@ -53,9 +54,11 @@ fun ExamenFisicoSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, extr
     fun updMedida(t: (ExamenFisico) -> ExamenFisico) = upd { e -> t(e).let { if (calculaPercentilos) it.conPercentilosOms(sexoOms!!, edadDias!!) else it } }
 
     // En lectura cada campo se pinta solo si tiene valor; `visible(campo, valor)` combina la definición de la
-    // especialidad con esa regla, y cada fila se pinta solo si le queda algún campo.
+    // especialidad con esa regla (`modoCampoExamen`), y cada fila se pinta solo si le queda algún campo. Los que la
+    // especialidad ya no carga (FC y CA en la HC general) se leen si tienen valor, aunque la consulta esté abierta.
     fun visible(campo: CampoExamenFisico, valor: String, conPercentilos: Boolean = false) =
-        campo in campos && (!conPercentilos || def.conPercentilos) && (!ro || valor.isNotBlank())
+        (!conPercentilos || def.conPercentilos) && modoCampoExamen(def, campo, valor, ro) != ModoCampoExamen.OCULTO
+    fun soloLeer(campo: CampoExamenFisico, valor: String) = modoCampoExamen(def, campo, valor, ro) == ModoCampoExamen.LECTURA
     val imc = ex.calcularImc() ?: ex.imc
     val fila1 = visible(CampoExamenFisico.PESO, ex.peso) || visible(CampoExamenFisico.PESO, ex.pesoPercentil, true) ||
         visible(CampoExamenFisico.TALLA, ex.talla) || visible(CampoExamenFisico.TALLA, ex.tallaPercentil, true)
@@ -79,13 +82,13 @@ fun ExamenFisicoSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, extr
             if (visible(CampoExamenFisico.IMC, imc)) NumberField("IMC", imc, { v -> upd { it.copy(imc = v) } }, Modifier.weight(1f), readOnly = true)
             if (visible(CampoExamenFisico.IMC, ex.imcPercentil, true)) TextField("Pc IMC", ex.imcPercentil, { v -> upd { it.copy(imcPercentil = v) } }, Modifier.weight(0.7f), readOnly = ro)
             if (visible(CampoExamenFisico.TENSION_ARTERIAL, ex.tensionArterial)) TextField("TA (mm Hg)", ex.tensionArterial, { v -> upd { it.copy(tensionArterial = v) } }, Modifier.weight(1f), readOnly = ro, placeholder = "120/80")
-            if (visible(CampoExamenFisico.FRECUENCIA_CARDIACA, ex.frecuenciaCardiaca)) NumberField("FC", ex.frecuenciaCardiaca, { v -> upd { it.copy(frecuenciaCardiaca = v) } }, Modifier.weight(0.8f), suffix = "lpm", readOnly = ro)
+            if (visible(CampoExamenFisico.FRECUENCIA_CARDIACA, ex.frecuenciaCardiaca)) NumberField("FC", ex.frecuenciaCardiaca, { v -> upd { it.copy(frecuenciaCardiaca = v) } }, Modifier.weight(0.8f), suffix = "lpm", readOnly = soloLeer(CampoExamenFisico.FRECUENCIA_CARDIACA, ex.frecuenciaCardiaca))
         }
         if (fila3) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (visible(CampoExamenFisico.PERIMETRO_CEFALICO, ex.perimetroCefalico)) NumberField("PC (cm)", ex.perimetroCefalico, { v -> updMedida { it.copy(perimetroCefalico = v) } }, Modifier.weight(1f), suffix = "cm", readOnly = ro)
             if (visible(CampoExamenFisico.PERIMETRO_CEFALICO, ex.perimetroCefalicoPercentil, true)) TextField("Pc PC", ex.perimetroCefalicoPercentil, { v -> upd { it.copy(perimetroCefalicoPercentil = v) } }, Modifier.weight(0.7f), readOnly = ro)
             if (visible(CampoExamenFisico.IPD, ex.ipd)) NumberField("IPD (g/día)", ex.ipd, { v -> upd { it.copy(ipd = v) } }, Modifier.weight(1f), suffix = "g/día", readOnly = ro)
-            if (visible(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, ex.circunferenciaAbdominal)) NumberField("CA (cm)", ex.circunferenciaAbdominal, { v -> upd { it.copy(circunferenciaAbdominal = v) } }, Modifier.weight(1f), suffix = "cm", readOnly = ro)
+            if (visible(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, ex.circunferenciaAbdominal)) NumberField("CA (cm)", ex.circunferenciaAbdominal, { v -> upd { it.copy(circunferenciaAbdominal = v) } }, Modifier.weight(1f), suffix = "cm", readOnly = soloLeer(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, ex.circunferenciaAbdominal))
             if (visible(CampoExamenFisico.TEMPERATURA, ex.temperatura)) NumberField("Temp.", ex.temperatura, { v -> upd { it.copy(temperatura = v) } }, Modifier.weight(0.8f), suffix = "°C", readOnly = ro)
             if (visible(CampoExamenFisico.SATURACION, ex.saturacion)) NumberField("Sat O2", ex.saturacion, { v -> upd { it.copy(saturacion = v) } }, Modifier.weight(0.8f), suffix = "%", readOnly = ro)
         }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Icon
@@ -131,7 +132,7 @@ fun ConsultaScreen(
                 if (soloLectura) {
                     Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(6.dp))
-                    StatusChip("Cerrada", Color.White)
+                    StatusChip(if (ui.soloLecturaPorTipo) "Solo lectura" else "Cerrada", Color.White)
                 } else {
                     StatusChip(guardadoEn?.let { "Guardado" } ?: "En edición", Color.White)
                 }
@@ -157,8 +158,40 @@ fun ConsultaScreen(
             }
         }
 
+        // Sin perfil (RF-19) o sin la configuración la primera vez (RF-26): no hay secciones, solo "Datos" (C10).
+        ui.resuelta?.let { r ->
+            if (r.sinPerfil) SectionCard("Falta que el administrador te asigne un perfil", collapsible = false) {
+                Text(if (soloLectura) "Las consultas anteriores se pueden leer." else "Podés seguir esta consulta en \"Datos\" y cerrarla, o anularla desde la historia clínica.")
+            }
+            r.primeraVezSinConexion?.let { p ->
+                SectionCard("La primera vez hace falta conexión", icon = Icons.Default.CloudOff, collapsible = false) {
+                    Text(p.mensaje, color = Salud360Colors.Danger)
+                    Text(
+                        "Hasta recibir la configuración de tu historia clínica solo se ve \"Datos\". Lo cargado en este dispositivo no se pierde.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        // ---- pestañas del perfil (HC general): "Datos" y las del perfil, abriendo en "Datos" ----
+        val agrupadas = vm.pestanias(ui)
+        if (agrupadas.isNotEmpty()) {
+            val i = pestania.coerceIn(0, agrupadas.lastIndex)
+            ScrollableTabRow(selectedTabIndex = i, edgePadding = 0.dp, containerColor = Color.Transparent, contentColor = color) {
+                agrupadas.forEachIndexed { j, p -> Tab(selected = i == j, onClick = { pestania = j }, text = { Text(p.titulo, fontWeight = FontWeight.SemiBold) }) }
+            }
+            val actual = agrupadas[i]
+            if (actual.id == SeccionesComunes.DATOS_PACIENTE) {
+                CompositionLocalProvider(LocalSeccionEnPestania provides true) { DatosPacienteSeccion(ui.paciente!!, def, ctx) }
+            } else {
+                actual.secciones.mapNotNull { def.seccion(it) }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
+            }
+        }
+
         // ---- pestañas superiores ----
-        val pestanias = tipo.pestanias.mapNotNull { id -> if (id == SeccionesComunes.DATOS_PACIENTE) SeccionDef(id, "Datos", TipoSeccion.CUSTOM) else def.seccion(id) }
+        val pestanias = if (agrupadas.isNotEmpty()) emptyList() else tipo.pestanias.mapNotNull { id -> if (id == SeccionesComunes.DATOS_PACIENTE) SeccionDef(id, "Datos", TipoSeccion.CUSTOM) else def.seccion(id) }
         if (pestanias.isNotEmpty()) {
             ScrollableTabRow(selectedTabIndex = pestania.coerceIn(0, pestanias.lastIndex), edgePadding = 0.dp, containerColor = Color.Transparent, contentColor = color) {
                 pestanias.forEachIndexed { i, s -> Tab(selected = pestania == i, onClick = { pestania = i }, text = { Text(s.titulo, fontWeight = FontWeight.SemiBold) }) }
@@ -170,15 +203,16 @@ fun ConsultaScreen(
             }
         }
 
-        // ---- secciones ----
-        vm.seccionesVisibles(ui).filter { it.id !in tipo.pestanias }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
+        // ---- secciones (agrupada: ya están en sus pestañas, no queda nada suelto) ----
+        if (agrupadas.isEmpty()) vm.seccionesVisibles(ui).filter { it.id !in tipo.pestanias }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
 
         // ---- acciones ----
         ActionRow {
             BackButton(onClick = onVolver)
             if (!soloLectura) {
                 PillButton("Guardar y cerrar consulta", onClick = { mostrarCierre = true })
-            } else {
+            } else if (ui.puedeReabrir) {
+                // Sin perfil, sin configuración o "HC digitalizada" de la HC general: solo para leer.
                 AcceptButton("Reabrir para editar", onClick = { vm.reabrir() })
             }
         }

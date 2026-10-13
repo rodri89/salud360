@@ -48,8 +48,11 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   sin antecedentes; `seccionesDelPacienteSoloLectura` solo mira antecedentes; `enPerfil` obligatorio).
   T28 hecha, falta la prueba manual (`hcGeneralContribution` en lugar de `clinicaContribution`, que se borró;
   `DefinicionesHc`/`AvisosHcGeneral`; `DefinicionResuelta`, `resolverDefinicion` y `copiaDiagnosticos` en
-  `DefinicionHcGeneral.kt`; `ConfigHcRepository.estadoConEspera`). Hasta T29/T31 la consulta y la Configuración de
-  "clinica" usan la definición sin perfil (sin secciones).
+  `DefinicionHcGeneral.kt`; `ConfigHcRepository.estadoConEspera`). Hasta T31 la Configuración de "clinica" usa la
+  definición sin perfil (sin secciones).
+  T29 hecha, falta la prueba manual (`pestaniasConsulta`, `soloLecturaPorTipo`/`puedeReabrir` en
+  `DefinicionResuelta`; `EspecialidadDefinition.examenFisicoSoloLectura` + `modoCampoExamen` para FC/CA; la consulta
+  resuelve con `DefinicionesHc` una vez; sin perfil o primera vez, las cerradas no se reabren).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

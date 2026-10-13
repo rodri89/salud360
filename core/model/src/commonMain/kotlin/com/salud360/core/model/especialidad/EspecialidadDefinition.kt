@@ -38,6 +38,11 @@ data class EspecialidadDefinition(
      * Null mientras la especialidad guarda solo en la base local.
      */
     val apiBaseUrl: String? = null,
+    /**
+     * Campos comunes del examen físico que esta especialidad ya no carga pero que, si una consulta los tiene, se
+     * muestran solo para leer (HC general: frecuencia cardíaca y circunferencia abdominal de la clínica de antes).
+     */
+    val examenFisicoSoloLectura: Set<CampoExamenFisico> = emptySet(),
 ) {
     fun tipoConsulta(codigo: String): TipoConsultaDef? = tiposConsulta.firstOrNull { it.codigo == codigo }
     fun seccion(id: String): SeccionDef? = secciones.firstOrNull { it.id == id }
