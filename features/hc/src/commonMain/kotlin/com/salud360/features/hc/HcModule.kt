@@ -30,5 +30,5 @@ fun hcFeatureModule(contribuciones: List<EspecialidadContribution>) = module {
     single { AvisosHcGeneral() }
     viewModel { (consultaId: Id, medicoId: Id) -> ConsultaViewModel(get(), get(), get(), get(), get(), get(), consultaId, medicoId) }
     viewModel { (pacienteId: Id, especialidad: String, medicoId: Id) -> HistoriaClinicaViewModel(get(), get(), get(), get(), pacienteId, especialidad, medicoId) }
-    viewModel { (medicoId: Id, especialidades: List<String>) -> ConfigSeccionesHcViewModel(get(), get(), medicoId, especialidades) }
+    viewModel { (medicoId: Id, especialidades: List<String>) -> ConfigSeccionesHcViewModel(get(), get(), get(), medicoId, especialidades) }
 }

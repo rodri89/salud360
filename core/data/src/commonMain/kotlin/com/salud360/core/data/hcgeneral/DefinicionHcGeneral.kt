@@ -101,6 +101,37 @@ fun pestaniasConsulta(tipo: TipoConsultaDef, ocultas: Set<String>, cumple: (Stri
 /** Id de la pestaña por su lugar en el perfil: el mismo en Consulta y en Telemedicina aunque una no la muestre. */
 private fun idPestania(indice: Int) = "pestania_$indice"
 
+private fun indicePestania(id: String) = id.removePrefix("pestania_").toIntOrNull() ?: Int.MAX_VALUE
+
+/**
+ * Las secciones del perfil en todos los tipos, para que el médico elija cuáles ve (RF-21, RF-28): por pestaña en el
+ * orden del perfil y, dentro de cada una, juntando Consulta y Telemedicina sin perder el orden de ninguna (una
+ * sección de un solo tipo va antes de la siguiente que está en los dos). Sin legadas ni desconocidas, que no están en
+ * los grupos; vacío sin perfil.
+ */
+fun seccionesDelPerfil(def: EspecialidadDefinition): List<String> =
+    def.tiposConsulta.flatMap { it.grupos }
+        .groupBy { it.id }.entries
+        .sortedBy { indicePestania(it.key) }
+        .flatMap { (_, grupos) -> grupos.map { it.secciones }.fold(emptyList<String>(), ::juntarEnOrden) }
+
+/** [a] con lo de [b] que le falta, cada una justo antes de la siguiente de [b] que ya está en [a] (o al final). */
+private fun juntarEnOrden(a: List<String>, b: List<String>): List<String> {
+    val r = a.toMutableList()
+    b.forEachIndexed { i, s ->
+        if (s in r) return@forEachIndexed
+        val siguiente = b.drop(i + 1).firstOrNull { it in r }
+        if (siguiente == null) r.add(s) else r.add(r.indexOf(siguiente), s)
+    }
+    return r
+}
+
+/**
+ * "Mostrar todas" en la configuración del médico: las [ocultas] sin las que están [enPerfil]. Las de fuera del perfil se
+ * conservan (RF-28): si el administrador las vuelve a poner, siguen ocultas.
+ */
+fun mostrarTodas(ocultas: Set<String>, enPerfil: Collection<String>): Set<String> = ocultas - enPerfil.toSet()
+
 /**
  * Si una consulta nueva arranca con los últimos diagnósticos del paciente ("Decidido" C2): solo si una sección de
  * diagnósticos está en algún tipo de consulta (secciones, pestañas o grupos), no si solo está en

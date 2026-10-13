@@ -588,7 +588,8 @@ Reglas de la tanda:
     perfil por SQL puntual → el resto se ve y el aviso sale una vez por sesión (otra vez al recargar la página); al
     terminar se borra la fila.
 
-- [ ] **T31. Configuración de secciones con el perfil.** RF-28, RF-21, RF-33
+- [x] **T31. Configuración de secciones con el perfil.** RF-28, RF-21, RF-33
+  (compila; falta prueba manual del usuario)
   - `hcgeneral/DefinicionHcGeneral.kt`: `mostrarTodas(ocultas, enPerfil): Set<String>` = las ocultas sin las del perfil
     (las de fuera del perfil se conservan); test en `DefinicionHcGeneralTest`.
   - `ConfigSeccionesHcViewModel`/`ConfigSeccionesHcScreen.kt`: para "clinica" usa `DefinicionesHc`: lista las

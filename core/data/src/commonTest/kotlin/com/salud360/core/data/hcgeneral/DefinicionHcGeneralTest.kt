@@ -210,6 +210,59 @@ class DefinicionHcGeneralTest {
         assertEquals(setOf("conductas"), ocultas)
     }
 
+    // ---- configuración de secciones del médico (RF-21, RF-28) ----
+
+    @Test
+    fun secciones_del_perfil_de_todas_las_pestanias_en_el_orden_del_perfil() {
+        // "datos_subjetivos" solo está en Telemedicina: va entre "motivo_consulta" y "conductas", como en el perfil.
+        // Sin la desconocida ni las del catálogo o legadas que no están en el perfil.
+        assertEquals(
+            listOf("antecedentes_familiares", "motivo_consulta", "datos_subjetivos", "conductas", "laboratorio_general"),
+            seccionesDelPerfil(armada().definicion),
+        )
+    }
+
+    @Test
+    fun secciones_del_perfil_con_una_pestania_solo_de_telemedicina_en_el_medio() {
+        val p = PerfilHc(
+            10, "Prueba",
+            listOf(
+                PestaniaPerfil("Uno", listOf(SeccionPerfil("motivo_consulta", "Motivo", setOf(CONSULTA)))),
+                PestaniaPerfil("Dos", listOf(SeccionPerfil("datos_subjetivos", "Subjetivos", setOf(TELEMEDICINA)))),
+                PestaniaPerfil("Tres", listOf(SeccionPerfil("conductas", "Conductas", setOf(CONSULTA)))),
+            ),
+        )
+        assertEquals(listOf("motivo_consulta", "datos_subjetivos", "conductas"), seccionesDelPerfil(armada(p).definicion))
+    }
+
+    @Test
+    fun sin_perfil_ninguna_seccion_para_configurar() {
+        assertEquals(emptyList(), seccionesDelPerfil(armada(null).definicion))
+    }
+
+    @Test
+    fun mostrar_todas_solo_saca_las_del_perfil() {
+        val ocultas = setOf("conductas", "laboratorio_general", "examen_fisico", "seccion_vieja")
+        // Las de fuera del perfil se conservan: si el administrador las agrega, vuelven ocultas (RF-28).
+        assertEquals(setOf("examen_fisico", "seccion_vieja"), mostrarTodas(ocultas, seccionesDelPerfil(armada().definicion)))
+    }
+
+    @Test
+    fun mostrar_todas_sin_ocultas_del_perfil_no_cambia_nada() {
+        val ocultas = setOf("examen_fisico")
+        assertEquals(ocultas, mostrarTodas(ocultas, seccionesDelPerfil(armada().definicion)))
+        assertEquals(emptySet(), mostrarTodas(emptySet(), seccionesDelPerfil(armada().definicion)))
+    }
+
+    @Test
+    fun oculta_quitada_del_perfil_sobrevive_a_mostrar_todas_y_vuelve_oculta() {
+        val sinConductas = perfil.copy(pestanias = perfil.pestanias.map { p -> p.copy(secciones = p.secciones.filter { it.seccion != "conductas" }) })
+        val despues = mostrarTodas(setOf("conductas", "motivo_consulta"), seccionesDelPerfil(armada(sinConductas).definicion))
+        assertEquals(setOf("conductas"), despues)
+        val tipo = assertNotNull(armada(perfil).definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
+        assertTrue(seccionesVisibles(tipo, despues).flatMap { it.secciones }.none { it == "conductas" })
+    }
+
     // ---- pestañas de la consulta (RF-20, RF-21, "Decidido" 7) ----
 
     private val datos = PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())
