@@ -16,7 +16,10 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.especialidad.PerfilHc
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.nullable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * `GET config` de hclinica: el perfil del médico que pide, o null si no tiene uno asignado. Si falla lanza
@@ -80,5 +83,17 @@ class ConfigHcRepository(private val db: Salud360Db, private val api: ConfigHcAp
             }
         }
         return estadoConfig(guardada(medicoId), remota)
+    }
+
+    /**
+     * [estado] con red, pero esperando a hclinica a lo sumo [espera] ("Decidido" C9): si no contesta a tiempo se deja
+     * de esperar y vale lo guardado, como sin conexión (RF-25, RF-26).
+     */
+    suspend fun estadoConEspera(medicoId: Id, espera: Duration = ESPERA): EstadoConfigHc =
+        withTimeoutOrNull(espera) { estado(medicoId, conRed = true) } ?: estado(medicoId, conRed = false)
+
+    companion object {
+        /** Lo que espera la historia clínica a que llegue la configuración antes de usar la guardada. */
+        val ESPERA = 5.seconds
     }
 }

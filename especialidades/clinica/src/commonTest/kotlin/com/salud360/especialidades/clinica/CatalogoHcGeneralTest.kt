@@ -1,6 +1,7 @@
 package com.salud360.especialidades.clinica
 
 import com.salud360.core.data.hcgeneral.armarDefinicion
+import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.model.especialidad.CampoExamenFisico
 import com.salud360.core.model.especialidad.PerfilHc
 import com.salud360.core.model.especialidad.PestaniaPerfil
@@ -13,6 +14,7 @@ import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
 import com.salud360.core.model.especialidad.TipoSeccion
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -262,5 +264,24 @@ class CatalogoHcGeneralTest {
         )
         assertEquals(clinicaMedica.examenFisicoCampos, hepatologia.examenFisicoCampos)
         assertEquals(setOf("child_pugh"), hepatologiaContribution.renderers.keys)
+    }
+
+    @Test
+    fun la_contribucion_registra_la_hc_general_con_su_catalogo_y_child_pugh() {
+        assertEquals("clinica", hcGeneralContribution.definicion.codigo)
+        assertEquals("Clínica", hcGeneralContribution.definicion.nombre)
+        assertEquals(catalogoHcGeneral, hcGeneralContribution.catalogo)
+        assertEquals(setOf("child_pugh"), hcGeneralContribution.renderers.keys)
+        assertEquals("child_pugh", catalogoHcGeneral.seccion("child_pugh")?.def?.renderKey)
+        assertEquals(null, hepatologiaContribution.catalogo)
+    }
+
+    // "Decidido" C2: la legada de diagnósticos no hace copiar; la clínica médica de antes sí copiaba.
+    @Test
+    fun copia_de_diagnosticos_con_el_catalogo_real() {
+        assertFalse(copiaDiagnosticos(armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion))
+        assertFalse(copiaDiagnosticos(hcGeneralContribution.definicion))
+        assertTrue(copiaDiagnosticos(clinicaMedica))
+        assertFalse(copiaDiagnosticos(hepatologia))
     }
 }

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
+import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.hoy
@@ -346,12 +348,22 @@ class ConsultaViewModel(
 class HistoriaClinicaViewModel(
     private val hc: HcRepository,
     pacientes: PacientesRepository,
-    private val registry: EspecialidadRegistry,
+    registry: EspecialidadRegistry,
+    private val definiciones: DefinicionesHc,
     val pacienteId: Id,
     val especialidad: String,
     private val medicoId: Id,
 ) : ViewModel() {
-    val definicion: EspecialidadDefinition? = registry.definicion(especialidad)
+    /** false = la especialidad no está en esta versión de la app. */
+    val existe: Boolean = registry.existe(especialidad)
+    val nombre: String = registry.nombre(especialidad)
+
+    // Las especialidades de siempre la tienen ya; la HC general la arma con el perfil del médico, que puede tardar.
+    private val _definicion = MutableStateFlow(definiciones.estatica(especialidad))
+
+    /** Con qué se muestra la HC; null mientras se arma la de la HC general. */
+    val definicion: StateFlow<DefinicionResuelta?> = _definicion
+
     val paciente: StateFlow<Paciente?> = pacientes.observar(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val consultas: StateFlow<List<Consulta>> = hc.observarConsultas(pacienteId, especialidad).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val pendientes: StateFlow<List<Pendiente>> = hc.observarPendientes(pacienteId, medicoId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -370,13 +382,18 @@ class HistoriaClinicaViewModel(
                     .onFailure { _mensaje.value = "No se pudo traer la historia clínica del servidor: ${it.message}" }
             }
         }
+        if (existe && _definicion.value == null) {
+            viewModelScope.launch { _definicion.value = definiciones.resolver(especialidad, medicoId) }
+        }
     }
 
     fun nuevaConsulta(tipo: String, onAbierta: (Consulta) -> Unit) = viewModelScope.launch {
+        // Sin perfil o sin configuración no se crean consultas (RF-19, RF-26); la pantalla ya no lo ofrece.
+        val def = definicion.value?.takeIf { r -> r.tiposNuevos.any { it.codigo == tipo } }?.definicion ?: return@launch
         val p = paciente.first { it != null }!!
         val fecha = hoy()
         val c = hc.abrirConsulta(pacienteId, medicoId, especialidad, tipo, fecha, p.edad(fecha)?.toString() ?: "")
-        if (definicion?.secciones?.any { it.tipo == com.salud360.core.model.especialidad.TipoSeccion.DIAGNOSTICOS } == true) {
+        if (copiaDiagnosticos(def)) {
             hc.copiarUltimosDiagnosticos(pacienteId, especialidad, c.id)
         }
         onAbierta(c)

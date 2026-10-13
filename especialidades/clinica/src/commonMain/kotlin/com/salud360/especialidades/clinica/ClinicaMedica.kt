@@ -106,5 +106,4 @@ val hepatologia = EspecialidadDefinition(
     examenFisicoCampos = clinicaMedica.examenFisicoCampos,
 )
 
-val clinicaContribution = EspecialidadContribution(clinicaMedica)
 val hepatologiaContribution = EspecialidadContribution(hepatologia, mapOf("child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) }))

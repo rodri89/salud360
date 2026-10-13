@@ -7,6 +7,7 @@ import com.salud360.core.model.especialidad.PestaniaDef
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.especialidad.TipoConsultaHc
+import com.salud360.core.model.especialidad.TipoSeccion
 
 /**
  * La HC general armada para un médico. [sinPerfil] = no tiene perfil asignado (RF-19): los tipos no tienen secciones.
@@ -84,3 +85,55 @@ fun seccionesVisibles(tipo: TipoConsultaDef, ocultas: Set<String>): List<Pestani
 
 /** Id de la pestaña por su lugar en el perfil: el mismo en Consulta y en Telemedicina aunque una no la muestre. */
 private fun idPestania(indice: Int) = "pestania_$indice"
+
+/**
+ * Si una consulta nueva arranca con los últimos diagnósticos del paciente ("Decidido" C2): solo si una sección de
+ * diagnósticos está en algún tipo de consulta (secciones, pestañas o grupos), no si solo está en
+ * [EspecialidadDefinition.secciones]: ahí la HC general tiene la legada, para leer datos viejos. Mira todos los tipos,
+ * así hematología (diagnósticos solo en Control) copia igual que antes (RF-33).
+ */
+fun copiaDiagnosticos(def: EspecialidadDefinition): Boolean =
+    def.tiposConsulta
+        .flatMap { t -> t.secciones + t.pestanias + t.grupos.flatMap { it.secciones } }
+        .any { def.seccion(it)?.tipo == TipoSeccion.DIAGNOSTICOS }
+
+/**
+ * La definición con la que se muestra una historia clínica. Las especialidades de siempre la tienen fija
+ * ([estatica]); la HC general la arma con el perfil del médico ([resolverDefinicion]).
+ *
+ * [sinPerfil] (RF-19) y [primeraVezSinConexion] (RF-26, con el motivo) son excluyentes; en los dos casos la
+ * definición conoce todos los tipos y secciones, así se leen las consultas guardadas, pero no se crean nuevas.
+ */
+data class DefinicionResuelta(
+    val definicion: EspecialidadDefinition,
+    val sinPerfil: Boolean = false,
+    val primeraVezSinConexion: EstadoConfigHc.PrimeraVezSinConexion? = null,
+    val desconocidas: List<String> = emptyList(),
+    /** Armada con un perfil (HC general): los tipos sin pestañas no se ofrecen. */
+    val porPerfil: Boolean = false,
+) {
+    /** Tipos para una consulta nueva: con perfil, solo los que tienen pestañas (nunca "HC digitalizada"). */
+    val tiposNuevos: List<TipoConsultaDef>
+        get() = when {
+            !porPerfil -> definicion.tiposConsulta
+            sinPerfil || primeraVezSinConexion != null -> emptyList()
+            else -> definicion.tiposConsulta.filter { it.grupos.isNotEmpty() }
+        }
+
+    companion object {
+        /** Especialidad sin perfiles: la definición de siempre, sin cambios (RF-33). */
+        fun estatica(def: EspecialidadDefinition) = DefinicionResuelta(def)
+    }
+}
+
+/** HC general según el [estado] de la configuración del médico (RF-19, RF-24 a RF-26). */
+fun resolverDefinicion(catalogo: CatalogoHc, estado: EstadoConfigHc): DefinicionResuelta {
+    val armada = armarDefinicion(catalogo, (estado as? EstadoConfigHc.ConPerfil)?.perfil)
+    return DefinicionResuelta(
+        definicion = armada.definicion,
+        sinPerfil = estado is EstadoConfigHc.SinPerfil,
+        primeraVezSinConexion = estado as? EstadoConfigHc.PrimeraVezSinConexion,
+        desconocidas = armada.desconocidas,
+        porPerfil = true,
+    )
+}

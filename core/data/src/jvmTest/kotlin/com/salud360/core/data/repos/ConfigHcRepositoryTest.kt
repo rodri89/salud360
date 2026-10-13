@@ -13,12 +13,18 @@ import com.salud360.core.model.especialidad.PestaniaPerfil
 import com.salud360.core.model.especialidad.SeccionPerfil
 import com.salud360.core.model.especialidad.TipoConsultaHc.CONSULTA
 import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Caché de la configuración del médico (RF-23, RF-25, RF-26) sobre una base SQLite de verdad en un archivo
@@ -150,6 +156,45 @@ class ConfigHcRepositoryTest {
         val e = assertFailsWith<TobbException> { repo.refrescar(medico) }
         assertEquals("licencia_vencida", e.codigo)
         assertEquals(ConfigGuardada(perfilA), repo.guardada(medico))
+    }
+
+    /** API que tarda [demora] en contestar [respuesta]. */
+    private class ApiLenta(private val demora: Duration, private val respuesta: PerfilHc?) : ConfigHcApi {
+        override suspend fun config(): PerfilHc? {
+            delay(demora)
+            return respuesta
+        }
+    }
+
+    @Test
+    fun con_espera_y_respuesta_a_tiempo_vale_la_nueva() = conBase { db, _ ->
+        ConfigHcRepository(db, ApiFalsa().apply { respuesta = perfilA }).refrescar(medico)
+        val repo = ConfigHcRepository(db, ApiLenta(50.milliseconds, perfilB))
+        assertEquals(EstadoConfigHc.ConPerfil(perfilB), repo.estadoConEspera(medico, espera = 2.seconds))
+        assertEquals(ConfigGuardada(perfilB), repo.guardada(medico))
+    }
+
+    @Test
+    fun espera_vencida_vale_la_guardada() = conBase { db, _ ->
+        ConfigHcRepository(db, ApiFalsa().apply { respuesta = perfilA }).refrescar(medico)
+        val repo = ConfigHcRepository(db, ApiLenta(10.seconds, perfilB))
+        val inicio = TimeSource.Monotonic.markNow()
+        assertEquals(EstadoConfigHc.ConPerfil(perfilA), repo.estadoConEspera(medico, espera = 200.milliseconds))
+        assertTrue(inicio.elapsedNow() < 5.seconds, "no esperó a la API lenta")
+        assertEquals(ConfigGuardada(perfilA), repo.guardada(medico))
+    }
+
+    @Test
+    fun espera_vencida_sin_guardada_es_primera_vez_sin_conexion() = conBase { db, _ ->
+        val repo = ConfigHcRepository(db, ApiLenta(10.seconds, perfilB))
+        val estado = repo.estadoConEspera(medico, espera = 200.milliseconds)
+        assertEquals("red", (estado as EstadoConfigHc.PrimeraVezSinConexion).codigo)
+        assertNull(repo.guardada(medico))
+    }
+
+    @Test
+    fun la_espera_por_defecto_es_de_5_segundos() {
+        assertEquals(5.seconds, ConfigHcRepository.ESPERA)
     }
 
     @Test

@@ -518,9 +518,10 @@ Reglas de la tanda:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*SeccionesSoloLecturaTest*' --tests '*DatosConsultaTest*'`
     y `.\gradlew :core:data:jvmTest` completo en verde.
 
-- [ ] **T28. HC general registrada: definición resuelta, historia clínica y copia de diagnósticos (C2, C5, C9,
+- [x] **T28. HC general registrada: definición resuelta, historia clínica y copia de diagnósticos (C2, C5, C9,
   C10).**
   RF-19, RF-24, RF-25, RF-26, RF-33
+  (compila; falta prueba manual del usuario)
   - `EspecialidadRegistry.kt`: `EspecialidadContribution.catalogo: CatalogoHc? = null` al final; el registro lo
     expone por código. `especialidades/clinica/.../HcGeneral.kt`: `hcGeneralContribution` con
     `armarDefinicion(catalogoHcGeneral, null).definicion` (para nombre y `existe()`), el renderer de Child-Pugh y

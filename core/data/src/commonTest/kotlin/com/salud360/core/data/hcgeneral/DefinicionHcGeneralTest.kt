@@ -13,10 +13,13 @@ import com.salud360.core.model.especialidad.SeccionPerfil
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.especialidad.TipoConsultaHc.CONSULTA
 import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
+import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.especialidad.TipoSeccion
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Definición de la HC general armada con el perfil del médico (RF-7, RF-19 a RF-21, RF-24, RF-27, RF-28). */
@@ -205,5 +208,96 @@ class DefinicionHcGeneralTest {
         val tipoCon = assertNotNull(armada(perfil).definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
         assertTrue(seccionesVisibles(tipoCon, ocultas).flatMap { it.secciones }.none { it == "conductas" })
         assertEquals(setOf("conductas"), ocultas)
+    }
+
+    // ---- copia de diagnósticos ("Decidido" C2) ----
+
+    /** Como hematología: diagnósticos solo en Control, no en Telemedicina. */
+    private val conDiagnosticoEnUnTipo = EspecialidadDefinition(
+        "hemato", "Hemato", "hemato",
+        tiposConsulta = listOf(
+            TipoConsultaDef(SeccionesComunes.TIPO_CONTROL, "Control", "control", secciones = listOf("diagnostico", "motivo_consulta")),
+            TipoConsultaDef(SeccionesComunes.TIPO_TELEMEDICINA, "Telemedicina", "telemedicina", secciones = listOf("motivo_consulta")),
+        ),
+        secciones = listOf(
+            SeccionDef("diagnostico", "Diagnósticos", TipoSeccion.DIAGNOSTICOS),
+            SeccionDef("motivo_consulta", "Motivo de consulta", TipoSeccion.TEXTO),
+        ),
+    )
+
+    @Test
+    fun la_legada_de_diagnosticos_en_la_definicion_armada_no_copia() {
+        // Está en `secciones` para leer lo viejo, pero en ningún tipo.
+        assertNotNull(armada().definicion.seccion("diagnostico"))
+        assertFalse(copiaDiagnosticos(armada().definicion))
+        assertFalse(copiaDiagnosticos(armada(null).definicion))
+    }
+
+    @Test
+    fun diagnosticos_en_un_solo_tipo_copia() {
+        assertTrue(copiaDiagnosticos(conDiagnosticoEnUnTipo))
+    }
+
+    @Test
+    fun diagnosticos_en_una_pestania_de_un_tipo_copia() {
+        val def = conDiagnosticoEnUnTipo.copy(
+            tiposConsulta = listOf(TipoConsultaDef(SeccionesComunes.TIPO_CONTROL, "Control", "control", secciones = listOf("motivo_consulta"), pestanias = listOf("diagnostico"))),
+        )
+        assertTrue(copiaDiagnosticos(def))
+    }
+
+    @Test
+    fun diagnosticos_en_secciones_pero_en_ningun_tipo_no_copia() {
+        val def = conDiagnosticoEnUnTipo.copy(tiposConsulta = conDiagnosticoEnUnTipo.tiposConsulta.map { it.copy(secciones = it.secciones - "diagnostico") })
+        assertFalse(copiaDiagnosticos(def))
+    }
+
+    // ---- definición resuelta (RF-19, RF-25, RF-26, RF-33) ----
+
+    @Test
+    fun resuelta_con_perfil_ofrece_los_tipos_con_pestanias() {
+        val r = resolverDefinicion(catalogo, EstadoConfigHc.ConPerfil(perfil))
+        assertEquals(armada().definicion, r.definicion)
+        assertFalse(r.sinPerfil)
+        assertNull(r.primeraVezSinConexion)
+        assertEquals(listOf("seccion_del_futuro"), r.desconocidas)
+        // Nunca "HC digitalizada".
+        assertEquals(listOf(SeccionesComunes.TIPO_CONTROL, SeccionesComunes.TIPO_TELEMEDICINA), r.tiposNuevos.map { it.codigo })
+    }
+
+    @Test
+    fun resuelta_con_un_perfil_sin_nada_en_telemedicina_ofrece_solo_consulta() {
+        val soloConsulta = PerfilHc(9, "Prueba", listOf(PestaniaPerfil("Uno", listOf(SeccionPerfil("motivo_consulta", "Motivo", setOf(CONSULTA))))))
+        val r = resolverDefinicion(catalogo, EstadoConfigHc.ConPerfil(soloConsulta))
+        assertEquals(listOf(SeccionesComunes.TIPO_CONTROL), r.tiposNuevos.map { it.codigo })
+    }
+
+    @Test
+    fun resuelta_sin_perfil_no_ofrece_consultas_nuevas() {
+        val r = resolverDefinicion(catalogo, EstadoConfigHc.SinPerfil)
+        assertTrue(r.sinPerfil)
+        assertNull(r.primeraVezSinConexion)
+        assertEquals(armada(null).definicion, r.definicion)
+        assertEquals(emptyList(), r.tiposNuevos)
+    }
+
+    @Test
+    fun resuelta_primera_vez_sin_conexion_con_el_motivo() {
+        val estado = EstadoConfigHc.PrimeraVezSinConexion("no_vinculado", "Tu usuario no está vinculado")
+        val r = resolverDefinicion(catalogo, estado)
+        assertFalse(r.sinPerfil)
+        assertEquals(estado, r.primeraVezSinConexion)
+        // Las consultas guardadas se siguen leyendo: la definición conoce todos los tipos y secciones.
+        assertEquals(armada(null).definicion, r.definicion)
+        assertEquals(emptyList(), r.tiposNuevos)
+    }
+
+    @Test
+    fun resuelta_estatica_ofrece_todos_sus_tipos_como_siempre() {
+        val r = DefinicionResuelta.estatica(conDiagnosticoEnUnTipo)
+        assertEquals(conDiagnosticoEnUnTipo, r.definicion)
+        assertFalse(r.sinPerfil)
+        assertNull(r.primeraVezSinConexion)
+        assertEquals(conDiagnosticoEnUnTipo.tiposConsulta, r.tiposNuevos)
     }
 }

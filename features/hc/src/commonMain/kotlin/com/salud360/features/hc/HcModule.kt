@@ -23,9 +23,12 @@ fun hcFeatureModule(contribuciones: List<EspecialidadContribution>) = module {
             definiciones = contribuciones.map { it.definicion },
             // Los renderers propios del motor (curvas de crecimiento) van primero: cualquier especialidad puede usarlos.
             renderers = renderersBase + contribuciones.flatMap { it.renderers.entries }.associate { it.key to it.value },
+            catalogos = contribuciones.mapNotNull { c -> c.catalogo?.let { c.definicion.codigo to it } }.toMap(),
         )
     }
+    single { DefinicionesHc(get(), get()) }
+    single { AvisosHcGeneral() }
     viewModel { (consultaId: Id, medicoId: Id) -> ConsultaViewModel(get(), get(), get(), get(), get(), get(), consultaId, medicoId) }
-    viewModel { (pacienteId: Id, especialidad: String, medicoId: Id) -> HistoriaClinicaViewModel(get(), get(), get(), pacienteId, especialidad, medicoId) }
+    viewModel { (pacienteId: Id, especialidad: String, medicoId: Id) -> HistoriaClinicaViewModel(get(), get(), get(), get(), pacienteId, especialidad, medicoId) }
     viewModel { (medicoId: Id, especialidades: List<String>) -> ConfigSeccionesHcViewModel(get(), get(), medicoId, especialidades) }
 }

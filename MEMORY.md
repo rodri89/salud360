@@ -46,6 +46,10 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   recarga con `PerfilesHcRepository.asignacionesCambiadas` cuando el alta asigna un perfil).
   T27 hecha (`HcRepository.observarDatosConsulta` + 3 consultas de lectura en `HistoriaClinica.sq`; `DatosConsulta`
   sin antecedentes; `seccionesDelPacienteSoloLectura` solo mira antecedentes; `enPerfil` obligatorio).
+  T28 hecha, falta la prueba manual (`hcGeneralContribution` en lugar de `clinicaContribution`, que se borró;
+  `DefinicionesHc`/`AvisosHcGeneral`; `DefinicionResuelta`, `resolverDefinicion` y `copiaDiagnosticos` en
+  `DefinicionHcGeneral.kt`; `ConfigHcRepository.estadoConEspera`). Hasta T29/T31 la consulta y la Configuración de
+  "clinica" usan la definición sin perfil (sin secciones).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

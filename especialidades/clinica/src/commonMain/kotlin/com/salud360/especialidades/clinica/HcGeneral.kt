@@ -1,16 +1,18 @@
 package com.salud360.especialidades.clinica
 
+import com.salud360.core.data.hcgeneral.armarDefinicion
 import com.salud360.core.model.especialidad.CampoExamenFisico
 import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.especialidad.EspecialidadDefinition
 import com.salud360.core.model.especialidad.SeccionCatalogo
 import com.salud360.core.model.especialidad.SeccionDef
+import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas as G
 
 // ---- HC general (spec 001) ----
-// Convive con `clinicaMedica` y `hepatologia` hasta que la HC general se registre (tanda C): reutiliza sus
-// secciones, laboratorios y registros sin cambiarlos.
+// Reemplaza a `clinicaMedica` en la app; reutiliza sus secciones, laboratorios y registros, y los de `hepatologia`
+// (que sigue registrada aparte hasta la tanda D), sin cambiarlos.
 
 /** Base de la HC general: lo que no depende del perfil. Los tipos y las secciones los arma `armarDefinicion`. */
 val hcGeneralBase = EspecialidadDefinition(
@@ -75,4 +77,14 @@ val catalogoHcGeneral = CatalogoHc(
         // La de hepatología (casillas y nota libre) también muestra la nota libre que cargaba clínica.
         SeccionCatalogo(G.seccionPersonales, antecedentes = listOf(G.personalesEstandar)),
     ),
+)
+
+/**
+ * La HC general en el registro: la definición sin perfil solo da el nombre y `existe()`; la de cada médico la arma
+ * `DefinicionesHc` con el [catalogoHcGeneral] y su perfil.
+ */
+val hcGeneralContribution = EspecialidadContribution(
+    armarDefinicion(catalogoHcGeneral, null).definicion,
+    mapOf("child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) }),
+    catalogo = catalogoHcGeneral,
 )

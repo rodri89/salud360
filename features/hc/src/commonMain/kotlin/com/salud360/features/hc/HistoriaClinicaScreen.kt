@@ -93,7 +93,7 @@ fun HistoriaClinicaScreen(
     val consultas by vm.consultas.collectAsState()
     val pendientes by vm.pendientes.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
-    val def = vm.definicion
+    val resuelta by vm.definicion.collectAsState()
     var elegirTipo by remember { mutableStateOf(false) }
     var anular by remember { mutableStateOf<Consulta?>(null) }
     val color = Salud360Colors.especialidad(especialidad)
@@ -108,7 +108,7 @@ fun HistoriaClinicaScreen(
                         Text(p.nombreCompleto, style = MaterialTheme.typography.titleLarge, color = Color.White)
                         Text(listOfNotNull("DNI ${p.dni}", p.edad(hoy())?.toString(), p.obraSocial.ifBlank { null }).joinToString(" · "), color = Color.White.copy(alpha = 0.9f))
                     }
-                    StatusChip(def?.nombre ?: especialidad, Color.White)
+                    StatusChip(vm.nombre, Color.White)
                 }
             }
         }
@@ -131,11 +131,32 @@ fun HistoriaClinicaScreen(
             }
         }
 
-        if (def == null) {
+        val r = resuelta
+        if (!vm.existe) {
             EmptyState("La especialidad \"$especialidad\" no está disponible en esta versión de la app.")
+        } else if (r == null) {
+            // HC general: esperando la configuración del médico (a lo sumo unos segundos, después vale la guardada).
+            Text("Cargando la historia clínica…", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
+            val def = r.definicion
+            val tipos = r.tiposNuevos
+            // Sin perfil (RF-19) o sin la configuración la primera vez (RF-26): no hay consulta nueva, lo guardado se lee.
+            if (r.sinPerfil) SectionCard("Falta que el administrador te asigne un perfil", collapsible = false) {
+                Text("Hasta entonces no podés cargar consultas nuevas. Las anteriores se pueden abrir para leerlas.")
+            }
+            r.primeraVezSinConexion?.let { p ->
+                SectionCard("La primera vez hace falta conexión", icon = Icons.Default.CloudOff, collapsible = false) {
+                    Text(p.mensaje, color = Salud360Colors.Danger)
+                    Text(
+                        "Para cargar consultas nuevas, la app tiene que recibir la configuración de tu historia clínica al menos una vez. Las anteriores se pueden abrir para leerlas.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             val abierta = consultas.firstOrNull { it.estado == EstadoConsulta.ABIERTA }
             if (abierta != null) {
+                // Una consulta ya abierta se sigue y se anula aunque el médico haya quedado sin perfil (C10).
                 SectionCard("Consulta en curso", collapsible = false) {
                     Text("${abierta.fecha.toDisplay()} · ${def.tipoConsulta(abierta.tipo)?.nombre ?: abierta.tipo}", fontWeight = FontWeight.SemiBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -143,15 +164,15 @@ fun HistoriaClinicaScreen(
                         LinkButton("Anular", onClick = { anular = abierta })
                     }
                 }
-            } else if (!elegirTipo) {
+            } else if (!elegirTipo && tipos.isNotEmpty()) {
                 PillButton("Nueva consulta", icon = Icons.Default.Add, onClick = {
-                    if (def.tiposConsulta.size == 1) vm.nuevaConsulta(def.tiposConsulta.first().codigo, onAbrirConsulta) else elegirTipo = true
+                    if (tipos.size == 1) vm.nuevaConsulta(tipos.first().codigo, onAbrirConsulta) else elegirTipo = true
                 })
             }
             if (elegirTipo) SectionCard("¿Qué tipo de consulta querés cargar?", collapsible = false, trailing = { TextButton(onClick = { elegirTipo = false }) { Text("Cancelar") } }) {
                 // FlowRow: en teléfono las tarjetas envuelven (pediatría tiene 6 tipos), en pantallas anchas quedan en una fila.
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    def.tiposConsulta.forEach { t ->
+                    tipos.forEach { t ->
                         OptionCard(t.nombre, iconoTipoConsulta(t.icono), subtitle = t.descripcion.ifBlank { null }, tint = color,
                             onClick = { elegirTipo = false; vm.nuevaConsulta(t.codigo, onAbrirConsulta) }, modifier = Modifier.widthIn(min = 150.dp, max = 220.dp).weight(1f, fill = false))
                     }
