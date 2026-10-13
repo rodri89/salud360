@@ -94,12 +94,9 @@ class AdminRepository(
     suspend fun guardarMedico(m: Medico) = q.upsertMedico(m.toRow(ahoraMillis()))
     suspend fun guardarSecretaria(s: Secretaria) = q.upsertSecretaria(s.toRow(ahoraMillis()))
 
-    /** Habilita o deshabilita una historia clínica para el médico (puede tener varias). */
-    suspend fun setEspecialidadHc(medicoId: Id, codigo: String, habilitada: Boolean) {
-        val m = medico(medicoId) ?: return
-        val nuevas = if (habilitada) (m.especialidadesHc + codigo).distinct() else m.especialidadesHc - codigo
-        guardarMedico(m.copy(especialidadesHc = nuevas))
-    }
+    // Las historias clínicas habilitadas a un médico tampoco están acá: son de turnos y se cambian con
+    // `TurnosRepository.guardarHistoriasClinicas`. La que había solo tocaba la base del dispositivo y dejaba al
+    // médico `dirty`, sin que turnos se enterara.
 
     suspend fun vincularSecretariaMedico(secretariaId: Id, medicoId: Id, vincular: Boolean = true) {
         val s = secretaria(secretariaId) ?: return

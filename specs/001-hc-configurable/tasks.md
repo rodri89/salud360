@@ -479,7 +479,8 @@ Reglas de la tanda:
     renombrar "Prueba C" → sigue asignado (RF-10); "Sin perfil" → queda sin perfil (y `GET config` como médico da
     `perfil: null`); se le vuelve a poner "Hepatología".
 
-- [ ] **T26. Alta y ficha del médico con la HC general y su perfil.** RF-18, RF-14
+- [x] **T26. Alta y ficha del médico con la HC general y su perfil.** RF-18, RF-14
+  (compila; falta prueba manual del usuario)
   - `core/data`: `AgendaTurnosOnline` + `TurnosRepository.guardarHistoriasClinicas(medicoId, codigos)` →
     `PUT medicos/{id}/historias-clinicas` de turnos (T7), requiere conexión como `crearUsuario`; `crearUsuario` deja
     disponible el `medico_id` de `TobbUsuarioCreado` (hoy devuelve solo `Usuario`).

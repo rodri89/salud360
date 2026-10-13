@@ -38,6 +38,7 @@ import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Secretaria
+import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
 import com.salud360.core.ui.components.CheckboxField
@@ -67,6 +68,9 @@ private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorio
 fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios: (medicoId: String, consultorioId: String) -> Unit, vm: AdminViewModel = koinViewModel()) {
     var solapa by remember { mutableIntStateOf(0) }
     val mensaje by vm.mensaje.collectAsState()
+    // Uno solo para todo el panel: el alta y la ficha del médico eligen el perfil de la HC general con lo mismo
+    // que muestra la solapa "Perfiles HC" (RF-18).
+    val perfilesVm: PerfilesHcViewModel = koinViewModel()
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ScreenTitle("Administración", modifier = Modifier.weight(1f))
@@ -78,14 +82,14 @@ fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios
         }
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (solapa) {
-                0 -> UsuariosTab(vm)
-                1 -> MedicosTab(vm, onAbrirConfigMedico, onAbrirHorarios)
+                0 -> UsuariosTab(vm, perfilesVm)
+                1 -> MedicosTab(vm, perfilesVm, onAbrirConfigMedico, onAbrirHorarios)
                 2 -> SecretariasTab(vm)
                 3 -> ConsultoriosTab(vm)
                 4 -> EspecialidadesTab(vm)
                 5 -> FeriadosTab(vm)
                 6 -> LicenciasTab(vm)
-                7 -> PerfilesHcTab()
+                7 -> PerfilesHcTab(perfilesVm)
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -93,8 +97,10 @@ fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios
 }
 
 @Composable
-private fun UsuariosTab(vm: AdminViewModel) {
+private fun UsuariosTab(vm: AdminViewModel, perfilesVm: PerfilesHcViewModel) {
     val usuarios by vm.usuarios.collectAsState()
+    val perfiles by perfilesVm.state.collectAsState()
+    var perfilId by remember { mutableStateOf<Long?>(null) }
     var nombre by remember { mutableStateOf("") }
     var apellido by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -137,13 +143,17 @@ private fun UsuariosTab(vm: AdminViewModel) {
                     CheckboxField(nombreHc, codigo in hcElegidas, { marcada -> hcElegidas = if (marcada) hcElegidas + codigo else hcElegidas - codigo })
                 }
             }
+            if (CodigosHc.GENERAL in hcElegidas) {
+                PerfilHcGeneral(perfiles, perfilId, "Sin conexión con la historia clínica general: el perfil se le asigna después, en Perfiles HC.") { perfilId = it }
+            }
             CheckboxField("Mostrar para pedir turno", mostrarEnTurnos, { mostrarEnTurnos = it })
         }
         ActionRow {
             PillButton("Crear usuario", enabled = completo, onClick = {
-                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList())
+                val perfil = perfilId.takeIf { esMedico && CodigosHc.GENERAL in hcElegidas }
+                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList(), perfil)
                 nombre = ""; apellido = ""; email = ""; password = ""
-                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet()
+                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet(); perfilId = null
             })
         }
     }
@@ -157,16 +167,43 @@ private fun UsuariosTab(vm: AdminViewModel) {
 fun Rol.etiqueta() = when (this) { Rol.ADMIN -> "Administrador"; Rol.MEDICO -> "Médico"; Rol.SECRETARIA -> "Secretaria" }
 
 @Composable
-private fun MedicosTab(vm: AdminViewModel, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
+private fun MedicosTab(vm: AdminViewModel, perfilesVm: PerfilesHcViewModel, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
     val medicos by vm.medicos.collectAsState()
     val consultorios by vm.consultorios.collectAsState()
     val especialidades by vm.especialidades.collectAsState()
+    val perfiles by perfilesVm.state.collectAsState()
+    val hcEnCurso by vm.hcEnCurso.collectAsState()
+    // Lo que respondió hclinica al cambiar un perfil desde una ficha (RF-13).
+    perfiles.mensaje?.let { Text(it, color = Salud360Colors.Indigo) }
     if (medicos.isEmpty()) EmptyState("Todavía no hay médicos. Creá un usuario con rol Médico.")
-    medicos.forEach { m -> MedicoCard(m, vm, consultorios.map { it.id to it.nombre }, especialidades.map { it.id to it.nombre }, onConfig, onHorarios) }
+    medicos.forEach { m ->
+        MedicoCard(m, vm, m.id in hcEnCurso, perfiles, perfilesVm, consultorios.map { it.id to it.nombre }, especialidades.map { it.id to it.nombre }, onConfig, onHorarios)
+    }
+}
+
+/** Perfil de la HC general en el alta y en la ficha del médico (RF-18); sin conexión no se puede elegir (RF-14). */
+@Composable
+private fun PerfilHcGeneral(perfiles: PerfilesHcUi, actual: Long?, avisoSinConexion: String, onElegir: (Long?) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Perfil de la historia clínica general", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SelectorPerfil(actual, perfiles.perfiles, !perfiles.cargando && !perfiles.sinConexion, onElegir)
+    }
+    if (perfiles.sinConexion) Text(avisoSinConexion, style = MaterialTheme.typography.bodyMedium, color = Salud360Colors.Warning)
 }
 
 @Composable
-private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<String, String>>, especialidades: List<Pair<String, String>>, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
+private fun MedicoCard(
+    m: Medico,
+    vm: AdminViewModel,
+    /** Hay un cambio de historias clínicas esperando a turnos: las casillas no se tocan hasta que conteste. */
+    hcEnCurso: Boolean,
+    perfiles: PerfilesHcUi,
+    perfilesVm: PerfilesHcViewModel,
+    consultorios: List<Pair<String, String>>,
+    especialidades: List<Pair<String, String>>,
+    onConfig: (String) -> Unit,
+    onHorarios: (String, String) -> Unit,
+) {
     SectionCard(m.nombreCompleto, initiallyExpanded = false, trailing = {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (m.tieneTurnos) StatusChip("Turnos", Salud360Colors.TealStart)
@@ -176,7 +213,15 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
         Text("Historias clínicas habilitadas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             vm.especialidadesHc.forEach { (codigo, nombre) ->
-                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) })
+                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) }, enabled = !hcEnCurso)
+            }
+        }
+        if (CodigosHc.GENERAL in m.especialidadesHc) {
+            // El mismo de "Perfiles HC": por número de turnos, también si hclinica todavía no lo tiene vinculado.
+            perfiles.medicos.firstOrNull { it.medicoId == m.id }?.let { asignable ->
+                PerfilHcGeneral(perfiles, asignable.perfilId, "Sin conexión con la historia clínica general: el perfil no se puede cambiar ahora.") {
+                    perfilesVm.asignar(asignable, it)
+                }
             }
         }
         HorizontalDivider()

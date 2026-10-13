@@ -305,6 +305,21 @@ data class TobbUsuarioCreado(
 @Serializable
 data class TobbAltaUsuarioResponse(val usuario: TobbUsuarioCreado)
 
+/**
+ * Cuerpo de `PUT medicos/{id}/historias-clinicas`: todas las historias clínicas que le quedan al médico (turnos
+ * deshabilita las que no vienen). Sin valor por omisión a propósito: la lista vacía tiene que viajar, porque del
+ * otro lado que falte el campo es `422 datos`, no "ninguna".
+ */
+@Serializable
+data class TobbHistoriasClinicas(@SerialName("historias_clinicas") val historiasClinicas: List<String>)
+
+/** Respuesta del mismo `PUT`: las que quedaron habilitadas, que es lo que se guarda en el dispositivo. */
+@Serializable
+data class TobbHistoriasClinicasMedico(
+    @SerialName("medico_id") val medicoId: Long,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+)
+
 /** Fila de `GET obras-sociales?medico_id` (`obra_social_medicos` + nombre). */
 @Serializable
 data class TobbObraSocialMedico(

@@ -51,11 +51,10 @@ import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.StatusChip
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.theme.Salud360Colors
-import org.koin.compose.viewmodel.koinViewModel
 
 /** Perfiles de la HC general (spec 001): lista con Editar, Duplicar y Borrar, el perfil de cada médico y el editor de un perfil. */
 @Composable
-internal fun PerfilesHcTab(vm: PerfilesHcViewModel = koinViewModel()) {
+internal fun PerfilesHcTab(vm: PerfilesHcViewModel) {
     val state by vm.state.collectAsState()
     if (state.editor != null) {
         EditorPerfil(state, vm)
@@ -123,9 +122,9 @@ private fun MedicosConPerfil(state: PerfilesHcUi, habilitado: Boolean, vm: Perfi
     }
 }
 
-/** Por id y no por nombre: un perfil podría llamarse "Sin perfil". */
+/** Por id y no por nombre: un perfil podría llamarse "Sin perfil". También lo usan el alta y la ficha del médico (RF-18). */
 @Composable
-private fun SelectorPerfil(actual: Long?, perfiles: List<ResumenPerfil>, habilitado: Boolean, onElegir: (Long?) -> Unit) {
+internal fun SelectorPerfil(actual: Long?, perfiles: List<ResumenPerfil>, habilitado: Boolean, onElegir: (Long?) -> Unit) {
     var abierto by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { abierto = true }, enabled = habilitado, modifier = Modifier.width(260.dp)) {

@@ -14,6 +14,9 @@ import com.salud360.core.model.especialidad.PerfilHc
 import com.salud360.core.model.especialidad.ResumenPerfil
 import com.salud360.core.model.especialidad.SeccionCatalogoRemota
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 
@@ -25,6 +28,13 @@ import kotlinx.serialization.json.JsonObject
  * @param cliente null cuando el entorno no tiene URL de hclinica (dev sin `hc.clinica`): se trata como sin conexión.
  */
 class PerfilesHcRepository(private val cliente: HcApiClient?) {
+    private val _asignacionesCambiadas = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Avisa cada asignación hecha, para que la otra pantalla que las muestra (la solapa de perfiles, si la asignó el
+     * alta de un médico) las vuelva a pedir. Es solo un aviso: los datos siguen sin guardarse acá.
+     */
+    val asignacionesCambiadas: SharedFlow<Unit> = _asignacionesCambiadas.asSharedFlow()
 
     suspend fun catalogo(): List<SeccionCatalogoRemota> = llamar { c ->
         c.leer(ListSerializer(HcSeccionCatalogoDto.serializer()), c.get("config/catalogo"), "secciones").map { it.toModel() }
@@ -61,7 +71,7 @@ class PerfilesHcRepository(private val cliente: HcApiClient?) {
     suspend fun asignar(medicoIdTobb: Long, perfilId: Long?): AsignacionPerfil = llamar { c ->
         val r = c.put("config/asignaciones/$medicoIdTobb", c.cuerpo(HcAsignarRequest.serializer(), HcAsignarRequest(perfilId)))
         c.leer(HcAsignacionDto.serializer(), r, "asignacion").toModel()
-    }
+    }.also { _asignacionesCambiadas.tryEmit(Unit) }
 
     private fun HcApiClient.perfil(r: JsonObject): PerfilHc =
         leer(HcPerfilDto.serializer(), r, "perfil").toModel()

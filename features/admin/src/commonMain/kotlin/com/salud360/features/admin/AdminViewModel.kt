@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
+import com.salud360.core.data.repos.PerfilesHcRepository
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.sync.SyncEngine
@@ -14,6 +15,7 @@ import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Secretaria
 import com.salud360.core.model.auth.Usuario
+import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.newId
 import com.salud360.core.model.turnos.Consultorio
 import com.salud360.core.model.turnos.EspecialidadTurnos
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -33,6 +36,8 @@ class AdminViewModel(
     private val admin: AdminRepository,
     private val turnos: TurnosRepository,
     private val sync: SyncEngine,
+    /** Para asignar el perfil de la HC general en el alta de un médico (RF-18). */
+    private val perfilesHc: PerfilesHcRepository,
     /** Códigos y nombres de las historias clínicas disponibles en la app. */
     val especialidadesHc: List<Pair<String, String>>,
 ) : ViewModel() {
@@ -79,6 +84,8 @@ class AdminViewModel(
         consultorioId: Id? = null,
         mostrarEnTurnos: Boolean = false,
         historiasClinicas: List<String> = emptyList(),
+        /** Perfil de la HC general, si se habilitó "Clínica" (RF-18); se asigna después del alta. */
+        perfilId: Long? = null,
     ) = viewModelScope.launch {
         val alta = TobbAltaUsuario(
             nombre = nombre.trim(), apellido = apellido.trim(), email = email.trim().lowercase(), password = password,
@@ -88,14 +95,43 @@ class AdminViewModel(
             mostrarEnTurnos = mostrarEnTurnos,
             historiasClinicas = historiasClinicas,
         )
-        runCatching { turnos.crearUsuario(alta) }
-            .onSuccess { mensaje.value = "Usuario ${it.email} creado" }
-            .onFailure { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}" }
+        val creado = runCatching { turnos.crearUsuario(alta) }
+            .getOrElse { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}"; return@launch }
+        val email = creado.usuario.email
+        val numero = creado.medicoIdTobb
+        // El perfil va por número de médico de turnos: hclinica lo guarda aunque todavía no tenga el usuario
+        // vinculado. Si no se puede, el usuario ya existe en turnos: se avisa qué falta, no que falló el alta.
+        mensaje.value = when {
+            perfilId == null || CodigosHc.GENERAL !in historiasClinicas -> "Usuario $email creado"
+            numero == null -> "Usuario $email creado; falta asignarle el perfil: turnos no devolvió su número de médico"
+            else -> runCatching { perfilesHc.asignar(numero, perfilId) }.fold(
+                onSuccess = { "Usuario $email creado, con su perfil de la historia clínica general" },
+                onFailure = { "Usuario $email creado; falta asignarle el perfil: ${it.message ?: "sin conexión"}" },
+            )
+        }
     }
 
     fun guardarUsuario(u: Usuario) = viewModelScope.launch { admin.guardarUsuario(u) }
     fun guardarMedico(m: Medico) = viewModelScope.launch { admin.guardarMedico(m) }
-    fun setEspecialidadHc(m: Medico, codigo: String, habilitada: Boolean) = viewModelScope.launch { admin.setEspecialidadHc(m.id, codigo, habilitada) }
+
+    /** Médicos con un cambio de historias clínicas en camino: sus casillas esperan la respuesta de turnos. */
+    val hcEnCurso = MutableStateFlow(emptySet<Id>())
+
+    /**
+     * Las historias clínicas habilitadas son de turnos: se le manda la lista completa y el dispositivo se actualiza
+     * solo con lo que turnos acepta (sin `dirty`). Si falla, la casilla queda como estaba (RF-18).
+     */
+    fun setEspecialidadHc(m: Medico, codigo: String, habilitada: Boolean) {
+        if (m.id in hcEnCurso.value) return
+        val nuevas = if (habilitada) (m.especialidadesHc + codigo).distinct() else m.especialidadesHc - codigo
+        hcEnCurso.update { it + m.id }
+        viewModelScope.launch {
+            runCatching { turnos.guardarHistoriasClinicas(m.id, nuevas) }
+                .onSuccess { mensaje.value = "Historias clínicas de ${m.nombreCompleto} actualizadas en turnos" }
+                .onFailure { mensaje.value = "No se pudieron cambiar las historias clínicas de ${m.nombreCompleto}: ${it.message ?: "sin conexión"}" }
+            hcEnCurso.update { it - m.id }
+        }
+    }
     fun guardarSecretaria(s: Secretaria) = viewModelScope.launch { admin.guardarSecretaria(s) }
     fun guardarConsultorio(c: Consultorio) = viewModelScope.launch { turnos.guardarConsultorio(c) }
     fun nuevoConsultorio(nombre: String, direccion: String, telefono: String) = guardarConsultorio(Consultorio(newId(), nombre, direccion, telefono))

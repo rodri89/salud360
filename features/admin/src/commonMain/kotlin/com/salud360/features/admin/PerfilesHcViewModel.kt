@@ -92,6 +92,9 @@ class PerfilesHcViewModel(
     init {
         // Los médicos son de turnos: los trae el panel de administración a la base del dispositivo y llegan solos.
         admin.observarMedicos().onEach { m -> _state.update { it.copy(medicosTurnos = m) } }.launchIn(viewModelScope)
+        // Una asignación hecha en otro lado (el alta de un médico) cambia la lista y los conteos. Las de acá ya
+        // recargan: llegan con un pedido en curso y `ejecutar` las ignora.
+        repo.asignacionesCambiadas.onEach { reintentar() }.launchIn(viewModelScope)
         reintentar()
     }
 

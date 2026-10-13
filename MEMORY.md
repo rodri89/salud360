@@ -41,6 +41,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `hcgeneral/ErroresPorCampo.kt` `ubicarErrores`; tras un intento fallido cada cambio revalida en la app).
   T25 hecha, falta la prueba manual (`hcgeneral/AsignacionesMedicos.kt` `medicosParaAsignar` + sección "Médicos";
   selector por id, no por nombre; las asignaciones de números que no están en la lista local no se muestran).
+  T26 hecha, falta la prueba manual (HC del médico por `PUT medicos/{id}/historias-clinicas` de turnos, sin
+  `dirty`; `AdminRepository.setEspecialidadHc` quitado; un solo `PerfilesHcViewModel` para todo el panel, que
+  recarga con `PerfilesHcRepository.asignacionesCambiadas` cuando el alta asigna un perfil).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

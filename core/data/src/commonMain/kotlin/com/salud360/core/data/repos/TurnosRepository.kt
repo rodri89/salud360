@@ -10,7 +10,6 @@ import com.salud360.core.data.uno
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
-import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.newId
 import com.salud360.core.model.turnos.Asistencia
@@ -118,8 +117,16 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
      * Da de alta en turnosonlinebb a quien va a usar la app. Requiere conexión: la contraseña se
      * guarda allá, que es donde se valida, y sin turnos no hay a quién darlo de alta.
      */
-    suspend fun crearUsuario(alta: TobbAltaUsuario): Usuario =
+    suspend fun crearUsuario(alta: TobbAltaUsuario): UsuarioCreado =
         online?.crearUsuario(alta) ?: throw IllegalStateException("El alta de usuarios necesita conexión con turnos.")
+
+    /**
+     * Cambia las historias clínicas habilitadas al médico en turnosonlinebb, que es el dueño: [codigos] es la lista
+     * completa. Requiere conexión; el dispositivo se actualiza solo con lo que turnos acepta.
+     */
+    suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> =
+        online?.guardarHistoriasClinicas(medicoId, codigos)
+            ?: throw IllegalStateException("Cambiar las historias clínicas de un médico necesita conexión con turnos.")
 
     /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
     suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {

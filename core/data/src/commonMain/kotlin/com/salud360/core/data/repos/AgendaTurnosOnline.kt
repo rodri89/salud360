@@ -15,6 +15,8 @@ import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.network.tobb.TobbAltaUsuarioResponse
 import com.salud360.core.data.network.tobb.TobbCatalogosResponse
 import com.salud360.core.data.network.tobb.TobbDiasAtencion
+import com.salud360.core.data.network.tobb.TobbHistoriasClinicas
+import com.salud360.core.data.network.tobb.TobbHistoriasClinicasMedico
 import com.salud360.core.data.network.tobb.TobbObrasSocialesMedicoResponse
 import com.salud360.core.data.network.tobb.TobbFechas
 import com.salud360.core.data.network.tobb.TobbHorariosResponse
@@ -30,6 +32,7 @@ import com.salud360.core.data.network.tobb.TobbPacientesVinculadosResponse
 import com.salud360.core.data.network.tobb.TobbTurno
 import com.salud360.core.data.network.tobb.TobbTurnoResponse
 import com.salud360.core.data.network.tobb.TobbTurnosResponse
+import com.salud360.core.data.network.tobb.TobbUsuarioCreado
 import com.salud360.core.data.network.tobb.TobbUsuariosResponse
 import com.salud360.core.data.network.tobb.TobbSecretariasResponse
 import com.salud360.core.data.network.tobb.aFechaTobb
@@ -83,6 +86,23 @@ data class DiaAgendaResuelto(
     val feriado: Boolean,
     val turnos: List<Turno> = emptyList(),
     val cantidadSobreturnos: Int = 0,
+)
+
+/**
+ * Usuario recién dado de alta en turnos. [medicoIdTobb] es el número de médico que le asignó turnos (null si no es
+ * médico): con él se le asigna el perfil de la HC general antes de que hclinica lo tenga vinculado.
+ */
+data class UsuarioCreado(val usuario: Usuario, val medicoIdTobb: Long?)
+
+internal fun TobbUsuarioCreado.toUsuarioCreado() = UsuarioCreado(
+    usuario = Usuario(
+        id = TobbIds.usuario(id),
+        email = email,
+        nombre = nombre,
+        apellido = apellido,
+        rol = runCatching { Rol.valueOf(rol.uppercase()) }.getOrNull() ?: Rol.MEDICO,
+    ),
+    medicoIdTobb = medicoId,
 )
 
 /**
@@ -386,19 +406,34 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
      * El médico que solo usa historia clínica va con `mostrarEnTurnos = false`: queda activo, que es
      * lo que le permite entrar, pero no aparece en las listas para pedirle turno.
      *
-     * Devuelve el usuario ya guardado en el dispositivo.
+     * Devuelve el usuario creado y, si es médico, su número de médico en turnos. Si después falla el
+     * traer la administración, el alta igual se da por hecha: el usuario ya existe allá.
      */
-    suspend fun crearUsuario(alta: TobbAltaUsuario): Usuario {
+    suspend fun crearUsuario(alta: TobbAltaUsuario): UsuarioCreado {
         val r = decodificar(TobbAltaUsuarioResponse.serializer(), turnos.tobbPost("usuarios", cuerpo(TobbAltaUsuario.serializer(), alta)))
-        sincronizarAdministracion()
-        val creado = r.usuario
-        return Usuario(
-            id = TobbIds.usuario(creado.id),
-            email = creado.email,
-            nombre = creado.nombre,
-            apellido = creado.apellido,
-            rol = runCatching { Rol.valueOf(creado.rol.uppercase()) }.getOrNull() ?: Rol.MEDICO,
-        )
+        runCatching { sincronizarAdministracion() }
+            .onFailure { if (it is CancellationException) throw it; log.w { "usuario creado, pero no se pudo traer la administración: ${it.message}" } }
+        return r.usuario.toUsuarioCreado()
+    }
+
+    /**
+     * Deja al médico con exactamente [codigos] habilitadas en turnos, que es el dueño del dato, y guarda en el
+     * dispositivo lo que turnos responde, limpio (`dirty = false`): no queda nada para empujar después. Si turnos no
+     * lo acepta, lanza y el dispositivo queda como estaba. Devuelve las que quedaron habilitadas.
+     */
+    suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> {
+        val numero = TobbIds.numero(medicoId)
+            ?: throw IllegalArgumentException("Ese médico no es de turnos: sus historias clínicas no se cambian desde acá.")
+        val r = sinRutaEnLaWeb("cambiar las historias clínicas de un médico") {
+            decodificar(
+                TobbHistoriasClinicasMedico.serializer(),
+                turnos.tobbPut("medicos/$numero/historias-clinicas", cuerpo(TobbHistoriasClinicas.serializer(), TobbHistoriasClinicas(codigos))),
+            )
+        }
+        aq.medicoPorId(medicoId).uno { it.toModel() }?.let { m ->
+            aq.upsertMedico(m.copy(especialidadesHc = r.historiasClinicas).toRow(ahoraMillis(), dirty = false))
+        }
+        return r.historiasClinicas
     }
 
     suspend fun sincronizarAdministracion() {
