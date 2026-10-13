@@ -300,6 +300,38 @@ class SeccionesSoloLecturaTest {
     }
 
     @Test
+    fun consulta_arma_lo_de_solo_lectura_con_el_perfil_entero_de_la_definicion() {
+        // Telemedicina con "nota" (oculta, en el perfil solo para Consulta) y examen físico (fuera del perfil), y el
+        // paciente con antecedentes personales: al final solo el examen; en "Datos", los antecedentes.
+        val datos = DatosConsulta(valores = texto("nota" to "Vuelve en un mes"), examenFisico = ExamenFisico("c1", peso = "70"))
+        val antecedentes = listOf(antecedente("personales", "alergias", flag = true))
+        val r = soloLecturaConsulta(catalogo, def, SeccionesComunes.TIPO_TELEMEDICINA, datos, antecedentes, setOf("nota"))
+        assertEquals(listOf("examen_fisico"), r.alFinal.map { it.id })
+        assertEquals(listOf("antecedentes_personales"), r.enDatos.map { it.id })
+        // Sin ocultarla, la nota sale con el nombre por defecto y no con el del perfil.
+        val sinOcultas = soloLecturaConsulta(catalogo, def, SeccionesComunes.TIPO_TELEMEDICINA, datos, antecedentes, emptySet())
+        assertEquals(listOf("Examen físico", "Nota"), sinOcultas.alFinal.map { it.titulo })
+    }
+
+    @Test
+    fun consulta_hc_digitalizada_muestra_sus_fotos_al_final() {
+        val r = soloLecturaConsulta(catalogo, def, SeccionesComunes.TIPO_FOTO, DatosConsulta(seccionesArchivo = setOf("fotos")), emptyList(), emptySet())
+        assertEquals(listOf("fotos"), r.alFinal.map { it.id })
+        assertEquals(emptyList(), r.enDatos)
+    }
+
+    @Test
+    fun consulta_sin_perfil_muestra_todo_lo_cargado_solo_para_leer() {
+        // Sin perfil (RF-19) nada está en el perfil: lo cargado se lee con el nombre por defecto.
+        val sinPerfil = armarDefinicion(catalogo, null).definicion
+        val datos = DatosConsulta(valores = texto("motivo_consulta" to "Control"))
+        val antecedentes = listOf(antecedente("familiares", "hta", flag = true))
+        val r = soloLecturaConsulta(catalogo, sinPerfil, SeccionesComunes.TIPO_CONTROL, datos, antecedentes, setOf("motivo_consulta"))
+        assertEquals(listOf("Motivo de consulta"), r.alFinal.map { it.titulo })
+        assertEquals(listOf("antecedentes_familiares"), r.enDatos.map { it.id })
+    }
+
+    @Test
     fun ids_con_datos_que_la_app_no_conoce_se_omiten() {
         assertEquals(emptyList(), seccionesSoloLectura(catalogo, emptySet(), setOf("seccion_del_futuro"), emptySet(), emptySet()))
     }

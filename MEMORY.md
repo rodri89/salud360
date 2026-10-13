@@ -53,6 +53,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   T29 hecha, falta la prueba manual (`pestaniasConsulta`, `soloLecturaPorTipo`/`puedeReabrir` en
   `DefinicionResuelta`; `EspecialidadDefinition.examenFisicoSoloLectura` + `modoCampoExamen` para FC/CA; la consulta
   resuelve con `DefinicionesHc` una vez; sin perfil o primera vez, las cerradas no se reabren).
+  T30 hecha, falta la prueba manual (`soloLecturaConsulta` → `ConsultaUi.fueraDelPerfil`; vale para toda definición
+  `porPerfil`, también sin perfil y "HC digitalizada"; `AvisoSeccionesDesconocidas` en la HC y en la consulta).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

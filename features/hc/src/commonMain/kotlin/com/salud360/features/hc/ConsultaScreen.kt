@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.SeccionesComunes
@@ -118,6 +119,14 @@ fun ConsultaScreen(
             override fun setValor(seccion: String, campo: String, valor: String) = vm.setValor(seccion, campo, valor)
         }
     }
+    // Lo de fuera del perfil (RF-22, RF-34) se lee siempre, aunque la consulta esté abierta, y nunca escribe.
+    val ctxLectura = remember(ctx) {
+        object : SeccionContext by ctx {
+            override val soloLectura = true
+            override fun setValor(seccion: String, campo: String, valor: String) = Unit
+        }
+    }
+    AvisoSeccionesDesconocidas(ui.resuelta)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // ---- cabecera ----
@@ -185,6 +194,7 @@ fun ConsultaScreen(
             val actual = agrupadas[i]
             if (actual.id == SeccionesComunes.DATOS_PACIENTE) {
                 CompositionLocalProvider(LocalSeccionEnPestania provides true) { DatosPacienteSeccion(ui.paciente!!, def, ctx) }
+                SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
             } else {
                 actual.secciones.mapNotNull { def.seccion(it) }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
             }
@@ -201,10 +211,15 @@ fun ConsultaScreen(
             CompositionLocalProvider(LocalSeccionEnPestania provides true) {
                 if (actual.id == SeccionesComunes.DATOS_PACIENTE) DatosPacienteSeccion(ui.paciente!!, def, ctx) else RenderSeccion(actual, ctx, registry, valores)
             }
+            // HC general sin perfil o "HC digitalizada": la única pestaña es "Datos".
+            if (actual.id == SeccionesComunes.DATOS_PACIENTE) SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
         }
 
         // ---- secciones (agrupada: ya están en sus pestañas, no queda nada suelto) ----
         if (agrupadas.isEmpty()) vm.seccionesVisibles(ui).filter { it.id !in tipo.pestanias }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
+
+        // ---- HC general: lo cargado en esta consulta fuera del perfil, debajo de la pestaña elegida (RF-22) ----
+        SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.alFinal, ctxLectura, registry, valores)
 
         // ---- acciones ----
         ActionRow {
@@ -253,6 +268,40 @@ private fun PendientesCierreDialog(inicial: String, onConfirmar: (String) -> Uni
         },
         confirmButton = { TextButton(onClick = { onConfirmar(texto) }) { Text("Cerrar consulta") } },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
+    )
+}
+
+/**
+ * Secciones de la HC general con datos fuera del perfil del médico, solo para leer y con el nombre por defecto
+ * (RF-22, RF-34). [ctx] es el de lectura: aunque la consulta esté abierta, desde acá no se escribe nada.
+ */
+@Composable
+private fun SoloLecturaFueraDelPerfil(secciones: List<SeccionDef>, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>) {
+    if (secciones.isEmpty()) return
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(6.dp))
+        Text("Fuera de tu perfil, solo para leer", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    secciones.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
+}
+
+/**
+ * RF-27: si el perfil del médico tiene secciones que esta versión no sabe mostrar, se avisa una vez por sesión
+ * ([AvisosHcGeneral]), en la historia clínica o en la consulta, la que se abra primero.
+ */
+@Composable
+internal fun AvisoSeccionesDesconocidas(resuelta: DefinicionResuelta?) {
+    val avisos = koinInject<AvisosHcGeneral>()
+    var mostrar by remember { mutableStateOf(false) }
+    LaunchedEffect(resuelta) {
+        if (resuelta?.desconocidas?.isNotEmpty() == true && avisos.avisarDesconocidas()) mostrar = true
+    }
+    if (mostrar) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { mostrar = false },
+        title = { Text("Hace falta actualizar la app") },
+        text = { Text("Tu perfil tiene secciones que esta versión de la app no sabe mostrar. Se ve todo lo demás; para verlas, actualizá la app.") },
+        confirmButton = { TextButton(onClick = { mostrar = false }) { Text("Aceptar") } },
     )
 }
 

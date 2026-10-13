@@ -571,8 +571,9 @@ Reglas de la tanda:
     reabrirla solo "Datos" y el aviso, y se puede cerrar o anular, pero la HC no ofrece "Nueva consulta" (C10); se
     le vuelve a poner "Prueba C"; una consulta de pediatría u otra especialidad se ve igual que antes (RF-33).
 
-- [ ] **T30. Solo lectura al final de la consulta, datos del paciente en "Datos" y aviso de secciones
+- [x] **T30. Solo lectura al final de la consulta, datos del paciente en "Datos" y aviso de secciones
   desconocidas.** RF-22, RF-27, RF-30, RF-34; C1, C3, C7
+  (compila; falta prueba manual del usuario)
   - `ConsultaViewModel`: con los flujos de T27, `seccionesSoloLectura(catalogo, enPerfilParaTipo = secciones de los
     grupos del tipo, conDatos = seccionesConDatos(...), ocultas, enPerfil = las del perfil en todos los tipos)`
     (C3, explícito) y `seccionesDelPacienteSoloLectura(...)` para "Datos" (C1).

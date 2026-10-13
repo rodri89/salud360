@@ -97,6 +97,7 @@ fun HistoriaClinicaScreen(
     var elegirTipo by remember { mutableStateOf(false) }
     var anular by remember { mutableStateOf<Consulta?>(null) }
     val color = Salud360Colors.especialidad(especialidad)
+    AvisoSeccionesDesconocidas(resuelta)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         paciente?.let { p ->

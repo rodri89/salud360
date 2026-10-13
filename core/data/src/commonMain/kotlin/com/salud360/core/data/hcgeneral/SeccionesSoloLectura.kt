@@ -80,6 +80,36 @@ fun seccionesDelPacienteSoloLectura(
         .filter { s -> antecedentes.any { a -> a.activo && a.categoria == s.def.categoriaAntecedentes && (a.flag || tieneDato(a.detalle)) } }
         .map { it.def }
 
+/**
+ * Lo que una consulta de la HC general muestra solo para leer: [alFinal], debajo de la pestaña elegida (RF-22), y
+ * [enDatos], debajo de la ficha del paciente (RF-34).
+ */
+data class SoloLecturaConsulta(
+    val alFinal: List<SeccionDef> = emptyList(),
+    val enDatos: List<SeccionDef> = emptyList(),
+)
+
+/**
+ * [seccionesSoloLectura] y [seccionesDelPacienteSoloLectura] para una consulta de [tipo] con la definición armada
+ * [def]: el perfil para el tipo son sus grupos y el perfil entero, los grupos de todos los tipos (C3). Sin perfil o
+ * sin configuración no hay grupos, así que todo lo cargado se lee.
+ */
+fun soloLecturaConsulta(
+    catalogo: CatalogoHc,
+    def: EspecialidadDefinition,
+    tipo: String,
+    datos: DatosConsulta,
+    antecedentes: List<Antecedente>,
+    ocultas: Set<String>,
+): SoloLecturaConsulta {
+    val enPerfil = def.tiposConsulta.flatMap { t -> t.grupos.flatMap { it.secciones } }.toSet()
+    val enPerfilParaTipo = def.tipoConsulta(tipo)?.grupos.orEmpty().flatMap { it.secciones }.toSet()
+    return SoloLecturaConsulta(
+        alFinal = seccionesSoloLectura(catalogo, enPerfilParaTipo, seccionesConDatos(datos, def), ocultas, enPerfil),
+        enDatos = seccionesDelPacienteSoloLectura(catalogo, antecedentes, enPerfil, ocultas),
+    )
+}
+
 private fun fueraDelPerfil(id: String, enPerfilAca: Set<String>, ocultas: Set<String>, enPerfil: Set<String>) =
     id !in enPerfilAca && !(id in ocultas && id in enPerfil)
 

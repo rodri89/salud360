@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
+import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.data.hcgeneral.pestaniasConsulta
+import com.salud360.core.data.hcgeneral.soloLecturaConsulta
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.hoy
@@ -60,6 +63,8 @@ data class ConsultaUi(
     val preferencias: Map<String, String> = emptyMap(),
     /** Con qué se abrió la consulta: la definición y, en la HC general, si falta perfil o la configuración (RF-19, RF-26). */
     val resuelta: DefinicionResuelta? = null,
+    /** HC general: lo cargado fuera del perfil, solo para leer (RF-22 al final, RF-34 en "Datos"); vacío en las demás. */
+    val fueraDelPerfil: SoloLecturaConsulta = SoloLecturaConsulta(),
 ) {
     /** "HC digitalizada" en la HC general: se lee aunque haya quedado abierta ("Decidido" 5 del plan). */
     val soloLecturaPorTipo: Boolean get() = consulta?.let { resuelta?.soloLecturaPorTipo(it.tipo) } == true
@@ -129,6 +134,8 @@ class ConsultaViewModel(
             // Las especialidades de siempre, la registrada, como hasta ahora (RF-33).
             val resuelta = definiciones.estatica(c.especialidad) ?: general
             val def = resuelta?.definicion
+            // Solo la HC general mira lo cargado fuera del perfil; las demás no piden nada más (RF-33).
+            val catalogo = if (resuelta?.porPerfil == true) definiciones.catalogo(c.especialidad) else null
             combine(
                 pacientes.observar(c.pacienteId),
                 hc.observarExamenFisico(c.id),
@@ -138,14 +145,21 @@ class ConsultaViewModel(
                 hc.observarPendientes(c.pacienteId, medicoId),
                 hc.observarVacunas(c.pacienteId),
                 hc.observarPreferencias(medicoId),
+                if (catalogo != null) hc.observarDatosConsulta(c.id) else flowOf(DatosConsulta()),
             ) { arr ->
+                @Suppress("UNCHECKED_CAST")
+                val antecedentes = arr[2] as List<Antecedente>
+                @Suppress("UNCHECKED_CAST")
+                val preferencias = arr[7] as Map<String, String>
                 @Suppress("UNCHECKED_CAST")
                 ConsultaUi(
                     consulta = c, paciente = arr[0] as Paciente?, definicion = def, tipo = def?.tipoConsulta(c.tipo),
-                    examen = arr[1] as ExamenFisico?, antecedentes = arr[2] as List<Antecedente>,
+                    examen = arr[1] as ExamenFisico?, antecedentes = antecedentes,
                     diagnosticosCatalogo = arr[3] as List<Diagnostico>, diagnosticosConsulta = (arr[4] as List<Diagnostico>).map { it.id }.toSet(),
-                    pendientes = arr[5] as List<Pendiente>, vacunas = arr[6] as List<VacunaAplicada>, preferencias = arr[7] as Map<String, String>,
+                    pendientes = arr[5] as List<Pendiente>, vacunas = arr[6] as List<VacunaAplicada>, preferencias = preferencias,
                     resuelta = resuelta,
+                    fueraDelPerfil = if (catalogo == null || def == null) SoloLecturaConsulta()
+                    else soloLecturaConsulta(catalogo, def, c.tipo, arr[8] as DatosConsulta, antecedentes, ocultasDe(def, preferencias)),
                 )
             }
         }
@@ -354,8 +368,10 @@ class ConsultaViewModel(
         return pestaniasConsulta(tipo, ocultas(ui)) { id -> def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
     }
 
-    private fun ocultas(ui: ConsultaUi): Set<String> =
-        ui.definicion?.let { ui.preferencias["secciones_ocultas_${it.codigo}"]?.split(',')?.toSet() } ?: emptySet()
+    private fun ocultas(ui: ConsultaUi): Set<String> = ui.definicion?.let { ocultasDe(it, ui.preferencias) } ?: emptySet()
+
+    private fun ocultasDe(def: EspecialidadDefinition, preferencias: Map<String, String>): Set<String> =
+        preferencias["secciones_ocultas_${def.codigo}"]?.split(',')?.toSet() ?: emptySet()
 
     fun cumpleCondicion(s: SeccionDef, ui: ConsultaUi): Boolean = when (val c = s.condicion) {
         null -> true

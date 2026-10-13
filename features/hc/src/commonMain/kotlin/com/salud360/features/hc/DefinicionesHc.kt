@@ -4,6 +4,7 @@ import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.data.hcgeneral.resolverDefinicion
 import com.salud360.core.data.repos.ConfigHcRepository
 import com.salud360.core.model.Id
+import com.salud360.core.model.especialidad.CatalogoHc
 
 /**
  * Definición con la que se muestra la historia clínica de un médico. Las especialidades de siempre usan la registrada
@@ -15,6 +16,9 @@ class DefinicionesHc(private val registry: EspecialidadRegistry, private val con
     /** Sin esperar: la de una especialidad sin perfiles; null para la HC general (hay que [resolver]) o si no existe. */
     fun estatica(codigo: String): DefinicionResuelta? =
         if (registry.catalogo(codigo) != null) null else registry.definicion(codigo)?.let { DefinicionResuelta.estatica(it) }
+
+    /** Catálogo de la HC con perfiles (hoy la general), para lo que se lee fuera del perfil (RF-22, RF-34). */
+    fun catalogo(codigo: String): CatalogoHc? = registry.catalogo(codigo)
 
     /** null si la especialidad no está en esta versión de la app. */
     suspend fun resolver(codigo: String, medicoId: Id): DefinicionResuelta? {
