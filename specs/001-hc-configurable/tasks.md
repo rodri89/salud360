@@ -465,7 +465,8 @@ Reglas de la tanda:
        "requiere actualizar la app" sin poder agregarla y, guardando el perfil desde la app, la fila sigue. Después
        se quitan las dos cosas.
 
-- [ ] **T25. Asignación de perfiles a médicos.** RF-10, RF-14, RF-17; C8
+- [x] **T25. Asignación de perfiles a médicos.** RF-10, RF-14, RF-17; C8
+  (compila; falta prueba manual del usuario)
   - `PerfilesHcViewModel` suma `AdminRepository.observarMedicos()`: médicos con "clinica" **o** "hepatologia"
     habilitada (C8: hepatología sigue como casilla aparte hasta la tanda D), cruzados por
     número de turnos (`TobbIds.numero`) con `asignaciones()`, como la solapa de licencias. Asignar = `asignar(número,

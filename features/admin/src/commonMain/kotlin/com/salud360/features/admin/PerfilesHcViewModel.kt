@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.hcgeneral.ErrorPerfil
 import com.salud360.core.data.hcgeneral.ErroresPorCampo
+import com.salud360.core.data.hcgeneral.MedicoAsignable
 import com.salud360.core.data.hcgeneral.SeccionCatalogoAdmin
 import com.salud360.core.data.hcgeneral.agregarPestania
 import com.salud360.core.data.hcgeneral.agregarSeccion
 import com.salud360.core.data.hcgeneral.catalogoParaAdmin
 import com.salud360.core.data.hcgeneral.duplicarPerfil
 import com.salud360.core.data.hcgeneral.marcarTipo
+import com.salud360.core.data.hcgeneral.medicosParaAsignar
 import com.salud360.core.data.hcgeneral.moverPestania
 import com.salud360.core.data.hcgeneral.moverSeccion
 import com.salud360.core.data.hcgeneral.moverSeccionAPestania
@@ -21,7 +23,9 @@ import com.salud360.core.data.hcgeneral.seccionesParaAgregar
 import com.salud360.core.data.hcgeneral.ubicarErrores
 import com.salud360.core.data.hcgeneral.validarPerfil
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.PerfilesHcRepository
+import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.especialidad.AsignacionPerfil
 import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.core.model.especialidad.PerfilHc
@@ -32,6 +36,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,6 +45,8 @@ data class PerfilesHcUi(
     val perfiles: List<ResumenPerfil> = emptyList(),
     val catalogo: List<SeccionCatalogoAdmin> = emptyList(),
     val asignaciones: List<AsignacionPerfil> = emptyList(),
+    /** Médicos de turnos guardados en el dispositivo, para cruzarlos con [asignaciones]. */
+    val medicosTurnos: List<Medico> = emptyList(),
     /** Perfil abierto en el editor; null = se ve la lista. */
     val editor: EditorPerfilUi? = null,
     /** Hay un pedido en curso: las acciones esperan a que termine. */
@@ -47,7 +55,10 @@ data class PerfilesHcUi(
     val mensaje: String? = null,
     /** El último pedido falló por falta de conexión: no se puede tocar nada hasta reintentar (RF-14). */
     val sinConexion: Boolean = false,
-)
+) {
+    /** Médicos con la HC general y su perfil (RF-17). */
+    val medicos: List<MedicoAsignable> get() = medicosParaAsignar(medicosTurnos, asignaciones)
+}
 
 /** Perfil en edición. El [borrador] solo cambia con las acciones del administrador: un guardado fallido no lo toca (RF-13). */
 data class EditorPerfilUi(
@@ -73,11 +84,14 @@ class PerfilesHcViewModel(
     private val repo: PerfilesHcRepository,
     /** Lo que esta versión de la app sabe mostrar, para marcar las secciones del catálogo remoto (RF-16). */
     private val catalogoApp: CatalogoHc,
+    admin: AdminRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PerfilesHcUi())
     val state: StateFlow<PerfilesHcUi> = _state.asStateFlow()
 
     init {
+        // Los médicos son de turnos: los trae el panel de administración a la base del dispositivo y llegan solos.
+        admin.observarMedicos().onEach { m -> _state.update { it.copy(medicosTurnos = m) } }.launchIn(viewModelScope)
         reintentar()
     }
 
@@ -104,6 +118,20 @@ class PerfilesHcViewModel(
         }
         recargar()
         "Perfil borrado"
+    }
+
+    /**
+     * Asigna, cambia o quita ([perfilId] null) el perfil del médico, por su número de turnos (RF-17). Después se
+     * recarga todo: la asignación y los conteos de la lista salen de hclinica.
+     */
+    fun asignar(medico: MedicoAsignable, perfilId: Long?) {
+        if (!puedeTocar() || medico.perfilId == perfilId) return
+        ejecutar {
+            repo.asignar(medico.medicoIdTobb, perfilId)
+            recargar()
+            val perfil = _state.value.perfiles.firstOrNull { it.id == perfilId }?.nombre
+            if (perfil == null) "${medico.nombre} quedó sin perfil" else "${medico.nombre} ahora tiene \"$perfil\""
+        }
     }
 
     // ---- Editor (RF-3 a RF-9) ----

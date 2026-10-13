@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -28,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.SeccionCatalogoAdmin
@@ -50,7 +53,7 @@ import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.theme.Salud360Colors
 import org.koin.compose.viewmodel.koinViewModel
 
-/** Perfiles de la HC general (spec 001): lista con Editar, Duplicar y Borrar, y el editor de un perfil. */
+/** Perfiles de la HC general (spec 001): lista con Editar, Duplicar y Borrar, el perfil de cada médico y el editor de un perfil. */
 @Composable
 internal fun PerfilesHcTab(vm: PerfilesHcViewModel = koinViewModel()) {
     val state by vm.state.collectAsState()
@@ -86,6 +89,7 @@ internal fun PerfilesHcTab(vm: PerfilesHcViewModel = koinViewModel()) {
             }
         }
     }
+    MedicosConPerfil(state, habilitado, vm)
     aBorrar?.let { p ->
         ConfirmDialog(
             title = "Borrar perfil",
@@ -95,6 +99,45 @@ internal fun PerfilesHcTab(vm: PerfilesHcViewModel = koinViewModel()) {
             confirmText = "Borrar",
             destructive = true,
         )
+    }
+}
+
+/** Perfil de cada médico con la HC general (RF-17); sin conexión los selectores no se abren (RF-14). */
+@Composable
+private fun MedicosConPerfil(state: PerfilesHcUi, habilitado: Boolean, vm: PerfilesHcViewModel) {
+    SectionCard("Médicos", collapsible = false) {
+        Text("Médicos con la historia clínica general habilitada en turnos y el perfil que ve cada uno.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val medicos = state.medicos
+        if (medicos.isEmpty()) Text("Ningún médico tiene la historia clínica general habilitada.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        medicos.forEach { m ->
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(m.nombre, fontWeight = FontWeight.SemiBold)
+                    // La asignación se guarda igual y vale cuando hclinica tenga el usuario con ese número.
+                    if (!m.vinculado) StatusChip("Todavía sin usuario en la historia clínica general", Salud360Colors.Warning, pequeno = true)
+                }
+                SelectorPerfil(m.perfilId, state.perfiles, habilitado) { vm.asignar(m, it) }
+            }
+        }
+    }
+}
+
+/** Por id y no por nombre: un perfil podría llamarse "Sin perfil". */
+@Composable
+private fun SelectorPerfil(actual: Long?, perfiles: List<ResumenPerfil>, habilitado: Boolean, onElegir: (Long?) -> Unit) {
+    var abierto by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { abierto = true }, enabled = habilitado, modifier = Modifier.width(260.dp)) {
+            Text(perfiles.firstOrNull { it.id == actual }?.nombre ?: "Sin perfil", Modifier.weight(1f), maxLines = 1)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = "Elegir perfil")
+        }
+        DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false }) {
+            DropdownMenuItem(text = { Text("Sin perfil", fontStyle = FontStyle.Italic) }, onClick = { abierto = false; onElegir(null) })
+            perfiles.forEach { p ->
+                DropdownMenuItem(text = { Text(p.nombre) }, onClick = { abierto = false; onElegir(p.id) })
+            }
+        }
     }
 }
 
