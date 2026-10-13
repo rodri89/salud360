@@ -499,7 +499,7 @@ Reglas de la tanda:
     → mensaje y la casilla queda como estaba. Al terminar: el usuario de prueba desactivado en turnos local por SQL
     puntual y su asignación quitada (`perfil_id: null`).
 
-- [ ] **T27. Datos de la consulta para el bloque de solo lectura (C1, C3, C7).** RF-22, RF-28, RF-30, RF-34
+- [x] **T27. Datos de la consulta para el bloque de solo lectura (C1, C3, C7).** RF-22, RF-28, RF-30, RF-34
   - `HistoriaClinica.sq`, solo lectura: `tiposRegistroDeConsulta`, `tiposLaboratorioDeConsulta` y
     `seccionesArchivoDeConsulta` (`SELECT DISTINCT ... WHERE consulta_id = ? AND deleted = 0 AND activo = 1`).
   - `HcRepository`: flujo de `DatosConsulta` de una consulta (valores, examen físico, tipos de registro y de

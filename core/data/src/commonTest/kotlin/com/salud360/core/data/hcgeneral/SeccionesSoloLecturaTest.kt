@@ -24,7 +24,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** Secciones con datos que quedan fuera del perfil y se muestran solo para leer (RF-22, RF-28, RF-30). */
+/**
+ * Secciones con datos que quedan fuera del perfil y se muestran solo para leer: las de la consulta al final de ella
+ * (RF-22) y las del paciente una sola vez en "Datos" (RF-34); RF-28 y RF-30.
+ */
 class SeccionesSoloLecturaTest {
     private val catalogo = CatalogoHc(
         base = EspecialidadDefinition("clinica", "Clínica", "hclinica", emptyList(), emptyList()),
@@ -53,6 +56,11 @@ class SeccionesSoloLecturaTest {
             ),
             SeccionCatalogo(SeccionDef("conductas", "Conductas", TipoSeccion.TEXTO)),
             SeccionCatalogo(SeccionDef("nota", "Nota", TipoSeccion.TEXTO)),
+            // Registro por paciente: no es de ninguna consulta.
+            SeccionCatalogo(
+                SeccionDef("screening", "Screening", TipoSeccion.REGISTROS, registroTipo = "screening"),
+                registros = listOf(RegistroDef("screening", "Screenings", "Screening", emptyList(), porPaciente = true)),
+            ),
         ),
         legadas = listOf(
             SeccionCatalogo(SeccionDef("diagnostico", "Diagnósticos", TipoSeccion.DIAGNOSTICOS)),
@@ -85,10 +93,16 @@ class SeccionesSoloLecturaTest {
 
     private fun enPerfil(tipo: String) = assertNotNull(def.tipoConsulta(tipo)).secciones.toSet()
 
+    /** Las del perfil en todos los tipos. */
+    private val perfilEntero get() = enPerfil(SeccionesComunes.TIPO_CONTROL) + enPerfil(SeccionesComunes.TIPO_TELEMEDICINA)
+
     private fun conDatos(datos: DatosConsulta) = seccionesConDatos(datos, def)
 
     private fun soloLectura(tipo: String, datos: DatosConsulta, ocultas: Set<String> = emptySet()) =
-        seccionesSoloLectura(catalogo, enPerfil(tipo), conDatos(datos), ocultas)
+        seccionesSoloLectura(catalogo, enPerfil(tipo), conDatos(datos), ocultas, perfilEntero)
+
+    private fun delPaciente(antecedentes: List<Antecedente>, enPerfil: Set<String> = perfilEntero, ocultas: Set<String> = emptySet()) =
+        seccionesDelPacienteSoloLectura(catalogo, antecedentes, enPerfil, ocultas).map { it.id }
 
     private fun texto(vararg secciones: Pair<String, String>) = secciones.associate { (s, v) -> s to mapOf("texto" to v) }
 
@@ -115,7 +129,6 @@ class SeccionesSoloLecturaTest {
             valores = texto("motivo_consulta" to "Control") +
                 mapOf("alimentacion" to mapOf("hiposodica" to "1|"), "child_pugh" to mapOf("ascitis" to "2")),
             examenFisico = ExamenFisico("c1", peso = "70"),
-            antecedentes = listOf(antecedente("familiares", "hta", flag = true)),
             tiposRegistro = setOf("interconsulta"),
             tiposLaboratorio = setOf("laboratorio_general"),
             seccionesArchivo = setOf("documentos", "audio", "fotos"),
@@ -123,7 +136,7 @@ class SeccionesSoloLecturaTest {
         )
         assertEquals(
             setOf(
-                "antecedentes_familiares", "motivo_consulta", "documentos", "laboratorio_general", "alimentacion", "child_pugh",
+                "motivo_consulta", "documentos", "laboratorio_general", "alimentacion", "child_pugh",
                 "examen_fisico", "interconsulta", "diagnostico", "audio", "fotos",
             ),
             conDatos(datos),
@@ -136,9 +149,72 @@ class SeccionesSoloLecturaTest {
             valores = texto("motivo_consulta" to "", "nota" to "0") +
                 mapOf("alimentacion" to mapOf("hiposodica" to "0|", "otra" to "0|"), "child_pugh" to mapOf("ascitis" to "")),
             examenFisico = ExamenFisico("c1"),
-            antecedentes = listOf(antecedente("familiares", "hta"), antecedente("familiares", "nota", detalle = " ")),
         )
         assertEquals(emptySet(), conDatos(datos))
+    }
+
+    @Test
+    fun las_secciones_por_paciente_no_cuentan_como_datos_de_la_consulta() {
+        // Aunque algo de ellas quede atado a la consulta (un adjunto, un valor viejo, el tipo de registro), son del
+        // paciente: van en "Datos" (RF-34), no al final de cada consulta.
+        val datos = DatosConsulta(
+            valores = mapOf("antecedentes_personales" to mapOf("alergias" to "1|"), "antecedentes_familiares" to mapOf("nota" to "Madre HTA")),
+            tiposRegistro = setOf("screening"),
+            seccionesArchivo = setOf("antecedentes_personales", "antecedentes_familiares"),
+        )
+        assertEquals(emptySet(), conDatos(datos))
+        assertEquals(emptyList(), soloLectura(SeccionesComunes.TIPO_TELEMEDICINA, datos))
+    }
+
+    @Test
+    fun antecedentes_personales_con_datos_salen_en_los_del_paciente_y_no_en_la_consulta() {
+        val antecedentes = listOf(antecedente("personales", "alergias", flag = true))
+        assertEquals(listOf("antecedentes_personales"), delPaciente(antecedentes))
+        val r = seccionesDelPacienteSoloLectura(catalogo, antecedentes, perfilEntero, emptySet())
+        assertEquals("Antecedentes personales", r.single().titulo)
+        // En la consulta no salen ni con algo de la sección atado a ella.
+        val datos = DatosConsulta(seccionesArchivo = setOf("antecedentes_personales"))
+        assertEquals(emptyList(), soloLectura(SeccionesComunes.TIPO_CONTROL, datos))
+    }
+
+    @Test
+    fun antecedentes_sin_datos_o_dados_de_baja_no_salen_en_los_del_paciente() {
+        assertEquals(emptyList(), delPaciente(emptyList()))
+        assertEquals(
+            emptyList(),
+            delPaciente(
+                listOf(
+                    antecedente("personales", "alergias"),
+                    antecedente("personales", "nota", detalle = " "),
+                    antecedente("familiares", "hta", flag = true).copy(activo = false),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun antecedentes_familiares_en_el_perfil_no_salen_en_ninguna() {
+        val antecedentes = listOf(antecedente("familiares", "nota", detalle = "Madre HTA"))
+        val conFamiliares = perfilEntero + "antecedentes_familiares"
+        assertEquals(emptyList(), delPaciente(antecedentes, enPerfil = conFamiliares))
+        // Fuera del perfil, sí.
+        assertEquals(listOf("antecedentes_familiares"), delPaciente(antecedentes))
+    }
+
+    @Test
+    fun antecedentes_del_paciente_en_orden_de_catalogo_y_las_legadas_al_final() {
+        val antecedentes = listOf(antecedente("personales", "alergias", flag = true), antecedente("familiares", "hta", flag = true))
+        assertEquals(listOf("antecedentes_familiares", "antecedentes_personales"), delPaciente(antecedentes))
+    }
+
+    @Test
+    fun oculta_por_el_medico_y_en_el_perfil_no_sale_en_ninguna() {
+        val conFamiliares = perfilEntero + "antecedentes_familiares"
+        val ocultas = setOf("antecedentes_familiares", "conductas")
+        assertEquals(emptyList(), delPaciente(listOf(antecedente("familiares", "hta", flag = true)), conFamiliares, ocultas))
+        assertEquals(emptyList(), soloLectura(SeccionesComunes.TIPO_CONTROL, DatosConsulta(valores = texto("conductas" to "Dieta")), ocultas))
+        // Oculta pero ya fuera del perfil: se ignora y los datos se ven en "Datos".
+        assertEquals(listOf("antecedentes_familiares"), delPaciente(listOf(antecedente("familiares", "hta", flag = true)), ocultas = ocultas))
     }
 
     @Test
@@ -176,13 +252,12 @@ class SeccionesSoloLecturaTest {
     fun en_orden_de_catalogo_y_las_legadas_al_final() {
         val datos = DatosConsulta(
             valores = texto("nota" to "Algo") + mapOf("alimentacion" to mapOf("otra" to "1|Sin TACC")),
-            antecedentes = listOf(antecedente("personales", "alergias", flag = true), antecedente("familiares", "nota", flag = true, detalle = "Madre HTA")),
             tiposRegistro = setOf("interconsulta"),
-            seccionesArchivo = setOf("fotos", "documentos"),
+            seccionesArchivo = setOf("fotos", "documentos", "audio"),
             diagnosticos = 2,
         )
         assertEquals(
-            listOf("antecedentes_familiares", "documentos", "alimentacion", "interconsulta", "nota", "diagnostico", "fotos", "antecedentes_personales"),
+            listOf("documentos", "alimentacion", "interconsulta", "nota", "diagnostico", "audio", "fotos"),
             soloLectura(SeccionesComunes.TIPO_TELEMEDICINA, datos).map { it.id },
         )
     }
@@ -220,14 +295,13 @@ class SeccionesSoloLecturaTest {
         // mostrar desde Configuración). Sin ocultarla, sale.
         val datos = DatosConsulta(valores = texto("nota" to "Vuelve en un mes"))
         val tele = enPerfil(SeccionesComunes.TIPO_TELEMEDICINA)
-        val perfilEntero = enPerfil(SeccionesComunes.TIPO_CONTROL) + tele
         assertEquals(emptyList(), seccionesSoloLectura(catalogo, tele, conDatos(datos), setOf("nota"), perfilEntero))
         assertEquals(listOf("nota"), seccionesSoloLectura(catalogo, tele, conDatos(datos), emptySet(), perfilEntero).map { it.id })
     }
 
     @Test
     fun ids_con_datos_que_la_app_no_conoce_se_omiten() {
-        assertEquals(emptyList(), seccionesSoloLectura(catalogo, emptySet(), setOf("seccion_del_futuro"), emptySet()))
+        assertEquals(emptyList(), seccionesSoloLectura(catalogo, emptySet(), setOf("seccion_del_futuro"), emptySet(), emptySet()))
     }
 
     private fun antecedente(categoria: String, clave: String, flag: Boolean = false, detalle: String = "") =

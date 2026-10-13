@@ -317,3 +317,9 @@ preferenciasDeMedico: SELECT * FROM medico_preferencia WHERE medico_id = ? AND d
 upsertPreferencia: INSERT OR REPLACE INTO medico_preferencia VALUES ?;
 preferenciasDirty: SELECT * FROM medico_preferencia WHERE dirty = 1;
 limpiarPreferencia: UPDATE medico_preferencia SET dirty = 0 WHERE medico_id = ? AND clave = ?;
+
+-- Qué se cargó en una consulta, para saber qué secciones tienen datos en ella (HC general, bloque de solo
+-- lectura). Lo que es del paciente (sin consulta) no entra. Solo lectura: no cambia el esquema.
+tiposRegistroDeConsulta: SELECT DISTINCT tipo FROM registro_clinico WHERE consulta_id = ? AND deleted = 0 AND activo = 1;
+tiposLaboratorioDeConsulta: SELECT DISTINCT tipo FROM laboratorio WHERE consulta_id = ? AND deleted = 0 AND activo = 1;
+seccionesArchivoDeConsulta: SELECT DISTINCT seccion FROM archivo WHERE consulta_id = ? AND deleted = 0 AND activo = 1;

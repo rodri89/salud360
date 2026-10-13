@@ -10,12 +10,11 @@ import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.ExamenFisico
 
 /**
- * Lo cargado en una consulta, tal como sale de la base, para saber qué secciones tienen datos (RF-22).
+ * Lo cargado en una consulta, tal como sale de la base, para saber qué secciones tienen datos en ella (RF-22).
+ * Los antecedentes no van acá: son del paciente y se muestran aparte, en "Datos" (RF-34).
  *
  * - [valores]: `seccion_valor` de la consulta, sección → campo → valor (la misma forma que `ConsultaViewModel.valores`).
  * - [examenFisico]: la fila de `examen_fisico` de la consulta.
- * - [antecedentes]: los del paciente en la HC: se guardan por paciente y se acumulan entre consultas, y el bloque de
- *   lectura muestra esos mismos.
  * - [tiposRegistro], [tiposLaboratorio]: tipos de `registro_clinico` y `laboratorio` con filas activas de la consulta.
  * - [seccionesArchivo]: secciones de `archivo` con adjuntos activos de la consulta (incluye audio y fotos).
  * - [diagnosticos]: cuántos diagnósticos tiene asignados la consulta.
@@ -23,7 +22,6 @@ import com.salud360.core.model.hc.ExamenFisico
 data class DatosConsulta(
     val valores: Map<String, Map<String, String>> = emptyMap(),
     val examenFisico: ExamenFisico? = null,
-    val antecedentes: List<Antecedente> = emptyList(),
     val tiposRegistro: Set<String> = emptySet(),
     val tiposLaboratorio: Set<String> = emptySet(),
     val seccionesArchivo: Set<String> = emptySet(),
@@ -36,9 +34,13 @@ data class DatosConsulta(
  */
 fun campoTieneDato(campo: CampoDef, valor: String?): Boolean = campo.tipo != TipoCampo.ETIQUETA && tieneDato(valor)
 
-/** Ids de las secciones de [def] (la definición armada, con las legadas) que tienen datos en la consulta. */
+/**
+ * Ids de las secciones de [def] (la definición armada, con las legadas) que tienen datos en la consulta. Las que se
+ * guardan por paciente (antecedentes, ficha, registros `porPaciente`) nunca cuentan, aunque algo suyo quede atado a la
+ * consulta: van en [seccionesDelPacienteSoloLectura].
+ */
 fun seccionesConDatos(datos: DatosConsulta, def: EspecialidadDefinition): Set<String> =
-    def.secciones.filter { s -> seccionTieneDatos(s, datos, def) }.map { it.id }.toSet()
+    def.secciones.filter { s -> !esDelPaciente(s, def) && seccionTieneDatos(s, datos, def) }.map { it.id }.toSet()
 
 /**
  * Secciones para mostrar solo para leer al final de la consulta (RF-22, RF-30): las de [conDatos] que no están en
@@ -47,18 +49,45 @@ fun seccionesConDatos(datos: DatosConsulta, def: EspecialidadDefinition): Set<St
  *
  * [ocultas] es la preferencia del médico tal cual (RF-28): una oculta que está en su perfil no sale acá (la vuelve a
  * mostrar desde Configuración); una que ya no está en el perfil se ignora y, si tiene datos, sale como cualquier otra.
- * Para eso [enPerfil] son las secciones del perfil en todos los tipos; si no se pasan, solo se miran las del tipo.
+ * Para eso [enPerfil] son las secciones del perfil en todos los tipos (obligatorio: sin él, una oculta del perfil que
+ * no va en este tipo saldría acá).
  */
 fun seccionesSoloLectura(
     catalogo: CatalogoHc,
     enPerfilParaTipo: Set<String>,
     conDatos: Set<String>,
     ocultas: Set<String>,
-    enPerfil: Set<String> = enPerfilParaTipo,
+    enPerfil: Set<String>,
 ): List<SeccionDef> =
     (catalogo.secciones + catalogo.legadas)
-        .filter { it.id in conDatos && it.id !in enPerfilParaTipo && !(it.id in ocultas && it.id in enPerfil) }
+        .filter { it.id in conDatos && fueraDelPerfil(it.id, enPerfilParaTipo, ocultas, enPerfil) }
         .map { it.def }
+
+/**
+ * Secciones del paciente para mostrar una sola vez, solo para leer, en "Datos" (RF-34, RF-30): las de antecedentes
+ * con datos en [antecedentes] (los del paciente en la HC) que no están en el perfil en ningún tipo ([enPerfil]), con el
+ * nombre por defecto, primero en orden de catálogo y después las legadas. [ocultas] como en [seccionesSoloLectura]:
+ * una oculta del perfil no sale; fuera del perfil se ignora.
+ */
+fun seccionesDelPacienteSoloLectura(
+    catalogo: CatalogoHc,
+    antecedentes: List<Antecedente>,
+    enPerfil: Set<String>,
+    ocultas: Set<String>,
+): List<SeccionDef> =
+    (catalogo.secciones + catalogo.legadas)
+        .filter { it.def.tipo == TipoSeccion.ANTECEDENTES && fueraDelPerfil(it.id, enPerfil, ocultas, enPerfil) }
+        .filter { s -> antecedentes.any { a -> a.activo && a.categoria == s.def.categoriaAntecedentes && (a.flag || tieneDato(a.detalle)) } }
+        .map { it.def }
+
+private fun fueraDelPerfil(id: String, enPerfilAca: Set<String>, ocultas: Set<String>, enPerfil: Set<String>) =
+    id !in enPerfilAca && !(id in ocultas && id in enPerfil)
+
+private fun esDelPaciente(s: SeccionDef, def: EspecialidadDefinition): Boolean = when (s.tipo) {
+    TipoSeccion.ANTECEDENTES, TipoSeccion.FORM_PACIENTE -> true
+    TipoSeccion.REGISTROS -> s.registroTipo?.let { def.registro(it) }?.porPaciente == true
+    else -> false
+}
 
 private fun seccionTieneDatos(s: SeccionDef, datos: DatosConsulta, def: EspecialidadDefinition): Boolean {
     val valores = datos.valores[s.id].orEmpty()
@@ -73,12 +102,9 @@ private fun seccionTieneDatos(s: SeccionDef, datos: DatosConsulta, def: Especial
         TipoSeccion.REGISTROS -> s.registroTipo in datos.tiposRegistro
         TipoSeccion.LABORATORIO -> s.laboratorioTipo in datos.tiposLaboratorio
         TipoSeccion.ARCHIVOS, TipoSeccion.AUDIO -> s.id in datos.seccionesArchivo
-        TipoSeccion.ANTECEDENTES -> datos.antecedentes.any { a ->
-            a.activo && a.categoria == s.categoriaAntecedentes && (a.flag || tieneDato(a.detalle))
-        }
         TipoSeccion.DIAGNOSTICOS -> datos.diagnosticos > 0
-        // Se guarda en la ficha del paciente, no en la consulta.
-        TipoSeccion.FORM_PACIENTE -> false
+        // Del paciente, no de la consulta (ver esDelPaciente).
+        TipoSeccion.ANTECEDENTES, TipoSeccion.FORM_PACIENTE -> false
     }
 }
 

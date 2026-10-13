@@ -44,6 +44,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   T26 hecha, falta la prueba manual (HC del médico por `PUT medicos/{id}/historias-clinicas` de turnos, sin
   `dirty`; `AdminRepository.setEspecialidadHc` quitado; un solo `PerfilesHcViewModel` para todo el panel, que
   recarga con `PerfilesHcRepository.asignacionesCambiadas` cuando el alta asigna un perfil).
+  T27 hecha (`HcRepository.observarDatosConsulta` + 3 consultas de lectura en `HistoriaClinica.sq`; `DatosConsulta`
+  sin antecedentes; `seccionesDelPacienteSoloLectura` solo mira antecedentes; `enPerfil` obligatorio).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

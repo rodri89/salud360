@@ -3,6 +3,7 @@ package com.salud360.core.data.repos
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
+import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -26,6 +27,7 @@ import com.salud360.core.model.hc.SeccionValor
 import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.LocalDate
 
@@ -293,6 +295,22 @@ class HcRepository(
     fun observarVacunas(pacienteId: Id): Flow<List<VacunaAplicada>> = q.vacunasDePaciente(pacienteId).flujoLista { it.toModel() }
     suspend fun guardarVacuna(v: VacunaAplicada) = q.upsertVacuna(v.toRow(ahoraMillis()))
     suspend fun vacunas(pacienteId: Id): List<VacunaAplicada> = q.vacunasDePaciente(pacienteId).lista { it.toModel() }
+
+    // ---- datos de una consulta (HC general, bloque de solo lectura) ----
+
+    /**
+     * Lo cargado en una consulta, para saber qué secciones tienen datos en ella (RF-22). Lo del paciente (registros y
+     * adjuntos sin consulta, antecedentes) no entra; los antecedentes se leen con [observarAntecedentes].
+     */
+    fun observarDatosConsulta(consultaId: Id): Flow<DatosConsulta> = combine(
+        observarValores(consultaId),
+        observarExamenFisico(consultaId),
+        q.tiposRegistroDeConsulta(consultaId).flujoLista { it },
+        q.tiposLaboratorioDeConsulta(consultaId).flujoLista { it },
+        combine(q.seccionesArchivoDeConsulta(consultaId).flujoLista { it }, observarDiagnosticosDeConsulta(consultaId)) { a, d -> a to d.size },
+    ) { valores, examen, registros, laboratorios, (archivos, diagnosticos) ->
+        DatosConsulta(valores, examen, registros.toSet(), laboratorios.toSet(), archivos.toSet(), diagnosticos)
+    }
 
     // ---- preferencias del médico ----
 
