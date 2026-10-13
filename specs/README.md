@@ -5,5 +5,5 @@ Una carpeta por funcionalidad: `specs/NNN-nombre/` con `spec.md`, `plan.md` y `t
 
 | Spec | Estado |
 |---|---|
-| [001-hc-configurable](001-hc-configurable/spec.md) — Perfiles configurables de la HC general (hclinica) desde el admin | spec y plan aprobados; tandas A1 y A2 completas; tanda B (0/8) |
+| [001-hc-configurable](001-hc-configurable/spec.md) — Perfiles configurables de la HC general (hclinica) desde el admin | spec y plan aprobados; tandas A1, A2 y B completas; tanda C (0/10) |
 | [002-hc-clinica](002-hc-clinica/spec.md) — La HC general lee y escribe la base de hclinica (depende de 001) | borrador (spec + plan previo) |

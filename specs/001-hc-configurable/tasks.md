@@ -347,3 +347,252 @@ Reglas de la tanda:
 7. **AGENTS.md** (módulos con tests) se actualiza en el cierre (tanda D).
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+Validada por el reviewer el 2026-10-12: APROBADO.
+
+## Tanda C — Administración y pantalla del médico
+
+Fases 4 y 5 del plan (sección 4: `features/admin`, `features/hc`, `composeApp` y las consultas de lectura de
+`HistoriaClinica.sq`; secciones 7, 9 y 11; "Decidido" 5 a 8). RF: RF-1 a RF-18 (interfaz del administrador),
+RF-19 a RF-28, RF-33 y RF-34 (médico). Todo en este repo, rama `hc-general`.
+
+Reglas de la tanda:
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Lo que tenga lógica va a `core/data/.../hcgeneral/` (o al repositorio) con su test, primero en rojo; los
+  ViewModels y las pantallas no tienen tests en este repo: solo muestran y delegan (constitución 4).
+- Interfaz: el agente deja compilado `.\gradlew :composeApp:compileKotlinWasmJs` y los pasos manuales; los prueba el
+  usuario con el `devWeb` contra XAMPP de `AGENTS.md`. La tarea no se marca hecha hasta que el usuario confirme.
+- Datos de prueba: perfiles con nombres inventados que empiezan con "Prueba C", borrados al terminar cada tarea (o
+  al final de la tanda si la siguiente los usa). "Clínica general" y "Hepatología" de la carga inicial no se
+  editan; si se cambia la asignación del médico de prueba, al terminar vuelve a "Hepatología". Licencia del médico
+  de prueba: extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+- **No se toca** (tanda D, "Decidido" C5): `7.sqm`, `normalizarHistoriasClinicas`, `hepatologiaContribution`. Tampoco
+  `HcApiSync`/`SyncEngine`, ni se registra un `HcBackend` para "clinica"; la configuración nunca se pide desde el
+  autoguardado.
+- `HistoriaClinica.sq` solo suma consultas de lectura: sin columnas ni tablas nuevas, sin migración.
+
+### Decidido (2026-10-13)
+1. **C1 — Datos por paciente en "Datos"** (decisión del usuario): los antecedentes personales del paciente y, en
+   general, los datos que se guardan por paciente y no por consulta, de secciones que no están en el perfil, **no**
+   salen como solo lectura al final de cada consulta: se muestran una sola vez, solo lectura, en la pestaña "Datos"
+   (ficha del paciente) de la HC general. Al final de la consulta van solo las secciones con datos en **esa**
+   consulta. Se ajustan `seccionesConDatos`/`seccionesSoloLectura` (`hcgeneral/SeccionesSoloLectura.kt`, de T18) con
+   su test (T27) y se muestra en T30.
+2. **C2 — Copia de diagnósticos** (reviewer, bloqueante): `HistoriaClinicaViewModel.nuevaConsulta`
+   (`ConsultaViewModel.kt`, ~línea 379) copia los últimos diagnósticos si `definicion.secciones` tiene una sección
+   de diagnósticos; con la legada `diagnostico` en la definición armada eso dispararía. Tiene que mirar las secciones
+   de los tipos de consulta, con test, en la **misma** tarea que registra `hcGeneralContribution` (T28).
+3. **C3 — `enPerfil` obligatorio** (reviewer): `seccionesSoloLectura` pierde el valor por defecto de `enPerfil`, así
+   la pantalla tiene que pasarlo (T27, usado en T30).
+4. **C4 — Borrar un perfil** (reviewer): el `409 perfil_con_medicos` no trae el número; alcanza con mostrar el
+   mensaje del servidor y recargar la lista. Borrar se deshabilita con `ResumenPerfil.medicos` > 0 (T23).
+5. **C5 — Hepatología sigue hasta la D**: en C, `hcGeneralContribution` reemplaza a `clinicaContribution` en
+   `AppDi.kt` (T28); `hepatologiaContribution`, `7.sqm` y `normalizarHistoriasClinicas` son de la tanda D.
+6. **C6 — Migración en el navegador**: se prueba en `devWeb` que un navegador con la base en versión 6 (de antes de
+   la T20) migra a 7 sin recrearla vacía (T23, primer paso manual de la tanda).
+7. **C7 — C1 pasa a la spec** (decisión del usuario, opción 1): cambio aprobado en `spec.md`: RF-22 queda acotado a
+   los datos de **esa** consulta y RF-34 (nuevo) muestra los datos por paciente fuera del perfil una sola vez, solo
+   lectura, en "Datos". `plan.md` suma RF-34 a la tabla de trazabilidad. Lo implementan T27 y T30.
+8. **C8 — Hepatología visible hasta la D**: la casilla "Hepatología" sigue en el alta y la ficha del médico hasta la
+   tanda D. Las asignaciones de T25 listan a los médicos con `clinica` **o** `hepatologia` habilitada.
+9. **C9 — Espera de `DefinicionesHc`**: hasta 5 s esperando la configuración; si vence, se usa la guardada
+   (`estadoConfig` como sin conexión, RF-25/RF-26) (T28).
+10. **C10 — Consulta abierta sin perfil**: el médico que queda sin perfil con una consulta ya abierta puede seguirla
+    (solo "Datos"), cerrarla y anularla; no puede crear consultas nuevas (RF-19) (T28, T29).
+
+- [x] **T22. Edición del perfil en borrador (lógica pura).** RF-5, RF-6, RF-7, RF-8, RF-16
+  - `hcgeneral/EditorPerfil.kt`: funciones sobre `PerfilHc` que devuelven el perfil cambiado, sin red ni Compose:
+    `agregarPestania` (al final, con un nombre por defecto que no repita otro, comparando como `claveDeNombre`),
+    `renombrarPestania`, `moverPestania(i, ±1)`, `quitarPestania` (con sus secciones), `agregarSeccion(pestania,
+    seccionId, catalogo)` con `nuevaSeccion` (nombre por defecto y solo Consulta, RF-8), `renombrarSeccion`,
+    `marcarTipo(pestania, j, tipo, marcado)`, `moverSeccion(pestania, j, ±1)`, `moverSeccionAPestania(origen, j,
+    destino)` (va al final de la otra) y `quitarSeccion`. Índices fuera de rango → perfil sin cambios. Las secciones
+    que la app no conoce se conservan intactas en todas las operaciones (RF-16); el `id` del perfil nunca cambia.
+  - `EditorPerfilTest`: cada operación (orden resultante exacto), bordes (subir la primera, bajar la última, mover a
+    la misma pestaña), nombre por defecto con "Pestaña 1" ya usada, quitar la pestaña con una sección desconocida
+    adentro (se va con ella; mover o renombrar otras no la toca), la sección agregada sale con Consulta.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EditorPerfilTest*'` en verde.
+
+- [ ] **T23. Solapa "Perfiles HC": lista, duplicar y borrar.** RF-1 (lectura), RF-11, RF-12, RF-13, RF-14; C4, C6
+  - `features/admin/.../PerfilesHcViewModel.kt` (registrado en `AdminModule.kt`; recibe `PerfilesHcRepository` y el
+    `CatalogoHc`): al abrir pide catálogo, perfiles y asignaciones; estado con la lista, `cargando`, `mensaje` y
+    `sinConexion` (fallo con `codigo` `red`, RF-14) y `reintentar()`. Duplicar = `perfil(id)` → `duplicarPerfil` con
+    los nombres de la lista → `crear` → recargar (RF-12). Borrar con confirmación, solo si `medicos == 0`; un `409
+    perfil_con_medicos` muestra el mensaje del servidor y recarga (C4, RF-11). Los fallos muestran el `mensaje` de la
+    `TobbException` (RF-13).
+  - `PerfilesHcScreens.kt` (nuevo): solapa "Perfiles HC" al final de `SOLAPAS` en `AdminScreens.kt`; por perfil:
+    nombre, médicos asignados, Editar (sin acción hasta T24), Duplicar y Borrar (deshabilitado con médicos). Sin
+    conexión: aviso, acciones deshabilitadas y "Reintentar".
+  - `composeApp/.../AppDi.kt`: `single<CatalogoHc> { catalogoHcGeneral }` (la lista de contribuciones no cambia).
+  - Hecho cuando: `.\gradlew :features:admin:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs`
+    compilan, y el usuario confirma en `devWeb`:
+    1. (C6) En el navegador que ya usaba la app antes de la T20, sin borrar datos del sitio: la app arranca sin error
+       en la consola y, entrando como el médico de prueba, siguen sus pacientes y consultas (la base pasó de la
+       versión 6 a la 7, no se recreó vacía).
+    2. Como administrador, "Perfiles HC" lista "Clínica general" y "Hepatología" con su número de médicos, y Borrar
+       está deshabilitado en los dos.
+    3. Duplicar "Hepatología" dos veces → "Copia de Hepatología" y "Copia de Hepatología (2)", con 0 médicos; Borrar
+       las dos → desaparecen.
+    4. Con Apache de XAMPP detenido, "Reintentar" → aviso de sin conexión y nada se puede tocar; prendido otra vez,
+       "Reintentar" → vuelve la lista.
+
+- [ ] **T24. Editor de perfiles.** RF-1 a RF-9, RF-13, RF-14, RF-15, RF-16
+  - En `PerfilesHcViewModel`: borrador del perfil en edición ("Nuevo perfil" arranca con una pestaña vacía; Editar
+    lo lee con `perfil(id)`), operaciones de T22, y Guardar: primero `validarPerfil(perfil, otros nombres de la
+    lista, ids del catálogo remoto)`; si pasa, `guardar` (POST o PUT). Errores locales o del 422
+    (`TobbException.errores`) se guardan por `campo`; cualquier fallo deja el borrador intacto para reintentar
+    (RF-13); `red` → sin conexión y edición deshabilitada (RF-14). Guardado bien → vuelve a la lista y recarga.
+  - En `PerfilesHcScreens.kt`: nombre del perfil; pestañas (agregar, renombrar, subir/bajar, quitar); en cada una sus
+    secciones (renombrar, casillas Consulta/Telemedicina, subir/bajar, mover a otra pestaña, quitar) y "Agregar
+    sección" con `seccionesParaAgregar` (nombre y descripción). El catálogo completo (`catalogoParaAdmin`) se ve con
+    nombre y descripción; las no soportadas, "requiere actualizar la app" y sin poder agregarlas; si el perfil ya
+    tiene una, se muestra marcada así y se conserva al guardar (RF-16). Cada error junto a su campo. Salir con
+    cambios sin guardar pide confirmación.
+  - Hecho cuando: `.\gradlew :composeApp:compileKotlinWasmJs` compila y el usuario confirma en `devWeb`:
+    1. Crear "Prueba C" con pestaña "Uno" (Motivo de consulta, Nota) y "Dos" (Conductas, Consulta y Telemedicina) →
+       aparece en la lista; al reabrirlo está igual y en ese orden.
+    2. No guarda y marca el campo: nombre vacío, de 61 caracteres, "clinica  general"; dos pestañas "Uno"; una
+       sección sin tipos; perfil sin secciones.
+    3. Renombrar "Nota" a "Nota final", moverla a "Dos", subir "Dos" y guardar → al reabrir, mismo perfil (misma
+       fila en la lista) con todo eso.
+    4. Abrir "Prueba C" en dos pestañas del navegador, guardar un cambio distinto en cada una → al reabrir queda
+       completo el último guardado (RF-15).
+    5. Con Apache detenido, Guardar → mensaje y el borrador sigue en pantalla; prendido otra vez, Guardar anda (RF-13).
+    6. (RF-16) Agregando por un rato en la **copia servida** (no en el clon) una sección `prueba_c` a
+       `CatalogoSecciones.php` y una fila de `prueba_c` en "Prueba C" por SQL puntual: el catálogo la muestra como
+       "requiere actualizar la app" sin poder agregarla y, guardando el perfil desde la app, la fila sigue. Después
+       se quitan las dos cosas.
+
+- [ ] **T25. Asignación de perfiles a médicos.** RF-10, RF-14, RF-17; C8
+  - `PerfilesHcViewModel` suma `AdminRepository.observarMedicos()`: médicos con "clinica" **o** "hepatologia"
+    habilitada (C8: hepatología sigue como casilla aparte hasta la tanda D), cruzados por
+    número de turnos (`TobbIds.numero`) con `asignaciones()`, como la solapa de licencias. Asignar = `asignar(número,
+    perfilId | null)` y recargar perfiles y asignaciones (los conteos de la lista cambian solos).
+  - Pantalla: sección "Médicos" en "Perfiles HC" con un selector de perfil por médico que incluye "Sin perfil"; si la
+    asignación es de un número no vinculado en hclinica (`vinculado == false`), se indica. Sin conexión, selectores
+    deshabilitados (RF-14).
+  - Hecho cuando: `.\gradlew :composeApp:compileKotlinWasmJs` compila y el usuario confirma en `devWeb`: el médico de
+    prueba aparece con "Hepatología"; asignarle "Prueba C" → "Prueba C" muestra 1 médico y Borrar se deshabilita;
+    renombrar "Prueba C" → sigue asignado (RF-10); "Sin perfil" → queda sin perfil (y `GET config` como médico da
+    `perfil: null`); se le vuelve a poner "Hepatología".
+
+- [ ] **T26. Alta y ficha del médico con la HC general y su perfil.** RF-18, RF-14
+  - `core/data`: `AgendaTurnosOnline` + `TurnosRepository.guardarHistoriasClinicas(medicoId, codigos)` →
+    `PUT medicos/{id}/historias-clinicas` de turnos (T7), requiere conexión como `crearUsuario`; `crearUsuario` deja
+    disponible el `medico_id` de `TobbUsuarioCreado` (hoy devuelve solo `Usuario`).
+  - `AdminViewModel.setEspecialidadHc`: manda la lista completa a turnos y, si la acepta, guarda el médico en el
+    dispositivo **sin** `dirty` (dueño remoto; hoy `AdminRepository.setEspecialidadHc` solo cambia la base local);
+    si falla, mensaje y nada cambia.
+  - Alta (`UsuariosTab`): al marcar "Clínica" (`CodigosHc.GENERAL`) aparece el selector de perfil (perfiles de
+    `PerfilesHcRepository` + "Sin perfil"); después del alta, si hay perfil y `medico_id`, se asigna; si la
+    asignación falla, "Usuario creado; falta asignarle el perfil: <motivo>". Ficha (`MedicoCard`): con "Clínica"
+    habilitada, el mismo selector que T25.
+  - Test en `core/data` commonTest del cuerpo `{historias_clinicas: [...]}` y de la lectura de `medico_id` del alta.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest` en verde, `.\gradlew :composeApp:compileKotlinWasmJs` compila y el
+    usuario confirma en `devWeb`: alta de un médico "Prueba C" con "Clínica" y perfil "Prueba C" → turnos local le
+    habilita `clinica` y `config/asignaciones` lo trae con `vinculado: false` y ese perfil; en la ficha del médico de
+    prueba, destildar y volver a tildar "Clínica" → `auth/perfil` de turnos lo refleja; con Apache detenido, tildar
+    → mensaje y la casilla queda como estaba. Al terminar: el usuario de prueba desactivado en turnos local por SQL
+    puntual y su asignación quitada (`perfil_id: null`).
+
+- [ ] **T27. Datos de la consulta para el bloque de solo lectura (C1, C3, C7).** RF-22, RF-28, RF-30, RF-34
+  - `HistoriaClinica.sq`, solo lectura: `tiposRegistroDeConsulta`, `tiposLaboratorioDeConsulta` y
+    `seccionesArchivoDeConsulta` (`SELECT DISTINCT ... WHERE consulta_id = ? AND deleted = 0 AND activo = 1`).
+  - `HcRepository`: flujo de `DatosConsulta` de una consulta (valores, examen físico, tipos de registro y de
+    laboratorio, secciones de archivo y cantidad de diagnósticos de esa consulta) y, aparte, los antecedentes del
+    paciente en la HC.
+  - `SeccionesSoloLectura.kt` (C1): `seccionesConDatos` cuenta solo lo cargado en la consulta (las secciones de
+    antecedentes, y cualquier registro `porPaciente`, ya no cuentan; `DatosConsulta.antecedentes` sale de ahí); nueva
+    `seccionesDelPacienteSoloLectura(catalogo, antecedentes, enPerfil, ocultas)`: las secciones por paciente con datos
+    que no están en el perfil en ningún tipo, con el nombre por defecto, en orden de catálogo y después las legadas,
+    para la pestaña "Datos" (RF-34). (C3) `enPerfil` de `seccionesSoloLectura` sin valor por defecto.
+  - `SeccionesSoloLecturaTest` ajustado: antecedentes personales con datos → no salen en la consulta y sí en las del
+    paciente; antecedentes familiares en el perfil → no salen en ninguna; oculta por el médico y en el perfil → en
+    ninguna. `core/data/src/jvmTest/.../repos/DatosConsultaTest.kt` (SQLite en archivo temporal, como
+    `ConfigHcRepositoryTest`): una consulta con registro, laboratorio, archivo y diagnóstico, más uno borrado, uno
+    inactivo y uno de otra consulta → `DatosConsulta` exacto.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*SeccionesSoloLecturaTest*' --tests '*DatosConsultaTest*'`
+    y `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **T28. HC general registrada: definición resuelta, historia clínica y copia de diagnósticos (C2, C5, C9,
+  C10).**
+  RF-19, RF-24, RF-25, RF-26, RF-33
+  - `EspecialidadRegistry.kt`: `EspecialidadContribution.catalogo: CatalogoHc? = null` al final; el registro lo
+    expone por código. `especialidades/clinica/.../HcGeneral.kt`: `hcGeneralContribution` con
+    `armarDefinicion(catalogoHcGeneral, null).definicion` (para nombre y `existe()`), el renderer de Child-Pugh y
+    `catalogo = catalogoHcGeneral`. `AppDi.kt`: `clinicaContribution` → `hcGeneralContribution`;
+    `hepatologiaContribution` se queda (C5).
+  - `features/hc/.../DefinicionesHc.kt` (`single` en `HcModule.kt`): `resolver(codigo, medicoId): DefinicionResuelta`
+    (definición + `sinPerfil` + `primeraVezSinConexion` con `codigo`/`mensaje` + `desconocidas`). Sin catálogo →
+    la definición estática de siempre (RF-33). "clinica": `ConfigHcRepository.estado(medicoId, conRed = true)` con
+    espera de hasta 5 s (C9: vencida = `estadoConfig` como sin conexión, vale lo guardado, RF-25/RF-26) y
+    `armarDefinicion`. `AvisosHcGeneral` en el
+    mismo archivo (`single`), para T30.
+  - `HistoriaClinicaViewModel`/`HistoriaClinicaScreen.kt`: definición resuelta en un `StateFlow`. Sin perfil →
+    "Falta que el administrador te asigne un perfil" (RF-19); primera vez sin configuración → "La primera vez hace
+    falta conexión" con el motivo (RF-26). En los dos casos no se ofrece "Nueva consulta" y las anteriores se abren
+    para leer ("Decidido" 8); una consulta que ya estaba abierta se puede seguir, cerrar y anular (C10, T29). Con perfil, solo los tipos con secciones (nunca "HC digitalizada"); con uno solo,
+    directo.
+  - C2: `copiaDiagnosticos(def)` en `hcgeneral/DefinicionHcGeneral.kt`: true si una sección de diagnósticos está en
+    `secciones` o `pestanias` de **algún** tipo (no en `definicion.secciones`): unión de tipos para que hematología,
+    que la tiene solo en Control, siga copiando igual (RF-33). `nuevaConsulta` la usa. Test en
+    `DefinicionHcGeneralTest`: definición armada con la legada de diagnósticos → false; diagnósticos en un solo tipo
+    → true; en `secciones` pero en ningún tipo → false.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*DefinicionHcGeneralTest*'`,
+    `.\gradlew :especialidades:clinica:jvmTest` en verde, `.\gradlew :composeApp:compileKotlinWasmJs` compila, y el
+    usuario confirma en `devWeb` con el médico de prueba: con "Hepatología" la HC "Clínica" de un paciente ofrece
+    Consulta y Telemedicina; con un perfil "Prueba C" sin nada en Telemedicina, "Nueva consulta" abre Consulta
+    directo; sin perfil → aviso de RF-19, sin "Nueva consulta" y las anteriores se abren; con
+    `-Psalud360.entorno.dev.hc.clinica` apuntando a un puerto sin servicio: en un navegador sin datos del sitio →
+    aviso de RF-26, y en el navegador que ya recibió la configuración → se arma con la guardada (RF-25).
+
+- [ ] **T29. Consulta con las pestañas del perfil y definición congelada.** RF-19, RF-20, RF-21, RF-23, RF-24,
+  RF-33; C10
+  - `ConsultaViewModel`: resuelve la definición **una vez** al abrir con `DefinicionesHc` y la guarda fuera del
+    `flatMapLatest` de `ui` (RF-23: un cambio de perfil con la consulta abierta se ve la próxima vez, sin perder lo
+    cargado); `ConsultaUi` suma lo resuelto (sin perfil, primera vez). `seccionesVisibles` delega en la función pura
+    de T17 cuando el tipo tiene `grupos`.
+  - `ConsultaScreen.kt`: si `tipo.grupos` no está vacío, pestañas = "Datos" + grupos con al menos una sección visible
+    (`seccionesVisibles(tipo, ocultas)` y `cumpleCondicion`), abriendo en "Datos" ("Decidido" 7); cada pestaña
+    renderiza sus secciones con `RenderSeccion` y no queda nada suelto debajo. Sin perfil o primera vez: solo "Datos"
+    y el aviso; una consulta abierta se puede seguir (solo "Datos"), cerrar y anular (C10, RF-19). Sin grupos
+    (pediatría y las demás): el código de hoy, intacto.
+  - Hecho cuando: `.\gradlew :composeApp:compileKotlinWasmJs` compila y el usuario confirma en `devWeb`: con "Prueba C"
+    asignado, una Consulta nueva muestra "Datos", "Uno", "Dos" con esos nombres y secciones en ese orden y abre en
+    "Datos"; una Telemedicina solo muestra las pestañas con secciones de Telemedicina; con la consulta abierta, el
+    administrador (en otra ventana privada) renombra "Uno" → la pantalla abierta no cambia y lo cargado sigue; al
+    reabrirla, el nombre nuevo (RF-23, RF-24); con una consulta abierta, el administrador le quita el perfil → al
+    reabrirla solo "Datos" y el aviso, y se puede cerrar o anular, pero la HC no ofrece "Nueva consulta" (C10); se
+    le vuelve a poner "Prueba C"; una consulta de pediatría u otra especialidad se ve igual que antes (RF-33).
+
+- [ ] **T30. Solo lectura al final de la consulta, datos del paciente en "Datos" y aviso de secciones
+  desconocidas.** RF-22, RF-27, RF-30, RF-34; C1, C3, C7
+  - `ConsultaViewModel`: con los flujos de T27, `seccionesSoloLectura(catalogo, enPerfilParaTipo = secciones de los
+    grupos del tipo, conDatos = seccionesConDatos(...), ocultas, enPerfil = las del perfil en todos los tipos)`
+    (C3, explícito) y `seccionesDelPacienteSoloLectura(...)` para "Datos" (C1).
+  - `ConsultaScreen.kt`: debajo de la pestaña elegida ("Decidido" 7), el bloque de solo lectura con un
+    `SeccionContext` envuelto en `soloLectura = true`; en "Datos", debajo de la ficha y una sola vez, las secciones
+    por paciente fuera del perfil, también solo lectura (C1, RF-34). RF-27: si hay `desconocidas` y `AvisosHcGeneral` no
+    avisó en esta sesión, un aviso de que hace falta actualizar la app (una vez por sesión, en la HC o la consulta).
+  - Hecho cuando: `.\gradlew :composeApp:compileKotlinWasmJs` compila y el usuario confirma en `devWeb`: en una
+    consulta con datos en "Nota final" de "Prueba C", el administrador quita esa sección del perfil → al reabrir, sale
+    al final, solo lectura, como "Nota" (nombre por defecto); con antecedentes familiares cargados y la sección
+    quitada del perfil, se ven en "Datos" y **no** al final de cada consulta (C1); con una fila `prueba_c` en el
+    perfil por SQL puntual → el resto se ve y el aviso sale una vez por sesión (otra vez al recargar la página); al
+    terminar se borra la fila.
+
+- [ ] **T31. Configuración de secciones con el perfil.** RF-28, RF-21, RF-33
+  - `hcgeneral/DefinicionHcGeneral.kt`: `mostrarTodas(ocultas, enPerfil): Set<String>` = las ocultas sin las del perfil
+    (las de fuera del perfil se conservan); test en `DefinicionHcGeneralTest`.
+  - `ConfigSeccionesHcViewModel`/`ConfigSeccionesHcScreen.kt`: para "clinica" usa `DefinicionesHc`: lista las
+    secciones del perfil (todas las pestañas, con el nombre del perfil, sin legadas ni desconocidas), misma
+    preferencia `secciones_ocultas_clinica`; `setVisible` nunca poda las ocultas de fuera del perfil y "Mostrar
+    todas" usa `mostrarTodas` (hoy guarda vacío y las borraría, contra RF-28). Sin perfil o primera vez: el aviso en
+    vez de la lista. Las demás especialidades, igual que hoy.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*DefinicionHcGeneralTest*'` en verde,
+    `.\gradlew :composeApp:compileKotlinWasmJs` compila y el usuario confirma en `devWeb`: Configuración → "Clínica"
+    lista las secciones de "Prueba C" con sus nombres; ocultar "Conductas" → no se ve en la consulta ni sale como
+    solo lectura aunque tenga datos; el administrador la quita del perfil y la repone → sigue oculta; "Mostrar todas"
+    → vuelve; si el médico tiene pediatría, se ve aparte e igual que antes.
+
+Al terminar la tanda: validación del reviewer, prueba manual del usuario y MEMORY.md.

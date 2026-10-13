@@ -230,8 +230,9 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `catalogoParaAdmin(remoto, catalogoApp)` | Marca `soportada` | RF-1, RF-16 |
 | `armarDefinicion(catalogo, perfil?): DefinicionArmada` | Definición "clinica": todas las secciones conocidas (títulos del perfil), tipos con `grupos` filtrados por tipo, pestañas vacías fuera, ids desconocidos aparte | RF-7, RF-19, RF-20, RF-21, RF-24, RF-27 |
 | `seccionesVisibles(tipo, ocultas)` | Grupos sin las ocultas por el médico, nunca fuera del perfil | RF-21, RF-28 |
-| `campoTieneDato(campo, valor)` / `seccionesConDatos(datos, def)` | "Tener datos" según el tipo de sección (texto/form, examen, registros, laboratorios, archivos, antecedentes, diagnósticos de esa consulta); `0`, `0\|` y vacío no cuentan | RF-22 |
-| `seccionesSoloLectura(catalogo, enPerfilParaTipo, conDatos, ocultas)` | Con datos y fuera del perfil para ese tipo, con el **nombre por defecto**, al final, en orden de catálogo y después legadas | RF-22, RF-30 |
+| `campoTieneDato(campo, valor)` / `seccionesConDatos(datos, def)` | "Tener datos" en esa consulta según el tipo de sección (texto/form, examen, registros, laboratorios, archivos, diagnósticos de esa consulta; los antecedentes y los registros por paciente no cuentan); `0`, `0\|` y vacío no cuentan | RF-22 |
+| `seccionesSoloLectura(catalogo, enPerfilParaTipo, conDatos, ocultas, enPerfil)` | Con datos en la consulta y fuera del perfil para ese tipo, con el **nombre por defecto**, al final, en orden de catálogo y después legadas; `enPerfil` sin valor por defecto | RF-22, RF-30 |
+| `seccionesDelPacienteSoloLectura(catalogo, antecedentes, enPerfil, ocultas)` | Secciones por paciente con datos que no están en el perfil en ningún tipo, con el nombre por defecto, para "Datos" | RF-34, RF-30 |
 | `estadoConfig(guardada, remota): EstadoConfigHc` | `ConPerfil` / `SinPerfil` / `PrimeraVezSinConexion`; la remota buena manda, si falla vale la guardada sin vencimiento | RF-23, RF-25, RF-26 |
 | `normalizarHistoriasClinicas(codigos)` | "hepatologia" → "clinica", sin repetidos | RF-29 |
 
@@ -291,7 +292,7 @@ No dependen de "hoy": ninguna regla de esta spec mira fechas.
 ## 9. Estrategia de tests
 - `core/data` commonTest: `PerfilValidacionTest` (RF-2, RF-4, RF-8, RF-9), `PerfilCopiaTest` (RF-11, RF-12),
   `DefinicionHcGeneralTest` (RF-7, RF-19, RF-20, RF-21, RF-24, RF-27, casos límite de pestaña vacía),
-  `SeccionesSoloLecturaTest` (RF-22, RF-28, RF-30), `EstadoConfigTest` (RF-23, RF-25, RF-26),
+  `SeccionesSoloLecturaTest` (RF-22, RF-28, RF-30, RF-34), `EstadoConfigTest` (RF-23, RF-25, RF-26),
   `HistoriasClinicasTest` (RF-29), `CatalogoAdminTest` (RF-1, RF-16), `PerfilesDtoTest` (ida y vuelta del JSON).
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
@@ -343,7 +344,7 @@ No dependen de "hoy": ninguna regla de esta spec mira fechas.
 | 3. Lógica en la app | Tipos de `core/model`, funciones puras con tests, catálogo de la app + su test | RF-2, RF-4, RF-7, RF-8, RF-9, RF-11, RF-12, RF-16, RF-20 a RF-22, RF-27, RF-28 (lógica), RF-31 | 5 |
 | 3b. Datos en la app | `6.sqm`, repositorios, DTOs, Koin, URL release, tests de caché | RF-23, RF-25, RF-26 | 3 |
 | 4. Administración | Solapa Perfiles HC: lista, editor, asignaciones, alta/edición de médico | RF-1 a RF-18 (interfaz) | 4 |
-| 5. Médico | `DefinicionesHc`, pestañas agrupadas, solo lectura, avisos, Configuración, `hcGeneralContribution` | RF-19 a RF-28, RF-33 | 5 |
+| 5. Médico | `DefinicionesHc`, pestañas agrupadas, solo lectura, avisos, Configuración, `hcGeneralContribution` | RF-19 a RF-28, RF-33, RF-34 | 5 |
 | 6. Migración hepatología | `7.sqm` + test, normalización de códigos, quitar `hepatologiaContribution` | RF-29, RF-30 | 2 |
 | 7. E2E y cierre | `HcPerfilesE2ETest`, pasos manuales `devWeb`, docs (`AGENTS.md`, `MEMORY.md`, `docs/`) | criterios de finalización | 2 |
 
@@ -380,7 +381,7 @@ MAMP de `gradle.properties`.
 | RF-19 | `GET config` con `perfil: null`; `estadoConfig`; avisos en HC | `EstadoConfigTest`, `DefinicionHcGeneralTest`, manual |
 | RF-20 | `armarDefinicion`, `ConsultaScreen` agrupada | `DefinicionHcGeneralTest`, E2E, manual |
 | RF-21 | `armarDefinicion`, `seccionesVisibles` | `DefinicionHcGeneralTest` |
-| RF-22 | `seccionesConDatos`, `seccionesSoloLectura`, bloque de lectura | `SeccionesSoloLecturaTest`, manual |
+| RF-22 | `seccionesConDatos` (solo datos de esa consulta), `seccionesSoloLectura`, bloque de lectura al final de la consulta (T27/T30) | `SeccionesSoloLecturaTest`, `DatosConsultaTest`, manual |
 | RF-23 | `DefinicionesHc` + definición congelada en `ConsultaViewModel` | `EstadoConfigTest`, manual |
 | RF-24 | Definición armada desde la config | E2E + manual (perfil nuevo sin recompilar) |
 | RF-25 | `hc_config`, `ConfigHcRepository`, `estadoConfig` | `ConfigHcRepositoryTest`, `EstadoConfigTest`, manual |
@@ -392,6 +393,7 @@ MAMP de `gradle.properties`.
 | RF-31 | `CargaInicialPerfiles`; catálogo de la app | `CatalogoHcGeneralTest`, E2E |
 | RF-32 | `CargaInicialPerfiles::perfilPara` | phpunit, E2E (`perfil_web`) |
 | RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica" | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
+| RF-34 | `seccionesDelPacienteSoloLectura`, bloque de lectura en "Datos" (T27/T30) | `SeccionesSoloLecturaTest`, manual |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la

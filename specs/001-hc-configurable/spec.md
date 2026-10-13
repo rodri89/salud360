@@ -43,7 +43,8 @@ secciones existentes no requiere programar nada ni publicar una versión nueva d
 - **Tipos de consulta**: "Consulta" y "Telemedicina" (lista fija en esta spec).
 - **Asignación**: el perfil que usa cada médico. Un médico tiene uno solo, o ninguno.
 - **Tener datos en una sección**: haber guardado en ella, en esa consulta, al menos un valor que no sea vacío ni
-  "sin cargar".
+  "sin cargar". En las secciones que se guardan por paciente y no por consulta (por ejemplo antecedentes
+  personales), haber guardado ese valor para el paciente, en cualquier consulta.
 
 ## Catálogo inicial y perfiles iniciales
 Relevado de la web (`nueva_consulta.blade.php` y `nueva_consulta_telemedicina.blade.php`). "C" = aparece en
@@ -130,9 +131,10 @@ sección: se muestran siempre, como en la web.
 - RF-20: CUANDO el médico abre una consulta de la HC general, EL SISTEMA muestra la ficha del paciente y después
   las pestañas y secciones de su perfil para ese tipo de consulta, en ese orden y con esos nombres.
 - RF-21: EL SISTEMA no muestra al médico, para editar, ninguna sección que no esté en su perfil, aunque la app la conozca.
-- RF-22: CUANDO una consulta tiene datos en una sección que no está en el perfil del médico que la mira (porque se
-  quitó, porque es de otro médico o porque nunca estuvo en el catálogo), EL SISTEMA la muestra solo para leer, al
-  final de la consulta, con su nombre por defecto.
+- RF-22: CUANDO una consulta tiene datos en esa consulta en una sección que no está en el perfil del médico que la
+  mira (porque se quitó, porque es de otro médico o porque nunca estuvo en el catálogo), EL SISTEMA la muestra solo
+  para leer, al final de la consulta, con su nombre por defecto. Los datos guardados por paciente no salen ahí:
+  van según RF-34.
 - RF-23: CUANDO el médico abre una consulta con conexión, EL SISTEMA trae la configuración vigente de su perfil;
   un cambio que llega con una consulta ya abierta en pantalla se aplica la próxima vez que la abre, sin perder lo
   que estaba cargando.
@@ -150,7 +152,10 @@ sección: se muestran siempre, como en la web.
   el dispositivo tenga guardado como "hepatología" (consultas, secciones ocultas) pasa a la HC general sin perderse,
   y una habilitación de "hepatología" en turnos cuenta como habilitación de la HC general.
 - RF-30: EL SISTEMA nunca borra ni vacía en el dispositivo datos de secciones que no estén en el catálogo (por
-  ejemplo diagnósticos ya cargados en clínica): se ven según RF-22.
+  ejemplo diagnósticos ya cargados en clínica): se ven según RF-22 o, si se guardan por paciente, según RF-34.
+- RF-34: CUANDO el paciente tiene datos guardados por paciente (no por consulta) en una sección que no está en el
+  perfil del médico (por ejemplo antecedentes personales), EL SISTEMA los muestra una sola vez, solo para leer, en
+  la ficha del paciente ("Datos").
 
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
@@ -179,6 +184,9 @@ sección: se muestran siempre, como en la web.
 - Perfil borrado (sin médicos) con consultas hechas: las consultas no guardan el perfil; se ven con el perfil de
   quien las mira y RF-22.
 - Consulta de telemedicina con secciones que solo están en "Consulta": se ven según RF-22.
+- Diagnósticos y antecedentes fuera del perfil: los diagnósticos son de cada consulta y salen al final de la
+  consulta en la que se cargaron (RF-22); los antecedentes personales son del paciente y salen una sola vez en
+  "Datos" (RF-34), no al final de cada consulta.
 - Médico del laboratorio reducido en la web: si su perfil es 2, recibe "Hepatología" (con el laboratorio general)
   y el administrador le arma un perfil propio duplicando "Hepatología".
 - Médicos que en la web ven pacientes o consultas de otro médico: la app no lo replica (fuera de alcance).
@@ -198,7 +206,7 @@ sección: se muestran siempre, como en la web.
 
 ## Criterios de finalización
 - Cada RF de lógica (validaciones de RF-4, RF-8, RF-9, RF-11, RF-12; armado y filtrado de RF-20 a RF-22; caché y
-  primera vez de RF-25 y RF-26; RF-27 a RF-30; mapeo inicial de RF-32) con test en verde.
+  primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -206,3 +214,5 @@ sección: se muestran siempre, como en la web.
 
 ## Dudas abiertas
 - (ninguna)
+
+Cambio aprobado el 2026-10-13: RF-22 acotado a la consulta y RF-34 nuevo (datos por paciente en 'Datos').
