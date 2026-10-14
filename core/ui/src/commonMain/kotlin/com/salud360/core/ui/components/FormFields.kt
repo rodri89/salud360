@@ -1,6 +1,10 @@
 package com.salud360.core.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -36,11 +42,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.salud360.core.ui.theme.LocalIsDarkTheme
+import com.salud360.core.ui.theme.coloresCelda
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.number
 import kotlinx.datetime.TimeZone
@@ -282,6 +294,36 @@ fun SiNoField(label: String, value: Boolean?, onValueChange: (Boolean) -> Unit, 
         onValueChange = { onValueChange(it == "SI") },
         modifier = modifier,
         enabled = enabled,
+    )
+}
+
+/**
+ * Celda editable de una tabla (carga de laboratorio, RF-50 a RF-53): fondo propio y borde de 1 dp que se ven sobre
+ * filas blancas y grises; con foco, borde de 2 dp de otro color. El cursor va del color del foco porque el de por
+ * defecto es negro y no se ve en oscuro. [ayuda] se muestra con la celda vacía y nunca forma parte del valor.
+ */
+@Composable
+fun CeldaEditable(valor: String, onCambio: (String) -> Unit, modifier: Modifier = Modifier, ayuda: String = "Valor") {
+    val colores = coloresCelda(LocalIsDarkTheme.current)
+    val interaccion = remember { MutableInteractionSource() }
+    val foco by interaccion.collectIsFocusedAsState()
+    val forma = MaterialTheme.shapes.extraSmall
+    BasicTextField(
+        value = valor, onValueChange = onCambio, singleLine = true,
+        textStyle = TextStyle(color = colores.texto, fontWeight = FontWeight.SemiBold),
+        cursorBrush = SolidColor(colores.bordeFoco),
+        interactionSource = interaccion,
+        modifier = modifier.width(120.dp).padding(horizontal = 6.dp),
+        decorationBox = { campo ->
+            Box(
+                Modifier.fillMaxWidth().clip(forma).background(colores.fondo)
+                    .border(if (foco) 2.dp else 1.dp, if (foco) colores.bordeFoco else colores.borde, forma)
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+            ) {
+                if (valor.isEmpty()) Text(ayuda, style = TextStyle(color = colores.ayuda), maxLines = 1)
+                campo()
+            }
+        },
     )
 }
 

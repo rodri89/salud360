@@ -785,7 +785,8 @@ Reglas de la tanda (las mismas de la tanda C2):
        filas (si no lo hay, se anota como no probado); un laboratorio de pediatría no tiene el botón y se ve igual
        que antes, salvo la celda editable de T38 (RF-33, RF-49).
 
-- [ ] **T38. Celda editable que se distingue.** RF-50, RF-51, RF-52, RF-53, RF-54
+- [x] **T38. Celda editable que se distingue.** RF-50, RF-51, RF-52, RF-53, RF-54
+  (compila; falta prueba manual del usuario)
   - `core/ui`: `theme/ColoresCelda.kt` (`ColoresCelda`, `coloresCelda(oscuro)`, `contraste`) con los valores de la
     tabla del plan, y `CeldaEditable` en `components/FormFields.kt` (fondo, borde 1 dp, borde de foco 2 dp, cursor
     y texto de ayuda "Valor"), como dice el plan (sección 4, `core/ui`).

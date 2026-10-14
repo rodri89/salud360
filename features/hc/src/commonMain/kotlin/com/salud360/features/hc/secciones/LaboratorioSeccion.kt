@@ -3,7 +3,6 @@ package com.salud360.features.hc.secciones
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -33,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.alternarFila
@@ -50,6 +47,7 @@ import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
+import com.salud360.core.ui.components.CeldaEditable
 import com.salud360.core.ui.components.CheckboxField
 import com.salud360.core.ui.components.ConfirmDialog
 import com.salud360.core.ui.components.DateField
@@ -121,7 +119,7 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
                     ) {
                         Text(a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), modifier = Modifier.width(190.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
                         if (editando) {
-                            CeldaEditable(valores.value[a.clave] ?: "") { v -> valores.value = valores.value + (a.clave to v) }
+                            CeldaEditable(valores.value[a.clave] ?: "", onCambio = { v -> valores.value = valores.value + (a.clave to v) })
                         } else if (enEstaConsulta != null) {
                             Text(enEstaConsulta.valores[a.clave] ?: "", modifier = Modifier.width(120.dp).padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
                         }
@@ -171,19 +169,6 @@ private fun ElegirFilasDialog(analitos: List<AnalitoDef>, ocultas: Set<String>, 
         confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } },
         dismissButton = { LinkButton("Mostrar todas", onClick = { onGuardar(mostrarTodasLasFilas(analitos, ocultas)) }) },
     )
-}
-
-@Composable
-private fun CeldaEditable(valor: String, onCambio: (String) -> Unit) {
-    Box(
-        Modifier.width(120.dp).padding(horizontal = 6.dp).clip(MaterialTheme.shapes.extraSmall)
-            .background(MaterialTheme.colorScheme.surface).padding(horizontal = 6.dp, vertical = 6.dp),
-    ) {
-        BasicTextField(
-            value = valor, onValueChange = onCambio, singleLine = true,
-            textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
-        )
-    }
 }
 
 /** Fecha por defecto para nuevas cargas: la de la consulta. */
