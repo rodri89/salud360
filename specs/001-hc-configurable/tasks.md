@@ -806,3 +806,79 @@ Reglas de la tanda (las mismas de la tanda C2):
     4. Un laboratorio de pediatría muestra la misma celda nueva y carga y guarda igual que antes (RF-54).
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda C4 — Varias cargas de laboratorio (2026-10-14)
+
+Cambio aprobado por el usuario el 2026-10-14 (3) (spec: definición "Laboratorio", RF-45 ajustado, RF-55 a RF-64;
+plan: sección 4 `features/hc` y `core/database`, sección 5, "Decidido" 17 a 21 y C4-1). Todo en este
+repo, rama `hc-general`. Lo de T37/T38 sobre "Nueva carga"/"Editar" en la HC general queda reemplazado por T40;
+pediatría y las demás siguen igual (RF-64).
+
+Reglas de la tanda (las mismas de la tanda C3):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica va a `core/data/.../hcgeneral/` con su test, que se ve fallar antes del código.
+  ViewModels y pantallas no tienen tests: solo muestran y delegan (constitución 4). Si Gradle pide `JAVA_HOME`:
+  `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm` y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` que ya está corriendo tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar
+  la página. **No** correr `--stop` ni matar el `devWeb` en uso.
+- La tarea de pantalla no se marca hecha hasta que el usuario confirme los pasos manuales.
+- Sin migración ni columnas nuevas: solo cambia el `ORDER BY` de `laboratoriosDePaciente`. No se toca
+  `HcApiSync`/`SyncEngine`, no se registra un `HcBackend` para "clinica" y nada llama a la API.
+- Datos de prueba: el médico de prueba con "Hepatología" (Laboratorio general y Peso) en pacientes de prueba; si se
+  usa un perfil "Prueba C4" (Laboratorio reducido), se borra al terminar y el médico vuelve a "Hepatología".
+  Licencia del médico de prueba: extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en
+  el repo.
+
+- [ ] **T39. Columnas y acciones de las cargas (lógica pura y orden).** RF-55, RF-57, RF-60, RF-61, RF-62, RF-63,
+  RF-64
+  - `hcgeneral/CargasLaboratorio.kt`: `cargasMultiples(codigo)`, `data class ColumnaLaboratorio(carga,
+    deEstaConsulta, puedeBorrar)`, `columnasLaboratorio(historico, consultaId, editable, maxOtras = 8)`,
+    `mostrarNuevaCarga(editable, abierta)` y `cargaNuevaValida(valores)`, como dice el plan (sección 5).
+  - `HistoriaClinica.sq`: `laboratoriosDePaciente` con `ORDER BY fecha DESC, updated_at DESC` (solo la consulta).
+  - `CargasLaboratorioTest` (commonTest, cargas inventadas): dos cargas de esta consulta y tres de otras → todas,
+    intercaladas por fecha descendente, con `deEstaConsulta` correcto; misma fecha → se conserva el orden de entrada
+    (dos de la misma consulta y una de esta con otra); una inactiva no sale; 12 de otras + 2 de esta con fecha vieja
+    → 8 de otras y las 2 de esta, en su lugar por fecha; `editable` true → `puedeBorrar` en todas, false → en
+    ninguna; `mostrarNuevaCarga` (editable con y sin cargas → true; abierta → false; solo lectura → false);
+    `cargaNuevaValida` con `{}`, `{"a" to "  "}` → false y con un valor → true; `cargasMultiples` true para
+    "clinica" y false para "pediatria".
+  - `core/data/src/jvmTest/.../repos/LaboratoriosDePacienteTest.kt` (SQLite en archivo temporal, como
+    `DatosConsultaTest`): dos cargas con la misma fecha guardadas una después de la otra → `observarLaboratorios`
+    trae primero la última; una dada de baja con `eliminarLaboratorio` no sale.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*CargasLaboratorioTest*' --tests '*LaboratoriosDePacienteTest*'`
+    y `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **T40. Pantalla: "Nueva carga" agrega una columna.** RF-55 a RF-64, RF-45, RF-50, RF-33
+  - `secciones/LaboratorioSeccion.kt`, como dice el plan (sección 4, `features/hc`, cambio (3)): con
+    `cargasMultiples(def.codigo)`, columna editable primera (fecha de la consulta, `CeldaEditable` en las filas
+    visibles), "Nueva carga" según `mostrarNuevaCarga`, "Guardar laboratorio" con `cargaNuevaValida` (si no,
+    "Cargá al menos un valor" y sigue abierta) y `guardarLaboratorio(tipo, null, fecha, valores)`, "Cancelar",
+    columnas de `columnasLaboratorio` con "Esta consulta" y el tacho según `puedeBorrar`, sin "Editar"; sin
+    `cargasMultiples`, el código de hoy intacto.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs` (con las `-P` de
+    arriba) compilan, el `devWeb` se refresca con `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma
+    con "Hepatología", en Laboratorio general de un paciente de prueba con cargas de otras consultas:
+    1. Consulta abierta sin cargas: "Nueva carga" abre la columna editable primera con la fecha de la consulta;
+       escribir dos valores y "Guardar laboratorio" → la columna se cierra, la carga aparece como columna con
+       "Esta consulta" y tacho, y "Nueva carga" sigue disponible (RF-55 a RF-57).
+    2. "Nueva carga" otra vez, cambiar la fecha a una anterior a alguna de otra consulta, guardar → dos columnas
+       "Esta consulta", cada una en su lugar por fecha; ninguna tiene "Editar" (RF-59, RF-61).
+    3. "Nueva carga" y "Guardar laboratorio" sin escribir nada → "Cargá al menos un valor" y la columna sigue
+       abierta; "Cancelar" → se cierra sin crear nada (RF-57, RF-58).
+    4. Otra carga con la misma fecha que una existente → dos columnas con esa fecha, la nueva primero; el tacho de
+       una (con confirmación) borra solo esa (RF-60, RF-61).
+    5. Con una fila oculta ("Elegir filas"), la columna editable no la muestra y las guardadas tampoco (RF-45).
+    6. Cerrar la consulta → se ven sus cargas y las de otras, sin "Nueva carga" ni tachos; una consulta cerrada sin
+       cargas de ese laboratorio muestra la sección vacía como antes (RF-63).
+    7. Con 9 o más cargas de otras consultas, se ven 8 de ellas y todas las de esta consulta (RF-62).
+    8. Peso se comporta igual (varias cargas); un laboratorio de pediatría sigue con "Nueva carga"/"Editar" de una
+       carga por consulta, como antes (RF-64, RF-33).
+
+### Decidido (2026-10-14)
+1. **C4-1 — Varias cargas solo en la HC general** (plan, "Decidido" C4-1): las tareas lo implementan así.
+   Extenderlo a las demás historias clínicas es un cambio aparte que requiere relevar la API de pediatría.
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.

@@ -244,6 +244,28 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
     también es `surface`: no se ve) se reemplaza por `CeldaEditable` de `core/ui`. Las celdas de solo lectura no
     cambian (texto sin borde ni fondo propio). Como el renderer es uno solo, el aspecto nuevo llega también a
     pediatría, endocrinología y las demás: es lo buscado (RF-54); el comportamiento no cambia.
+- (Cambio 2026-10-14 (3)) `secciones/LaboratorioSeccion.kt`, varias cargas (RF-55 a RF-64): si
+  `cargasMultiples(def.codigo)` (sección 5), una rama nueva; si no, el código de hoy intacto (`firstOrNull` de esta
+  consulta, "Nueva carga"/"Editar", `take(8)`; RF-64, RF-33).
+  - Estado: `abierta: Boolean` (columna editable), `fecha` (arranca en `fechaConsulta(ui)` cada vez que se abre) y
+    `valores` (arranca vacío), con `remember` sin clave de carga (ya no hay "la" carga de la consulta); `error`
+    para "Cargá al menos un valor".
+  - Columnas: `columnasLaboratorio(historico, ctx.consultaId, editable = !ctx.soloLectura)`. Cabecera de cada una:
+    fecha, "Esta consulta" (texto chico) si `deEstaConsulta`, y el tacho si `puedeBorrar` → el `ConfirmDialog` de hoy
+    → `eliminarLaboratorio` (RF-60). Valores de las de esta consulta en `SemiBold`, como hoy la de la consulta; las
+    demás normales; sin borde ni fondo propio (RF-50).
+  - `ActionRow` (sin `ctx.soloLectura`): con `abierta`, `DateField` de la fecha; si `mostrarNuevaCarga(editable,
+    abierta)`, `AcceptButton("Nueva carga")` que abre con fecha de la consulta y valores vacíos (RF-55, RF-56). Con
+    `abierta`, la columna editable va primera con `CeldaEditable` en las filas de `filasVisibles` (RF-56) y abajo
+    "Cancelar" (cierra y descarta, RF-58) y "Guardar laboratorio": `cargaNuevaValida(valores)`; si no, `error` y
+    sigue abierta; si sí, `ctx.vm.guardarLaboratorio(tipo, null, fecha, valores)` y se cierra (RF-57).
+  - Solo lectura (RF-63): `if (ctx.soloLectura && columnas.none { it.deEstaConsulta }) SeccionVacia()`, como hoy.
+  - `ConsultaViewModel.guardarLaboratorio` no cambia: con `id = null` siempre crea (`newId()`), así una carga guardada
+    nunca se pisa (RF-57, RF-59). En la HC general nadie le pasa un id.
+- (Cambio 2026-10-14 (3)) `core/database` `HistoriaClinica.sq`: `laboratoriosDePaciente` pasa a `ORDER BY fecha DESC,
+  updated_at DESC` (solo la consulta: sin columnas ni migración). Como en la HC general las cargas no se editan,
+  `updated_at` es el momento en que se guardó (las borradas no se leen), y `columnasLaboratorio` conserva ese orden a
+  igual fecha (RF-61). En pediatría solo fija el orden de dos cargas de la misma fecha, que hoy queda al azar.
 - `HistoriaClinicaScreen.kt` / `HistoriaClinicaViewModel`: definición resuelta en un `StateFlow`; con RF-19 o RF-26
   muestra el mensaje, no ofrece consulta nueva y deja abrir las anteriores en lectura; ofrece solo los tipos con
   secciones. La copia de diagnósticos pasa a mirar las secciones de los tipos y no `definicion.secciones` (si no, las
@@ -320,6 +342,14 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `esUltimaVisible(analitos, ocultas, clave)` | La casilla que hay que deshabilitar | RF-47 |
 | `mostrarTodasLasFilas(analitos, ocultas)` | `ocultas` menos las claves del laboratorio (las de afuera se conservan) | RF-48, casos límite |
 | `textoBotonFilas(analitos, ocultas)` | "Elegir filas" o "Elegir filas (n ocultas)", contando solo las de ese laboratorio | RF-48 |
+| `cargasMultiples(codigo)` (cambio 2026-10-14 (3), `hcgeneral/CargasLaboratorio.kt`) | `codigo == CodigosHc.GENERAL` | RF-64 |
+| `columnasLaboratorio(historico, consultaId, editable, maxOtras = 8): List<ColumnaLaboratorio>` | `ColumnaLaboratorio(carga, deEstaConsulta, puedeBorrar)`. Sin las inactivas; orden por `fecha` descendente con orden **estable** (a igual fecha queda el de entrada, que la consulta trae por `updated_at DESC`); todas las de `consultaId` y las primeras `maxOtras` de otras consultas, intercaladas por fecha; `puedeBorrar = editable` para todas (de esta consulta y de otras) | RF-60, RF-61, RF-62, RF-63 |
+| `mostrarNuevaCarga(editable, abierta)` | `editable && !abierta`: siempre, aunque la consulta ya tenga cargas; nunca dos columnas editables | RF-55, RF-56 |
+| `cargaNuevaValida(valores)` | `true` si algún valor no está en blanco (el `ConsultaViewModel` ya descarta los vacíos al guardar) | RF-57 |
+
+Acciones por columna en la HC general: columna editable → escribir, cambiar la fecha, "Guardar laboratorio",
+"Cancelar"; columna guardada (de esta consulta o de otra) → solo leer y, con la consulta editable, tacho; nunca
+"Editar" (RF-59).
 
 No dependen de "hoy": ninguna regla de esta spec mira fechas (la fecha por defecto de RF-39 es la de la consulta, que
 la pantalla le pasa a `cambioEstudio`).
@@ -390,6 +420,10 @@ la pantalla le pasa a `cambioEstudio`).
   `surface` (las dos franjas de la fila) ≥ 3, de texto y ayuda contra el fondo ≥ 4,5, y fondo distinto de `surface`
   (RF-50 a RF-52); más un caso conocido de `contraste` (negro/blanco = 21). RF-43, RF-46, RF-50, RF-52 (foco y
   cursor), RF-53 y RF-54 a mano con `devWeb`, en modo claro y oscuro.
+- (Cambio 2026-10-14 (3)) `core/data` commonTest `CargasLaboratorioTest` (cargas inventadas): RF-55, RF-57, RF-60
+  a RF-62, RF-64. `core/data` jvmTest `LaboratoriosDePacienteTest` (SQLite en archivo temporal, como
+  `DatosConsultaTest`): dos cargas con la misma fecha salen la última guardada primero, y una inactiva no sale
+  (RF-61). RF-56, RF-58, RF-59, RF-63 y la pantalla de pediatría (RF-64) a mano con `devWeb`.
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -447,7 +481,8 @@ la pantalla le pasa a `cambioEstudio`).
 Tandas propuestas: **A1** = fases 0, 1 y 1b (7 tareas: entorno, base de la API, turnos); **A2** = fase 2 (5, modelo y
 API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios de la prueba manual del
 2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **C3** = laboratorio, cambio del
-2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **D** = 6 y 7 (4). Cada tanda se
+2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **C4** = varias cargas de laboratorio, cambio
+del 2026-10-14 (3) (2: lógica y pantalla, RF-55 a RF-64); **D** = 6 y 7 (4). Cada tanda se
 aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
@@ -490,7 +525,7 @@ MAMP de `gradle.properties`.
 | RF-30 | `7.sqm` sin borrados; secciones legadas; `seccionesSoloLectura` | `MigracionHepatologiaTest`, `SeccionesSoloLecturaTest` |
 | RF-31 | `CargaInicialPerfiles`; catálogo de la app | `CatalogoHcGeneralTest`, E2E |
 | RF-32 | `CargaInicialPerfiles::perfilPara` | phpunit, E2E (`perfil_web`) |
-| RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica"; excepción RF-54 | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
+| RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica"; excepción RF-54; `cargasMultiples` (RF-64) | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
 | RF-34 | `seccionesDelPacienteSoloLectura`, bloque de lectura en "Datos" (T27/T30) | `SeccionesSoloLecturaTest`, manual |
 | RF-35 | `layoutConsulta` (cuerpo = grupo "Consulta"), `ConsultaScreen` pestañas + cuerpo debajo (T32/T33) | `DefinicionHcGeneralTest`, manual |
 | RF-36 | `layoutConsulta` (sin "Consulta": todo pestañas; solo "Consulta": "Datos" + cuerpo) (T32/T33) | `DefinicionHcGeneralTest`, manual |
@@ -512,6 +547,16 @@ MAMP de `gradle.properties`.
 | RF-52 | Borde 2 dp `bordeFoco` y `cursorBrush` en `CeldaEditable` (T38) | `ColoresCeldaTest`, manual con tabulador |
 | RF-53 | Texto de ayuda en el `decorationBox` (T38) | Manual |
 | RF-54 | Un solo renderer de laboratorio para todas las especialidades (T38) | Manual (pediatría) |
+| RF-55 | `mostrarNuevaCarga`, botón en la rama de `cargasMultiples` de `LaboratorioSeccion` (T39/T40) | `CargasLaboratorioTest`, manual |
+| RF-56 | Columna editable primera con `fechaConsulta(ui)`, `CeldaEditable` en `filasVisibles` (T40) | Manual |
+| RF-57 | `cargaNuevaValida`; `guardarLaboratorio(tipo, null, ...)` siempre crea (T39/T40) | `CargasLaboratorioTest`, manual |
+| RF-58 | "Cancelar" cierra y descarta (T40) | Manual |
+| RF-59 | Sin "Editar" en la rama de `cargasMultiples`; nadie pasa un id a `guardarLaboratorio` (T40) | Manual |
+| RF-60 | `ColumnaLaboratorio.puedeBorrar`, `ConfirmDialog` + `eliminarLaboratorio` (T39/T40) | `CargasLaboratorioTest`, manual |
+| RF-61 | `columnasLaboratorio` (orden estable) + `ORDER BY fecha DESC, updated_at DESC`; "Esta consulta" en la cabecera (T39/T40) | `CargasLaboratorioTest`, `LaboratoriosDePacienteTest`, manual |
+| RF-62 | `columnasLaboratorio(maxOtras = 8)` (T39) | `CargasLaboratorioTest` |
+| RF-63 | `editable = !ctx.soloLectura`; `SeccionVacia` sin cargas de esta consulta (T39/T40) | `CargasLaboratorioTest`, manual (consulta cerrada) |
+| RF-64 | `cargasMultiples`; rama de hoy intacta para las demás (T39/T40) | `CargasLaboratorioTest`, manual (pediatría) |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -578,3 +623,37 @@ C3-1. **Elegir filas en las demás historias clínicas** (pediatría, endocrinol
    laboratorio con más de una fila): queda solo en la HC general en esta spec (RF-49, para cumplir RF-33).
    Extenderlo a las demás especialidades es un cambio aparte (quitar la condición de `puedeElegirFilas` y probar
    pediatría), sin tocar datos ni API.
+
+## Decidido (2026-10-14, cambio (3): varias cargas de laboratorio)
+17. **Cada "Nueva carga" es una fila nueva** (decisión del usuario; RF-55 a RF-57): misma tabla `laboratorio`, que ya
+    admite varias filas por consulta (`consulta_id` no es único): sin migración ni columnas. `guardarLaboratorio`
+    con `id = null` siempre crea. Es lo que hace la web (cada guardado crea una carga con fecha propia), así que la 002
+    (RF-20, RF-21) mapea cada carga a una fila de la web, 1 a 1; la app siempre manda fecha (por defecto la de la
+    consulta), así que el "sin fecha → 2000-01-01" de la web no se da desde la app. Descartado: una carga por consulta
+    con "Editar" (lo de hoy; no deja registrar dos laboratorios en la misma consulta).
+18. **Las guardadas no se editan, se borran y se recargan** (decisión del usuario; RF-59, RF-60), como la web,
+    también las de esta consulta. El tacho está en **todas** las columnas mientras la consulta se pueda editar (hoy
+    ya está en las anteriores; la de esta consulta no lo tenía porque se editaba) y en ninguna con la consulta
+    cerrada o en solo lectura, como hoy. Borrar es el borrado lógico de siempre (`activo = false`). Descartado: tacho
+    solo en las de esta consulta (cambiaría lo que hoy se puede hacer con las anteriores).
+19. **Orden y límite** (RF-61, RF-62): todo por fecha descendente, sin separar las de esta consulta (se marcan "Esta
+    consulta"); a igual fecha, la última guardada primero, por `updated_at` en la consulta SQL y orden estable en
+    `columnasLaboratorio` (el modelo `Laboratorio` no expone `updated_at` y no hace falta sumarlo). Se mantiene el
+    límite de 8 de otras consultas que hay hoy, y las de esta consulta se muestran todas para que nunca quede una sin
+    tacho. Descartado: las de esta consulta primero y después las anteriores (rompe la lectura por fechas de la
+    tabla cuando la carga de hoy tiene una fecha vieja); quitar el límite (con muchas cargas la tabla se vuelve muy
+    ancha; un "Ver más" queda para otra spec si hace falta).
+20. **Carga vacía no se guarda** (RF-57): una columna sin valores no aporta nada y, como no se edita, solo se podría
+    borrar. Descartado: guardarla como hoy (crea columnas vacías con cada clic en "Guardar").
+21. **Sin autoguardado de la columna editable**: como hoy, el laboratorio se guarda con "Guardar laboratorio"; salir
+    sin guardar descarta lo escrito (casos límite). Descartado: autoguardar (crearía cargas a medio escribir que no se
+    pueden editar).
+
+## Decidido (2026-10-14, tanda C4, antes "Para decidir")
+C4-1. **Varias cargas solo en la HC general** (decisión del usuario; RF-64, RF-33): `cargasMultiples` mira
+   `CodigosHc.GENERAL`, como `puedeElegirFilas`. Extenderlo a las demás historias clínicas es un cambio aparte que
+   requiere relevar la API de pediatría. Motivo: pediatría tiene `HcPediatriaBackend` + `HcApiSync`, que hoy manda
+   una carga por consulta que se edita; si su API acepta varias cargas por consulta y cómo las muestra su web no
+   está relevado (y RF-33 dice que pediatría no cambia). El renderer es uno y la diferencia es una condición por
+   código, igual que "Elegir filas"; extenderlo después es quitarla y probar contra la API de pediatría.
+   Descartado: aplicarlo a todas (un solo comportamiento, pero cambia pediatría y su sincronización).

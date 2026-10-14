@@ -41,8 +41,11 @@ secciones existentes no requiere programar nada ni publicar una versión nueva d
   sin espacios de más). En la consulta no se muestra como pestaña: sus secciones van debajo de las pestañas, siempre
   visibles, como en la web (arriba "Datos" y "Antec. Familiares", debajo las secciones de la consulta).
 - **Laboratorio**: una sección en tabla por fechas (Laboratorio general, Laboratorio reducido, Peso): una **fila** por
-  analito (por ejemplo "Hemoglobina"), una columna por cada carga anterior del paciente (solo para leer) y, mientras
-  el médico carga o edita la de esta consulta, una columna con **celdas editables**.
+  analito (por ejemplo "Hemoglobina") y una **columna** por **carga** (una fecha propia y sus valores, guardada en
+  una consulta). En la HC general una consulta puede tener varias cargas de cada laboratorio; las ya guardadas, de
+  esta consulta o de otras, se ven solo para leer y, mientras el médico carga una nueva, se suma una columna con
+  **celdas editables**. En las demás historias clínicas cada consulta tiene a lo sumo una carga por laboratorio, que
+  se edita como hasta ahora (RF-64).
 - **Filas ocultas**: las filas de un laboratorio que un médico eligió no ver. Son una preferencia de ese médico para
   ese laboratorio; no cambian los datos.
 - **Estudios con historial**: las secciones Ecografía abdominal, Videoendoscopía digestiva alta, Biopsia hepática,
@@ -203,7 +206,7 @@ sección: se muestran siempre, como en la web.
   ocultas (RF-28): no cambian lo que ven otros médicos ni la web, no cambian otro laboratorio que tenga el mismo
   analito, y no se envían a la HC general.
 - RF-45: MIENTRAS una fila esté oculta, EL SISTEMA no la muestra en ninguna columna de ese laboratorio (cargas
-  anteriores, carga de esta consulta, celdas editables y consulta vista solo para leer), aunque tenga valores; un
+  de otras consultas, cargas de esta consulta, celdas editables y consulta vista solo para leer), aunque tenga valores; un
   grupo sin filas visibles tampoco se muestra.
 - RF-46: CUANDO el médico guarda una carga de laboratorio, EL SISTEMA conserva sin cambios los valores que esa carga
   ya tenía en filas ocultas; ocultar o mostrar una fila nunca borra ni cambia valores.
@@ -227,6 +230,32 @@ sección: se muestran siempre, como en la web.
   al escribir y no se guarda.
 - RF-54: EL SISTEMA aplica RF-50 a RF-53 a la carga de laboratorio de todas las historias clínicas (pediatría y las
   demás incluidas): cambia el aspecto de la celda editable, no lo que se carga ni cómo se guarda.
+- RF-55: MIENTRAS una consulta de la HC general se pueda editar y no haya una columna editable abierta en ese
+  laboratorio, EL SISTEMA muestra el botón "Nueva carga", aunque la consulta ya tenga cargas de ese laboratorio.
+- RF-56: CUANDO el médico toca "Nueva carga", EL SISTEMA abre, primera en la tabla, una columna editable vacía con la
+  fecha de la consulta, que el médico puede cambiar; sus celdas son las de RF-50 a RF-53 y solo están en las filas
+  visibles (RF-45). Hay a lo sumo una columna editable por laboratorio.
+- RF-57: CUANDO el médico toca "Guardar laboratorio", EL SISTEMA guarda la columna editable como una carga nueva de
+  esa consulta, con su fecha, sin cambiar ninguna carga ya guardada, cierra la columna editable y muestra la carga
+  como una columna más (RF-60). SI la columna no tiene ningún valor escrito, ENTONCES EL SISTEMA no la guarda, la deja
+  abierta y muestra "Cargá al menos un valor".
+- RF-58: CUANDO el médico toca "Cancelar" en la columna editable, EL SISTEMA la cierra sin guardar nada.
+- RF-59: EL SISTEMA no permite editar una carga de laboratorio ya guardada en la HC general, sea de esta consulta o
+  de otra (no hay "Editar"): para corregirla, el médico la borra (RF-60) y hace una carga nueva, como en la web.
+- RF-60: MIENTRAS la consulta se pueda editar, EL SISTEMA muestra un tacho en la cabecera de cada columna guardada
+  (de esta consulta y de las otras); CUANDO el médico lo toca y confirma ("¿Eliminar el laboratorio del <fecha>?"),
+  EL SISTEMA da de baja solo esa carga, que deja de verse; las demás no cambian. MIENTRAS la consulta esté cerrada o
+  se vea solo para leer, EL SISTEMA no muestra tachos.
+- RF-61: EL SISTEMA muestra la columna editable primero y después las cargas guardadas ordenadas por su fecha, de la
+  más reciente a la más antigua y, a igual fecha, de la última guardada a la primera; dos cargas con la misma fecha
+  son dos columnas, nunca se juntan. Las cargas de esta consulta llevan "Esta consulta" debajo de la fecha.
+- RF-62: EL SISTEMA muestra todas las cargas de esta consulta y, de las de otras consultas, las 8 primeras según el
+  orden de RF-61.
+- RF-63: MIENTRAS la consulta esté cerrada o se vea solo para leer, EL SISTEMA muestra sus cargas de ese laboratorio
+  y las de otras consultas (RF-61, RF-62) sin "Nueva carga" ni tachos; SI esa consulta no tiene ninguna carga de ese
+  laboratorio, ENTONCES EL SISTEMA muestra la sección vacía, como hasta ahora.
+- RF-64: EL SISTEMA aplica RF-55 a RF-63 solo a los laboratorios de la HC general; en pediatría y las demás historias
+  clínicas el laboratorio sigue con una carga por consulta, "Nueva carga" o "Editar" y las columnas de hoy (RF-33).
 
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
@@ -278,15 +307,27 @@ sección: se muestran siempre, como en la web.
   ninguna se borra.
 - Un estudio con historial que no está en el perfil pero tiene entrada en esa consulta: se ve según RF-22, con el
   mismo formato y solo para leer (RF-42).
-- El médico oculta una fila con valores en cargas anteriores o en la de esta consulta: no se ve en ninguna columna
-  (RF-45) y los valores siguen guardados (RF-46); "Mostrar todas" los vuelve a mostrar (RF-48).
+- El médico oculta una fila con valores en cualquier carga (de esta consulta o de otras): no se ve en ninguna columna
+  (RF-45) y los valores siguen guardados (RF-46); "Mostrar todas" los vuelve a mostrar (RF-48). Una carga nueva de la
+  HC general nunca tiene valores en filas ocultas (no se pueden escribir), y las guardadas no se editan (RF-59).
 - Una columna anterior que solo tenía valores en filas ocultas: la columna se sigue mostrando, con sus celdas vacías.
 - Filas ocultas que el laboratorio ya no tiene (porque cambió en una versión nueva de la app): se ignoran y no se
   borran de lo guardado; "Mostrar todas" tampoco las borra (mismo criterio que RF-28).
 - El mismo analito en Laboratorio general y en Laboratorio reducido: ocultarlo en uno no lo oculta en el otro (RF-44).
 - Un laboratorio de la HC general que aparece solo para leer (RF-22) también respeta las filas ocultas (RF-45).
 - El médico de la HC general que también tiene pediatría: en pediatría el laboratorio se ve con todas sus filas y con
-  la celda editable nueva (RF-49, RF-54).
+  la celda editable nueva (RF-49, RF-54), y con "Nueva carga"/"Editar" de una carga por consulta (RF-64).
+- Consulta de la HC general con una carga de laboratorio hecha antes de este cambio (que se podía editar): queda como
+  una carga más de esa consulta, sin "Editar"; se puede borrar y volver a cargar (RF-59, RF-60).
+- Dos cargas del mismo laboratorio con la misma fecha, en la misma consulta o en distintas: dos columnas con la misma
+  fecha, la última guardada primero (RF-61); el tacho de cada una borra solo esa (RF-60).
+- Una carga de esta consulta con fecha anterior a cargas de otras consultas: va en su lugar por fecha, marcada "Esta
+  consulta" (RF-61), y se muestra aunque haya 8 o más de otras consultas (RF-62).
+- El médico sale de la consulta, la cierra o recarga la página con la columna editable abierta sin guardar: lo
+  escrito en ella se pierde, como hasta ahora (no hay autoguardado del laboratorio).
+- El médico borra con el tacho una carga mientras tiene la columna editable abierta: la columna editable sigue abierta
+  con lo escrito.
+- Una carga se borra por error: no se recupera desde la app; se vuelve a cargar (como en la web).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -301,15 +342,12 @@ sección: se muestran siempre, como en la web.
 ## Criterios de finalización
 - Cada RF de lógica (validaciones de RF-4, RF-8, RF-9, RF-11, RF-12; armado y filtrado de RF-20 a RF-22; caché y
   primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
-  entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52)
-  con test en verde.
+  entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52;
+  columnas, acciones y carga vacía de RF-55, RF-57, RF-60 a RF-62 y RF-64) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
   asignación inicial con RF-32.
-
-## Dudas abiertas
-- (ninguna)
 
 Cambio aprobado el 2026-10-13: RF-22 acotado a la consulta y RF-34 nuevo (datos por paciente en 'Datos').
 
@@ -325,3 +363,10 @@ se borran), como preferencia suya en el dispositivo, igual que las secciones ocu
 "Filas ocultas", RF-43 a RF-49); y la celda editable del laboratorio se distingue de las de solo lectura con fondo,
 borde, foco y texto de ayuda con contraste mínimo, en modo claro y oscuro y en todas las historias clínicas (RF-50 a
 RF-54; RF-33 ajustado).
+
+Cambio aprobado el 2026-10-14 (3): en los laboratorios de la HC general cada "Nueva carga" agrega una columna nueva
+(varias cargas por consulta y por laboratorio, con fecha propia, por defecto la de la consulta); las cargas guardadas
+ya no se editan, ni las de esta consulta: se borran con el tacho (mientras la consulta se pueda editar) y se vuelven a
+cargar, como en la web; columnas por fecha descendente y, a igual fecha, la última guardada primero, con todas las de
+esta consulta marcadas y hasta 8 de otras. Pediatría y las demás siguen con una carga por consulta (definición
+"Laboratorio", RF-45 ajustado, RF-55 a RF-64).
