@@ -71,7 +71,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   T38 compila, falta la prueba manual (`theme/ColoresCelda.kt` + `CeldaEditable` en `FormFields.kt`, todas las
   especialidades; foco claro 3,91:1, el más justo). Tanda C3 completa: falta reviewer y prueba manual.
 - Tanda C4 (varias cargas de laboratorio, solo HC general: C4-1 decidido): T39 hecha (`hcgeneral/CargasLaboratorio.kt`
-  + `ORDER BY fecha DESC, updated_at DESC`; sin él, a igual fecha SQLite devuelve el orden del índice/rowid).
+  + `ORDER BY fecha DESC, updated_at DESC`; sin él, a igual fecha SQLite devuelve el orden del índice/rowid). T40 compila, falta la prueba manual (rama `LaboratorioVariasCargas` en
+  `LaboratorioSeccion.kt`; la de pediatría intacta). Tanda C4 completa: falta reviewer y prueba manual.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

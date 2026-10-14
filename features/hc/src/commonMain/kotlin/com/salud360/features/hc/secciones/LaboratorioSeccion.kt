@@ -34,15 +34,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.alternarFila
+import com.salud360.core.data.hcgeneral.cargaNuevaValida
+import com.salud360.core.data.hcgeneral.cargasMultiples
 import com.salud360.core.data.hcgeneral.clavePreferenciaFilasOcultas
+import com.salud360.core.data.hcgeneral.columnasLaboratorio
 import com.salud360.core.data.hcgeneral.esUltimaVisible
 import com.salud360.core.data.hcgeneral.filasVisibles
+import com.salud360.core.data.hcgeneral.mostrarNuevaCarga
 import com.salud360.core.data.hcgeneral.mostrarTodasLasFilas
 import com.salud360.core.data.hcgeneral.ocultasDePreferencia
 import com.salud360.core.data.hcgeneral.puedeElegirFilas
 import com.salud360.core.data.hcgeneral.textoBotonFilas
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.model.especialidad.AnalitoDef
+import com.salud360.core.model.especialidad.LaboratorioDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.ui.components.AcceptButton
@@ -70,6 +75,7 @@ import kotlinx.datetime.LocalDate
 fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val def = ui.definicion ?: return
     val labDef = s.laboratorioTipo?.let { def.laboratorio(it) } ?: return
+    if (cargasMultiples(def.codigo)) { LaboratorioVariasCargas(s, ctx, ui, labDef); return }
     val historico by ctx.vm.laboratorios(labDef.tipo).collectAsState(emptyList())
     val enEstaConsulta = historico.firstOrNull { it.consultaId == ctx.consultaId }
     var editando by remember(enEstaConsulta?.id) { mutableStateOf(!ctx.soloLectura && enEstaConsulta == null) }
@@ -134,6 +140,93 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             PillButton("Guardar laboratorio", onClick = { ctx.vm.guardarLaboratorio(labDef.tipo, enEstaConsulta?.id, fecha, valores.value); editando = false })
         }
         if (historico.isEmpty() && !editando) Text("Sin cargas anteriores", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    borrar?.let { l ->
+        ConfirmDialog("Eliminar columna", "¿Eliminar el laboratorio del ${l.fecha.toDisplay()}?", onConfirm = { ctx.vm.eliminarLaboratorio(l.id); borrar = null }, onDismiss = { borrar = null }, confirmText = "Eliminar", destructive = true)
+    }
+    if (eligiendoFilas) ElegirFilasDialog(labDef.analitos, ocultas, { ctx.vm.guardarPreferencia(clavePreferencia, it.joinToString(",")) }, onCerrar = { eligiendoFilas = false })
+}
+
+/**
+ * HC general (RF-55 a RF-64): cada "Nueva carga" abre una columna editable primera que se guarda como una carga nueva;
+ * las guardadas, de esta consulta o de otras, solo se leen y se borran con el tacho mientras la consulta se pueda editar.
+ */
+@Composable
+private fun LaboratorioVariasCargas(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, labDef: LaboratorioDef) {
+    val def = ui.definicion ?: return
+    val historico by ctx.vm.laboratorios(labDef.tipo).collectAsState(emptyList())
+    val editable = !ctx.soloLectura
+    var abierta by remember { mutableStateOf(false) }
+    var fecha by remember { mutableStateOf(fechaConsulta(ui)) }
+    var valores by remember { mutableStateOf(emptyMap<String, String>()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var borrar by remember { mutableStateOf<Laboratorio?>(null) }
+    var eligiendoFilas by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    val clavePreferencia = clavePreferenciaFilasOcultas(def.codigo, labDef.tipo)
+    val ocultas = ocultasDePreferencia(ui.preferencias[clavePreferencia])
+    val visibles = filasVisibles(labDef.analitos, ocultas)
+    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos)) {
+        { LinkButton(textoBotonFilas(labDef.analitos, ocultas), onClick = { eligiendoFilas = true }) }
+    } else null
+    val columnas = columnasLaboratorio(historico, ctx.consultaId, editable)
+    val cerrar = { abierta = false; valores = emptyMap(); error = null }
+
+    if (ctx.soloLectura && columnas.none { it.deEstaConsulta }) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida, trailing = trailing) {
+        if (editable) ActionRow {
+            if (abierta) DateField("Fecha", fecha, { it?.let { f -> fecha = f } }, Modifier.width(200.dp))
+            if (mostrarNuevaCarga(editable, abierta)) AcceptButton("Nueva carga", onClick = { fecha = fechaConsulta(ui); valores = emptyMap(); error = null; abierta = true })
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(scroll)) {
+            Column {
+                // cabecera
+                Row(Modifier.clip(MaterialTheme.shapes.small).background(Salud360Colors.BrandGradient).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Analito", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(190.dp).padding(horizontal = 8.dp))
+                    if (abierta) Text(fecha.toDisplay(), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.width(120.dp).padding(horizontal = 8.dp))
+                    columnas.forEach { c ->
+                        Row(Modifier.width(120.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(c.carga.fecha.toDisplay(), color = Color.White, fontWeight = FontWeight.SemiBold)
+                                if (c.deEstaConsulta) Text("Esta consulta", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (c.puedeBorrar) IconButton(onClick = { borrar = c.carga }, modifier = Modifier.height(24.dp)) { Icon(Icons.Default.Delete, contentDescription = "Eliminar columna", tint = Color.White) }
+                        }
+                    }
+                }
+                var grupo: String? = null
+                visibles.forEachIndexed { i, a ->
+                    if (a.grupo != null && a.grupo != grupo) {
+                        grupo = a.grupo
+                        Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
+                    }
+                    Row(
+                        Modifier.background(if (i % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent).padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), modifier = Modifier.width(190.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                        if (abierta) CeldaEditable(valores[a.clave] ?: "", onCambio = { v -> valores = valores + (a.clave to v); error = null })
+                        columnas.forEach { c ->
+                            Text(
+                                c.carga.valores[a.clave] ?: "", modifier = Modifier.width(120.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (c.deEstaConsulta) FontWeight.SemiBold else null,
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+        if (abierta) ActionRow {
+            TextButton(onClick = cerrar) { Text("Cancelar") }
+            PillButton("Guardar laboratorio", onClick = {
+                if (cargaNuevaValida(valores)) { ctx.vm.guardarLaboratorio(labDef.tipo, null, fecha, valores); cerrar() }
+                else error = "Cargá al menos un valor"
+            })
+        }
+        if (columnas.isEmpty() && !abierta) Text("Sin cargas anteriores", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     borrar?.let { l ->

@@ -851,7 +851,8 @@ Reglas de la tanda (las mismas de la tanda C3):
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*CargasLaboratorioTest*' --tests '*LaboratoriosDePacienteTest*'`
     y `.\gradlew :core:data:jvmTest` completo en verde.
 
-- [ ] **T40. Pantalla: "Nueva carga" agrega una columna.** RF-55 a RF-64, RF-45, RF-50, RF-33
+- [x] **T40. Pantalla: "Nueva carga" agrega una columna.** RF-55 a RF-64, RF-45, RF-50, RF-33 (compila; falta
+  prueba manual del usuario)
   - `secciones/LaboratorioSeccion.kt`, como dice el plan (sección 4, `features/hc`, cambio (3)): con
     `cargasMultiples(def.codigo)`, columna editable primera (fecha de la consulta, `CeldaEditable` en las filas
     visibles), "Nueva carga" según `mostrarNuevaCarga`, "Guardar laboratorio" con `cargaNuevaValida` (si no,
