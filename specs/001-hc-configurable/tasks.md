@@ -832,7 +832,7 @@ Reglas de la tanda (las mismas de la tanda C3):
   Licencia del médico de prueba: extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en
   el repo.
 
-- [ ] **T39. Columnas y acciones de las cargas (lógica pura y orden).** RF-55, RF-57, RF-60, RF-61, RF-62, RF-63,
+- [x] **T39. Columnas y acciones de las cargas (lógica pura y orden).** RF-55, RF-57, RF-60, RF-61, RF-62, RF-63,
   RF-64
   - `hcgeneral/CargasLaboratorio.kt`: `cargasMultiples(codigo)`, `data class ColumnaLaboratorio(carga,
     deEstaConsulta, puedeBorrar)`, `columnasLaboratorio(historico, consultaId, editable, maxOtras = 8)`,

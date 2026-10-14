@@ -160,7 +160,7 @@ CREATE TABLE laboratorio (
 );
 CREATE INDEX laboratorio_paciente ON laboratorio(paciente_id, especialidad, tipo, fecha);
 
-laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC;
+laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 laboratorioPorId: SELECT * FROM laboratorio WHERE id = ? AND deleted = 0;
 upsertLaboratorio: INSERT OR REPLACE INTO laboratorio VALUES ?;
 laboratoriosDirty: SELECT * FROM laboratorio WHERE dirty = 1;
