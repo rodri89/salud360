@@ -185,7 +185,8 @@ fun ConsultaScreen(
         }
 
         // ---- pestañas del perfil (HC general): "Datos" y las del perfil, abriendo en "Datos" ----
-        val agrupadas = vm.pestanias(ui).pestanias
+        val layout = vm.pestanias(ui)
+        val agrupadas = layout.pestanias
         if (agrupadas.isNotEmpty()) {
             val i = pestania.coerceIn(0, agrupadas.lastIndex)
             ScrollableTabRow(selectedTabIndex = i, edgePadding = 0.dp, containerColor = Color.Transparent, contentColor = color) {
@@ -198,6 +199,9 @@ fun ConsultaScreen(
             } else {
                 actual.secciones.mapNotNull { def.seccion(it) }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
             }
+            // El cuerpo de la consulta (la pestaña "Consulta" del perfil): debajo y siempre visible, como las
+            // secciones sueltas de pediatría (RF-35).
+            layout.cuerpo.mapNotNull { def.seccion(it) }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
         }
 
         // ---- pestañas superiores ----
@@ -215,10 +219,10 @@ fun ConsultaScreen(
             if (actual.id == SeccionesComunes.DATOS_PACIENTE) SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
         }
 
-        // ---- secciones (agrupada: ya están en sus pestañas, no queda nada suelto) ----
+        // ---- secciones (agrupada: ya están en sus pestañas o en el cuerpo, no queda nada suelto) ----
         if (agrupadas.isEmpty()) vm.seccionesVisibles(ui).filter { it.id !in tipo.pestanias }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
 
-        // ---- HC general: lo cargado en esta consulta fuera del perfil, debajo de la pestaña elegida (RF-22) ----
+        // ---- HC general: lo cargado en esta consulta fuera del perfil, al final con cualquier pestaña (RF-22, RF-37) ----
         SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.alFinal, ctxLectura, registry, valores)
 
         // ---- acciones ----

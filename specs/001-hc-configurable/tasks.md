@@ -643,8 +643,8 @@ Reglas de la tanda (las mismas de la tanda C):
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*DefinicionHcGeneralTest*'` en verde,
     `.\gradlew :core:data:jvmTest` completo en verde y `.\gradlew :features:hc:compileKotlinJvm` compila.
 
-- [ ] **T33. Consulta con "Datos" y pestañas arriba, cuerpo debajo y solo lectura al final.** RF-20, RF-22, RF-34,
-  RF-35, RF-36, RF-37, RF-33
+- [x] **T33. Consulta con "Datos" y pestañas arriba, cuerpo debajo y solo lectura al final.** RF-20, RF-22, RF-34,
+  RF-35, RF-36, RF-37, RF-33 — compila; falta prueba manual del usuario.
   - `ConsultaScreen.kt`, solo la rama con `grupos`: `ScrollableTabRow` con `layout.pestanias` (abre en "Datos"; en
     "Datos" la ficha y, debajo, lo de RF-34; en las demás, sus secciones con `RenderSeccion`); después, fuera de la
     pestaña elegida y siempre visibles, las secciones de `layout.cuerpo` con `RenderSeccion`, como las secciones
