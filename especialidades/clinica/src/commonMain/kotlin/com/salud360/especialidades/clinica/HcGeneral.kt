@@ -5,6 +5,7 @@ import com.salud360.core.model.especialidad.CampoExamenFisico
 import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.especialidad.EspecialidadDefinition
+import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.SeccionCatalogo
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.features.hc.EspecialidadContribution
@@ -26,12 +27,17 @@ val hcGeneralBase = EspecialidadDefinition(
 /** Sección con el título por defecto del catálogo de hclinica ("Decidido" B1). */
 private fun SeccionDef.comoCatalogo(titulo: String) = if (this.titulo == titulo) this else copy(titulo = titulo)
 
+/** Los estudios que en la HC general guardan una entrada por consulta, con historial (RF-38). */
+private val estudiosConHistorial = setOf("eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn")
+
 private fun deHepatologia(id: String, titulo: String): SeccionCatalogo {
     val def = hepatologia.seccion(id)!!.comoCatalogo(titulo)
     return SeccionCatalogo(
         def,
         laboratorios = listOfNotNull(def.laboratorioTipo?.let { hepatologia.laboratorio(it) }),
-        registros = listOfNotNull(def.registroTipo?.let { hepatologia.registro(it) }),
+        // Copia: el de `hepatologia` queda en LISTA hasta que se vaya en la tanda D (RF-33).
+        registros = listOfNotNull(def.registroTipo?.let { hepatologia.registro(it) })
+            .map { if (it.tipo in estudiosConHistorial) it.copy(modo = ModoRegistro.UNO_POR_CONSULTA) else it },
     )
 }
 

@@ -177,7 +177,15 @@ data class RegistroDef(
     val conArchivos: Boolean = false,
     /** El registro se asocia al paciente y no a una consulta puntual (ej. screenings). */
     val porPaciente: Boolean = false,
+    val modo: ModoRegistro = ModoRegistro.LISTA,
 )
+
+/**
+ * Cómo se cargan los registros de un tipo: [LISTA], los que hagan falta con "Agregar"; [UNO_POR_CONSULTA], estudio
+ * con historial (HC general): a lo sumo una entrada por consulta (fecha + `detalle`), mostrada junto con las de las
+ * otras consultas del paciente.
+ */
+enum class ModoRegistro { LISTA, UNO_POR_CONSULTA }
 
 /** Identificadores de secciones y tipos de consulta compartidos por varias especialidades. */
 object SeccionesComunes {

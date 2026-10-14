@@ -3,6 +3,7 @@ package com.salud360.especialidades.clinica
 import com.salud360.core.data.hcgeneral.armarDefinicion
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.model.especialidad.CampoExamenFisico
+import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.PerfilHc
 import com.salud360.core.model.especialidad.PestaniaPerfil
 import com.salud360.core.model.especialidad.SeccionCatalogo
@@ -112,6 +113,23 @@ class CatalogoHcGeneralTest {
     fun diuresis_y_somnia_son_texto() {
         assertEquals(TipoSeccion.TEXTO, catalogoHcGeneral.seccion("diuresis_catarsis")?.def?.tipo)
         assertEquals(TipoSeccion.TEXTO, catalogoHcGeneral.seccion("somnia")?.def?.tipo)
+    }
+
+    // RF-38: los cinco estudios guardan una entrada por consulta; el resto de los registros, una lista.
+    @Test
+    fun los_estudios_con_historial_son_uno_por_consulta_y_los_demas_registros_lista() {
+        val estudios = listOf("eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn")
+        val modos = (catalogoHcGeneral.secciones + catalogoHcGeneral.legadas).flatMap { it.registros }.associate { it.tipo to it.modo }
+        assertEquals(estudios.associateWith { ModoRegistro.UNO_POR_CONSULTA }, modos.filterKeys { it in estudios })
+        assertEquals(
+            mapOf("examen_complementario" to ModoRegistro.LISTA, "interconsulta" to ModoRegistro.LISTA),
+            modos.filterKeys { it !in estudios },
+        )
+        // La definición armada usa los del catálogo; hepatología, que se va en la tanda D, no cambia (RF-33).
+        val def = armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion
+        estudios.forEach { assertEquals(ModoRegistro.UNO_POR_CONSULTA, def.registro(it)?.modo, it) }
+        assertTrue(hepatologia.registros.all { it.modo == ModoRegistro.LISTA })
+        assertTrue(clinicaMedica.registros.all { it.modo == ModoRegistro.LISTA })
     }
 
     @Test

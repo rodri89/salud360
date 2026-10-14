@@ -60,6 +60,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   no dibuja el cuerpo: en `devWeb` las secciones de "Consulta" no se ven). T33 compila, falta la prueba manual
   (cuerpo debajo de las pestañas en `ConsultaScreen`). `devWeb` no recompila solo (no es `-t`): para refrescarlo,
   `:composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas `-P` y webpack lo toma.
+  T34 hecha (`ModoRegistro`/`RegistroDef.modo`; `hcgeneral/EstudioConHistorial.kt`: el desempate por updated_at es
+  el orden de entrada de `registrosDePaciente`, que el modelo no trae).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

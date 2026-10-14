@@ -665,7 +665,7 @@ Reglas de la tanda (las mismas de la tanda C):
        "Nota" sale al final, solo lectura, debajo del cuerpo, con "Datos" y con "Antec. Familiares" elegidas (RF-37).
     5. Una consulta de pediatría u otra especialidad se ve igual que antes (RF-33).
 
-- [ ] **T34. Estudios con historial: modo del registro y lógica pura.** RF-38, RF-39, RF-33
+- [x] **T34. Estudios con historial: modo del registro y lógica pura.** RF-38, RF-39, RF-33
   - `core/model/.../EspecialidadDefinition.kt`: `enum class ModoRegistro { LISTA, UNO_POR_CONSULTA }` y
     `RegistroDef.modo: ModoRegistro = ModoRegistro.LISTA` como último parámetro.
   - `especialidades/clinica/.../HcGeneral.kt`: los registros de `eco_abdominal`, `veda`, `biopsia_hepatica`,
