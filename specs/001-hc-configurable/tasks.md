@@ -744,7 +744,7 @@ Reglas de la tanda (las mismas de la tanda C2):
   "Hepatología". Pacientes de prueba con dos o más cargas de laboratorio. Licencia del médico de prueba: extenderla y
   restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
 
-- [ ] **T36. Filas visibles del laboratorio (lógica pura).** RF-44, RF-45, RF-47, RF-48, RF-49
+- [x] **T36. Filas visibles del laboratorio (lógica pura).** RF-44, RF-45, RF-47, RF-48, RF-49
   - `hcgeneral/FilasLaboratorio.kt`: `clavePreferenciaFilasOcultas(codigo, laboratorioTipo)`,
     `ocultasDePreferencia(valor?)`, `puedeElegirFilas(codigo, analitos)`, `filasVisibles(analitos, ocultas)`,
     `alternarFila(analitos, ocultas, clave, visible)`, `esUltimaVisible(analitos, ocultas, clave)`,

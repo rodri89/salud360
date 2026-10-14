@@ -64,6 +64,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   el orden de entrada de `registrosDePaciente`, que el modelo no trae). T35 compila, falta la prueba manual
   (`EstudioConHistorialSeccion`; `ConsultaViewModel.guardarEstudio`/`flushEstudios` con espera de 600 ms, `Mutex` y
   volcado en `onCleared` y al cerrar; lo pendiente se suelta recién guardado). Tanda C2 completa: falta reviewer.
+- Tanda C3: T36 hecha (`hcgeneral/FilasLaboratorio.kt`; "Elegir filas" solo en la HC general, C3-1; si lo
+  guardado oculta todas, `alternarFila` parte de "todas visibles"; botón "(1 oculta)" en singular).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.
