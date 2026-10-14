@@ -12,6 +12,12 @@ private const val DETALLE = "detalle"
 
 private fun porFecha(registros: List<RegistroClinico>) = registros.sortedByDescending { it.fecha }
 
+/** El texto de una entrada; vacío si no tiene. */
+val RegistroClinico.textoEstudio: String get() = campos[DETALLE].orEmpty()
+
+/** Los campos de una entrada nueva con [texto]. */
+fun camposEstudio(texto: String): Map<String, String> = mapOf(DETALLE to texto)
+
 /** La entrada de [consultaId] que se edita: la de fecha más reciente si quedó más de una; `null` si no tiene. */
 fun entradaDeConsulta(registros: List<RegistroClinico>, consultaId: Id): RegistroClinico? =
     porFecha(registros).firstOrNull { it.consultaId == consultaId }

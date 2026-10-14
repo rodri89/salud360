@@ -4,11 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
+import com.salud360.core.data.hcgeneral.CambioEstudio
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
+import com.salud360.core.data.hcgeneral.cambioEstudio
+import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
+import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
 import com.salud360.core.data.repos.HcRepository
@@ -47,6 +51,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.LocalDate
 
 data class ConsultaUi(
@@ -247,6 +253,45 @@ class ConsultaViewModel(
         hcApi.marcarSucia(consultaId)
     }
 
+    // ---- estudios con historial (una entrada por consulta, RF-39) ----
+
+    /** Fecha y texto escritos que todavía no están en la base, por tipo de registro. */
+    private val pendientesEstudio = mutableMapOf<String, Pair<LocalDate, String>>()
+    private var jobEstudios: Job? = null
+    private val candadoEstudios = Mutex()
+
+    /** Lo escrito y no guardado todavía de [tipo], para no mostrar lo viejo si la sección se vuelve a dibujar. */
+    fun estudioPendiente(tipo: String): Pair<LocalDate, String>? = pendientesEstudio[tipo]
+
+    /** Como el autoguardado de valores: en el dispositivo, con la misma espera; nunca la API. */
+    fun guardarEstudio(tipo: String, fecha: LocalDate, texto: String) {
+        pendientesEstudio[tipo] = fecha to texto
+        jobEstudios?.cancel()
+        jobEstudios = viewModelScope.launch { delay(600); flushEstudios() }
+    }
+
+    /**
+     * Aplica lo pendiente contra la entrada que tiene la consulta en la base en ese momento. De a un volcado por vez:
+     * dos seguidos que leyeran "sin entrada" crearían dos. Lo pendiente se suelta recién guardado (y si no se volvió
+     * a escribir), así un volcado cortado al salir lo deja para el de `onCleared`.
+     */
+    suspend fun flushEstudios() = candadoEstudios.withLock {
+        if (pendientesEstudio.isEmpty()) return@withLock
+        val c = ui.value.consulta ?: return@withLock
+        pendientesEstudio.toMap().forEach { (tipo, cambio) ->
+            val actual = entradaDeConsulta(hc.observarRegistrosDeConsulta(consultaId, tipo).first(), consultaId)
+            when (val accion = cambioEstudio(actual, cambio.first, cambio.second)) {
+                is CambioEstudio.Crear -> hc.guardarRegistro(RegistroClinico(newId(), c.pacienteId, consultaId, c.especialidad, tipo, accion.fecha, camposEstudio(accion.texto)))
+                is CambioEstudio.Actualizar -> hc.guardarRegistro(accion.registro)
+                is CambioEstudio.Borrar -> hc.eliminarRegistro(accion.registro.id)
+                CambioEstudio.Nada -> Unit
+            }
+            if (pendientesEstudio[tipo] == cambio) pendientesEstudio.remove(tipo)
+        }
+        _guardadoEn.value = com.salud360.core.data.ahoraMillis()
+        hcApi.marcarSucia(consultaId)
+    }
+
     // ---- laboratorios ----
 
     fun laboratorios(tipo: String) = ui.value.consulta?.let { c -> hc.observarLaboratorios(c.pacienteId, c.especialidad, tipo) } ?: flowOf(emptyList())
@@ -332,6 +377,7 @@ class ConsultaViewModel(
             if (nuevo.isNotBlank()) hc.guardarPendiente(Pendiente(newId(), c.pacienteId, medicoId, nuevo, consultaId))
         }
         flushValores()
+        flushEstudios()
         hc.cerrarConsulta(consultaId)
         // Al cerrar se manda ya, sin esperar: es el momento en que el médico da la consulta por terminada.
         hcApi.empujarYa(consultaId)
@@ -394,6 +440,7 @@ class ConsultaViewModel(
     override fun onCleared() {
         salida.launch {
             flushValores()
+            flushEstudios()
             hcApi.empujarYa(consultaId)
         }
     }

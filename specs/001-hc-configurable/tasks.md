@@ -683,7 +683,8 @@ Reglas de la tanda (las mismas de la tanda C):
     `.\gradlew :core:data:jvmTest` completo y `.\gradlew :especialidades:clinica:jvmTest` en verde, y
     `.\gradlew :composeApp:compileKotlinWasmJs` compila.
 
-- [ ] **T35. Pantalla de los estudios con historial.** RF-38, RF-39, RF-40, RF-41, RF-42, RF-22
+- [x] **T35. Pantalla de los estudios con historial.** RF-38, RF-39, RF-40, RF-41, RF-42, RF-22 — compila; falta
+  prueba manual del usuario.
   - `secciones/EstudioConHistorialSeccion.kt` (nuevo) y `RegistrosSeccion` que delega en él con `UNO_POR_CONSULTA`,
     como dice el plan (sección 4, `features/hc`): campo de esta consulta (fecha + texto) a la izquierda y "Consultas
     previas" a la derecha con desplazamiento y el mismo alto; debajo con menos de 600 dp de ancho; "Ver todo" con la

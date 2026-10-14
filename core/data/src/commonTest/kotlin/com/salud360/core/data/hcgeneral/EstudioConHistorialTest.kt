@@ -87,4 +87,11 @@ class EstudioConHistorialTest {
         assertEquals(CambioEstudio.Nada, cambioEstudio(null, d2, ""))
         assertEquals(CambioEstudio.Nada, cambioEstudio(null, d2, "   "))
     }
+
+    @Test
+    fun el_texto_de_la_entrada_va_en_detalle() {
+        assertEquals("texto B", b.textoEstudio)
+        assertEquals("", RegistroClinico("s", "pac", "cS", "clinica", "biopsia_hepatica", d2).textoEstudio)
+        assertEquals(mapOf("detalle" to "nuevo"), camposEstudio("nuevo"))
+    }
 }

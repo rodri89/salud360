@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.model.especialidad.CampoDef
+import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.ui.components.AcceptButton
@@ -57,11 +58,13 @@ import kotlinx.datetime.LocalDate
  * con "n - total" y flechas; diálogo de alta/edición y adjuntos opcionales.
  * En lectura solo se muestran los de esta consulta; editando, también los de otras consultas del
  * paciente, marcados "Anterior", porque un estudio se pide una vez y el resultado llega después.
+ * Los estudios con historial (`ModoRegistro.UNO_POR_CONSULTA`) van aparte: [EstudioConHistorialSeccion].
  */
 @Composable
 fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val def = ui.definicion ?: return
     val regDef = s.registroTipo?.let { def.registro(it) } ?: return
+    if (regDef.modo == ModoRegistro.UNO_POR_CONSULTA) { EstudioConHistorialSeccion(s, regDef, ctx, ui); return }
     val registros by ctx.vm.registros(regDef.tipo, regDef.porPaciente).collectAsState(emptyList())
     // "Anteriores" solo tiene sentido para registros por consulta (los de otras consultas del paciente);
     // los registros por paciente ya se listan completos en `registros`. En lectura no se muestran.
