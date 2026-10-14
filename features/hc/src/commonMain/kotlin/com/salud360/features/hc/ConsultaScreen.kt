@@ -185,7 +185,7 @@ fun ConsultaScreen(
         }
 
         // ---- pestañas del perfil (HC general): "Datos" y las del perfil, abriendo en "Datos" ----
-        val agrupadas = vm.pestanias(ui)
+        val agrupadas = vm.pestanias(ui).pestanias
         if (agrupadas.isNotEmpty()) {
             val i = pestania.coerceIn(0, agrupadas.lastIndex)
             ScrollableTabRow(selectedTabIndex = i, edgePadding = 0.dp, containerColor = Color.Transparent, contentColor = color) {

@@ -6,9 +6,10 @@ import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
-import com.salud360.core.data.hcgeneral.pestaniasConsulta
+import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
@@ -17,7 +18,6 @@ import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.EspecialidadDefinition
-import com.salud360.core.model.especialidad.PestaniaDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.hc.Antecedente
@@ -356,16 +356,20 @@ class ConsultaViewModel(
         val def = ui.definicion ?: return emptyList()
         val tipo = ui.tipo ?: return emptyList()
         // Agrupada (HC general): las de sus pestañas, nunca algo fuera del perfil (RF-21, RF-28).
-        if (tipo.grupos.isNotEmpty()) return pestanias(ui).flatMap { it.secciones }.mapNotNull { def.seccion(it) }
+        if (tipo.grupos.isNotEmpty()) {
+            val layout = pestanias(ui)
+            return (layout.pestanias.flatMap { it.secciones } + layout.cuerpo).mapNotNull { def.seccion(it) }
+        }
         val ocultas = ocultas(ui)
         return tipo.secciones.mapNotNull { def.seccion(it) }.filter { s -> s.id !in ocultas && cumpleCondicion(s, ui) }
     }
 
-    /** Pestañas de una consulta agrupada: "Datos" y las del perfil con algo visible; vacío = la pantalla de siempre. */
-    fun pestanias(ui: ConsultaUi): List<PestaniaDef> {
-        val def = ui.definicion ?: return emptyList()
-        val tipo = ui.tipo ?: return emptyList()
-        return pestaniasConsulta(tipo, ocultas(ui)) { id -> def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
+    /** Pestañas y cuerpo de una consulta agrupada: "Datos", las del perfil con algo visible y "Consulta" debajo; vacío = la pantalla de siempre. */
+    fun pestanias(ui: ConsultaUi): LayoutConsulta {
+        val vacio = LayoutConsulta(emptyList(), emptyList())
+        val def = ui.definicion ?: return vacio
+        val tipo = ui.tipo ?: return vacio
+        return layoutConsulta(tipo, ocultas(ui)) { id -> def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
     }
 
     private fun ocultas(ui: ConsultaUi): Set<String> = ui.definicion?.let { ocultasDe(it, ui.preferencias) } ?: emptySet()

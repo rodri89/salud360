@@ -84,19 +84,32 @@ fun seccionesVisibles(tipo: TipoConsultaDef, ocultas: Set<String>): List<Pestani
     }
 
 /**
- * Pestañas de una consulta de [tipo] agrupado ("Decidido" 7 del plan): "Datos" (la ficha del paciente, en la que abre)
- * y después las del perfil con alguna sección visible, sin las [ocultas] por el médico ni las que no [cumple]n su
- * condición (sexo, edad). Vacío si el tipo no tiene grupos: la pantalla de siempre (sin perfil, HC digitalizada y las
- * demás especialidades, RF-33).
+ * Cómo se muestra una consulta agrupada: [pestanias] arriba y, debajo y siempre visibles, las secciones del [cuerpo]
+ * (RF-35). Las dos vacías = la pantalla de siempre.
  */
-fun pestaniasConsulta(tipo: TipoConsultaDef, ocultas: Set<String>, cumple: (String) -> Boolean = { true }): List<PestaniaDef> {
-    if (tipo.grupos.isEmpty()) return emptyList()
+data class LayoutConsulta(val pestanias: List<PestaniaDef>, val cuerpo: List<String>)
+
+/**
+ * Pestañas y cuerpo de una consulta de [tipo] agrupado ("Decidido" 9 del plan), con las secciones visibles: sin las
+ * [ocultas] por el médico ni las que no [cumple]n su condición (sexo, edad); los grupos que quedan vacíos no cuentan.
+ * El cuerpo son las secciones de la primera pestaña que se llama "Consulta" ([claveDeNombre]); las pestañas, "Datos"
+ * (la ficha del paciente, en la que abre) y las demás del perfil en orden. Sin "Consulta", todo pestañas y nada debajo
+ * (RF-36). Sin grupos, vacío: sin perfil, HC digitalizada y las demás especialidades (RF-33).
+ */
+fun layoutConsulta(tipo: TipoConsultaDef, ocultas: Set<String>, cumple: (String) -> Boolean = { true }): LayoutConsulta {
+    if (tipo.grupos.isEmpty()) return LayoutConsulta(emptyList(), emptyList())
     val delPerfil = seccionesVisibles(tipo, ocultas).mapNotNull { g ->
         val visibles = g.secciones.filter(cumple)
         if (visibles.isEmpty()) null else g.copy(secciones = visibles)
     }
-    return listOf(PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())) + delPerfil
+    val cuerpo = delPerfil.firstOrNull { claveDeNombre(it.titulo) == CLAVE_CUERPO }
+    return LayoutConsulta(
+        pestanias = listOf(PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())) + delPerfil.filter { it !== cuerpo },
+        cuerpo = cuerpo?.secciones.orEmpty(),
+    )
 }
+
+private val CLAVE_CUERPO = claveDeNombre("Consulta")
 
 /** Id de la pestaña por su lugar en el perfil: el mismo en Consulta y en Telemedicina aunque una no la muestre. */
 private fun idPestania(indice: Int) = "pestania_$indice"

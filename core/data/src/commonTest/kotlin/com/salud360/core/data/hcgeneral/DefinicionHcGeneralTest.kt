@@ -263,43 +263,128 @@ class DefinicionHcGeneralTest {
         assertTrue(seccionesVisibles(tipo, despues).flatMap { it.secciones }.none { it == "conductas" })
     }
 
-    // ---- pestañas de la consulta (RF-20, RF-21, "Decidido" 7) ----
+    // ---- pestañas y cuerpo de la consulta (RF-20, RF-21, RF-28, RF-35, RF-36, "Decidido" 9) ----
 
     private val datos = PestaniaDef(SeccionesComunes.DATOS_PACIENTE, "Datos", emptyList())
 
+    private val vacio = LayoutConsulta(emptyList(), emptyList())
+
+    /** Como "Hepatología": "Antec. Familiares" y una pestaña [cuerpo] con secciones de los dos tipos. */
+    private fun conCuerpo(cuerpo: String = "Consulta") = PerfilHc(
+        11, "Prueba",
+        listOf(
+            PestaniaPerfil("Antec. Familiares", listOf(SeccionPerfil("antecedentes_familiares", "Antecedentes familiares", setOf(CONSULTA, TELEMEDICINA)))),
+            PestaniaPerfil(
+                cuerpo,
+                listOf(
+                    SeccionPerfil("motivo_consulta", "Motivo de consulta", setOf(CONSULTA)),
+                    SeccionPerfil("datos_subjetivos", "Datos subjetivos", setOf(TELEMEDICINA)),
+                    SeccionPerfil("examen_fisico", "Examen físico", setOf(CONSULTA)),
+                    SeccionPerfil("conductas", "Conductas", setOf(CONSULTA, TELEMEDICINA)),
+                ),
+            ),
+        ),
+    )
+
+    private fun tipo(codigo: String, p: PerfilHc? = perfil) = assertNotNull(armada(p).definicion.tipoConsulta(codigo))
+
     @Test
-    fun consulta_con_datos_primero_y_despues_las_pestanias_del_perfil() {
-        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
+    fun la_pestania_consulta_es_el_cuerpo_y_las_demas_van_junto_a_datos() {
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo()), emptySet())
         // Abre en la primera: "Datos".
-        assertEquals(listOf(datos) + tipo.grupos, pestaniasConsulta(tipo, emptySet()))
+        assertEquals(listOf(datos, PestaniaDef("pestania_0", "Antec. Familiares", listOf("antecedentes_familiares"))), l.pestanias)
+        assertEquals(listOf("motivo_consulta", "examen_fisico", "conductas"), l.cuerpo)
+    }
+
+    @Test
+    fun el_cuerpo_se_reconoce_sin_espacios_de_mas_mayusculas_ni_tildes() {
+        listOf(" CONSULTA ", "Cónsulta", "consulta").forEach { nombre ->
+            val l = layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo(nombre)), emptySet())
+            assertEquals(listOf("Datos", "Antec. Familiares"), l.pestanias.map { it.titulo }, nombre)
+            assertEquals(listOf("motivo_consulta", "examen_fisico", "conductas"), l.cuerpo, nombre)
+        }
+    }
+
+    @Test
+    fun otro_nombre_parecido_no_es_el_cuerpo() {
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo("Consulta del día")), emptySet())
+        assertEquals(listOf("Datos", "Antec. Familiares", "Consulta del día"), l.pestanias.map { it.titulo })
+        assertEquals(emptyList(), l.cuerpo)
+    }
+
+    @Test
+    fun sin_pestania_consulta_todo_pestanias_y_nada_debajo() {
+        val t = tipo(SeccionesComunes.TIPO_CONTROL)
+        assertEquals(LayoutConsulta(listOf(datos) + t.grupos, emptyList()), layoutConsulta(t, emptySet()))
+    }
+
+    @Test
+    fun solo_consulta_arriba_solo_datos_y_el_cuerpo_debajo() {
+        val p = PerfilHc(12, "Prueba", listOf(PestaniaPerfil("consulta", listOf(SeccionPerfil("motivo_consulta", "Nota", setOf(CONSULTA))))))
+        assertEquals(LayoutConsulta(listOf(datos), listOf("motivo_consulta")), layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL, p), emptySet()))
+    }
+
+    @Test
+    fun consulta_con_todo_oculto_queda_sin_cuerpo_y_las_demas_pestanias_igual() {
+        val t = tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo())
+        val l = layoutConsulta(t, setOf("motivo_consulta", "examen_fisico", "conductas"))
+        assertEquals(listOf(datos, PestaniaDef("pestania_0", "Antec. Familiares", listOf("antecedentes_familiares"))), l.pestanias)
+        assertEquals(emptyList(), l.cuerpo)
+    }
+
+    @Test
+    fun el_cuerpo_sin_las_ocultas_ni_las_que_no_cumplen_la_condicion() {
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo()), setOf("conductas")) { it != "examen_fisico" }
+        assertEquals(listOf("motivo_consulta"), l.cuerpo)
+    }
+
+    @Test
+    fun telemedicina_con_el_cuerpo_de_sus_secciones() {
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_TELEMEDICINA, conCuerpo()), emptySet())
+        assertEquals(listOf("Datos", "Antec. Familiares"), l.pestanias.map { it.titulo })
+        assertEquals(listOf("datos_subjetivos", "conductas"), l.cuerpo)
+    }
+
+    @Test
+    fun telemedicina_con_consulta_sin_secciones_de_ese_tipo_no_tiene_cuerpo() {
+        val p = PerfilHc(
+            13, "Prueba",
+            listOf(
+                PestaniaPerfil("Antec. Familiares", listOf(SeccionPerfil("antecedentes_familiares", "Antecedentes familiares", setOf(CONSULTA, TELEMEDICINA)))),
+                PestaniaPerfil("Consulta", listOf(SeccionPerfil("motivo_consulta", "Motivo de consulta", setOf(CONSULTA)))),
+            ),
+        )
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_TELEMEDICINA, p), emptySet())
+        assertEquals(listOf("Datos", "Antec. Familiares"), l.pestanias.map { it.titulo })
+        assertEquals(emptyList(), l.cuerpo)
     }
 
     @Test
     fun telemedicina_solo_con_las_pestanias_que_tienen_secciones_de_telemedicina() {
-        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_TELEMEDICINA))
-        assertEquals(listOf("Datos", "Antecedentes", "Consulta del día"), pestaniasConsulta(tipo, emptySet()).map { it.titulo })
+        val l = layoutConsulta(tipo(SeccionesComunes.TIPO_TELEMEDICINA), emptySet())
+        assertEquals(listOf("Datos", "Antecedentes", "Consulta del día"), l.pestanias.map { it.titulo })
+        assertEquals(emptyList(), l.cuerpo)
     }
 
     @Test
     fun pestania_sin_secciones_visibles_por_ocultas_o_por_condicion_no_se_muestra() {
-        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
         assertEquals(
-            listOf(datos, PestaniaDef("pestania_1", "Consulta del día", listOf("motivo_consulta"))),
-            pestaniasConsulta(tipo, setOf("laboratorio_general", "conductas")) { it != "antecedentes_familiares" },
+            LayoutConsulta(listOf(datos, PestaniaDef("pestania_1", "Consulta del día", listOf("motivo_consulta"))), emptyList()),
+            layoutConsulta(tipo(SeccionesComunes.TIPO_CONTROL), setOf("laboratorio_general", "conductas")) { it != "antecedentes_familiares" },
         )
     }
 
     @Test
     fun todo_oculto_queda_solo_datos() {
-        val tipo = assertNotNull(armada().definicion.tipoConsulta(SeccionesComunes.TIPO_CONTROL))
-        assertEquals(listOf(datos), pestaniasConsulta(tipo, tipo.secciones.toSet()))
+        val t = tipo(SeccionesComunes.TIPO_CONTROL, conCuerpo())
+        assertEquals(LayoutConsulta(listOf(datos), emptyList()), layoutConsulta(t, t.secciones.toSet()))
     }
 
     @Test
-    fun sin_grupos_ninguna_pestania_y_queda_la_pantalla_de_siempre() {
+    fun sin_grupos_ni_pestanias_ni_cuerpo_y_queda_la_pantalla_de_siempre() {
         // Sin perfil, HC digitalizada y las especialidades de siempre (RF-33).
-        armada(null).definicion.tiposConsulta.forEach { t -> assertEquals(emptyList(), pestaniasConsulta(t, emptySet()), t.codigo) }
-        conDiagnosticoEnUnTipo.tiposConsulta.forEach { t -> assertEquals(emptyList(), pestaniasConsulta(t, emptySet()), t.codigo) }
+        armada(null).definicion.tiposConsulta.forEach { t -> assertEquals(vacio, layoutConsulta(t, emptySet()), t.codigo) }
+        conDiagnosticoEnUnTipo.tiposConsulta.forEach { t -> assertEquals(vacio, layoutConsulta(t, emptySet()), t.codigo) }
     }
 
     // ---- consultas viejas y sin configuración ("Decidido" 5 y 8, C10) ----

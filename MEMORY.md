@@ -56,6 +56,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `porPerfil`, también sin perfil y "HC digitalizada"; `AvisoSeccionesDesconocidas` en la HC y en la consulta).
   T31 hecha, falta la prueba manual (`seccionesDelPerfil` y `mostrarTodas` en `DefinicionHcGeneral.kt`; la
   Configuración resuelve "clinica" con `DefinicionesHc`). Tanda C completa: falta reviewer y prueba manual.
+- Tanda C2: T32 hecha (`layoutConsulta`/`LayoutConsulta` reemplazan a `pestaniasConsulta`; hasta T33 la pantalla
+  no dibuja el cuerpo: en `devWeb` las secciones de "Consulta" no se ven).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

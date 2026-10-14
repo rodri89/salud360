@@ -627,7 +627,7 @@ Reglas de la tanda (las mismas de la tanda C):
   extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
 - RF-33: pediatría y las demás especialidades se ven igual (sin `grupos` y con registros en modo `LISTA`).
 
-- [ ] **T32. Cuerpo de la consulta (lógica pura).** RF-20, RF-21, RF-28, RF-35, RF-36
+- [x] **T32. Cuerpo de la consulta (lógica pura).** RF-20, RF-21, RF-28, RF-35, RF-36
   - `hcgeneral/DefinicionHcGeneral.kt`: `data class LayoutConsulta(pestanias: List<PestaniaDef>, cuerpo:
     List<String>)` y `layoutConsulta(tipo, ocultas, cumple)` en lugar de `pestaniasConsulta`: con los grupos visibles
     de hoy (sin ocultas ni los que no cumplen la condición), `cuerpo` = las secciones del primer grupo cuyo
