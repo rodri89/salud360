@@ -133,6 +133,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `PerfilHc(id, nombre, pestanias)`, `SeccionCatalogoRemota`, `AsignacionPerfil`, `CatalogoHc` (base + secciones de la
   app con lo que cada una necesita: `SeccionDef`, categorías de antecedentes, laboratorios, registros) y
   `CodigosHc.GENERAL = "clinica"`.
+- (Cambio 2026-10-14) `especialidad/EspecialidadDefinition.kt`: `enum class ModoRegistro { LISTA, UNO_POR_CONSULTA }`
+  y `RegistroDef.modo: ModoRegistro = ModoRegistro.LISTA` **al final** (las demás especialidades no cambian, RF-33).
+  `UNO_POR_CONSULTA` = estudio con historial (RF-38 a RF-42): a lo sumo una entrada por consulta, fecha + campo
+  `detalle`, mostrada junto con las de las otras consultas.
 
 ### `core/database` (RF-25, RF-26, RF-29, RF-30)
 - `migrations/6.sqm` + `HcConfig.sq` (nuevo): tabla `hc_config(medico_id, hc_codigo, config_json, recibida_en,
@@ -172,6 +176,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   talla, IMC, TA y nota, y las secciones **legadas** que la app tenía en clínica y hepatología —diagnósticos, audio,
   fotos, antecedentes personales— solo para mostrar datos viejos según RF-22/RF-30) y
   `hcGeneralContribution` con el renderer de Child-Pugh.
+- (Cambio 2026-10-14) `HcGeneral.kt`: `deHepatologia` copia el `RegistroDef` de `eco_abdominal`, `veda`,
+  `biopsia_hepatica`, `estudios_cardiologicos` y `tc_rmn` con `modo = UNO_POR_CONSULTA` (el de `hepatologia`, que se
+  va en la tanda D, no cambia). Siguen siendo `TipoSeccion.REGISTROS` con el mismo `registroTipo` y el campo
+  `detalle`: los datos locales no cambian y "tener datos" (RF-22) sigue igual.
 - `ChildPughSeccion.kt`: sin cambios.
 
 ### `features/hc`
@@ -186,10 +194,31 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 - `ConsultaViewModel.kt`: resuelve la definición **una vez** al abrir y la congela para esa pantalla (RF-23: un cambio
   que llega con la consulta abierta se aplica la próxima vez, sin perder lo cargado). `seccionesVisibles` delega en la
   función pura; suma `seccionesSoloLectura` (RF-22) y el estado de avisos.
-- `ConsultaScreen.kt`: si `tipo.grupos` no está vacío, pestañas = "Datos" (ficha fija) + grupos con al menos una
-  sección visible; cada pestaña renderiza sus secciones con `RenderSeccion`. Debajo, el bloque de solo lectura con un
-  `SeccionContext` envuelto en `soloLectura = true` (todos los renderers ya respetan `ctx.soloLectura`). Avisos de
-  RF-19, RF-26 y RF-27 arriba. Sin grupos: código de hoy, intacto.
+- `ConsultaScreen.kt` (reemplazado por el cambio del 2026-10-14, "Decidido" 9): si `tipo.grupos` no está vacío, el
+  mismo layout que pediatría (`tipo.pestanias` arriba en un `ScrollableTabRow` + `tipo.secciones` sueltas debajo,
+  siempre visibles) y que `nueva_consulta.blade.php` de la web (nav "Datos" | "Antec. Familiares" y las secciones
+  debajo): arriba "Datos" (ficha fija, abre ahí) + los grupos con algo visible **menos** el que se llama "Consulta";
+  debajo, siempre, las secciones del grupo "Consulta" (el cuerpo) con `RenderSeccion`; al final, el bloque de solo
+  lectura de RF-22 con un `SeccionContext` envuelto en `soloLectura = true` (todos los renderers ya respetan
+  `ctx.soloLectura`), visible con cualquier pestaña (RF-37); el de RF-34 solo dentro de "Datos". Qué es pestaña y qué
+  es cuerpo lo decide la función pura `layoutConsulta` (sección 5), no la pantalla. Avisos de RF-19, RF-26 y RF-27
+  arriba. Sin grupos: código de hoy, intacto (RF-33).
+- (Cambio 2026-10-14) `secciones/RegistrosSeccion.kt`: si `regDef.modo == UNO_POR_CONSULTA`, delega en
+  `secciones/EstudioConHistorialSeccion.kt` (nuevo; mismo `SectionCard` con el título de la sección). Dentro:
+  `BoxWithConstraints`: con `maxWidth >= 600.dp`, `Row` con el campo de esta consulta (fecha con `DateField` + texto
+  con `TextAreaField`, ~10 líneas como el `rows="10"` de la web) a la izquierda y "Consultas previas" a la derecha
+  (`Column` con `verticalScroll` y el mismo alto, cada entrada "fecha en negrita" + texto); con menos, las previas
+  debajo del campo (RF-41). Botón "Ver todo" → `AlertDialog` ancho (`DialogProperties(usePlatformDefaultWidth =
+  false)`, ~90 % del ancho y del alto) con la entrada de esta consulta marcada "Esta consulta" y después las previas,
+  con desplazamiento (RF-40). Con `ctx.soloLectura` el campo es solo texto (RF-42). Qué entrada se edita y qué va a la
+  derecha lo deciden `entradaDeConsulta`/`historialEstudio` (sección 5) sobre `registrosDelPaciente(tipo)` (todas las
+  del paciente en la HC, ya ordenadas por `fecha DESC, updated_at DESC`). Sin "Agregar", sin pager, sin "Anterior":
+  las previas no se editan desde acá.
+- (Cambio 2026-10-14) `ConsultaViewModel`: `guardarEstudio(tipo, fecha, texto)` aplica `cambioEstudio` (sección 5):
+  crear, actualizar o borrar (`hc.guardarRegistro`/`hc.eliminarRegistro`) **en el dispositivo**, con la misma espera
+  y el mismo volcado al salir (`onCleared`) que el autoguardado de valores, para no escribir en la base con cada
+  tecla ni perder lo último; nunca llama a la API (como hoy, `marcarSucia` solo encola el envío diferido, y "clinica"
+  no tiene `HcBackend` hasta la 002).
 - `HistoriaClinicaScreen.kt` / `HistoriaClinicaViewModel`: definición resuelta en un `StateFlow`; con RF-19 o RF-26
   muestra el mensaje, no ofrece consulta nueva y deja abrir las anteriores en lectura; ofrece solo los tipos con
   secciones. La copia de diagnósticos pasa a mirar las secciones de los tipos y no `definicion.secciones` (si no, las
@@ -235,8 +264,13 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `seccionesDelPacienteSoloLectura(catalogo, antecedentes, enPerfil, ocultas)` | Secciones por paciente con datos que no están en el perfil en ningún tipo, con el nombre por defecto, para "Datos" | RF-34, RF-30 |
 | `estadoConfig(guardada, remota): EstadoConfigHc` | `ConPerfil` / `SinPerfil` / `PrimeraVezSinConexion`; la remota buena manda, si falla vale la guardada sin vencimiento | RF-23, RF-25, RF-26 |
 | `normalizarHistoriasClinicas(codigos)` | "hepatologia" → "clinica", sin repetidos | RF-29 |
+| `layoutConsulta(tipo, ocultas, cumple): LayoutConsulta` (cambio 2026-10-14; reemplaza a `pestaniasConsulta`) | `pestanias` = "Datos" + grupos visibles cuyo título **no** es "Consulta" (`claveDeNombre`); `cuerpo` = las secciones visibles del primer grupo que se llama "Consulta", o vacío. Sin grupos: pestañas vacías y cuerpo vacío (pantalla de siempre) | RF-20, RF-21, RF-28, RF-35, RF-36 |
+| `entradaDeConsulta(registros, consultaId): RegistroClinico?` | La entrada de esa consulta: la de fecha más reciente si hay varias (datos viejos), `null` si no hay | RF-38, RF-39, casos límite |
+| `historialEstudio(registros, editada): List<RegistroClinico>` | Todas las del paciente menos la `editada`, sin texto vacío (`detalle` en blanco), por `fecha DESC` y después `updated_at DESC` | RF-38, RF-40 |
+| `cambioEstudio(actual, fecha, texto): CambioEstudio` | `Crear` (sin entrada y texto con algo), `Actualizar` (con entrada y cambió fecha o texto), `Borrar` (con entrada y texto en blanco), `Nada` | RF-39 |
 
-No dependen de "hoy": ninguna regla de esta spec mira fechas.
+No dependen de "hoy": ninguna regla de esta spec mira fechas (la fecha por defecto de RF-39 es la de la consulta, que
+la pantalla le pasa a `cambioEstudio`).
 
 ## 6. Cambios fuera de este repo
 1. **`hclinica`** (repo `rodri89/hclinica`, clon `C:\Users\flor\rebonline\hclinica`, rama `salud360-api`; nunca en
@@ -294,6 +328,10 @@ No dependen de "hoy": ninguna regla de esta spec mira fechas.
   `DefinicionHcGeneralTest` (RF-7, RF-19, RF-20, RF-21, RF-24, RF-27, casos límite de pestaña vacía),
   `SeccionesSoloLecturaTest` (RF-22, RF-28, RF-30, RF-34), `EstadoConfigTest` (RF-23, RF-25, RF-26),
   `HistoriasClinicasTest` (RF-29), `CatalogoAdminTest` (RF-1, RF-16), `PerfilesDtoTest` (ida y vuelta del JSON).
+- (Cambio 2026-10-14) `core/data` commonTest: `DefinicionHcGeneralTest` suma `layoutConsulta` (RF-35, RF-36) y
+  `EstudioConHistorialTest` (nuevo: `entradaDeConsulta`, `historialEstudio`, `cambioEstudio`; RF-38, RF-39);
+  `CatalogoHcGeneralTest` verifica que los cinco estudios tienen `UNO_POR_CONSULTA` y el resto de los registros
+  `LISTA`. Los RF-37, RF-40, RF-41 y RF-42 se prueban a mano con `devWeb`.
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -349,8 +387,9 @@ No dependen de "hoy": ninguna regla de esta spec mira fechas.
 | 7. E2E y cierre | `HcPerfilesE2ETest`, pasos manuales `devWeb`, docs (`AGENTS.md`, `MEMORY.md`, `docs/`) | criterios de finalización | 2 |
 
 Tandas propuestas: **A1** = fases 0, 1 y 1b (7 tareas: entorno, base de la API, turnos); **A2** = fase 2 (5, modelo y
-API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **D** = 6 y 7 (4). Cada tanda se aprueba antes de
-generar su `tasks.md`.
+API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios de la prueba manual del
+2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **D** = 6 y 7 (4). Cada tanda se
+aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
 `.\gradlew devWeb "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`
@@ -394,6 +433,14 @@ MAMP de `gradle.properties`.
 | RF-32 | `CargaInicialPerfiles::perfilPara` | phpunit, E2E (`perfil_web`) |
 | RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica" | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
 | RF-34 | `seccionesDelPacienteSoloLectura`, bloque de lectura en "Datos" (T27/T30) | `SeccionesSoloLecturaTest`, manual |
+| RF-35 | `layoutConsulta` (cuerpo = grupo "Consulta"), `ConsultaScreen` pestañas + cuerpo debajo (T32/T33) | `DefinicionHcGeneralTest`, manual |
+| RF-36 | `layoutConsulta` (sin "Consulta": todo pestañas; solo "Consulta": "Datos" + cuerpo) (T32/T33) | `DefinicionHcGeneralTest`, manual |
+| RF-37 | `ConsultaScreen`: bloque de RF-22 después del cuerpo, fuera de la pestaña elegida (T33) | Manual |
+| RF-38 | `ModoRegistro.UNO_POR_CONSULTA` en los cinco estudios, `entradaDeConsulta`, `historialEstudio`, `EstudioConHistorialSeccion` (T34/T35) | `EstudioConHistorialTest`, `CatalogoHcGeneralTest`, manual |
+| RF-39 | `cambioEstudio`, `ConsultaViewModel.guardarEstudio` (local, con espera) (T34/T35) | `EstudioConHistorialTest`, manual |
+| RF-40 | "Ver todo" en `EstudioConHistorialSeccion` (T35) | Manual |
+| RF-41 | `BoxWithConstraints` < 600 dp (T35) | Manual (ventana angosta / teléfono) |
+| RF-42 | `ctx.soloLectura` en `EstudioConHistorialSeccion` (T35) | Manual |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -406,6 +453,28 @@ MAMP de `gradle.properties`.
    consultas nuevas; sus fotos salen por RF-22.
 6. **Frecuencia cardíaca y circunferencia abdominal ya cargadas**: se muestran solo para leer dentro del examen
    físico cuando tienen valor.
-7. **Pantalla del médico**: pestañas reales ("Datos" | pestañas del perfil), abriendo en "Datos"; el bloque de solo
-   lectura (RF-22) va debajo de la pestaña elegida.
+7. ~~**Pantalla del médico**: pestañas reales ("Datos" | pestañas del perfil), abriendo en "Datos"; el bloque de solo
+   lectura (RF-22) va debajo de la pestaña elegida.~~ **Reemplazado** por el cambio del 2026-10-14 ("Decidido" 9).
 8. **Médico sin perfil (RF-19)**: no puede crear consultas nuevas; solo lee las anteriores.
+
+## Decidido (2026-10-14, cambio de la prueba manual de la tanda C)
+9. **Pantalla del médico** (decisión del usuario; spec RF-35 a RF-37): layout de pediatría y de la web. Arriba
+   "Datos" (abre ahí) y las pestañas del perfil menos la que se llama "Consulta" (`claveDeNombre`); debajo, siempre
+   visible, el cuerpo = las secciones de "Consulta". Sin pestaña "Consulta": todo pestañas, como hasta ahora. Solo
+   "Consulta": "Datos" + cuerpo. El bloque de RF-22 va al final, después del cuerpo, con cualquier pestaña; el de
+   RF-34, solo en "Datos". Descartado: marcar el cuerpo con un dato nuevo en el perfil (exige cambiar las tablas y la
+   API de hclinica y el editor; el nombre ya es lo que usan la web y los dos perfiles iniciales).
+10. **Estudios con historial** (decisión del usuario; spec RF-38 a RF-42): modo `UNO_POR_CONSULTA` del renderer de
+    registros, no un `renderKey` CUSTOM: la sección sigue siendo `REGISTROS` (mismo `registroTipo`, mismo campo
+    `detalle`, misma tabla `registro_clinico`), así "tener datos" de RF-22, el bloque de solo lectura y los datos ya
+    cargados siguen igual, y no hace falta migración. Una fila por consulta con `fecha` + `detalle` es lo mismo que
+    guarda la web (`biopsia_hepaticas`, `videoendoscopia_digestiva_altas`, `ecografia_abdominals`,
+    `estudios_cardiologicos`, `tc_rmn_colangiormns`: `consulta_id`, `paciente_id`, `descripcion`, `fecha`, `activo`;
+    `guardar*` de `MedicoController` actualiza la fila de esa consulta o la crea), así que la 002 la mapea 1 a 1.
+    Lo que muestra la web (`cargar*` con `tipoConsulta = 1`): todas las filas activas del paciente por `id DESC`; la
+    primera va al campo de la izquierda (con su fecha) y las demás, `fecha + "\n" + descripcion` separadas por una
+    línea en blanco, sin las de descripción vacía, al textarea deshabilitado "Consultas previas"; al ver una consulta
+    cerrada (`tipoConsulta = 2`) solo la descripción de esa consulta. La app ordena por fecha (no por `id`, que no
+    tiene) y deja el campo vacío si la consulta no tiene entrada ("Para decidir" C2-1). Descartado: `renderKey`
+    CUSTOM (RF-22 mira `valores` para CUSTOM y no vería los registros) y un `TipoSeccion` nuevo (obliga a tocar todos
+    los `when` de pediatría y las demás).

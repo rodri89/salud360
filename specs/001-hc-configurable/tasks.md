@@ -604,3 +604,115 @@ Reglas de la tanda:
     → vuelve; si el médico tiene pediatría, se ve aparte e igual que antes.
 
 Al terminar la tanda: validación del reviewer, prueba manual del usuario y MEMORY.md.
+
+## Tanda C2 — Cambios de la prueba manual (2026-10-14)
+
+Cambio aprobado por el usuario el 2026-10-14 (spec: definiciones "Cuerpo de la consulta" y "Estudios con historial",
+RF-20 ajustado, RF-35 a RF-42; plan: "Decidido" 9 y 10, que reemplazan al 7). Lo de T29/T30 sobre dónde van las
+secciones y el bloque de solo lectura queda reemplazado por T32/T33. Todo en este repo, rama `hc-general`.
+
+Reglas de la tanda (las mismas de la tanda C):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica va a `core/data/.../hcgeneral/` con su test en `commonTest`, que se ve fallar antes del
+  código. ViewModels y pantallas no tienen tests: solo muestran y delegan (constitución 4). Si Gradle pide
+  `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Interfaz: el agente deja compilado `.\gradlew :features:hc:compileKotlinJvm` y
+  `.\gradlew :composeApp:compileKotlinWasmJs` y los pasos manuales; los prueba el usuario con el `devWeb` contra
+  XAMPP de `AGENTS.md`. La tarea no se marca hecha hasta que el usuario confirme.
+- Sin migración ni columnas nuevas: `registro_clinico` queda como está. No se toca `HcApiSync`/`SyncEngine`, no se
+  registra un `HcBackend` para "clinica" y el guardado de los estudios nunca llama a la API.
+- Datos de prueba: el médico de prueba con "Hepatología" (ya tiene "Antec. Familiares" + "Consulta" con los cinco
+  estudios); los perfiles extra con nombres que empiezan con "Prueba C2", borrados al terminar; al terminar, el
+  médico vuelve a "Hepatología". "Clínica general" y "Hepatología" no se editan. Licencia del médico de prueba:
+  extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+- RF-33: pediatría y las demás especialidades se ven igual (sin `grupos` y con registros en modo `LISTA`).
+
+- [ ] **T32. Cuerpo de la consulta (lógica pura).** RF-20, RF-21, RF-28, RF-35, RF-36
+  - `hcgeneral/DefinicionHcGeneral.kt`: `data class LayoutConsulta(pestanias: List<PestaniaDef>, cuerpo:
+    List<String>)` y `layoutConsulta(tipo, ocultas, cumple)` en lugar de `pestaniasConsulta`: con los grupos visibles
+    de hoy (sin ocultas ni los que no cumplen la condición), `cuerpo` = las secciones del primer grupo cuyo
+    `claveDeNombre(titulo) == claveDeNombre("Consulta")` y `pestanias` = "Datos" + los demás grupos en orden. Sin
+    grupos: pestañas y cuerpo vacíos (pantalla de siempre). `ConsultaViewModel.pestanias` pasa a devolver el
+    `LayoutConsulta` (y `seccionesVisibles` junta pestañas y cuerpo), sin tocar todavía la pantalla más que para
+    compilar.
+  - `DefinicionHcGeneralTest`: los casos de `pestaniasConsulta` adaptados; "Antec. Familiares" + "Consulta" →
+    pestañas "Datos", "Antec. Familiares" y cuerpo con las secciones de "Consulta" en orden; " CONSULTA " y
+    "Cónsulta" también son cuerpo, "Consulta del día" no; sin "Consulta" → todo pestañas y cuerpo vacío; solo
+    "Consulta" → pestañas = solo "Datos" + cuerpo; "Consulta" con todas sus secciones ocultas → cuerpo vacío y las
+    demás pestañas igual; Telemedicina con "Consulta" sin secciones de ese tipo → sin cuerpo; sin grupos → vacío.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*DefinicionHcGeneralTest*'` en verde,
+    `.\gradlew :core:data:jvmTest` completo en verde y `.\gradlew :features:hc:compileKotlinJvm` compila.
+
+- [ ] **T33. Consulta con "Datos" y pestañas arriba, cuerpo debajo y solo lectura al final.** RF-20, RF-22, RF-34,
+  RF-35, RF-36, RF-37, RF-33
+  - `ConsultaScreen.kt`, solo la rama con `grupos`: `ScrollableTabRow` con `layout.pestanias` (abre en "Datos"; en
+    "Datos" la ficha y, debajo, lo de RF-34; en las demás, sus secciones con `RenderSeccion`); después, fuera de la
+    pestaña elegida y siempre visibles, las secciones de `layout.cuerpo` con `RenderSeccion`, como las secciones
+    sueltas de pediatría; al final, `SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.alFinal, ...)` (RF-37). Sin grupos
+    (pediatría y las demás, sin perfil, HC digitalizada): el código de hoy, intacto.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs` compilan y
+    el usuario confirma en `devWeb`:
+    1. Con "Hepatología", una Consulta nueva muestra arriba solo "Datos" y "Antec. Familiares" (abre en "Datos") y
+       debajo, sin pestaña "Consulta", Motivo de consulta … TC / RMN / colangio-RMN en ese orden; al pasar a
+       "Antec. Familiares" el cuerpo sigue debajo, con lo cargado.
+    2. Una Telemedicina con "Hepatología": arriba "Datos" y "Antec. Familiares", debajo Datos subjetivos, Datos
+       objetivos, Exámenes complementarios, Interconsultas y Conductas.
+    3. Con un perfil "Prueba C2 sin consulta" (pestañas "Uno" y "Dos"): las dos como pestañas junto a "Datos" y nada
+       debajo (RF-36); con "Prueba C2 solo consulta" (una pestaña "consulta" con Nota): arriba solo "Datos" y Nota
+       debajo.
+    4. Con datos en "Nota" de una consulta (cargada con el médico asignado a "Clínica general") y el médico vuelto a
+       "Hepatología" (que no tiene Nota): al reabrirla,
+       "Nota" sale al final, solo lectura, debajo del cuerpo, con "Datos" y con "Antec. Familiares" elegidas (RF-37).
+    5. Una consulta de pediatría u otra especialidad se ve igual que antes (RF-33).
+
+- [ ] **T34. Estudios con historial: modo del registro y lógica pura.** RF-38, RF-39, RF-33
+  - `core/model/.../EspecialidadDefinition.kt`: `enum class ModoRegistro { LISTA, UNO_POR_CONSULTA }` y
+    `RegistroDef.modo: ModoRegistro = ModoRegistro.LISTA` como último parámetro.
+  - `especialidades/clinica/.../HcGeneral.kt`: los registros de `eco_abdominal`, `veda`, `biopsia_hepatica`,
+    `estudios_cardiologicos` y `tc_rmn` copiados con `modo = UNO_POR_CONSULTA` (los de `hepatologia` no cambian).
+  - `hcgeneral/EstudioConHistorial.kt`: `entradaDeConsulta(registros, consultaId)` (la de fecha más reciente de esa
+    consulta, `null` si no hay), `historialEstudio(registros, editada)` (todas menos la editada, sin `detalle` en
+    blanco, por `fecha DESC` y `updated_at DESC`) y `cambioEstudio(actual, fecha, texto)` → `Crear`/`Actualizar`/
+    `Borrar`/`Nada` (texto en blanco con entrada → `Borrar`; sin entrada → `Nada`; mismo texto y fecha → `Nada`).
+  - `EstudioConHistorialTest` (commonTest, registros inventados): consulta sin entrada → `null` y todas en el
+    historial; con entrada → no sale en el historial; dos entradas en la misma consulta → se edita la más reciente y
+    la otra va al historial; vacías y `"   "` fuera; orden por fecha y, a igual fecha, por `updated_at`; los cuatro
+    casos de `cambioEstudio`. `CatalogoHcGeneralTest`: los cinco estudios con `UNO_POR_CONSULTA`, exámenes
+    complementarios e interconsultas con `LISTA`.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EstudioConHistorialTest*'`,
+    `.\gradlew :core:data:jvmTest` completo y `.\gradlew :especialidades:clinica:jvmTest` en verde, y
+    `.\gradlew :composeApp:compileKotlinWasmJs` compila.
+
+- [ ] **T35. Pantalla de los estudios con historial.** RF-38, RF-39, RF-40, RF-41, RF-42, RF-22
+  - `secciones/EstudioConHistorialSeccion.kt` (nuevo) y `RegistrosSeccion` que delega en él con `UNO_POR_CONSULTA`,
+    como dice el plan (sección 4, `features/hc`): campo de esta consulta (fecha + texto) a la izquierda y "Consultas
+    previas" a la derecha con desplazamiento y el mismo alto; debajo con menos de 600 dp de ancho; "Ver todo" con la
+    ventana grande; con `ctx.soloLectura`, sin editar. `ConsultaViewModel.guardarEstudio` con `cambioEstudio`, en el
+    dispositivo, con la espera y el volcado al salir del autoguardado; nunca la API.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs` compilan y
+    el usuario confirma en `devWeb` con "Hepatología", en un paciente de prueba:
+    1. Consulta A: escribir en Biopsia hepática "texto A" (fecha por defecto = la de la consulta) y cerrarla.
+       Consulta B: el campo arranca vacío y a la derecha "Consultas previas" muestra la fecha y "texto A"; escribir
+       "texto B", salir enseguida y volver → "texto B" sigue (no se pierde lo último).
+    2. Borrar todo el texto de B → B queda sin entrada: no sale en el historial de otra consulta ni como dato.
+    3. Con cuatro o más entradas largas, la derecha se desplaza sola sin estirar la sección; "Ver todo" abre la
+       ventana grande con "Esta consulta" primero y las previas debajo; cerrarla no cambia nada.
+    4. Con la ventana del navegador angosta (menos de 600 px, o el modo teléfono de las herramientas de desarrollo),
+       las previas salen debajo del campo.
+    5. Consulta A (cerrada): fecha y texto se ven sin poder editarlos; previas y "Ver todo" andan.
+    6. Las otras cuatro (Ecografía abdominal, Videoendoscopía digestiva alta, Estudios cardiológicos, TC / RMN /
+       colangio-RMN) se ven y guardan igual; Exámenes complementarios e Interconsultas siguen como antes (lista con
+       "Agregar"), y un registro de pediatría también (RF-33).
+    7. Con el médico en un perfil "Prueba C2" sin Biopsia hepática, la consulta A muestra Biopsia hepática al final,
+       solo lectura, con el mismo formato (RF-22, RF-42).
+
+### Decidido (2026-10-14)
+1. **Arrastre del último estudio al campo:** no se arrastra. El campo arranca vacío y la última entrada se ve
+   primera en "Consultas previas" (RF-38/RF-39, T34/T35).
+2. **Fecha del estudio:** se mantiene el selector de fecha, por defecto la fecha de la consulta.
+3. **Historial en una consulta vieja:** "Consultas previas" muestra todas las demás entradas del paciente, también
+   las posteriores, como la web.
+4. **Estudios de hepatología viejos en el dispositivo:** aparecen recién con la tanda D (`7.sqm`); en la prueba
+   manual, usar consultas creadas en "Clínica".
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.

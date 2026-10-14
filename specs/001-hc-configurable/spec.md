@@ -37,6 +37,12 @@ secciones existentes no requiere programar nada ni publicar una versión nueva d
   nombre por defecto y una descripción. Agregar una sección al catálogo requiere programarla en la HC general y en
   la app; usarla en otro perfil no.
 - **Ficha del paciente**: la pestaña "Datos" de la web. Está siempre, primera, y no se configura.
+- **Cuerpo de la consulta**: la pestaña del perfil que se llama "Consulta" (comparando sin tildes, sin mayúsculas y
+  sin espacios de más). En la consulta no se muestra como pestaña: sus secciones van debajo de las pestañas, siempre
+  visibles, como en la web (arriba "Datos" y "Antec. Familiares", debajo las secciones de la consulta).
+- **Estudios con historial**: las secciones Ecografía abdominal, Videoendoscopía digestiva alta, Biopsia hepática,
+  Estudios cardiológicos y TC / RMN / colangio-RMN. Cada consulta guarda a lo sumo una **entrada** por sección (una
+  fecha y un texto), y se muestra junto con las entradas de las otras consultas del paciente, como en la web.
 - **Perfil**: una forma de ver la HC general. Tiene un nombre y una lista ordenada de pestañas (además de la ficha);
   cada pestaña tiene un nombre y una lista ordenada de secciones del catálogo, cada una con el nombre que se
   muestra y los tipos de consulta en los que aparece.
@@ -129,7 +135,8 @@ sección: se muestran siempre, como en la web.
 
 ### Lo que ve el médico
 - RF-20: CUANDO el médico abre una consulta de la HC general, EL SISTEMA muestra la ficha del paciente y después
-  las pestañas y secciones de su perfil para ese tipo de consulta, en ese orden y con esos nombres.
+  las pestañas y secciones de su perfil para ese tipo de consulta, en ese orden y con esos nombres (con el cuerpo de
+  la consulta debajo de las pestañas, según RF-35 y RF-36).
 - RF-21: EL SISTEMA no muestra al médico, para editar, ninguna sección que no esté en su perfil, aunque la app la conozca.
 - RF-22: CUANDO una consulta tiene datos en esa consulta en una sección que no está en el perfil del médico que la
   mira (porque se quitó, porque es de otro médico o porque nunca estuvo en el catálogo), EL SISTEMA la muestra solo
@@ -156,6 +163,32 @@ sección: se muestran siempre, como en la web.
 - RF-34: CUANDO el paciente tiene datos guardados por paciente (no por consulta) en una sección que no está en el
   perfil del médico (por ejemplo antecedentes personales), EL SISTEMA los muestra una sola vez, solo para leer, en
   la ficha del paciente ("Datos").
+- RF-35: CUANDO el médico abre una consulta de la HC general y su perfil tiene, para ese tipo de consulta, una
+  pestaña que se llama "Consulta", EL SISTEMA muestra arriba las pestañas "Datos" y las demás del perfil (abriendo en
+  "Datos"), y debajo, sin pestaña propia y siempre visibles sea cual sea la pestaña elegida, las secciones de
+  "Consulta" en su orden y con sus nombres.
+- RF-36: SI el perfil no tiene, para ese tipo de consulta, ninguna pestaña que se llame "Consulta", ENTONCES EL
+  SISTEMA muestra todas sus pestañas junto a "Datos" y nada debajo; SI "Consulta" es la única pestaña, ENTONCES EL
+  SISTEMA muestra arriba solo "Datos" y debajo el cuerpo de la consulta.
+- RF-37: EL SISTEMA muestra las secciones de solo lectura de RF-22 al final de la consulta, debajo del cuerpo de la
+  consulta (o, sin cuerpo, debajo de la pestaña elegida), visibles con cualquier pestaña elegida; lo de RF-34 sigue
+  saliendo solo en "Datos".
+
+### Estudios con historial
+- RF-38: CUANDO el médico ve una sección de estudios con historial en una consulta, EL SISTEMA muestra a la izquierda
+  la fecha y el texto de la entrada de esa consulta, y a la derecha, en un recuadro del mismo alto con desplazamiento
+  propio y con el título "Consultas previas", las demás entradas del paciente en esa sección (fecha y texto de cada
+  una, de la fecha más reciente a la más antigua), sin las que tienen el texto vacío.
+- RF-39: CUANDO el médico escribe el texto (o cambia la fecha) de un estudio con historial en una consulta abierta,
+  EL SISTEMA lo guarda como la única entrada de esa consulta en esa sección, con la fecha de la consulta si no eligió
+  otra; SI deja el texto vacío, ENTONCES la consulta queda sin entrada en esa sección.
+- RF-40: CUANDO el médico toca "Ver todo" en un estudio con historial, EL SISTEMA abre una ventana que ocupa la mayor
+  parte de la pantalla con el historial completo de la sección (primero la entrada de esa consulta, marcada "Esta
+  consulta", y después las demás como en RF-38), con desplazamiento; cerrarla no cambia nada.
+- RF-41: MIENTRAS la pantalla tenga menos de 600 puntos de ancho (un teléfono en vertical), EL SISTEMA muestra las
+  consultas previas debajo del campo y no a la derecha.
+- RF-42: MIENTRAS la consulta esté cerrada o se vea solo para leer, EL SISTEMA muestra la fecha y el texto de la
+  entrada de esa consulta sin poder editarlos; las consultas previas y "Ver todo" siguen disponibles.
 
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
@@ -195,6 +228,17 @@ sección: se muestran siempre, como en la web.
   consultas nuevas (decidido en el plan, 2026-10-09).
 - Frecuencia cardíaca y circunferencia abdominal ya cargadas en el examen físico: se ven solo para leer dentro del
   examen físico (decidido en el plan, 2026-10-09).
+- El administrador renombra la pestaña "Consulta" (por ejemplo, "Evolución"): pasa a ser una pestaña más (RF-36);
+  si la vuelve a llamar "Consulta" (o "consulta", "CONSULTA "), vuelve a ir debajo.
+- El médico oculta para sí todas las secciones de "Consulta" (RF-28): debajo de las pestañas no queda nada; las demás
+  pestañas no cambian.
+- Telemedicina: el cuerpo es la pestaña "Consulta" con sus secciones de Telemedicina; si no tiene ninguna para ese
+  tipo, no hay cuerpo (RF-36).
+- Un estudio con historial con más de una entrada en la misma consulta (cargadas con la versión anterior de la app,
+  que permitía agregar varias): el campo muestra la de fecha más reciente y las otras salen en "Consultas previas";
+  ninguna se borra.
+- Un estudio con historial que no está en el perfil pero tiene entrada en esa consulta: se ve según RF-22, con el
+  mismo formato y solo para leer (RF-42).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -206,7 +250,8 @@ sección: se muestran siempre, como en la web.
 
 ## Criterios de finalización
 - Cada RF de lógica (validaciones de RF-4, RF-8, RF-9, RF-11, RF-12; armado y filtrado de RF-20 a RF-22; caché y
-  primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32) con test en verde.
+  primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
+  entrada e historial de RF-38 y RF-39) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -216,3 +261,9 @@ sección: se muestran siempre, como en la web.
 - (ninguna)
 
 Cambio aprobado el 2026-10-13: RF-22 acotado a la consulta y RF-34 nuevo (datos por paciente en 'Datos').
+
+Cambio aprobado el 2026-10-14 (prueba manual de la tanda C): la pestaña "Consulta" del perfil deja de ser pestaña y
+va debajo de "Datos" y las demás, siempre visible, como en pediatría y en la web (definición "Cuerpo de la consulta",
+RF-20 ajustado, RF-35 a RF-37); y las secciones de estudios (ecografía abdominal, videoendoscopía digestiva alta,
+biopsia hepática, estudios cardiológicos, TC / RMN / colangio-RMN) pasan al formato de la web: campo de esta consulta
+a la izquierda, consultas previas a la derecha y "Ver todo" (definición "Estudios con historial", RF-38 a RF-42).
