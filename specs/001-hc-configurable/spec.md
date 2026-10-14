@@ -40,6 +40,11 @@ secciones existentes no requiere programar nada ni publicar una versión nueva d
 - **Cuerpo de la consulta**: la pestaña del perfil que se llama "Consulta" (comparando sin tildes, sin mayúsculas y
   sin espacios de más). En la consulta no se muestra como pestaña: sus secciones van debajo de las pestañas, siempre
   visibles, como en la web (arriba "Datos" y "Antec. Familiares", debajo las secciones de la consulta).
+- **Laboratorio**: una sección en tabla por fechas (Laboratorio general, Laboratorio reducido, Peso): una **fila** por
+  analito (por ejemplo "Hemoglobina"), una columna por cada carga anterior del paciente (solo para leer) y, mientras
+  el médico carga o edita la de esta consulta, una columna con **celdas editables**.
+- **Filas ocultas**: las filas de un laboratorio que un médico eligió no ver. Son una preferencia de ese médico para
+  ese laboratorio; no cambian los datos.
 - **Estudios con historial**: las secciones Ecografía abdominal, Videoendoscopía digestiva alta, Biopsia hepática,
   Estudios cardiológicos y TC / RMN / colangio-RMN. Cada consulta guarda a lo sumo una **entrada** por sección (una
   fecha y un texto), y se muestra junto con las entradas de las otras consultas del paciente, como en la web.
@@ -190,13 +195,47 @@ sección: se muestran siempre, como en la web.
 - RF-42: MIENTRAS la consulta esté cerrada o se vea solo para leer, EL SISTEMA muestra la fecha y el texto de la
   entrada de esa consulta sin poder editarlos; las consultas previas y "Ver todo" siguen disponibles.
 
+### Laboratorio
+- RF-43: CUANDO el médico toca "Elegir filas" en un laboratorio de la HC general, EL SISTEMA abre una lista con una
+  casilla por fila, en el orden y con los grupos del laboratorio, tildadas las visibles; cada casilla que cambia se
+  aplica al momento en la tabla, sin otro paso para confirmar.
+- RF-44: EL SISTEMA guarda las filas ocultas por médico y por laboratorio en el dispositivo, igual que las secciones
+  ocultas (RF-28): no cambian lo que ven otros médicos ni la web, no cambian otro laboratorio que tenga el mismo
+  analito, y no se envían a la HC general.
+- RF-45: MIENTRAS una fila esté oculta, EL SISTEMA no la muestra en ninguna columna de ese laboratorio (cargas
+  anteriores, carga de esta consulta, celdas editables y consulta vista solo para leer), aunque tenga valores; un
+  grupo sin filas visibles tampoco se muestra.
+- RF-46: CUANDO el médico guarda una carga de laboratorio, EL SISTEMA conserva sin cambios los valores que esa carga
+  ya tenía en filas ocultas; ocultar o mostrar una fila nunca borra ni cambia valores.
+- RF-47: SI el médico intenta ocultar la última fila visible de un laboratorio, ENTONCES EL SISTEMA no la oculta (la
+  casilla queda tildada y deshabilitada) y muestra "Tiene que quedar al menos una fila visible"; SI lo guardado no
+  deja ninguna fila visible de ese laboratorio, ENTONCES EL SISTEMA muestra todas.
+- RF-48: CUANDO el médico toca "Mostrar todas" en la lista, EL SISTEMA vuelve a mostrar todas las filas de ese
+  laboratorio. MIENTRAS haya filas ocultas, el botón dice cuántas ("Elegir filas (3 ocultas)").
+- RF-49: EL SISTEMA ofrece "Elegir filas" solo en los laboratorios de la HC general con más de una fila (no en Peso),
+  también al ver una consulta solo para leer; los laboratorios de las demás historias clínicas no lo ofrecen (RF-33).
+- RF-50: MIENTRAS el médico carga o edita un laboratorio, EL SISTEMA muestra cada celda editable con un fondo propio
+  y un borde en todo su contorno, y las celdas de las cargas anteriores sin borde ni fondo propio, en modo claro y
+  en modo oscuro.
+- RF-51: EL SISTEMA dibuja el borde de la celda editable con un contraste de al menos 3:1 (WCAG 2.1, criterio 1.4.11)
+  contra el fondo de la celda y contra el fondo de la fila, y el valor escrito y el texto de ayuda con al menos 4,5:1
+  contra el fondo de la celda, en modo claro y en modo oscuro.
+- RF-52: CUANDO una celda editable recibe el foco (clic, toque o tabulador), EL SISTEMA le pone un borde de otro color
+  y del doble de grosor, con al menos 3:1 contra el fondo de la celda, y un cursor de escritura con al menos 3:1
+  contra ese fondo, en modo claro y en modo oscuro; al perder el foco vuelve el borde de RF-50.
+- RF-53: MIENTRAS una celda editable esté vacía, EL SISTEMA muestra adentro el texto de ayuda "Valor", que desaparece
+  al escribir y no se guarda.
+- RF-54: EL SISTEMA aplica RF-50 a RF-53 a la carga de laboratorio de todas las historias clínicas (pediatría y las
+  demás incluidas): cambia el aspecto de la celda editable, no lo que se carga ni cómo se guarda.
+
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
   catálogo inicial.
 - RF-32: EL SISTEMA asigna "Hepatología" a los médicos que tienen el perfil 2 en la web, y "Clínica general" a los
   que tienen el perfil 1, 5 o 9 (que en la web ven las mismas secciones). Los de perfil 3 o 4, los de un perfil
   desconocido y los que no están vinculados con turnosonlinebb quedan sin perfil.
-- RF-33: EL SISTEMA no cambia nada de las historias clínicas que no viven en la HC general (pediatría y las demás).
+- RF-33: EL SISTEMA no cambia nada de las historias clínicas que no viven en la HC general (pediatría y las demás),
+  salvo el aspecto de la celda editable del laboratorio (RF-54).
 
 ## Requisitos no funcionales
 - La configuración vive en la base de la HC general; la app la lee y, para el administrador, la escribe a través de
@@ -239,6 +278,15 @@ sección: se muestran siempre, como en la web.
   ninguna se borra.
 - Un estudio con historial que no está en el perfil pero tiene entrada en esa consulta: se ve según RF-22, con el
   mismo formato y solo para leer (RF-42).
+- El médico oculta una fila con valores en cargas anteriores o en la de esta consulta: no se ve en ninguna columna
+  (RF-45) y los valores siguen guardados (RF-46); "Mostrar todas" los vuelve a mostrar (RF-48).
+- Una columna anterior que solo tenía valores en filas ocultas: la columna se sigue mostrando, con sus celdas vacías.
+- Filas ocultas que el laboratorio ya no tiene (porque cambió en una versión nueva de la app): se ignoran y no se
+  borran de lo guardado; "Mostrar todas" tampoco las borra (mismo criterio que RF-28).
+- El mismo analito en Laboratorio general y en Laboratorio reducido: ocultarlo en uno no lo oculta en el otro (RF-44).
+- Un laboratorio de la HC general que aparece solo para leer (RF-22) también respeta las filas ocultas (RF-45).
+- El médico de la HC general que también tiene pediatría: en pediatría el laboratorio se ve con todas sus filas y con
+  la celda editable nueva (RF-49, RF-54).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -247,11 +295,14 @@ sección: se muestran siempre, como en la web.
   administrador cuando estén.
 - Leer y escribir los datos clínicos en la HC general: es la spec 002.
 - Secretarias. Que un médico vea pacientes o consultas de otro.
+- Elegir filas en los laboratorios de pediatría y las demás historias clínicas, o desde Configuración; que el
+  administrador elija las filas de un laboratorio para un perfil.
 
 ## Criterios de finalización
 - Cada RF de lógica (validaciones de RF-4, RF-8, RF-9, RF-11, RF-12; armado y filtrado de RF-20 a RF-22; caché y
   primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
-  entrada e historial de RF-38 y RF-39) con test en verde.
+  entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52)
+  con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -267,3 +318,10 @@ va debajo de "Datos" y las demás, siempre visible, como en pediatría y en la w
 RF-20 ajustado, RF-35 a RF-37); y las secciones de estudios (ecografía abdominal, videoendoscopía digestiva alta,
 biopsia hepática, estudios cardiológicos, TC / RMN / colangio-RMN) pasan al formato de la web: campo de esta consulta
 a la izquierda, consultas previas a la derecha y "Ver todo" (definición "Estudios con historial", RF-38 a RF-42).
+
+Cambio aprobado el 2026-10-14 (2): en los laboratorios de la HC general el médico elige qué filas ve, desde la misma
+sección ("Elegir filas", con casillas que se aplican al momento; una fila con valores se oculta igual y los datos no
+se borran), como preferencia suya en el dispositivo, igual que las secciones ocultas (definiciones "Laboratorio" y
+"Filas ocultas", RF-43 a RF-49); y la celda editable del laboratorio se distingue de las de solo lectura con fondo,
+borde, foco y texto de ayuda con contraste mínimo, en modo claro y oscuro y en todas las historias clínicas (RF-50 a
+RF-54; RF-33 ajustado).

@@ -717,3 +717,90 @@ Reglas de la tanda (las mismas de la tanda C):
    manual, usar consultas creadas en "Clínica".
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda C3 — Laboratorio (2026-10-14)
+
+Cambio aprobado por el usuario el 2026-10-14 (2) (spec: definiciones "Laboratorio" y "Filas ocultas", RF-43 a
+RF-54, RF-33 ajustado; plan: sección 4 `features/hc` y `core/ui`, sección 5, "Decidido" 11 a 16). Todo en este repo,
+rama `hc-general`.
+
+Reglas de la tanda (las mismas de la tanda C2):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica va a `core/data/.../hcgeneral/` (y los colores a `core/ui`) con su test, que se ve fallar
+  antes del código. ViewModels y pantallas no tienen tests: solo muestran y delegan (constitución 4). Si Gradle pide
+  `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm` y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` que ya está corriendo tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar
+  la página. **No** correr `--stop` ni matar el `devWeb` en uso.
+- La tarea no se marca hecha hasta que el usuario confirme los pasos manuales, en modo claro **y** en modo oscuro
+  (el tema sigue al sistema: en el navegador, DevTools → Rendering → "Emulate CSS prefers-color-scheme: dark", o el
+  modo oscuro del sistema).
+- Sin migración ni columnas nuevas: las filas ocultas van en `medico_preferencia` como `secciones_ocultas_clinica`.
+  No se toca `HcApiSync`/`SyncEngine`, no se registra un `HcBackend` para "clinica" y nada llama a la API.
+- Datos de prueba: el médico de prueba con "Hepatología" (tiene Laboratorio general y Peso) y un perfil
+  "Prueba C3" (Consulta: Laboratorio general, Laboratorio reducido, Peso), borrado al terminar; el médico vuelve a
+  "Hepatología". Pacientes de prueba con dos o más cargas de laboratorio. Licencia del médico de prueba: extenderla y
+  restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+
+- [ ] **T36. Filas visibles del laboratorio (lógica pura).** RF-44, RF-45, RF-47, RF-48, RF-49
+  - `hcgeneral/FilasLaboratorio.kt`: `clavePreferenciaFilasOcultas(codigo, laboratorioTipo)`,
+    `ocultasDePreferencia(valor?)`, `puedeElegirFilas(codigo, analitos)`, `filasVisibles(analitos, ocultas)`,
+    `alternarFila(analitos, ocultas, clave, visible)`, `esUltimaVisible(analitos, ocultas, clave)`,
+    `mostrarTodasLasFilas(analitos, ocultas)` y `textoBotonFilas(analitos, ocultas)`, como dice el plan (sección 5).
+  - `FilasLaboratorioTest` (commonTest, analitos inventados con dos grupos): clave
+    `filas_ocultas_clinica_laboratorio_general` y distinta para `laboratorio_reducido`; `ocultasDePreferencia` con
+    null, "" y "a,,b"; `filasVisibles` sin ocultas → todas en orden, con una oculta → sin ella y el resto en orden,
+    con todas ocultas → todas, con una clave que el laboratorio no tiene → se ignora; `alternarFila` oculta, muestra,
+    se niega a ocultar la última visible y conserva claves de afuera; `esUltimaVisible`; `mostrarTodasLasFilas`
+    conserva las de afuera; `textoBotonFilas` sin ocultas, con 3 y sin contar las de afuera; `puedeElegirFilas`
+    true para "clinica" con 2 analitos, false con 1 (Peso) y false para "pediatria".
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*FilasLaboratorioTest*'` y `.\gradlew :core:data:jvmTest`
+    completo en verde.
+
+- [ ] **T37. "Elegir filas" en el laboratorio.** RF-43, RF-44, RF-45, RF-46, RF-47, RF-48, RF-49, RF-33
+  - `secciones/LaboratorioSeccion.kt`, como dice el plan (sección 4, `features/hc`): filas de
+    `filasVisibles(labDef.analitos, ocultas)` (cabeceras de grupo de la lista filtrada), botón en el `trailing` del
+    `SectionCard` solo con `puedeElegirFilas` (también en solo lectura) con `textoBotonFilas`, y diálogo con una
+    `CheckboxField` por analito (agrupadas, con desplazamiento), la última visible deshabilitada con "Tiene que
+    quedar al menos una fila visible", "Mostrar todas" y "Cerrar"; cada casilla guarda con
+    `ctx.vm.guardarPreferencia`. El mapa `valores` de la carga sigue con todas las claves.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs` (con las `-P` de
+    arriba) compilan, el `devWeb` se refresca con `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma,
+    en modo claro y en modo oscuro:
+    1. Con "Hepatología", en Laboratorio general, "Elegir filas" abre la lista con las 51 filas en orden y todas
+       tildadas (los laboratorios de la HC general no tienen grupos; las cabeceras de grupo salen de la lista
+       filtrada y se cubren con el código de siempre); destildar dos (una con valores en una carga anterior) →
+       desaparecen al momento de todas las columnas, y el botón dice "Elegir filas (2 ocultas)".
+    2. Ocultar todas menos una → la casilla de la última queda deshabilitada y sale el mensaje.
+    3. "Nueva carga" (o "Editar" una carga con valores en una fila oculta): la columna editable no muestra la fila
+       oculta; guardar; "Mostrar todas" → la fila vuelve con su valor intacto en esa carga y en las anteriores.
+    4. Recargar la página y reabrir la consulta → las filas siguen ocultas; una consulta cerrada del mismo paciente
+       también las oculta y ofrece el botón.
+    5. Con "Prueba C3": ocultar "Glucemia" en Laboratorio reducido no la oculta en Laboratorio general, y Peso no
+       muestra "Elegir filas".
+    6. Con otro médico de prueba de la HC general, si lo hay en la base local, el mismo paciente muestra todas las
+       filas (si no lo hay, se anota como no probado); un laboratorio de pediatría no tiene el botón y se ve igual
+       que antes, salvo la celda editable de T38 (RF-33, RF-49).
+
+- [ ] **T38. Celda editable que se distingue.** RF-50, RF-51, RF-52, RF-53, RF-54
+  - `core/ui`: `theme/ColoresCelda.kt` (`ColoresCelda`, `coloresCelda(oscuro)`, `contraste`) con los valores de la
+    tabla del plan, y `CeldaEditable` en `components/FormFields.kt` (fondo, borde 1 dp, borde de foco 2 dp, cursor
+    y texto de ayuda "Valor"), como dice el plan (sección 4, `core/ui`).
+  - `LaboratorioSeccion.kt`: la `CeldaEditable` privada se borra y se usa la de `core/ui`; las celdas de solo
+    lectura no cambian.
+  - `core/ui/src/jvmTest/.../theme/ColoresCeldaTest.kt`: `contraste(negro, blanco)` = 21 (±0,1); en los dos modos,
+    borde y bordeFoco contra fondo ≥ 3, borde contra `surface` y contra `surfaceVariant` al 50 % sobre `surface` ≥ 3,
+    texto y ayuda contra fondo ≥ 4,5, fondo ≠ `surface`.
+  - Hecho cuando: `.\gradlew :core:ui:jvmTest` en verde, `.\gradlew :features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs` (con las `-P` de arriba) compilan, el `devWeb` se refresca con
+    `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma, en modo claro y en modo oscuro:
+    1. En "Nueva carga" de Laboratorio general, cada celda de la columna editable tiene fondo y borde visibles en
+       las filas blancas y en las grises, y las de las fechas anteriores no tienen ni borde ni fondo propio.
+    2. Las celdas vacías dicen "Valor" (atenuado); al escribir desaparece, y al guardar no queda "Valor" guardado.
+    3. Con clic y con tabulador, la celda con foco tiene el borde más grueso y de otro color, y se ve el cursor
+       (también en oscuro); al salir vuelve el borde normal.
+    4. Un laboratorio de pediatría muestra la misma celda nueva y carga y guarda igual que antes (RF-54).
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.

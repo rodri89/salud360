@@ -219,6 +219,31 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   y el mismo volcado al salir (`onCleared`) que el autoguardado de valores, para no escribir en la base con cada
   tecla ni perder lo último; nunca llama a la API (como hoy, `marcarSucia` solo encola el envío diferido, y "clinica"
   no tiene `HcBackend` hasta la 002).
+- (Cambio 2026-10-14 (2)) `secciones/LaboratorioSeccion.kt` (el renderer de `TipoSeccion.LABORATORIO`, compartido
+  por todas las especialidades):
+  - Filas (RF-43 a RF-49): lee las ocultas de `ui.preferencias[clavePreferenciaFilasOcultas(def.codigo,
+    labDef.tipo)]` con `ocultasDePreferencia` y recorre `filasVisibles(labDef.analitos, ocultas)` en vez de
+    `labDef.analitos` (cabecera de grupo y franjas alternadas salen de la lista filtrada, así un grupo sin filas
+    visibles no aparece). El mapa `valores` de la carga sigue arrancando con **todos** los valores de
+    `enEstaConsulta` y `guardarLaboratorio` lo manda entero: las ocultas se guardan como estaban (RF-46). Si
+    `puedeElegirFilas(def.codigo, labDef.analitos)`, `trailing` del `SectionCard` con `LinkButton("Elegir filas")`
+    (o "Elegir filas (n ocultas)", `textoBotonFilas`), también con `ctx.soloLectura`.
+  - Diálogo "Elegir filas" (`AlertDialog` en el mismo archivo): una `CheckboxField` de `core/ui` por analito con su
+    grupo como subtítulo, dentro de un `Column` con `verticalScroll` y alto máximo (el general tiene 51 filas);
+    cada cambio llama a `ctx.vm.guardarPreferencia(clave, alternarFila(...).joinToString(","))` y la tabla se
+    redibuja sola porque `ConsultaUi.preferencias` ya es un flujo de la base. La casilla de la única visible va con
+    `enabled = false` y el texto "Tiene que quedar al menos una fila visible" (RF-47). `LinkButton("Mostrar todas")`
+    → `mostrarTodasLasFilas`; "Cerrar" no cambia nada más.
+  - Preferencia (RF-44): misma tabla `medico_preferencia` y mismo `ConsultaViewModel.guardarPreferencia` →
+    `HcRepository.guardarPreferencia` que `secciones_ocultas_clinica` (RF-28): mismo `dirty` que hoy (lo lee solo
+    el `SyncEngine`, que la app no usa contra ningún servidor), nunca `HcApiSync` ni la API de hclinica. Clave
+    `filas_ocultas_<codigo>_<laboratorioTipo>` (`filas_ocultas_clinica_laboratorio_general`,
+    `..._laboratorio_reducido`), valor CSV de `AnalitoDef.clave` (sin comas: son `[a-z0-9_]`). No pasa por
+    `ConfigSeccionesHcScreen`.
+  - Celda editable (RF-50 a RF-54): la `CeldaEditable` privada (hoy `background(surface)` sobre el `SectionCard`, que
+    también es `surface`: no se ve) se reemplaza por `CeldaEditable` de `core/ui`. Las celdas de solo lectura no
+    cambian (texto sin borde ni fondo propio). Como el renderer es uno solo, el aspecto nuevo llega también a
+    pediatría, endocrinología y las demás: es lo buscado (RF-54); el comportamiento no cambia.
 - `HistoriaClinicaScreen.kt` / `HistoriaClinicaViewModel`: definición resuelta en un `StateFlow`; con RF-19 o RF-26
   muestra el mensaje, no ofrece consulta nueva y deja abrir las anteriores en lectura; ofrece solo los tipos con
   secciones. La copia de diagnósticos pasa a mirar las secciones de los tipos y no `definicion.secciones` (si no, las
@@ -226,6 +251,26 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 - `ConfigSeccionesHcScreen.kt`: para "clinica" lista las secciones del perfil del médico (todas las pestañas, con el
   nombre del perfil), misma preferencia `secciones_ocultas_clinica` (RF-28). Nunca se poda la lista guardada: lo que
   ocultó vuelve oculto si el administrador quita y repone la sección.
+
+### `core/ui` (cambio 2026-10-14 (2); RF-50 a RF-54)
+- `theme/ColoresCelda.kt` (nuevo): `data class ColoresCelda(fondo, borde, bordeFoco, texto, ayuda)` y
+  `coloresCelda(oscuro: Boolean)`, más `contraste(a: Color, b: Color): Float` (fórmula WCAG con
+  `Color.luminance()`). Valores, tomados de la paleta existente:
+
+  | | Claro | Oscuro |
+  |---|---|---|
+  | fondo | `primaryContainer` claro `#D5EBF1` | `Salud360Colors.DarkBackground` `#0F1B1E` (más hundido que la tarjeta `#16262B`) |
+  | borde (1 dp) | `onSurfaceVariant` claro `#4F5B5E` (≈ 5,7:1 contra el fondo, ≈ 7:1 contra la fila blanca) | `onSurfaceVariant` oscuro `#B8C6CA` (≈ 10:1 / ≈ 9:1) |
+  | bordeFoco (2 dp) y cursor | `TealStart` `#2C7B90` (≈ 3,9:1 / ≈ 4,8:1) | `primary` oscuro `#6EC1D6` (≈ 8,6:1) |
+  | texto | `OnBackground` `#333333` | `DarkOnBackground` `#E6EDEF` |
+  | ayuda ("Valor") | `#4F5B5E` | `#B8C6CA` |
+
+  `outline` (`#B9C4C7`, ≈ 1,8:1 contra blanco) no sirve para el borde: no llega a 3:1.
+- `components/FormFields.kt`: `CeldaEditable(valor, onCambio, modifier, ayuda = "Valor")`: `BasicTextField` de una
+  línea con `decorationBox` (fondo `fondo`, `border(1.dp | 2.dp, borde | bordeFoco, shapes.extraSmall)` según
+  `interactionSource.collectIsFocusedAsState()`, texto de ayuda si está vacío), `cursorBrush = SolidColor(bordeFoco)`
+  (el de por defecto es negro y no se ve en oscuro), colores con `coloresCelda(LocalIsDarkTheme.current)`. Mismo
+  ancho y relleno que la celda de hoy (120 dp) para no mover la tabla.
 
 ### `features/admin` (RF-1 a RF-18)
 - `PerfilesHcViewModel.kt` (nuevo, en `AdminModule.kt`): estado de la lista, del perfil en edición (borrador que se
@@ -268,6 +313,13 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `entradaDeConsulta(registros, consultaId): RegistroClinico?` | La entrada de esa consulta: la de fecha más reciente si hay varias (datos viejos), `null` si no hay | RF-38, RF-39, casos límite |
 | `historialEstudio(registros, editada): List<RegistroClinico>` | Todas las del paciente menos la `editada`, sin texto vacío (`detalle` en blanco), por `fecha DESC` y después `updated_at DESC` | RF-38, RF-40 |
 | `cambioEstudio(actual, fecha, texto): CambioEstudio` | `Crear` (sin entrada y texto con algo), `Actualizar` (con entrada y cambió fecha o texto), `Borrar` (con entrada y texto en blanco), `Nada` | RF-39 |
+| `clavePreferenciaFilasOcultas(codigo, laboratorioTipo)` / `ocultasDePreferencia(valor?)` (cambio 2026-10-14 (2), `hcgeneral/FilasLaboratorio.kt`) | `"filas_ocultas_<codigo>_<tipo>"`; CSV → conjunto sin vacíos (null o "" → vacío) | RF-44 |
+| `puedeElegirFilas(codigo, analitos)` | `codigo == CodigosHc.GENERAL` y más de un analito | RF-49 |
+| `filasVisibles(analitos, ocultas): List<AnalitoDef>` | Los analitos sin los ocultos, en su orden; si no queda ninguno, todos; claves ocultas que el laboratorio no tiene se ignoran | RF-45, RF-47 |
+| `alternarFila(analitos, ocultas, clave, visible): Set<String>` | Agrega o quita `clave`; si ocultarla deja sin visibles, devuelve `ocultas` igual; nunca toca claves de afuera del laboratorio | RF-43, RF-47 |
+| `esUltimaVisible(analitos, ocultas, clave)` | La casilla que hay que deshabilitar | RF-47 |
+| `mostrarTodasLasFilas(analitos, ocultas)` | `ocultas` menos las claves del laboratorio (las de afuera se conservan) | RF-48, casos límite |
+| `textoBotonFilas(analitos, ocultas)` | "Elegir filas" o "Elegir filas (n ocultas)", contando solo las de ese laboratorio | RF-48 |
 
 No dependen de "hoy": ninguna regla de esta spec mira fechas (la fecha por defecto de RF-39 es la de la consulta, que
 la pantalla le pasa a `cambioEstudio`).
@@ -332,6 +384,12 @@ la pantalla le pasa a `cambioEstudio`).
   `EstudioConHistorialTest` (nuevo: `entradaDeConsulta`, `historialEstudio`, `cambioEstudio`; RF-38, RF-39);
   `CatalogoHcGeneralTest` verifica que los cinco estudios tienen `UNO_POR_CONSULTA` y el resto de los registros
   `LISTA`. Los RF-37, RF-40, RF-41 y RF-42 se prueban a mano con `devWeb`.
+- (Cambio 2026-10-14 (2)) `core/data` commonTest `FilasLaboratorioTest` (analitos inventados, con grupos): RF-44,
+  RF-45, RF-47, RF-48, RF-49. `core/ui` jvmTest `ColoresCeldaTest`: en los dos modos, `contraste` de borde y
+  bordeFoco contra el fondo de la celda ≥ 3, de borde contra `surface` y contra `surfaceVariant` al 50 % sobre
+  `surface` (las dos franjas de la fila) ≥ 3, de texto y ayuda contra el fondo ≥ 4,5, y fondo distinto de `surface`
+  (RF-50 a RF-52); más un caso conocido de `contraste` (negro/blanco = 21). RF-43, RF-46, RF-50, RF-52 (foco y
+  cursor), RF-53 y RF-54 a mano con `devWeb`, en modo claro y oscuro.
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -388,7 +446,8 @@ la pantalla le pasa a `cambioEstudio`).
 
 Tandas propuestas: **A1** = fases 0, 1 y 1b (7 tareas: entorno, base de la API, turnos); **A2** = fase 2 (5, modelo y
 API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios de la prueba manual del
-2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **D** = 6 y 7 (4). Cada tanda se
+2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **C3** = laboratorio, cambio del
+2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **D** = 6 y 7 (4). Cada tanda se
 aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
@@ -431,7 +490,7 @@ MAMP de `gradle.properties`.
 | RF-30 | `7.sqm` sin borrados; secciones legadas; `seccionesSoloLectura` | `MigracionHepatologiaTest`, `SeccionesSoloLecturaTest` |
 | RF-31 | `CargaInicialPerfiles`; catálogo de la app | `CatalogoHcGeneralTest`, E2E |
 | RF-32 | `CargaInicialPerfiles::perfilPara` | phpunit, E2E (`perfil_web`) |
-| RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica" | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
+| RF-33 | `grupos` opcional, registro estático para el resto, sin backend "clinica"; excepción RF-54 | Tests existentes en verde, `CatalogoHcGeneralTest`, manual pediatría |
 | RF-34 | `seccionesDelPacienteSoloLectura`, bloque de lectura en "Datos" (T27/T30) | `SeccionesSoloLecturaTest`, manual |
 | RF-35 | `layoutConsulta` (cuerpo = grupo "Consulta"), `ConsultaScreen` pestañas + cuerpo debajo (T32/T33) | `DefinicionHcGeneralTest`, manual |
 | RF-36 | `layoutConsulta` (sin "Consulta": todo pestañas; solo "Consulta": "Datos" + cuerpo) (T32/T33) | `DefinicionHcGeneralTest`, manual |
@@ -441,6 +500,18 @@ MAMP de `gradle.properties`.
 | RF-40 | "Ver todo" en `EstudioConHistorialSeccion` (T35) | Manual |
 | RF-41 | `BoxWithConstraints` < 600 dp (T35) | Manual (ventana angosta / teléfono) |
 | RF-42 | `ctx.soloLectura` en `EstudioConHistorialSeccion` (T35) | Manual |
+| RF-43 | Diálogo "Elegir filas" en `LaboratorioSeccion`, `alternarFila` (T37) | `FilasLaboratorioTest`, manual |
+| RF-44 | `clavePreferenciaFilasOcultas`, `guardarPreferencia` como RF-28 (T36/T37) | `FilasLaboratorioTest`, manual (otro médico, otro laboratorio) |
+| RF-45 | `filasVisibles` en el renderer, también con `ctx.soloLectura` (T36/T37) | `FilasLaboratorioTest`, manual |
+| RF-46 | `valores` de la carga con todas las claves; `guardarLaboratorio` sin cambios (T37) | Manual (ocultar, editar, guardar, mostrar) |
+| RF-47 | `filasVisibles` (ninguna → todas), `alternarFila`, `esUltimaVisible` (T36/T37) | `FilasLaboratorioTest`, manual |
+| RF-48 | `mostrarTodasLasFilas`, `textoBotonFilas` (T36/T37) | `FilasLaboratorioTest`, manual |
+| RF-49 | `puedeElegirFilas` (T36/T37) | `FilasLaboratorioTest`, manual (Peso y pediatría sin botón) |
+| RF-50 | `CeldaEditable` de `core/ui` en `LaboratorioSeccion` (T38) | `ColoresCeldaTest` (fondo ≠ `surface`), manual claro y oscuro |
+| RF-51 | `coloresCelda` (T38) | `ColoresCeldaTest` |
+| RF-52 | Borde 2 dp `bordeFoco` y `cursorBrush` en `CeldaEditable` (T38) | `ColoresCeldaTest`, manual con tabulador |
+| RF-53 | Texto de ayuda en el `decorationBox` (T38) | Manual |
+| RF-54 | Un solo renderer de laboratorio para todas las especialidades (T38) | Manual (pediatría) |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -478,3 +549,32 @@ MAMP de `gradle.properties`.
     tiene) y deja el campo vacío si la consulta no tiene entrada ("Para decidir" C2-1). Descartado: `renderKey`
     CUSTOM (RF-22 mira `valores` para CUSTOM y no vería los registros) y un `TipoSeccion` nuevo (obliga a tocar todos
     los `when` de pediatría y las demás).
+
+## Decidido (2026-10-14, cambio (2): laboratorio)
+11. **Elegir filas desde la sección** (decisión del usuario; RF-43): botón en el `SectionCard` del laboratorio y
+    diálogo con casillas que se aplican al momento. Descartado: hacerlo en Configuración (lejos de la tabla; el
+    médico no ve el efecto mientras elige).
+12. **Fila con valores se oculta igual** (decisión del usuario; RF-45, RF-46): como las secciones ocultas de RF-28;
+    los datos no se tocan y "Mostrar todas" los vuelve. Descartado: no dejar ocultar filas con valores (en el
+    laboratorio general casi todas tienen alguno en alguna fecha).
+13. **Preferencia por médico, por especialidad y por laboratorio, en el dispositivo** (RF-44): clave
+    `filas_ocultas_<codigo>_<laboratorioTipo>` en `medico_preferencia`, con el mismo guardado (y el mismo `dirty`)
+    que `secciones_ocultas_<codigo>`. Por laboratorio y no por analito global, porque Laboratorio general y reducido
+    comparten nombres pero son tablas distintas. Descartado: guardarla en la HC general (exige tabla y endpoint
+    nuevos en hclinica, y RF-28 ya es local).
+14. **Al menos una fila visible** (RF-47): casilla de la última deshabilitada con el mensaje, y `filasVisibles`
+    devuelve todas si lo guardado no deja ninguna (defensa ante datos viejos). Descartado: permitir ocultarlas todas
+    y mostrar un aviso en la tabla vacía (la sección quedaría sin forma de cargar).
+15. **Solo HC general** (RF-49, RF-33): `puedeElegirFilas` mira `CodigosHc.GENERAL`. La lógica y la clave ya son por
+    código de especialidad, así que extenderlo es cambiar esa condición (ver "Decidido" C3-1).
+16. **Celda editable en `core/ui`, para todas las especialidades** (RF-50 a RF-54): un componente `CeldaEditable` con
+    colores de la paleta existente y su test de contraste; el cambio de aspecto llega a pediatría y las demás porque
+    el renderer es uno solo, y es lo deseado (el problema es el mismo). Descartado: `NumberField`/`OutlinedTextField`
+    (etiqueta y alto de un campo de formulario: no entran en una celda de 120 dp) y estilo solo para "clinica" (dos
+    aspectos para la misma tabla).
+
+## Decidido (2026-10-14, tanda C3, antes "Para decidir")
+C3-1. **Elegir filas en las demás historias clínicas** (pediatría, endocrinología, hematología… las que tengan
+   laboratorio con más de una fila): queda solo en la HC general en esta spec (RF-49, para cumplir RF-33).
+   Extenderlo a las demás especialidades es un cambio aparte (quitar la condición de `puedeElegirFilas` y probar
+   pediatría), sin tocar datos ni API.
