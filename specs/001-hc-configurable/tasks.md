@@ -759,7 +759,8 @@ Reglas de la tanda (las mismas de la tanda C2):
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*FilasLaboratorioTest*'` y `.\gradlew :core:data:jvmTest`
     completo en verde.
 
-- [ ] **T37. "Elegir filas" en el laboratorio.** RF-43, RF-44, RF-45, RF-46, RF-47, RF-48, RF-49, RF-33
+- [x] **T37. "Elegir filas" en el laboratorio.** RF-43, RF-44, RF-45, RF-46, RF-47, RF-48, RF-49, RF-33
+  (compila; falta prueba manual del usuario)
   - `secciones/LaboratorioSeccion.kt`, como dice el plan (sección 4, `features/hc`): filas de
     `filasVisibles(labDef.analitos, ocultas)` (cabeceras de grupo de la lista filtrada), botón en el `trailing` del
     `SectionCard` solo con `puedeElegirFilas` (también en solo lectura) con `textoBotonFilas`, y diálogo con una

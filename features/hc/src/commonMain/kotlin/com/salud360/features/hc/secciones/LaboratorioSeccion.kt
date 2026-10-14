@@ -8,17 +8,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,13 +36,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.alternarFila
+import com.salud360.core.data.hcgeneral.clavePreferenciaFilasOcultas
+import com.salud360.core.data.hcgeneral.esUltimaVisible
+import com.salud360.core.data.hcgeneral.filasVisibles
+import com.salud360.core.data.hcgeneral.mostrarTodasLasFilas
+import com.salud360.core.data.hcgeneral.ocultasDePreferencia
+import com.salud360.core.data.hcgeneral.puedeElegirFilas
+import com.salud360.core.data.hcgeneral.textoBotonFilas
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.model.especialidad.AnalitoDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
+import com.salud360.core.ui.components.CheckboxField
 import com.salud360.core.ui.components.ConfirmDialog
 import com.salud360.core.ui.components.DateField
+import com.salud360.core.ui.components.LinkButton
 import com.salud360.core.ui.components.PillButton
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.toDisplay
@@ -63,10 +78,19 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     var fecha by remember(enEstaConsulta?.id) { mutableStateOf(enEstaConsulta?.fecha ?: ui.consulta?.fecha ?: hoy()) }
     val valores = remember(enEstaConsulta?.id) { mutableStateOf(enEstaConsulta?.valores ?: emptyMap()) }
     var borrar by remember { mutableStateOf<Laboratorio?>(null) }
+    var eligiendoFilas by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
+    // Filas ocultas por el médico (RF-43 a RF-49): solo se dejan de mostrar; `valores` sigue con todas las claves y
+    // al guardar las ocultas quedan como estaban (RF-46).
+    val clavePreferencia = clavePreferenciaFilasOcultas(def.codigo, labDef.tipo)
+    val ocultas = ocultasDePreferencia(ui.preferencias[clavePreferencia])
+    val visibles = filasVisibles(labDef.analitos, ocultas)
+    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos)) {
+        { LinkButton(textoBotonFilas(labDef.analitos, ocultas), onClick = { eligiendoFilas = true }) }
+    } else null
 
     if (ctx.soloLectura && enEstaConsulta == null) { SeccionVacia(); return }
-    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida) {
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida, trailing = trailing) {
         val columnas = historico.filter { it.id != enEstaConsulta?.id }.take(8)
         if (!ctx.soloLectura) ActionRow {
             if (editando || enEstaConsulta != null) DateField("Fecha", fecha, { it?.let { f -> fecha = f } }, Modifier.width(200.dp))
@@ -86,7 +110,7 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
                     }
                 }
                 var grupo: String? = null
-                labDef.analitos.forEachIndexed { i, a ->
+                visibles.forEachIndexed { i, a ->
                     if (a.grupo != null && a.grupo != grupo) {
                         grupo = a.grupo
                         Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
@@ -117,6 +141,36 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     borrar?.let { l ->
         ConfirmDialog("Eliminar columna", "¿Eliminar el laboratorio del ${l.fecha.toDisplay()}?", onConfirm = { ctx.vm.eliminarLaboratorio(l.id); borrar = null }, onDismiss = { borrar = null }, confirmText = "Eliminar", destructive = true)
     }
+    if (eligiendoFilas) ElegirFilasDialog(labDef.analitos, ocultas, { ctx.vm.guardarPreferencia(clavePreferencia, it.joinToString(",")) }, onCerrar = { eligiendoFilas = false })
+}
+
+/** RF-43 a RF-48: una casilla por fila, en el orden y los grupos del laboratorio; cada cambio se guarda al momento. */
+@Composable
+private fun ElegirFilasDialog(analitos: List<AnalitoDef>, ocultas: Set<String>, onGuardar: (Set<String>) -> Unit, onCerrar: () -> Unit) {
+    val visibles = filasVisibles(analitos, ocultas).map { it.clave }.toSet()
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Elegir filas") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                var grupo: String? = null
+                analitos.forEach { a ->
+                    if (a.grupo != null && a.grupo != grupo) {
+                        grupo = a.grupo
+                        Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    }
+                    val ultima = esUltimaVisible(analitos, ocultas, a.clave)
+                    CheckboxField(
+                        a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), a.clave in visibles,
+                        { onGuardar(alternarFila(analitos, ocultas, a.clave, it)) }, enabled = !ultima,
+                    )
+                    if (ultima) Text("Tiene que quedar al menos una fila visible", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 48.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } },
+        dismissButton = { LinkButton("Mostrar todas", onClick = { onGuardar(mostrarTodasLasFilas(analitos, ocultas)) }) },
+    )
 }
 
 @Composable
