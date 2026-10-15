@@ -188,7 +188,41 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `modoForm = GRILLA_SI_NO`; mismos 16 `CampoDef` (claves, etiquetas, orden de RF-65, `SELECT ["SI", "NO"]`), así lo
   guardado no cambia (RF-68) y "tener datos" (RF-22) sigue igual. La de `hepatologia` (`ClinicaMedica.kt`) no cambia
   (RF-73, "Decidido" C5-1).
-- `ChildPughSeccion.kt`: sin cambios.
+- ~~`ChildPughSeccion.kt`: sin cambios.~~ (Cambio 2026-10-15 (2); RF-74 a RF-82) Child-Pugh como la web. Ninguna
+  `SeccionDef` cambia: el renderer CUSTOM `child_pugh` es uno solo y lo registran `hcGeneralContribution` y
+  `hepatologiaContribution`, así que el dibujo nuevo llega a las dos (RF-82, "Decidido" 29).
+  - `ChildPugh.kt` (nuevo, sin Compose): `data class ParametroChildPugh(clave, nombre, criterios: List<String>)` y
+    `val parametrosChildPugh` con los cinco de hoy (las claves `ascitis`, `bilirrubina`, `albumina`, `tp`,
+    `encefalopatia` y los textos de `PARAMETROS`, que ya tienen las erratas de la web corregidas), más las funciones
+    puras de la sección 5. Reemplaza a `PARAMETROS` y a las cuentas que hoy están dentro del composable (`toIntOrNull`,
+    que además sumaba un "4" o un "0" guardado).
+  - `ChildPughSeccion.kt` (reescrito; la firma `ChildPughSeccion(s, ctx)` no cambia): `valores` = `ctx.valor(s.id,
+    clave)` de cada parámetro; `puntos`, total (`totalChildPugh`), `completos` y clase (`claseChildPugh`) se calculan
+    en cada recomposición, así el encabezado se actualiza con el toque (RF-77).
+    - Solo lectura sin ningún parámetro con valor (`valores.all { it.isBlank() }`): `SeccionVacia()` de `features/hc`
+      en vez del `SectionCard`, como `FormSeccion` (RF-81).
+    - Dentro del `SectionCard` (título, ícono e `inicialmenteExpandida` como hoy), todo sobre `fondoTarjeta` de
+      `coloresSiNo(LocalIsDarkTheme.current)` para que valgan los contrastes ya probados (RF-79).
+    - Encabezado: `Text("Total: $total · Clase $clase")` con el estilo de hoy y `semantics { liveRegion =
+      LiveRegionMode.Polite }` (el lector lo anuncia al cambiar), y la leyenda `"A: ≤ 6 · B: 7-9 · C: ≥ 10"`: en
+      ancho, una `Row` con `SpaceBetween` (total a la izquierda, leyenda a la derecha); en angosto, una debajo de la
+      otra.
+    - `BoxWithConstraints`: con `maxWidth >= 600.dp` (mismo corte que RF-41 y RF-66), tabla (RF-74): fila de títulos
+      "Parámetro" (`weight(1.4f)`) y "Puntos" (`weight(3f)`, centrado) y debajo "1", "2", "3" (`weight(1f)` cada uno);
+      después una `Row(Modifier.height(IntrinsicSize.Min))` por parámetro, con el nombre (y, si el valor es
+      desconocido, el valor como texto chico debajo, casos límite) y tres `OpcionElegible(criterio, descripcion,
+      elegido = puntos == n, Modifier.weight(1f).fillMaxHeight())` → `ctx.setValor(s.id, clave,
+      alternarPuntos(valor, "$n"))` (RF-76). Con menos de 600 dp (RF-75): por parámetro un `Column` con el nombre y
+      las tres `OpcionElegible("$n punto(s) · criterio", …, Modifier.fillMaxWidth())` apiladas. El nombre no es
+      clickable (RF-76).
+    - Accesibilidad (RF-80): cada fila o bloque con `Modifier.selectableGroup().semantics { stateDescription =
+      if (puntos == null) "sin cargar" else "$puntos puntos" }`; cada opción con `descripcion = "$nombre, $n
+      punto(s), $criterio"` (el "elegido" lo pone `selected`), rol de opción, foco y 48 dp de `OpcionElegible`.
+    - Solo lectura (RF-81): encabezado igual y, por parámetro, una `Row` "nombre" + "n puntos · criterio" (o el valor
+      desconocido tal cual, o "—"), sin `OpcionElegible` ni `selectable`, en los dos anchos.
+    - El valor pasa tal cual por `ctx.setValor`: `"1"`, `"2"`, `"3"` o `""`, mismo autoguardado de 600 ms, sin API
+      (RF-78). No se guardan total ni clase: el total que pide la 002 (RF-27 de la 002) se calcula al enviar y puede
+      salir de `totalChildPugh`.
 
 ### `features/hc`
 - `EspecialidadRegistry.kt`: `EspecialidadContribution` suma `catalogo: CatalogoHc? = null` (al final). El registro
@@ -348,6 +382,17 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
     `selectable` (RF-72).
   - Reutilizable para cualquier SI / NO con "sin cargar"; `SiNoField` (sin vuelta a vacío) no se toca.
 
+### `core/ui` (cambio 2026-10-15 (2); RF-79, RF-80)
+- `components/OpcionElegible.kt` (nuevo): el `BotonSiNo` privado de `SiNoVacio.kt` pasa a ser público y genérico,
+  `@Composable OpcionElegible(texto, descripcion, elegido, onClick, modifier, colores = coloresSiNo(LocalIsDarkTheme
+  .current))`, con el mismo dibujo: `selectable(role = Role.RadioButton)`, foco 2 dp `bordeFoco` por fuera con ~2 dp
+  de margen (C5-4), al menos 48 × 48 dp, elegido = `relleno` + tilde + `textoRelleno`, no elegido = borde 1 dp
+  `borde` + `texto`, `contentDescription = descripcion`. Lo único nuevo: el texto puede ocupar varias líneas,
+  centrado (`textAlign = TextAlign.Center`, sin `maxLines`), para criterios como "Severa (III) o refractaria".
+- `SiNoVacio.kt`: `BotonSiNo` se reemplaza por `OpcionElegible(opcion, "$etiqueta, $opcion", …)`; serologías se ve y
+  se anuncia igual (se comprueba a mano en T44). `ColoresSiNo` no cambia: Child-Pugh usa los mismos colores y
+  `fondoTarjeta`, así que `ColoresSiNoTest` ya cubre RF-79.
+
 ### `features/admin` (RF-1 a RF-18)
 - `PerfilesHcViewModel.kt` (nuevo, en `AdminModule.kt`): estado de la lista, del perfil en edición (borrador que se
   conserva si el guardado falla, RF-13), del catálogo y de las asignaciones; `sinConexion` cuando la carga o el
@@ -402,6 +447,11 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `cargaNuevaValida(valores)` | `true` si algún valor no está en blanco (el `ConsultaViewModel` ya descarta los vacíos al guardar) | RF-57 |
 | `alternarSiNo(actual, tocado): String` (cambio 2026-10-15, en **`core/ui`** `components/SiNoVacio.kt`: la usa el componente y `core/ui` no depende de `core/data`) | `tocado == actual` → `""` (sin cargar); si no, `tocado`. Nunca devuelve `"NO"` sin que se haya tocado "NO". `actual` desconocido (no "SI"/"NO"/"") → `tocado` | RF-67, RF-68, casos límite |
 | `columnasPara(anchoDp): Int` (ídem, `core/ui`) | `< 600` → 2; `>= 600` → 4 | RF-66 |
+| `puntosDe(valor): Int?` (cambio 2026-10-15 (2), en **`especialidades/clinica`** `ChildPugh.kt`: es de Child-Pugh y ahí ya hay `commonTest`; hoy no existe, la cuenta está dentro del composable) | `"1"`, `"2"`, `"3"` → 1, 2, 3; cualquier otra cosa (`""`, `"0"`, `"4"`, texto) → `null` | RF-77, RF-78, casos límite |
+| `alternarPuntos(actual, tocado): String` (ídem) | La regla de `alternarSiNo` de `core/ui` (la llama: `tocado == actual` → `""`, si no `tocado`), con nombre propio para Child-Pugh. `actual` desconocido → `tocado` | RF-76, casos límite |
+| `totalChildPugh(valores: Map<String, String>): Int` (ídem) | Suma de `puntosDe` de las claves de `parametrosChildPugh`; sin ninguna, 0; los desconocidos no suman | RF-77 |
+| `completosChildPugh(valores): Int` (ídem) | Cuántos de los cinco tienen `puntosDe != null` | RF-77 |
+| `claseChildPugh(total, completos): String` (ídem) | `completos < 5` → `"—"`; si no, `total <= 6` → `"A"`, `<= 9` → `"B"`, si no `"C"` | RF-77 |
 
 Acciones por columna en la HC general: columna editable → escribir, cambiar la fecha, "Guardar laboratorio",
 "Cancelar"; columna guardada (de esta consulta o de otra) → solo leer y, con la consulta editable, tacho; nunca
@@ -489,6 +539,15 @@ la pantalla le pasa a `cambioEstudio`).
   `SELECT ["SI", "NO"]`; ninguna otra sección del catálogo, ni `hepatologia`/`clinicaMedica`, con `GRILLA_SI_NO`
   (RF-68, RF-73). RF-65, RF-67 (pantalla), RF-69, RF-71 (teclado y lector), RF-72 y el resto de RF-73 a mano con
   `devWeb`, en claro y oscuro, ancho y angosto.
+- (Cambio 2026-10-15 (2)) `especialidades/clinica` commonTest `ChildPughTest`: `parametrosChildPugh` con las cinco
+  claves de hoy en el orden de RF-74 y tres criterios cada uno con los textos de RF-74 (sin "(1)"/"(2)"/"(3)");
+  `puntosDe` de "1", "2", "3" y de `""`, "0", "4", "x" → `null`; `alternarPuntos` (`""`+"2" → "2", "2"+"2" → `""`,
+  "2"+"3" → "3", "x"+"1" → "1"); `totalChildPugh` sin valores → 0, cinco "3" → 15, parcial y con un "4" que no suma;
+  `claseChildPugh` en los bordes 6 → A, 7 y 9 → B, 10 y 15 → C, y con 4 completos → "—" (RF-74, RF-76 a RF-78,
+  casos límite). `core/ui` `ColoresSiNoTest`: el color del total contra `fondoTarjeta` ≥ 4,5 en claro y oscuro
+  ("Decidido" 33). `CatalogoHcGeneralTest` sigue en verde (las `SeccionDef` de `child_pugh` y los dos renderers no
+  cambian). RF-74, RF-75, RF-79, RF-80, RF-81 y RF-82 a mano con `devWeb`, en claro y oscuro, ancho y angosto, y
+  serologías igual que antes (por `OpcionElegible`).
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -548,7 +607,8 @@ API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios 
 2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **C3** = laboratorio, cambio del
 2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **C4** = varias cargas de laboratorio, cambio
 del 2026-10-14 (3) (2: lógica y pantalla, RF-55 a RF-64); **C5** = serologías en grilla, cambio del 2026-10-15
-(2: lógica, colores y catálogo; pantalla; RF-65 a RF-73); **D** = 6 y 7 (4). Cada tanda se
+(2: lógica, colores y catálogo; pantalla; RF-65 a RF-73); **C6** = Child-Pugh como la web, cambio del 2026-10-15 (2)
+(2: lógica pura; pantalla; RF-74 a RF-82); **D** = 6 y 7 (4). Cada tanda se
 aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
@@ -632,6 +692,15 @@ MAMP de `gradle.properties`.
 | RF-71 | `selectable(role = RadioButton)`, foco 2 dp, 48 dp, `stateDescription`/`contentDescription` (T41/T42) | `ColoresSiNoTest` (foco), manual (tabulador, lector de pantalla) |
 | RF-72 | `camposCompletos` + `SiNoVacio(soloLectura)` en la grilla (T42) | Manual (consulta cerrada, solo lectura de RF-22) |
 | RF-73 | `modoForm = FILAS` por defecto; solo la copia de `HcGeneral.kt` en grilla (T41) | `CatalogoHcGeneralTest`, manual (hepatología estática, pediatría) |
+| RF-74 | `parametrosChildPugh`; tabla con `OpcionElegible` en `ChildPughSeccion` (T43/T44) | `ChildPughTest` (orden y textos), manual (ancho) |
+| RF-75 | `BoxWithConstraints` < 600 dp, bloques con opciones apiladas (T44) | Manual (angosto, cambiar de ancho) |
+| RF-76 | `alternarPuntos` → `ctx.setValor` (T43/T44) | `ChildPughTest`, manual |
+| RF-77 | `totalChildPugh`, `completosChildPugh`, `claseChildPugh`; encabezado (T43/T44) | `ChildPughTest`, manual |
+| RF-78 | Mismas claves; `"1"`/`"2"`/`"3"`/`""` por `ctx.setValor`; `puntosDe` (T43/T44) | `ChildPughTest`, manual (consulta con Child-Pugh cargado antes) |
+| RF-79 | `OpcionElegible` con `coloresSiNo` sobre `fondoTarjeta` (T44) | `ColoresSiNoTest` (ya existe), manual claro y oscuro |
+| RF-80 | `OpcionElegible` (`selectable`, foco, 48 dp), `descripcion`, `selectableGroup` + `stateDescription` (T44) | Manual (tabulador, lector de pantalla) |
+| RF-81 | Rama de solo lectura de `ChildPughSeccion`; `SeccionVacia` sin valores (T44) | Manual (consulta cerrada, solo lectura de RF-22) |
+| RF-82 | Un solo renderer `child_pugh` en `hcGeneralContribution` y `hepatologiaContribution` (T44) | `CatalogoHcGeneralTest` (renderers), manual (pediatría y demás secciones igual) |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -769,3 +838,31 @@ C5-4. **Foco por fuera del botón** (coordinador, al empezar T41): el borde de f
    ≤ 0,121); en claro `#333333` da 2,61 contra el relleno. El test pide bordeFoco contra `fondoTarjeta` ≥ 3 y
    bordeFoco ≠ relleno (RF-71 solo exige lo primero). Descartado: doble anillo (otro color y más dibujo) y oscurecer
    el relleno (no cierra con el texto a 4,5).
+
+## Decidido (2026-10-15, tanda C6, antes "Para decidir"; cambio (2): Child-Pugh como la web)
+27. **Tabla con celdas que se tocan, con el aspecto de los SI / NO** (decisión del usuario; RF-74, RF-76, RF-79):
+    Parámetro | 1 | 2 | 3 bajo "Puntos", como `cps.blade.php`; la elegida con el relleno teal y la tilde de serologías
+    (`ColoresSiNo`, ya con contrastes probados), no el amarillo de la web; tocar la elegida la deja sin cargar, como
+    RF-67. Descartado: los radios de hoy (no vuelven a "sin cargar" y la fila se desborda), el amarillo de la web
+    (otro par de colores para probar en claro y oscuro) y que tocar el nombre limpie el parámetro, como la web (una
+    acción escondida, sin indicio visual, y un segundo camino para lo mismo).
+28. **Total y clase en el encabezado, con los textos de la app** (decisión del usuario; RF-77): "Total: N · Clase X",
+    clase "—" hasta tener los cinco, y "A: ≤ 6 · B: 7-9 · C: ≥ 10" (la web dice "C: >10", que deja afuera el 10). Se
+    calculan, no se guardan (RF-78): la web guarda `total_puntos` y la 002 lo calcula al enviar (con `totalChildPugh`).
+    Descartado: solo el total, como la web (la clase es lo que se usa clínicamente).
+29. **Para las dos Child-Pugh, la de la HC general y la de la hepatología aparte** (RF-82): es el mismo renderer, no
+    hay una `SeccionDef` que distinga, y la hepatología aparte desaparece en la tanda D. A diferencia de serologías
+    (C5-1), dejarla como está exigiría dos renderers para unas semanas. Descartado: limitarlo a la HC general.
+30. **Angosto: un bloque por parámetro con las opciones apiladas** (RF-75): cada opción a todo el ancho con "n puntos ·
+    criterio". Descartado: las tres celdas en fila (en 320 dp quedan de ~90 dp y "Severa (III) o refractaria" se parte
+    en tres o cuatro líneas) y `FlowRow` (experimental en esta versión y con filas desparejas).
+31. **Solo lectura como texto** (RF-81): los cinco parámetros, cada uno con "n puntos · criterio" o "—", y el total y
+    la clase. Descartado: la tabla con la celda elegida resaltada (los bordes de las demás parecen botones) y mostrar
+    solo los cargados como serologías (son cinco, y saber cuál falta explica la clase "—").
+32. **`OpcionElegible` en `core/ui` en vez de otro botón en `especialidades/clinica`**: el `BotonSiNo` de `SiNoVacio`
+    pasa a público con el texto en varias líneas, así Child-Pugh y serologías comparten dibujo, foco y colores.
+    Descartado: copiar el botón en `ChildPughSeccion.kt` (dos dibujos que se separan con el tiempo).
+33. **Color del total con contraste probado** (decisión del usuario, al pasar a "Decidido" la tanda C6): el color del
+    texto "Total: N · Clase X" entra al test de contraste de `core/ui` (`ColoresSiNoTest`), en claro y en oscuro, con
+    al menos 4,5:1 contra `fondoTarjeta`. Si `Salud360Colors.Indigo` (el de hoy) no llega en oscuro, se usa `texto`
+    de `ColoresSiNo`. Va en T44.

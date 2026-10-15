@@ -288,6 +288,41 @@ sección: se muestran siempre, como en la web.
   hepatología que todavía existe como historia clínica aparte (hasta la tanda D), pediatría y las demás historias
   clínicas se ven como hoy (RF-33).
 
+### Child-Pugh
+- RF-74: CUANDO el médico ve la sección Child-Pugh en una consulta que puede editar y el ancho disponible para la
+  sección es de 600 puntos o más, EL SISTEMA la muestra como una tabla, como en la web: arriba "Total: N · Clase X" y
+  la leyenda "A: ≤ 6 · B: 7-9 · C: ≥ 10"; una columna "Parámetro" y, bajo el título "Puntos", tres columnas "1", "2"
+  y "3"; y una fila por parámetro, en este orden, con estos criterios (1 | 2 | 3): Ascitis (Ausente (I) | Moderada
+  (II) | Severa (III) o refractaria), Bilirrubina total (mg/dl) (≤ 2 | 2 - 3 | > 3), Albúmina (g/dl) (> 3,5 | 2,8 -
+  3,5 | < 2,8), TP (seg sobre control) / RIN (1-3 / < 1,8 | 4-6 / 1,8-2,3 | > 6 / > 2,3) y Encefalopatía (No | Grado
+  I/II | Grado III/IV o refractaria). Cada criterio es una celda que se toca, sin el sufijo "(1)", "(2)", "(3)".
+- RF-75: MIENTRAS el ancho disponible para la sección sea menor de 600 puntos (un teléfono en vertical), EL SISTEMA
+  muestra el mismo encabezado y, en vez de la tabla, un bloque por parámetro, en el mismo orden, con su nombre y
+  debajo sus tres opciones apiladas a todo el ancho, cada una con sus puntos y su criterio ("2 puntos · Moderada
+  (II)"). En los dos anchos los textos se ven completos, sin cortarse (pueden ocupar varias líneas).
+- RF-76: CUANDO el médico toca la celda de un parámetro sin cargar o con otro puntaje, EL SISTEMA le pone ese puntaje,
+  con un solo toque (sin desplegable ni confirmación); CUANDO toca la celda que ya estaba elegida, EL SISTEMA deja el
+  parámetro sin cargar. Tocar el nombre del parámetro no hace nada.
+- RF-77: EL SISTEMA muestra en "Total: N" la suma de los puntos de los parámetros cargados (0 si no hay ninguno), y en
+  "Clase X" "—" mientras falte cargar alguno de los cinco, y con los cinco cargados A si el total es 6 o menos, B si
+  es de 7 a 9 y C si es 10 o más; los dos se actualizan al tocar una celda, sin otro paso.
+- RF-78: EL SISTEMA guarda cada parámetro como hoy: "1", "2", "3" o vacío (sin cargar), en el mismo campo; no guarda
+  el total ni la clase (se calculan). Los parámetros cargados antes de este cambio se ven con su puntaje.
+- RF-79: EL SISTEMA muestra la celda elegida con fondo relleno y una tilde, y las no elegidas solo con borde (un
+  parámetro sin cargar tiene las tres con borde), con los colores y contrastes de RF-69 y RF-70, en modo claro y en
+  modo oscuro; el estado no depende solo del color.
+- RF-80: EL SISTEMA permite usar cada celda con el teclado (tabulador para llegar, Enter o espacio para tocarla), con
+  el borde de foco de RF-71; cada celda tiene un área táctil de al menos 48 × 48 puntos; y un lector de pantalla
+  anuncia el parámetro, los puntos, el criterio y si está elegida ("Ascitis, 2 puntos, Moderada (II), elegido"), y
+  "sin cargar" cuando el parámetro no tiene puntaje.
+- RF-81: MIENTRAS la consulta esté cerrada o la sección se vea solo para leer (RF-22), EL SISTEMA muestra "Total: N ·
+  Clase X", la leyenda y los cinco parámetros, cada uno con su nombre y, si está cargado, sus puntos y su criterio
+  ("2 puntos · Moderada (II)"), o "—" si no lo está, como texto y sin nada que se pueda tocar; SI ninguno está
+  cargado, ENTONCES muestra la sección vacía, como las demás secciones.
+- RF-82: EL SISTEMA aplica RF-74 a RF-81 a Child-Pugh de la HC general y de la hepatología que todavía existe como
+  historia clínica aparte (hasta la tanda D), que usan el mismo dibujo; las demás secciones e historias clínicas se ven
+  como hoy (RF-33).
+
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
   catálogo inicial.
@@ -368,6 +403,17 @@ sección: se muestran siempre, como en la web.
   2 columnas, o al revés, sin perder lo cargado ni cambiar el orden (RF-65, RF-66).
 - Serologías con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura, con la
   grilla de RF-72 (RF-22).
+- Un parámetro de Child-Pugh con un valor guardado que no es "1", "2", "3" ni vacío (dato viejo o de otra versión):
+  se muestra ese valor como texto junto al nombre, sin ninguna celda elegida; no suma al total y la clase queda en "—"
+  (RF-77); tocar una celda lo reemplaza y, si no se toca, no cambia. Cuenta como cargado para "tener datos" (RF-22) y
+  en solo lectura se muestra con su valor (RF-81).
+- Child-Pugh con cuatro de los cinco parámetros cargados: el total es la suma de esos cuatro y la clase "—" (RF-77).
+- El médico toca dos veces seguidas la misma celda de un parámetro sin cargar: queda sin cargar (RF-76); se guarda lo
+  último, con el autoguardado de siempre.
+- La ventana cambia de ancho con la consulta abierta: Child-Pugh pasa de la tabla a los bloques, o al revés, sin perder
+  lo cargado (RF-74, RF-75).
+- Child-Pugh con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura, como en
+  RF-81 (RF-22).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -384,7 +430,7 @@ sección: se muestran siempre, como en la web.
   primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
   entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52;
   columnas, acciones y carga vacía de RF-55, RF-57, RF-60 a RF-62 y RF-64; columnas, toque y valores de RF-66 a
-  RF-68, contrastes de RF-70 y el alcance de RF-73) con test en verde.
+  RF-68, contrastes de RF-70 y el alcance de RF-73; toque, total, clase y valores de RF-76 a RF-78) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -417,3 +463,11 @@ Cambio aprobado el 2026-10-15: Serologías de hepatitis de la HC general deja de
 cada una con el nombre del marcador y dos botones "SI" / "NO" que se completan con un toque; tocar el elegido otra vez
 lo deja sin cargar. Los valores guardados no cambian ("SI", "NO" o vacío) y en solo lectura se ven solo los cargados,
 en la misma grilla. Solo en la HC general; las demás secciones e historias clínicas no cambian (RF-65 a RF-73).
+
+Cambio aprobado el 2026-10-15 (2): Child-Pugh deja de ser cinco grupos de radios apilados (con una fila que se
+desborda en el teléfono y sin forma de volver a "sin cargar") y se ve como en la web: una tabla Parámetro | 1 | 2 | 3
+bajo "Puntos", donde se toca la celda del criterio; la elegida va rellena y con tilde, como los SI / NO de serologías,
+y tocarla otra vez deja el parámetro sin cargar. Arriba "Total: N · Clase X" (clase "—" hasta tener los cinco) y la
+leyenda "A: ≤ 6 · B: 7-9 · C: ≥ 10", con los textos corregidos de la app. En el teléfono, un bloque por parámetro con
+las tres opciones apiladas; en solo lectura, el criterio elegido como texto. Los valores guardados no cambian ("1",
+"2", "3" o vacío). Vale para la HC general y para la hepatología aparte, que comparten el dibujo (RF-74 a RF-82).

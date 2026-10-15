@@ -966,3 +966,88 @@ Reglas de la tanda (las mismas de la tanda C4):
    botón, sobre `fondoTarjeta`; `ColoresSiNoTest` pide bordeFoco contra `fondoTarjeta` ≥ 3 y bordeFoco ≠ relleno.
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda C6 — Child-Pugh como la web (2026-10-15)
+
+Cambio aprobado por el usuario el 2026-10-15 (2) (spec: RF-74 a RF-82, casos límite de Child-Pugh; plan: sección 4
+`especialidades/clinica` y `core/ui` (cambio 2026-10-15 (2)), sección 5, sección 9, "Decidido" 27 a 32). Todo en este
+repo, rama `hc-general`. Cambia Child-Pugh de la HC general y de la hepatología aparte, que comparten el renderer
+(RF-82); serologías solo cambia por dentro (`OpcionElegible`) y se tiene que ver igual; lo demás, igual.
+
+Reglas de la tanda (las mismas de la tanda C5):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica pura va a `especialidades/clinica` con su test, que se ve fallar antes del código.
+  Pantallas no tienen tests: solo muestran y delegan (constitución 4). Si Gradle pide `JAVA_HOME`:
+  `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm`, `.\gradlew :especialidades:clinica:compileKotlinJvm`
+  y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` que ya está corriendo tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar
+  la página. **No** correr `--stop` ni matar el `devWeb` en uso.
+- La tarea de pantalla no se marca hecha hasta que el usuario confirme los pasos manuales, en modo claro **y** en modo
+  oscuro (DevTools → Rendering → "Emulate CSS prefers-color-scheme: dark", o el del sistema) y con la ventana ancha
+  **y** angosta (menos de 600 px, o el modo teléfono de DevTools).
+- Sin migración ni columnas nuevas: los valores siguen siendo "1", "2", "3" o vacío en las mismas claves; no se guardan
+  total ni clase. No se toca ninguna `SeccionDef`, `HcApiSync`/`SyncEngine`, no se registra un `HcBackend` para
+  "clinica" y nada llama a la API.
+- Datos de prueba: el médico de prueba con "Hepatología" (tiene Child-Pugh) en pacientes de prueba, con una consulta
+  que ya tenga Child-Pugh cargado con la versión anterior; si se usa un perfil "Prueba C6" (sin Child-Pugh, para
+  RF-22), se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba: extenderla y
+  restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+
+- [ ] **T43. Lógica pura de Child-Pugh.** RF-74 (parámetros y textos), RF-76, RF-77, RF-78
+  - `especialidades/clinica/.../ChildPugh.kt` (nuevo, sin Compose): `ParametroChildPugh(clave, nombre, criterios)`,
+    `parametrosChildPugh` (las cinco claves y los textos de hoy, sin el sufijo "(n)"), `puntosDe`, `alternarPuntos`
+    (llama a `alternarSiNo` de `core/ui`), `totalChildPugh`, `completosChildPugh` y `claseChildPugh`, como la tabla de
+    la sección 5 del plan. `ChildPughSeccion.kt` todavía no cambia.
+  - Test: `especialidades/clinica/src/commonTest/.../ChildPughTest.kt` con los casos de la sección 9 del plan.
+  - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest` en verde (con `ChildPughTest` visto fallar antes del
+    código) y `.\gradlew :core:ui:jvmTest` y `.\gradlew :core:data:jvmTest` siguen en verde.
+
+- [ ] **T44. Pantalla: Child-Pugh en tabla.** RF-74 a RF-82, RF-22
+  - `core/ui/.../components/OpcionElegible.kt`: el `BotonSiNo` de `SiNoVacio.kt` pasa a `OpcionElegible(texto,
+    descripcion, elegido, onClick, modifier, colores)`, público, con el texto centrado en varias líneas; `SiNoVacio`
+    lo usa con `"$etiqueta, $opcion"` (mismo dibujo y misma descripción que hoy).
+  - `especialidades/clinica/.../ChildPughSeccion.kt` reescrito como dice el plan (sección 4, `especialidades/clinica`):
+    encabezado "Total: N · Clase X" + leyenda, tabla con `OpcionElegible` desde 600 dp, bloques con opciones apiladas
+    por debajo, `selectableGroup` + `stateDescription`, valor desconocido como texto, solo lectura como texto y
+    `SeccionVacia` sin valores. Se van `RadioGroupField` y `PARAMETROS`.
+  - Test (C6-4): `ColoresSiNoTest` suma el color del texto "Total: N · Clase X" contra `fondoTarjeta` ≥ 4,5 en claro y
+    oscuro, visto fallar antes si el color no llega; si `Salud360Colors.Indigo` no llega en oscuro, se usa `texto`.
+  - Hecho cuando: `.\gradlew :core:ui:jvmTest` y `.\gradlew :especialidades:clinica:jvmTest` en verde,
+    `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs` (con las `-P` de arriba) compilan,
+    el `devWeb` se refresca con `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma con "Hepatología", en
+    modo claro y en modo oscuro:
+    1. Ventana ancha: Child-Pugh muestra "Total: 0 · Clase —", la leyenda "A: ≤ 6 · B: 7-9 · C: ≥ 10", la tabla
+       Parámetro | 1 | 2 | 3 bajo "Puntos" con los cinco parámetros y sus criterios de RF-74 completos, sin
+       "(1)"/"(2)"/"(3)", y ninguna celda elegida.
+    2. Ventana angosta (menos de 600 px o modo teléfono): un bloque por parámetro con las tres opciones apiladas
+       ("1 punto · Ausente (I)", …), nada se desborda ni se corta; achicar y agrandar con valores cargados no pierde
+       nada.
+    3. Tocar "Moderada (II)" en Ascitis → queda elegida (relleno y tilde) y el total pasa a 2 al instante; tocar
+       "Severa (III) o refractaria" → pasa a 3; tocarla otra vez → Ascitis sin cargar (las tres con borde). Tocar el
+       nombre "Ascitis" no hace nada.
+    4. Cargar los cinco con 1 → "Total: 5 · Clase A"; con total 7 → B; con 10 → C; dejar uno sin cargar → clase "—".
+       Salir, volver a entrar → se ve lo último.
+    5. Una consulta con Child-Pugh cargado antes de este cambio muestra los mismos puntajes, total y clase (RF-78).
+    6. Con el tabulador se llega a cada celda con el foco visible, y Enter o espacio la elige o la vuelve a sin
+       cargar; con el lector de pantalla del sistema (si está a mano; si no, se anota como no probado) se oye
+       "Ascitis, 2 puntos, Moderada (II), elegido", "sin cargar" y el total nuevo al cambiar.
+    7. Cerrar la consulta → total, clase, leyenda y los cinco parámetros como texto ("2 puntos · Moderada (II)" o
+       "—"), sin nada que tocar; una consulta cerrada sin Child-Pugh no muestra la sección, como las demás (RF-81).
+    8. Con el médico en "Prueba C6" (sin Child-Pugh), una consulta con Child-Pugh cargado lo muestra al final, solo
+       lectura, como en el paso 7 (RF-22, RF-81).
+    9. Serologías de hepatitis se ve y se usa igual que en la tanda C5 (botones, tilde, foco, vuelta a sin cargar);
+       los demás formularios y una consulta de pediatría, igual que antes; Child-Pugh en una HC de hepatología aparte,
+       si queda a mano, con la tabla nueva (RF-82).
+
+### Decidido (2026-10-15)
+1. **C6-1 — Las dos Child-Pugh** (plan, "Decidido" 29): HC general y hepatología aparte, por ser el mismo renderer.
+2. **C6-2 — Tocar el nombre no limpia** (plan, "Decidido" 27): se limpia tocando la celda elegida, como serologías.
+3. **C6-3 — Solo lectura como texto, con los cinco** (plan, "Decidido" 31).
+4. **C6-4 — Contraste del total** (plan, "Decidido" 33): el color de "Total: N · Clase X" entra a `ColoresSiNoTest`
+   (≥ 4,5:1 contra `fondoTarjeta`, claro y oscuro) en T44; si `Salud360Colors.Indigo` no llega en oscuro, se usa
+   `texto` de `ColoresSiNo`.
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.
