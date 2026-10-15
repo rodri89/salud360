@@ -1006,6 +1006,9 @@ Reglas de la tanda (las mismas de la tanda C5):
     código) y `.\gradlew :core:ui:jvmTest` y `.\gradlew :core:data:jvmTest` siguen en verde.
 
 - [x] **T44. Pantalla: Child-Pugh en tabla.** RF-74 a RF-82, RF-22 — compila; falta prueba manual del usuario.
+  Bug de la prueba manual (2026-10-15): `ChildPughSeccion` leía con `ctx.valor` (StateFlow `.value`, no observado)
+  y Compose salteaba la sección al cambiar un valor: se guardaba pero no se pintaba ni cambiaba el total — arreglado
+  en `b73f115` (`ctx.vm.valores.collectAsState()`).
   - `core/ui/.../components/OpcionElegible.kt`: el `BotonSiNo` de `SiNoVacio.kt` pasa a `OpcionElegible(texto,
     descripcion, elegido, onClick, modifier, colores)`, público, con el texto centrado en varias líneas; `SiNoVacio`
     lo usa con `"$etiqueta, $opcion"` (mismo dibujo y misma descripción que hoy).
