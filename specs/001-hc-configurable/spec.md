@@ -257,6 +257,37 @@ sección: se muestran siempre, como en la web.
 - RF-64: EL SISTEMA aplica RF-55 a RF-63 solo a los laboratorios de la HC general; en pediatría y las demás historias
   clínicas el laboratorio sigue con una carga por consulta, "Nueva carga" o "Editar" y las columnas de hoy (RF-33).
 
+### Serologías
+- RF-65: CUANDO el médico ve la sección Serologías de hepatitis en una consulta de la HC general que puede editar, EL
+  SISTEMA muestra los 16 marcadores como una grilla de tarjetas, cada una con el nombre del marcador y dos botones,
+  "SI" y "NO", en este orden (por filas, de izquierda a derecha): IgM HAV, AgS HBV, Ig anti HCV, FAN, Anti LKM, IgG
+  HAV, Ig anti core, Ig anti S HBV, Ig anti HDV, ASMA, Fibrotest, HIV, Ag e, Anti Ag e, Ig anti HEV, AMA.
+- RF-66: MIENTRAS el ancho disponible para la sección sea menor de 600 puntos (un teléfono en vertical), EL SISTEMA
+  muestra 2 tarjetas por fila; con 600 puntos o más, 4 por fila (no hay un paso intermedio). Las tarjetas de una fila
+  tienen el mismo ancho y el nombre del marcador se ve completo, sin cortarse (puede ocupar dos líneas).
+- RF-67: CUANDO el médico toca "SI" o "NO" en un marcador sin cargar o con el otro valor, EL SISTEMA lo deja con ese
+  valor, con un solo toque (sin desplegable ni confirmación); CUANDO toca el botón que ya estaba elegido, EL SISTEMA
+  deja el marcador sin cargar.
+- RF-68: EL SISTEMA guarda cada marcador como hoy: "SI", "NO" o vacío (sin cargar), en el mismo campo; un marcador sin
+  cargar nunca se guarda como "NO" (RF-26 de la spec 002), y los marcadores ya cargados antes de este cambio se ven
+  con su valor.
+- RF-69: EL SISTEMA muestra el botón elegido con fondo relleno y una tilde, y el no elegido solo con borde; un
+  marcador sin cargar tiene los dos botones solo con borde. El estado no depende solo del color, en modo claro y en
+  modo oscuro.
+- RF-70: EL SISTEMA dibuja el borde del botón no elegido y el relleno del elegido con un contraste de al menos 3:1
+  contra el fondo de la tarjeta, y el texto de cada botón y el nombre del marcador con al menos 4,5:1 contra su
+  fondo (como RF-51), en modo claro y en modo oscuro.
+- RF-71: EL SISTEMA permite usar cada botón con el teclado (tabulador para llegar, Enter o espacio para tocarlo), con
+  un borde de foco visible de al menos 3:1 contra el fondo de la tarjeta; cada botón tiene un área táctil de al menos
+  48 × 48 puntos; y un lector de pantalla anuncia el nombre del marcador, la opción y si está elegida ("IgM HAV, SI,
+  elegido"), y "sin cargar" cuando el marcador no tiene valor.
+- RF-72: MIENTRAS la consulta esté cerrada o la sección se vea solo para leer (RF-22), EL SISTEMA muestra solo los
+  marcadores cargados, en la misma grilla y con las mismas columnas (RF-66), cada uno con su nombre y su valor y sin
+  botones que se puedan tocar; SI ninguno está cargado, ENTONCES muestra la sección vacía, como hoy.
+- RF-73: EL SISTEMA aplica RF-65 a RF-72 solo a Serologías de hepatitis de la HC general; los demás formularios, la
+  hepatología que todavía existe como historia clínica aparte (hasta la tanda D), pediatría y las demás historias
+  clínicas se ven como hoy (RF-33).
+
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
   catálogo inicial.
@@ -328,6 +359,15 @@ sección: se muestran siempre, como en la web.
 - El médico borra con el tacho una carga mientras tiene la columna editable abierta: la columna editable sigue abierta
   con lo escrito.
 - Una carga se borra por error: no se recupera desde la app; se vuelve a cargar (como en la web).
+- Un marcador de serologías con un valor guardado que no es "SI", "NO" ni vacío (dato viejo o de otra versión): la
+  tarjeta muestra ese valor como texto, sin ningún botón elegido; tocar "SI" o "NO" lo reemplaza y, si no se toca, no
+  cambia. Cuenta como cargado: en solo lectura se muestra con su valor (RF-72).
+- El médico toca dos veces seguidas el mismo botón de un marcador sin cargar: queda sin cargar (RF-67); se guarda lo
+  último, con el autoguardado de siempre.
+- La ventana cambia de ancho con la consulta abierta (girar el teléfono, achicar el navegador): la grilla pasa de 4 a
+  2 columnas, o al revés, sin perder lo cargado ni cambiar el orden (RF-65, RF-66).
+- Serologías con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura, con la
+  grilla de RF-72 (RF-22).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -343,7 +383,8 @@ sección: se muestran siempre, como en la web.
 - Cada RF de lógica (validaciones de RF-4, RF-8, RF-9, RF-11, RF-12; armado y filtrado de RF-20 a RF-22; caché y
   primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
   entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52;
-  columnas, acciones y carga vacía de RF-55, RF-57, RF-60 a RF-62 y RF-64) con test en verde.
+  columnas, acciones y carga vacía de RF-55, RF-57, RF-60 a RF-62 y RF-64; columnas, toque y valores de RF-66 a
+  RF-68, contrastes de RF-70 y el alcance de RF-73) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -370,3 +411,9 @@ ya no se editan, ni las de esta consulta: se borran con el tacho (mientras la co
 cargar, como en la web; columnas por fecha descendente y, a igual fecha, la última guardada primero, con todas las de
 esta consulta marcadas y hasta 8 de otras. Pediatría y las demás siguen con una carga por consulta (definición
 "Laboratorio", RF-45 ajustado, RF-55 a RF-64).
+
+Cambio aprobado el 2026-10-15: Serologías de hepatitis de la HC general deja de ser una fila de 16 desplegables
+(ilegible y sin uso en el teléfono) y pasa a una grilla de tarjetas, 4 por fila en pantalla ancha y 2 en el teléfono,
+cada una con el nombre del marcador y dos botones "SI" / "NO" que se completan con un toque; tocar el elegido otra vez
+lo deja sin cargar. Los valores guardados no cambian ("SI", "NO" o vacío) y en solo lectura se ven solo los cargados,
+en la misma grilla. Solo en la HC general; las demás secciones e historias clínicas no cambian (RF-65 a RF-73).

@@ -883,3 +883,82 @@ Reglas de la tanda (las mismas de la tanda C3):
    Extenderlo a las demás historias clínicas es un cambio aparte que requiere relevar la API de pediatría.
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda C5 — Serologías en grilla (2026-10-15)
+
+Cambio aprobado por el usuario el 2026-10-15 (spec: RF-65 a RF-73, casos límite de serologías; plan: sección 4
+`core/model`, `especialidades/clinica`, `features/hc` y `core/ui`, sección 5, "Decidido" 22 a 26 y "Decidido"
+C5-1 a C5-3). Todo en este repo, rama `hc-general`. Solo cambia Serologías de hepatitis de la HC general; la de
+`hepatologia` (`ClinicaMedica.kt`), los demás formularios y las demás historias clínicas, igual (RF-73).
+
+Reglas de la tanda (las mismas de la tanda C4):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica y los colores van a `core/ui` (y el catálogo a `especialidades/clinica`) con su test, que
+  se ve fallar antes del código. Pantallas no tienen tests: solo muestran y delegan (constitución 4). Si Gradle pide
+  `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm` y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` que ya está corriendo tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar
+  la página. **No** correr `--stop` ni matar el `devWeb` en uso.
+- La tarea de pantalla no se marca hecha hasta que el usuario confirme los pasos manuales, en modo claro **y** en modo
+  oscuro (DevTools → Rendering → "Emulate CSS prefers-color-scheme: dark", o el del sistema) y con la ventana ancha
+  **y** angosta (menos de 600 px, o el modo teléfono de DevTools).
+- Sin migración ni columnas nuevas: los valores siguen siendo "SI", "NO" o vacío en las mismas claves. No se toca
+  `HcApiSync`/`SyncEngine`, no se registra un `HcBackend` para "clinica" y nada llama a la API.
+- Datos de prueba: el médico de prueba con "Hepatología" (tiene Serologías de hepatitis) en pacientes de prueba, con
+  una consulta que ya tenga serologías cargadas con la versión anterior; si se usa un perfil "Prueba C5" (sin
+  serologías, para RF-22), se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba:
+  extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+
+- [ ] **T41. Lógica, colores y catálogo de la grilla SI / NO.** RF-66, RF-67, RF-68, RF-70, RF-71 (contraste del
+  foco), RF-73
+  - `core/model/.../EspecialidadDefinition.kt`: `enum class ModoForm { FILAS, GRILLA_SI_NO }` y
+    `SeccionDef.modoForm: ModoForm = ModoForm.FILAS` como último parámetro.
+  - `core/ui`: `components/SiNoVacio.kt` con las puras `alternarSiNo(actual, tocado)` y `columnasPara(anchoDp)`
+    (todavía sin el composable), y `theme/ColoresSiNo.kt` (`ColoresSiNo`, `coloresSiNo(oscuro)`) con los valores de
+    la tabla del plan, usando la `contraste` de `ColoresCelda.kt`.
+  - `especialidades/clinica/.../HcGeneral.kt`: serologías copiada con `modoForm = GRILLA_SI_NO` (la de `hepatologia`
+    no cambia).
+  - Tests: `core/ui/src/jvmTest/.../components/SiNoVacioTest.kt` y `.../theme/ColoresSiNoTest.kt`, y
+    `CatalogoHcGeneralTest` ampliado, con los casos de la sección 9 del plan.
+  - Hecho cuando: `.\gradlew :core:ui:jvmTest` y `.\gradlew :especialidades:clinica:jvmTest` en verde,
+    `.\gradlew :core:data:jvmTest` sigue en verde y `.\gradlew :features:hc:compileKotlinJvm` compila.
+
+- [ ] **T42. Pantalla: serologías en tarjetas.** RF-65 a RF-73, RF-22
+  - `core/ui/.../components/SiNoVacio.kt`: el composable `SiNoVacio(etiqueta, valor, onCambio, modifier,
+    soloLectura)` como dice el plan (sección 4, `core/ui`): etiqueta arriba sin cortar, "SI" y "NO" de al menos
+    48 × 48 dp, elegido relleno con tilde y no elegido con borde, `selectable` con rol de opción, foco de 2 dp,
+    descripciones para el lector de pantalla, valor desconocido como texto, y en solo lectura etiqueta + valor sin
+    botones.
+  - `features/hc/.../secciones/FormSeccion.kt`: `CamposForm(..., modo = FILAS)`; con `GRILLA_SI_NO`, la grilla de
+    `columnasPara` con `chunked` + `weight` y `Spacer` en la última fila; `FormSeccion` le pasa `s.modoForm`. Con
+    `FILAS`, el código de hoy intacto.
+  - Hecho cuando: `.\gradlew :core:ui:jvmTest` en verde, `.\gradlew :features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs` (con las `-P` de arriba) compilan, el `devWeb` se refresca con
+    `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma con "Hepatología", en modo claro y en modo oscuro:
+    1. Ventana ancha: Serologías de hepatitis muestra 16 tarjetas, 4 por fila, en el orden de RF-65 (IgM HAV … AMA),
+       con los nombres completos y los dos botones sin elegir.
+    2. Ventana angosta (menos de 600 px o modo teléfono): 2 por fila, mismo orden, nombres sin cortar; achicar y
+       agrandar con valores cargados no pierde nada.
+    3. Tocar "SI" en IgM HAV → queda elegido (relleno y tilde); tocar "NO" → pasa a NO; tocar "NO" otra vez → sin
+       cargar (los dos con borde). Salir, volver a entrar → se ve lo último.
+    4. Una consulta con serologías cargadas antes de este cambio muestra los mismos valores; un marcador dejado sin
+       cargar no aparece como "NO" al reabrir (RF-68).
+    5. Con el tabulador se llega a cada botón con el foco visible, y Enter o espacio lo elige o lo vuelve a sin
+       cargar; con el lector de pantalla del sistema (si está a mano; si no, se anota como no probado) se oye
+       "IgM HAV, SI, elegido" o "sin cargar".
+    6. Cerrar la consulta → solo los marcadores cargados, en la misma grilla, con su valor y sin botones; una
+       consulta cerrada sin serologías muestra la sección vacía como antes (RF-72).
+    7. Con el médico en "Prueba C5" (sin serologías), una consulta con serologías cargadas las muestra al final, solo
+       lectura, en la grilla (RF-22, RF-72).
+    8. Los demás formularios (Alimentación, Hábitos, Examen físico) y una consulta de pediatría se ven igual que
+       antes; también serologías si queda a mano una HC de hepatología aparte (RF-73).
+
+### Decidido (2026-10-15)
+1. **C5-1 — Hepatología estática sin cambios** (plan, "Decidido" C5-1): sigue con los desplegables hasta que
+   desaparece en la tanda D.
+2. **C5-2 — Mismo relleno para SI y NO** (plan, "Decidido" C5-2).
+3. **C5-3 — Solo lectura con solo los marcadores cargados** (plan, "Decidido" C5-3 y 26).
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.

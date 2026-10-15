@@ -137,6 +137,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   y `RegistroDef.modo: ModoRegistro = ModoRegistro.LISTA` **al final** (las demás especialidades no cambian, RF-33).
   `UNO_POR_CONSULTA` = estudio con historial (RF-38 a RF-42): a lo sumo una entrada por consulta, fecha + campo
   `detalle`, mostrada junto con las de las otras consultas.
+- (Cambio 2026-10-15) `especialidad/EspecialidadDefinition.kt`: `enum class ModoForm { FILAS, GRILLA_SI_NO }` y
+  `SeccionDef.modoForm: ModoForm = ModoForm.FILAS` **al final** (todas las `SeccionDef` existentes quedan en `FILAS`,
+  RF-73). `GRILLA_SI_NO` = los campos de la sección se dibujan como tarjetas SI / NO (RF-65 a RF-72); exige que todos
+  sean `TipoCampo.SELECT` con opciones `["SI", "NO"]`, lo que fija `CatalogoHcGeneralTest` para serologías.
 
 ### `core/database` (RF-25, RF-26, RF-29, RF-30)
 - `migrations/6.sqm` + `HcConfig.sq` (nuevo): tabla `hc_config(medico_id, hc_codigo, config_json, recibida_en,
@@ -180,6 +184,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `biopsia_hepatica`, `estudios_cardiologicos` y `tc_rmn` con `modo = UNO_POR_CONSULTA` (el de `hepatologia`, que se
   va en la tanda D, no cambia). Siguen siendo `TipoSeccion.REGISTROS` con el mismo `registroTipo` y el campo
   `detalle`: los datos locales no cambian y "tener datos" (RF-22) sigue igual.
+- (Cambio 2026-10-15) `HcGeneral.kt`: `deHepatologia("serologias", ...)` copia la `SeccionDef` con
+  `modoForm = GRILLA_SI_NO`; mismos 16 `CampoDef` (claves, etiquetas, orden de RF-65, `SELECT ["SI", "NO"]`), así lo
+  guardado no cambia (RF-68) y "tener datos" (RF-22) sigue igual. La de `hepatologia` (`ClinicaMedica.kt`) no cambia
+  (RF-73, "Decidido" C5-1).
 - `ChildPughSeccion.kt`: sin cambios.
 
 ### `features/hc`
@@ -266,6 +274,19 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   updated_at DESC` (solo la consulta: sin columnas ni migración). Como en la HC general las cargas no se editan,
   `updated_at` es el momento en que se guardó (las borradas no se leen), y `columnasLaboratorio` conserva ese orden a
   igual fecha (RF-61). En pediatría solo fija el orden de dos cargas de la misma fecha, que hoy queda al azar.
+- (Cambio 2026-10-15) `secciones/FormSeccion.kt` (serologías, RF-65 a RF-73): `FormSeccion` le pasa `s.modoForm` a
+  `CamposForm`, que suma `modo: ModoForm = ModoForm.FILAS` **al final** (registros y diálogos lo siguen llamando sin
+  él: nada cambia para ellos). Con `FILAS`, el código de hoy intacto. Con `GRILLA_SI_NO`:
+  - `visibles` igual que hoy (`camposCompletos` en solo lectura: solo los cargados, RF-72; el `SeccionVacia` de
+    `FormSeccion` sin ninguno sigue igual).
+  - `BoxWithConstraints` → `columnasPara(maxWidth.value)` (2 o 4, RF-66) → `visibles.chunked(columnas)`: un `Row` por
+    trozo con `SiNoVacio(c.etiqueta, valor, onCambio = { onCambio(c.clave, it) }, Modifier.weight(1f), soloLectura)`
+    por campo y `Spacer(Modifier.weight(1f))` para completar la última fila (en solo lectura puede quedar
+    incompleta). Grilla de ancho fijo con `Row` + `weight`, no `FlowRow` (`@ExperimentalLayoutApi` en esta versión de
+    Compose y con anchos desparejos según la etiqueta). Al cambiar el ancho se recalcula sola y el estado vive en
+    `valores` (casos límite).
+  - El valor pasa tal cual: `SiNoVacio` devuelve `"SI"`, `"NO"` o `""` y `ctx.setValor` lo guarda como hoy guarda el
+    `SelectField` (su "—" ya manda `""`): mismo autoguardado de 600 ms, sin API (RF-67, RF-68).
 - `HistoriaClinicaScreen.kt` / `HistoriaClinicaViewModel`: definición resuelta en un `StateFlow`; con RF-19 o RF-26
   muestra el mensaje, no ofrece consulta nueva y deja abrir las anteriores en lectura; ofrece solo los tipos con
   secciones. La copia de diagnósticos pasa a mirar las secciones de los tipos y no `definicion.secciones` (si no, las
@@ -293,6 +314,39 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `interactionSource.collectIsFocusedAsState()`, texto de ayuda si está vacío), `cursorBrush = SolidColor(bordeFoco)`
   (el de por defecto es negro y no se ve en oscuro), colores con `coloresCelda(LocalIsDarkTheme.current)`. Mismo
   ancho y relleno que la celda de hoy (120 dp) para no mover la tabla.
+
+### `core/ui` (cambio 2026-10-15; RF-65 a RF-72)
+`core/ui` no depende de `core/model`: el componente recibe textos, no `CampoDef`.
+- `theme/ColoresSiNo.kt` (nuevo): `data class ColoresSiNo(fondoTarjeta, relleno, textoRelleno, borde, texto,
+  bordeFoco)` y `coloresSiNo(oscuro: Boolean)`, con la `contraste` de `ColoresCelda.kt`. Valores de la paleta:
+
+  | | Claro | Oscuro |
+  |---|---|---|
+  | fondoTarjeta | `surface` claro (blanco) | `Salud360Colors.DarkSurface` `#16262B` |
+  | relleno (elegido) | `TealStart` `#2C7B90` (≈ 4,8:1 contra blanco) | `primary` oscuro `#6EC1D6` (≈ 8:1) |
+  | textoRelleno y tilde | blanco (≈ 4,8:1 contra el relleno) | `DarkBackground` `#0F1B1E` |
+  | borde (no elegido, 1 dp) | `#4F5B5E` (≈ 7:1) | `#B8C6CA` (≈ 9:1) |
+  | texto (botón no elegido y nombre del marcador) | `OnBackground` `#333333` | `DarkOnBackground` `#E6EDEF` |
+  | bordeFoco (2 dp) | `#333333` | `#E6EDEF` |
+
+  El foco va con el color del texto y no con el relleno: sobre un botón elegido, un borde del mismo color que el
+  relleno no se vería. `outline` no sirve para el borde (≈ 1,8:1, como en `ColoresCelda`).
+- `components/SiNoVacio.kt` (nuevo):
+  - Puras (sin Compose, para testear): `alternarSiNo(actual: String, tocado: String): String` y
+    `columnasPara(anchoDp: Float): Int` (sección 5).
+  - `@Composable SiNoVacio(etiqueta, valor: String, onCambio: (String) -> Unit, modifier, soloLectura = false)`:
+    tarjeta (`fondoTarjeta`, borde `outline` decorativo, `shapes.small`) con la etiqueta arriba (`maxLines = 2`, sin
+    elipsis, RF-66) y debajo dos botones del mismo ancho "SI" y "NO", de al menos 48 × 48 dp (RF-71). Elegido:
+    fondo `relleno`, texto `textoRelleno` y una tilde (`Icons.Filled.Check`) antes del texto; no elegido: borde 1 dp
+    `borde` y texto `texto` (RF-69, RF-70). Cada botón con `selectable(selected, role = Role.RadioButton,
+    onClick = { onCambio(alternarSiNo(valor, opcion)) })` (Enter/espacio con el teclado) y borde de foco 2 dp
+    `bordeFoco` con `collectIsFocusedAsState` (RF-71); la tarjeta con `semantics(mergeDescendants = false) {
+    stateDescription = valor.ifBlank { "sin cargar" } }` y cada botón con `contentDescription = "$etiqueta, $opcion"`
+    (el "elegido" lo pone `selected`). Valor que no es "SI", "NO" ni "" (casos límite): se muestra como texto debajo
+    de la etiqueta y ningún botón elegido.
+  - Con `soloLectura`: etiqueta y el valor como texto en una píldora con los colores del elegido, sin botones ni
+    `selectable` (RF-72).
+  - Reutilizable para cualquier SI / NO con "sin cargar"; `SiNoField` (sin vuelta a vacío) no se toca.
 
 ### `features/admin` (RF-1 a RF-18)
 - `PerfilesHcViewModel.kt` (nuevo, en `AdminModule.kt`): estado de la lista, del perfil en edición (borrador que se
@@ -346,6 +400,8 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `columnasLaboratorio(historico, consultaId, editable, maxOtras = 8): List<ColumnaLaboratorio>` | `ColumnaLaboratorio(carga, deEstaConsulta, puedeBorrar)`. Sin las inactivas; orden por `fecha` descendente con orden **estable** (a igual fecha queda el de entrada, que la consulta trae por `updated_at DESC`); todas las de `consultaId` y las primeras `maxOtras` de otras consultas, intercaladas por fecha; `puedeBorrar = editable` para todas (de esta consulta y de otras) | RF-60, RF-61, RF-62, RF-63 |
 | `mostrarNuevaCarga(editable, abierta)` | `editable && !abierta`: siempre, aunque la consulta ya tenga cargas; nunca dos columnas editables | RF-55, RF-56 |
 | `cargaNuevaValida(valores)` | `true` si algún valor no está en blanco (el `ConsultaViewModel` ya descarta los vacíos al guardar) | RF-57 |
+| `alternarSiNo(actual, tocado): String` (cambio 2026-10-15, en **`core/ui`** `components/SiNoVacio.kt`: la usa el componente y `core/ui` no depende de `core/data`) | `tocado == actual` → `""` (sin cargar); si no, `tocado`. Nunca devuelve `"NO"` sin que se haya tocado "NO". `actual` desconocido (no "SI"/"NO"/"") → `tocado` | RF-67, RF-68, casos límite |
+| `columnasPara(anchoDp): Int` (ídem, `core/ui`) | `< 600` → 2; `>= 600` → 4 | RF-66 |
 
 Acciones por columna en la HC general: columna editable → escribir, cambiar la fecha, "Guardar laboratorio",
 "Cancelar"; columna guardada (de esta consulta o de otra) → solo leer y, con la consulta editable, tacho; nunca
@@ -424,6 +480,15 @@ la pantalla le pasa a `cambioEstudio`).
   a RF-62, RF-64. `core/data` jvmTest `LaboratoriosDePacienteTest` (SQLite en archivo temporal, como
   `DatosConsultaTest`): dos cargas con la misma fecha salen la última guardada primero, y una inactiva no sale
   (RF-61). RF-56, RF-58, RF-59, RF-63 y la pantalla de pediatría (RF-64) a mano con `devWeb`.
+- (Cambio 2026-10-15) `core/ui` jvmTest `SiNoVacioTest`: `alternarSiNo` en sus seis combinaciones de `""`/"SI"/"NO" ×
+  "SI"/"NO" (tocar el elegido → `""`; ninguna da "NO" sin tocar "NO") y con un valor desconocido; `columnasPara` en
+  320, 599,9 → 2 y 600, 1200 → 4. `ColoresSiNoTest`: en los dos modos, relleno y borde contra `fondoTarjeta` ≥ 3,
+  bordeFoco contra `fondoTarjeta` y contra `relleno` ≥ 3, textoRelleno contra relleno ≥ 4,5, texto contra
+  `fondoTarjeta` ≥ 4,5, y relleno ≠ fondoTarjeta (RF-70, RF-71). `especialidades/clinica` `CatalogoHcGeneralTest`:
+  serologías del catálogo con `GRILLA_SI_NO`, sus 16 campos en el orden de RF-65 con las claves de hoy y todos
+  `SELECT ["SI", "NO"]`; ninguna otra sección del catálogo, ni `hepatologia`/`clinicaMedica`, con `GRILLA_SI_NO`
+  (RF-68, RF-73). RF-65, RF-67 (pantalla), RF-69, RF-71 (teclado y lector), RF-72 y el resto de RF-73 a mano con
+  `devWeb`, en claro y oscuro, ancho y angosto.
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -482,7 +547,8 @@ Tandas propuestas: **A1** = fases 0, 1 y 1b (7 tareas: entorno, base de la API, 
 API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios de la prueba manual del
 2026-10-14 (4: cuerpo de la consulta y estudios con historial, RF-35 a RF-42); **C3** = laboratorio, cambio del
 2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **C4** = varias cargas de laboratorio, cambio
-del 2026-10-14 (3) (2: lógica y pantalla, RF-55 a RF-64); **D** = 6 y 7 (4). Cada tanda se
+del 2026-10-14 (3) (2: lógica y pantalla, RF-55 a RF-64); **C5** = serologías en grilla, cambio del 2026-10-15
+(2: lógica, colores y catálogo; pantalla; RF-65 a RF-73); **D** = 6 y 7 (4). Cada tanda se
 aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
@@ -557,6 +623,15 @@ MAMP de `gradle.properties`.
 | RF-62 | `columnasLaboratorio(maxOtras = 8)` (T39) | `CargasLaboratorioTest` |
 | RF-63 | `editable = !ctx.soloLectura`; `SeccionVacia` sin cargas de esta consulta (T39/T40) | `CargasLaboratorioTest`, manual (consulta cerrada) |
 | RF-64 | `cargasMultiples`; rama de hoy intacta para las demás (T39/T40) | `CargasLaboratorioTest`, manual (pediatría) |
+| RF-65 | `ModoForm.GRILLA_SI_NO` en serologías de `catalogoHcGeneral`; `CamposForm` en grilla con `SiNoVacio` (T41/T42) | `CatalogoHcGeneralTest` (orden), manual |
+| RF-66 | `columnasPara`, `BoxWithConstraints` + `chunked` + `weight` (T41/T42) | `SiNoVacioTest`, manual (ancho y angosto) |
+| RF-67 | `alternarSiNo` en `SiNoVacio` (T41/T42) | `SiNoVacioTest`, manual |
+| RF-68 | Mismos `CampoDef`; `""`/"SI"/"NO" por `ctx.setValor` como el `SelectField` (T41/T42) | `SiNoVacioTest`, `CatalogoHcGeneralTest`, manual (consulta con serologías cargadas antes) |
+| RF-69 | Relleno + tilde / borde en `SiNoVacio` (T42) | Manual claro y oscuro |
+| RF-70 | `coloresSiNo` (T41) | `ColoresSiNoTest` |
+| RF-71 | `selectable(role = RadioButton)`, foco 2 dp, 48 dp, `stateDescription`/`contentDescription` (T41/T42) | `ColoresSiNoTest` (foco), manual (tabulador, lector de pantalla) |
+| RF-72 | `camposCompletos` + `SiNoVacio(soloLectura)` en la grilla (T42) | Manual (consulta cerrada, solo lectura de RF-22) |
+| RF-73 | `modoForm = FILAS` por defecto; solo la copia de `HcGeneral.kt` en grilla (T41) | `CatalogoHcGeneralTest`, manual (hepatología estática, pediatría) |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -657,3 +732,34 @@ C4-1. **Varias cargas solo en la HC general** (decisión del usuario; RF-64, RF-
    está relevado (y RF-33 dice que pediatría no cambia). El renderer es uno y la diferencia es una condición por
    código, igual que "Elegir filas"; extenderlo después es quitarla y probar contra la API de pediatría.
    Descartado: aplicarlo a todas (un solo comportamiento, pero cambia pediatría y su sincronización).
+
+## Decidido (2026-10-15, cambio: serologías en grilla)
+22. **Grilla de tarjetas SI / NO con vuelta a vacío** (decisión del usuario; RF-65 a RF-67): un toque por marcador y
+    tocar el elegido lo deja sin cargar. Descartado: los 16 desplegables en una fila (lo de hoy: etiquetas cortadas e
+    inutilizable en el teléfono), desplegables en varias filas (siguen siendo dos toques por marcador) y `SiNoField`
+    (no deja volver a "sin cargar").
+23. **2 o 4 columnas, sin paso intermedio** (RF-66): 16 se reparte justo en 2 y en 4 (filas completas); con 3 la última
+    fila quedaría con una tarjeta sola. El corte en 600 dp del ancho de la sección es el mismo criterio que RF-41.
+    Descartado: `FlowRow` con ancho según la etiqueta (filas desparejas y API experimental).
+24. **Mismos valores que hoy** (RF-68): `"SI"`, `"NO"` y `""` en las mismas claves; sin migración, sin columnas y
+    compatible con la 002 (RF-26 de la 002). Descartado: guardar como `SI_NO` o con otro código para "sin cargar".
+25. **Componente en `core/ui` y modo opt-in en la `SeccionDef`** (RF-73): `SiNoVacio` sirve para cualquier SI / NO
+    con vacío; `ModoForm.GRILLA_SI_NO` solo lo activa serologías de `catalogoHcGeneral`. Por sección y no por
+    `CampoDef.grupo`: el modo cambia cómo se dibuja la sección entera y `grupo` ya significa "misma fila" para todas
+    las especialidades. Descartado: cambiar el dibujo de todos los `SELECT ["SI", "NO"]` agrupados (tocaría
+    `hepatologia`, `clinicaMedica` y cualquier otra especialidad con ese patrón, contra RF-33) y un `TipoSeccion` o
+    `renderKey` CUSTOM nuevo (obliga a tocar los `when` de todas las especialidades, o RF-22 dejaría de ver los
+    valores, como en "Decidido" 10).
+26. **Solo lectura con solo los cargados, en la grilla** (RF-72): como hoy (`camposCompletos`), pero en tarjetas en
+    vez de en una fila. Descartado: los 16 con "—" (en una consulta vieja con dos marcadores cargados, 14 tarjetas
+    vacías tapan lo importante).
+
+## Decidido (2026-10-15, tanda C5, antes "Para decidir")
+C5-1. **Grilla también en la hepatología estática** (`hepatologia` de `ClinicaMedica.kt`, que desaparece en la tanda
+   D): **no**, no cambia. Sus consultas pasan a "clinica" con `7.sqm` y desde ahí se ven con la grilla; aplicarla
+   antes es una línea (`modoForm = GRILLA_SI_NO` en su `SeccionDef`) pero cambia una historia clínica que hoy RF-73
+   deja como está, para unas semanas.
+C5-2. **Color propio para "SI"** (reactivo, lo que más importa clínicamente): **no**, mismo relleno para SI y NO (la
+   diferencia la dan el texto y la posición; dos colores exigen otro par con contraste en claro y oscuro y pueden
+   leerse como "bien/mal").
+C5-3. **Solo lectura**: solo los marcadores cargados ("Decidido" 26), no "los 16 con —".
