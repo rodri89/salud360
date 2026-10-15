@@ -323,6 +323,31 @@ sección: se muestran siempre, como en la web.
   historia clínica aparte (hasta la tanda D), que usan el mismo dibujo; las demás secciones e historias clínicas se ven
   como hoy (RF-33).
 
+### Motivo de consulta con historial
+- RF-83: CUANDO el médico ve Motivo de consulta en una consulta de la HC general, EL SISTEMA muestra a la izquierda el
+  texto de esa consulta y a la derecha, en un recuadro del mismo alto con desplazamiento propio y con el título
+  "Consultas previas", el motivo de las demás consultas del paciente (RF-84), cada uno con la fecha de su consulta, de
+  la fecha más reciente a la más antigua y, a igual fecha, primero la consulta modificada más recientemente, sin los
+  que tienen el texto vacío.
+- RF-84: EL SISTEMA cuenta para RF-83 todas las consultas del paciente en la HC general que no están anuladas, de
+  cualquier tipo (Consulta o Telemedicina) y también las posteriores a la que se ve, menos la que se ve.
+- RF-85: EL SISTEMA no ofrece una fecha propia para el motivo: la fecha de cada motivo es la de su consulta; SI cambia
+  la fecha de una consulta, ENTONCES su motivo se muestra con la fecha nueva y en el lugar que le toca.
+- RF-86: CUANDO el médico escribe el motivo en una consulta abierta, EL SISTEMA lo guarda como hoy (el mismo campo de
+  esa consulta, con el autoguardado de siempre, sin llamar a la API); los motivos de las otras consultas no se pueden
+  editar desde ahí.
+- RF-87: CUANDO el médico toca "Ver todo" en Motivo de consulta, EL SISTEMA abre la misma ventana que RF-40, con el
+  motivo de esa consulta primero, marcado "Esta consulta" y con su fecha, y después los de RF-83, con
+  desplazamiento; cerrarla no cambia nada.
+- RF-88: MIENTRAS la pantalla tenga menos de 600 puntos de ancho, EL SISTEMA muestra las consultas previas del motivo
+  debajo del campo y no a la derecha (como RF-41).
+- RF-89: MIENTRAS la consulta esté cerrada o se vea solo para leer (RF-22), EL SISTEMA muestra el motivo de esa
+  consulta sin poder editarlo, y las consultas previas y "Ver todo" siguen disponibles; SI esa consulta no tiene
+  motivo y no hay consultas previas con motivo, ENTONCES muestra la sección vacía, como las demás.
+- RF-90: EL SISTEMA aplica RF-83 a RF-89 solo a Motivo de consulta de la HC general; las demás secciones de texto de la
+  HC general, la hepatología que todavía existe como historia clínica aparte (hasta la tanda D), pediatría y las demás
+  historias clínicas se ven como hoy (RF-33).
+
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
   catálogo inicial.
@@ -414,6 +439,20 @@ sección: se muestran siempre, como en la web.
   lo cargado (RF-74, RF-75).
 - Child-Pugh con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura, como en
   RF-81 (RF-22).
+- Motivo de consulta en una consulta vieja: "Consultas previas" muestra también los motivos de las consultas
+  posteriores del paciente, como los estudios con historial (RF-84).
+- Una consulta anulada con motivo: su motivo no sale en las consultas previas de ninguna otra (RF-84); los datos no se
+  borran.
+- Dos consultas del paciente con la misma fecha y con motivo: salen las dos, primero la consulta modificada más
+  recientemente (RF-83).
+- Un motivo con solo espacios o saltos de línea: cuenta como vacío y no sale en las consultas previas (RF-83).
+- El médico escribe el motivo y sale enseguida de la consulta: lo último escrito queda guardado, como hoy (RF-86).
+- Motivos de la hepatología aparte guardados en el dispositivo: salen en las consultas previas de la HC general recién
+  con la tanda D, cuando esas consultas pasan a "clinica" (RF-29).
+- Motivo de consulta con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura,
+  con el mismo formato (RF-22, RF-89).
+- Un paciente con muchas consultas con motivo: salen todas en las consultas previas, con desplazamiento, sin límite
+  (RF-83).
 
 ## Fuera de alcance
 - Que la web lea esta configuración en vez de sus perfiles (spec aparte).
@@ -430,7 +469,8 @@ sección: se muestran siempre, como en la web.
   primera vez de RF-25 y RF-26; RF-27 a RF-30; RF-34; mapeo inicial de RF-32; cuerpo de la consulta de RF-35 y RF-36;
   entrada e historial de RF-38 y RF-39; filas visibles y ocultas de RF-44 a RF-49; contrastes de RF-51 y RF-52;
   columnas, acciones y carga vacía de RF-55, RF-57, RF-60 a RF-62 y RF-64; columnas, toque y valores de RF-66 a
-  RF-68, contrastes de RF-70 y el alcance de RF-73; toque, total, clase y valores de RF-76 a RF-78) con test en verde.
+  RF-68, contrastes de RF-70 y el alcance de RF-73; toque, total, clase y valores de RF-76 a RF-78; historial del
+  motivo de RF-83 a RF-85 y el alcance de RF-90) con test en verde.
 - Contra la copia local: el administrador crea un perfil de prueba con dos pestañas y tres secciones, se lo asigna a
   un médico de prueba, y ese médico lo ve con esos nombres y en ese orden, sin actualizar la app.
 - Contra la copia local: "Clínica general" y "Hepatología" coinciden con la tabla del catálogo inicial, y la
@@ -471,3 +511,11 @@ y tocarla otra vez deja el parámetro sin cargar. Arriba "Total: N · Clase X" (
 leyenda "A: ≤ 6 · B: 7-9 · C: ≥ 10", con los textos corregidos de la app. En el teléfono, un bloque por parámetro con
 las tres opciones apiladas; en solo lectura, el criterio elegido como texto. Los valores guardados no cambian ("1",
 "2", "3" o vacío). Vale para la HC general y para la hepatología aparte, que comparten el dibujo (RF-74 a RF-82).
+
+Cambio aprobado el 2026-10-15 (3): Motivo de consulta de la HC general muestra las consultas previas como Biopsia
+hepática y los demás estudios con historial: a la izquierda el motivo de esta consulta, a la derecha "Consultas
+previas" (el motivo de las demás consultas no anuladas del paciente en la HC general, también las posteriores, con la
+fecha de cada consulta, de la más reciente a la más antigua, sin los vacíos) con desplazamiento propio, "Ver todo" en
+una ventana grande y, en el teléfono, las previas debajo. Sin fecha propia: la del motivo es la de su consulta. Se
+guarda como hoy (mismo campo y mismo autoguardado, nada a la API) y en solo lectura no se edita. Solo Motivo de
+consulta de la HC general; las demás secciones de texto e historias clínicas no cambian (RF-83 a RF-90).

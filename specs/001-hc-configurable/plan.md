@@ -141,6 +141,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `SeccionDef.modoForm: ModoForm = ModoForm.FILAS` **al final** (todas las `SeccionDef` existentes quedan en `FILAS`,
   RF-73). `GRILLA_SI_NO` = los campos de la sección se dibujan como tarjetas SI / NO (RF-65 a RF-72); exige que todos
   sean `TipoCampo.SELECT` con opciones `["SI", "NO"]`, lo que fija `CatalogoHcGeneralTest` para serologías.
+- (Cambio 2026-10-15 (3); RF-83 a RF-90) `especialidad/EspecialidadDefinition.kt`: `SeccionDef.conHistorial: Boolean =
+  false` **al final** (después de `modoForm`; todas las `SeccionDef` existentes quedan en `false`, RF-90). Solo tiene
+  efecto en `TipoSeccion.TEXTO`: el campo `texto` de esa consulta + "Consultas previas" como los estudios con
+  historial. Opt-in por sección ("Decidido" C7-2).
 
 ### `core/database` (RF-25, RF-26, RF-29, RF-30)
 - `migrations/6.sqm` + `HcConfig.sq` (nuevo): tabla `hc_config(medico_id, hc_codigo, config_json, recibida_en,
@@ -153,6 +157,13 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   Nada se borra de datos clínicos. `HistoriaClinica.sq` solo suma consultas de lectura (ver abajo); sin columnas nuevas.
 - `HistoriaClinica.sq`: consultas nuevas para RF-22: tipos de registro, de laboratorio y secciones de archivo con datos
   en una consulta (`SELECT DISTINCT tipo ... WHERE consulta_id = ?`).
+- (Cambio 2026-10-15 (3); RF-83, RF-84) `HistoriaClinica.sq`, solo lectura (sin columnas ni migración):
+  `valoresDeCampoDePaciente: SELECT sv.consulta_id, sv.valor FROM seccion_valor sv JOIN consulta c ON c.id =
+  sv.consulta_id WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.campo = ? AND sv.deleted =
+  0 AND c.deleted = 0 AND c.estado != 'ANULADA'`. No se reutiliza `historialCampo` (la que hoy usa
+  `TextoLibreConPrevias` en todas las especialidades): no deja afuera las anuladas, y cambiarla cambiaría las demás
+  historias clínicas (RF-90, "Decidido" 37). El orden y la fecha salen de `consultasDePaciente` (ya `estado !=
+  'ANULADA'`, `fecha DESC, updated_at DESC`), que se cruza en la lógica pura.
 
 ### `core/data`
 - `network/hc/HcConfigDtos.kt`: DTOs de la sección 3 y su paso a/desde `PerfilHc`.
@@ -164,6 +175,9 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   sin conexión no se edita (RF-14), así que no hay copia que pueda quedar `dirty`. Los errores traen el `mensaje` y
   los `errores` de la API (RF-13).
 - `hcgeneral/*.kt`: la lógica pura de la sección 5.
+- (Cambio 2026-10-15 (3)) `repos/HcRepository.kt`: `observarValoresDeCampo(pacienteId, especialidad, seccion, campo):
+  Flow<Map<Id, String>>` sobre `valoresDeCampoDePaciente` (consulta → valor). `hcgeneral/TextoConHistorial.kt`
+  (nuevo): `data class EntradaTexto(consultaId, fecha, texto)` e `historialTexto` (sección 5).
 - `repos/TurnosImportador.kt`, `repos/AgendaTurnosOnline.kt` y `mappers/Mappers.kt` (medico `toModel`): aplican
   `normalizarHistoriasClinicas` ("hepatologia" → "clinica", sin repetidos); `codigoHcPorNombre("hepato…")` → "clinica" (RF-29).
 - `DataModule.kt`: `single` de los dos repositorios. **No** se registra un `HcBackend` para "clinica" en esta spec: si
@@ -188,6 +202,10 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
   `modoForm = GRILLA_SI_NO`; mismos 16 `CampoDef` (claves, etiquetas, orden de RF-65, `SELECT ["SI", "NO"]`), así lo
   guardado no cambia (RF-68) y "tener datos" (RF-22) sigue igual. La de `hepatologia` (`ClinicaMedica.kt`) no cambia
   (RF-73, "Decidido" C5-1).
+- (Cambio 2026-10-15 (3); RF-90) `HcGeneral.kt`: `SeccionCatalogo(G.motivo)` pasa a
+  `SeccionCatalogo(G.motivo.copy(conHistorial = true))` (mismo id `motivo_consulta`, mismo campo `texto`: lo guardado
+  y "tener datos" de RF-22 no cambian). `SeccionesGenericas.motivo`, que usan `hepatologia`, `clinicaMedica`,
+  pediatría y las demás, no cambia.
 - ~~`ChildPughSeccion.kt`: sin cambios.~~ (Cambio 2026-10-15 (2); RF-74 a RF-82) Child-Pugh como la web. Ninguna
   `SeccionDef` cambia: el renderer CUSTOM `child_pugh` es uno solo y lo registran `hcGeneralContribution` y
   `hepatologiaContribution`, así que el dibujo nuevo llega a las dos (RF-82, "Decidido" 29).
@@ -321,6 +339,31 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
     `valores` (casos límite).
   - El valor pasa tal cual: `SiNoVacio` devuelve `"SI"`, `"NO"` o `""` y `ctx.setValor` lo guarda como hoy guarda el
     `SelectField` (su "—" ya manda `""`): mismo autoguardado de 600 ms, sin API (RF-67, RF-68).
+- (Cambio 2026-10-15 (3); RF-83 a RF-90) Motivo de consulta con historial:
+  - `secciones/CampoConHistorial.kt` (nuevo, extraído de `EstudioConHistorialSeccion.kt` sin cambiar su dibujo):
+    `data class EntradaHistorial(fecha: LocalDate?, texto: String)` y `@Composable CampoConHistorial(titulo,
+    estaConsulta: EntradaHistorial, previas: List<EntradaHistorial>, campo: @Composable (Modifier) -> Unit)`: el
+    `BoxWithConstraints` (≥ 600 dp: `Row` con `campo` a la izquierda y "Consultas previas" del mismo alto a la derecha;
+    menos: debajo, RF-41/RF-88), el recuadro `ConsultasPrevias` con desplazamiento propio y "Ver todo", y el
+    `VerTodoDialog` ("Esta consulta" + previas, RF-40/RF-87). `EstudioConHistorialSeccion` lo usa pasando su campo
+    (fecha + texto) y sus registros mapeados a `EntradaHistorial(fecha, textoEstudio)`: se tiene que ver igual que hoy.
+  - `secciones/FormSeccion.kt`, `TextoSeccion`: si `s.conHistorial`, delega en `TextoConHistorialSeccion(s, ctx, ui,
+    texto)` (nuevo, en `secciones/TextoConHistorialSeccion.kt`); si no, el código de hoy intacto, con su
+    `TextoLibreConPrevias` (RF-90). `RenderSeccionSola` le pasa `ui` (ya lo tiene). Dentro:
+    - `texto` = `valores["texto"]` que llega de `RenderSeccion` (sale de `vm.valores.collectAsState()` en
+      `ConsultaScreen`): nunca `ctx.valor` (StateFlow `.value` sin observar; el bug de T44).
+    - `previas` = `remember(s.id, ctx.consultaId) { ctx.vm.historialTexto(s.id, "texto") }.collectAsState(emptyList())`
+      (recordado, como `registrosDelPaciente` en los estudios: si no, cada tecla crea un flujo nuevo), mapeadas a
+      `EntradaHistorial(fecha, texto)`.
+    - Campo: `TextAreaField(s.titulo, texto, { ctx.setValor(s.id, "texto", it) }, minLines = 10, readOnly =
+      ctx.soloLectura)`, sin `DateField` (RF-85); en solo lectura y vacío, "Sin datos en esta consulta". Mismo
+      `ctx.setValor` que hoy: autoguardado de 600 ms en el dispositivo, nunca la API (RF-86).
+    - `estaConsulta` = `EntradaHistorial(fechaConsulta(ui), texto)` para "Ver todo" (RF-87).
+    - `ctx.soloLectura && texto.isBlank() && previas.isEmpty()` → `SeccionVacia()` (RF-89). Si `s.conArchivos`,
+      `ArchivosInline` debajo, como hoy (motivo no lo tiene).
+  - `ConsultaViewModel.historialTexto(seccion, campo): Flow<List<EntradaTexto>>` = `combine(hc.observarConsultas(
+    pacienteId, especialidad), hc.observarValoresDeCampo(...)) { c, v -> historialTexto(c, v, consultaId) }`; sin
+    consulta, `flowOf(emptyList())`. Solo lectura de la base: no escribe ni marca nada `dirty`.
 - `HistoriaClinicaScreen.kt` / `HistoriaClinicaViewModel`: definición resuelta en un `StateFlow`; con RF-19 o RF-26
   muestra el mensaje, no ofrece consulta nueva y deja abrir las anteriores en lectura; ofrece solo los tipos con
   secciones. La copia de diagnósticos pasa a mirar las secciones de los tipos y no `definicion.secciones` (si no, las
@@ -452,6 +495,7 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
 | `totalChildPugh(valores: Map<String, String>): Int` (ídem) | Suma de `puntosDe` de las claves de `parametrosChildPugh`; sin ninguna, 0; los desconocidos no suman | RF-77 |
 | `completosChildPugh(valores): Int` (ídem) | Cuántos de los cinco tienen `puntosDe != null` | RF-77 |
 | `claseChildPugh(total, completos): String` (ídem) | `completos < 5` → `"—"`; si no, `total <= 6` → `"A"`, `<= 9` → `"B"`, si no `"C"` | RF-77 |
+| `historialTexto(consultas: List<Consulta>, valores: Map<Id, String>, consultaActual: Id): List<EntradaTexto>` (cambio 2026-10-15 (3), `hcgeneral/TextoConHistorial.kt`) | Una `EntradaTexto(consultaId, fecha de la consulta, texto)` por consulta de `consultas` que no es `consultaActual`, no está `ANULADA` (defensa: la consulta SQL ya las saca) y tiene en `valores` un texto que no está en blanco; ordenadas por `fecha` descendente con orden **estable** (a igual fecha queda el de entrada, que `consultasDePaciente` trae por `updated_at DESC`). Valores de consultas que no están en `consultas` se ignoran. Sin límite | RF-83, RF-84, RF-85 |
 
 Acciones por columna en la HC general: columna editable → escribir, cambiar la fecha, "Guardar laboratorio",
 "Cancelar"; columna guardada (de esta consulta o de otra) → solo leer y, con la consulta editable, tacho; nunca
@@ -548,6 +592,17 @@ la pantalla le pasa a `cambioEstudio`).
   ("Decidido" 33). `CatalogoHcGeneralTest` sigue en verde (las `SeccionDef` de `child_pugh` y los dos renderers no
   cambian). RF-74, RF-75, RF-79, RF-80, RF-81 y RF-82 a mano con `devWeb`, en claro y oscuro, ancho y angosto, y
   serologías igual que antes (por `OpcionElegible`).
+- (Cambio 2026-10-15 (3)) `core/data` commonTest `TextoConHistorialTest` (consultas y valores inventados):
+  `historialTexto` sin la actual; una anulada con texto → fuera; texto `""`, `"   "` y `"\n"` → fuera; una consulta sin
+  valor → fuera; un valor de una consulta que no está en la lista → ignorado; orden por fecha descendente con una
+  posterior a la actual incluida; dos con la misma fecha → el orden de entrada; la fecha es la de la consulta (RF-83 a
+  RF-85). `core/data` jvmTest `ValoresDeCampoDePacienteTest` (SQLite en archivo temporal, como `DatosConsultaTest`):
+  `observarValoresDeCampo` trae el `texto` de `motivo_consulta` de dos consultas del paciente en "clinica" y no el de
+  otro paciente, otra especialidad, otra sección, otro campo, una consulta borrada ni una anulada (RF-84).
+  `especialidades/clinica` `CatalogoHcGeneralTest`: `motivo_consulta` del catálogo con `conHistorial = true`, ninguna
+  otra sección del catálogo, ni `hepatologia`/`clinicaMedica`, con `conHistorial` (RF-90). RF-83 (pantalla), RF-86,
+  RF-87, RF-88, RF-89 y el resto de RF-90 a mano con `devWeb`, ancho y angosto, y los estudios con historial igual que
+  antes (por `CampoConHistorial`).
 - `core/data` jvmTest (base SQLite en archivo temporal, como los E2E): `ConfigHcRepositoryTest` con API falsa
   (guardar, leer sin red, nunca `dirty`; RF-25, RF-26) y `MigracionHepatologiaTest` (`Schema.migrate` de 7 a 8 sobre
   filas sembradas: consultas, antecedentes, registros, laboratorios, preferencias y el diagnóstico de una consulta
@@ -608,7 +663,8 @@ API de configuración); **B** = 3 y 3b (8); **C** = 4 y 5 (9); **C2** = cambios 
 2026-10-14 (2) (3: filas visibles y celda editable, RF-43 a RF-54); **C4** = varias cargas de laboratorio, cambio
 del 2026-10-14 (3) (2: lógica y pantalla, RF-55 a RF-64); **C5** = serologías en grilla, cambio del 2026-10-15
 (2: lógica, colores y catálogo; pantalla; RF-65 a RF-73); **C6** = Child-Pugh como la web, cambio del 2026-10-15 (2)
-(2: lógica pura; pantalla; RF-74 a RF-82); **D** = 6 y 7 (4). Cada tanda se
+(2: lógica pura; pantalla; RF-74 a RF-82); **C7** = motivo de consulta con historial, cambio del 2026-10-15 (3) (2:
+lógica pura, consulta de lectura y marca en el catálogo; pantalla; RF-83 a RF-90); **D** = 6 y 7 (4). Cada tanda se
 aprueba antes de generar su `tasks.md`.
 
 **Prueba manual en esta máquina** (sin tocar `gradle.properties`; Gradle toma primero lo que viene por `-P`):
@@ -701,6 +757,14 @@ MAMP de `gradle.properties`.
 | RF-80 | `OpcionElegible` (`selectable`, foco, 48 dp), `descripcion`, `selectableGroup` + `stateDescription` (T44) | Manual (tabulador, lector de pantalla) |
 | RF-81 | Rama de solo lectura de `ChildPughSeccion`; `SeccionVacia` sin valores (T44) | Manual (consulta cerrada, solo lectura de RF-22) |
 | RF-82 | Un solo renderer `child_pugh` en `hcGeneralContribution` y `hepatologiaContribution` (T44) | `CatalogoHcGeneralTest` (renderers), manual (pediatría y demás secciones igual) |
+| RF-83 | `historialTexto`, `ConsultaViewModel.historialTexto`, `TextoConHistorialSeccion` + `CampoConHistorial` (T45/T46) | `TextoConHistorialTest`, manual |
+| RF-84 | `valoresDeCampoDePaciente` (sin anuladas ni borradas) + `consultasDePaciente`; `historialTexto` sin la actual (T45) | `TextoConHistorialTest`, `ValoresDeCampoDePacienteTest`, manual (consulta vieja ve las posteriores) |
+| RF-85 | Fecha de `Consulta` en `EntradaTexto`; sin `DateField` en el campo (T45/T46) | `TextoConHistorialTest`, manual (cambiar la fecha de una consulta) |
+| RF-86 | `ctx.setValor(s.id, "texto", …)` como hoy (autoguardado, sin API) (T46) | Manual (salir enseguida y volver) |
+| RF-87 | `VerTodoDialog` de `CampoConHistorial` con `fechaConsulta(ui)` (T46) | Manual |
+| RF-88 | `BoxWithConstraints` < 600 dp de `CampoConHistorial` (T46) | Manual (angosto) |
+| RF-89 | `ctx.soloLectura` en `TextoConHistorialSeccion`; `SeccionVacia` sin texto ni previas (T46) | Manual (consulta cerrada, solo lectura de RF-22) |
+| RF-90 | `SeccionDef.conHistorial = false` por defecto; solo `motivo_consulta` de `catalogoHcGeneral` en `true`; `TextoSeccion` de hoy intacto sin la marca (T45/T46) | `CatalogoHcGeneralTest`, manual (conductas, hepatología aparte, pediatría igual) |
 
 ## Decidido (2026-10-09, antes "Para decidir")
 1. **Orden de telemedicina**: como en la web (subjetivos y objetivos antes de exámenes complementarios). Ajustada la
@@ -866,3 +930,39 @@ C5-4. **Foco por fuera del botón** (coordinador, al empezar T41): el borde de f
     texto "Total: N · Clase X" entra al test de contraste de `core/ui` (`ColoresSiNoTest`), en claro y en oscuro, con
     al menos 4,5:1 contra `fondoTarjeta`. Si `Salud360Colors.Indigo` (el de hoy) no llega en oscuro, se usa `texto`
     de `ColoresSiNo`. Va en T44.
+
+## Decidido (2026-10-15, cambio (3): motivo de consulta con historial)
+34. **Mismo dibujo que los estudios con historial** (decisión del usuario; RF-83, RF-87, RF-88): el layout, el recuadro
+    "Consultas previas" y "Ver todo" se extraen a `CampoConHistorial` y los usan los estudios y el motivo, así no se
+    separan con el tiempo. Descartado: copiar `EstudioConHistorialSeccion` (dos dibujos) y hacer del motivo un
+    registro `UNO_POR_CONSULTA` (cambiaría dónde se guarda, pediría migrar los motivos ya cargados en `seccion_valor` y
+    rompería "tener datos" y el texto de las demás especialidades).
+35. **Se guarda igual que hoy** (RF-86): `seccion_valor` (consulta, `motivo_consulta`, `texto`), `ctx.setValor` y el
+    autoguardado de 600 ms; nada nuevo se escribe. Es una fila por consulta, como `motivo_consultas` de la web
+    (`consulta_id`, `descripcion`, `fecha`; `guardarMotivoConsulta` actualiza la de esa consulta o la crea), así que la
+    002 la mapea 1 a 1 y manda como `fecha` la de la consulta ("Decidido" C7-1).
+36. **Historial = consultas no anuladas del paciente en la HC general** (RF-84): todas, de cualquier tipo y también las
+    posteriores (como el "Decidido" 3 de la tanda C2 para los estudios), sin la que se ve; ordenadas por la fecha de la consulta.
+    La web (`cargarMotivoConsulta`, `tipoConsulta = 1`) muestra las filas activas del paciente con `consulta_id <>`
+    la actual, por `motivo_consultas.fecha DESC, id DESC`, como `fecha + "\n" + descripcion`, sin las vacías, y no
+    mira si la consulta está anulada; la app sí las saca, como `ultimosValoresDeSeccion`. Sin límite de cantidad: el
+    recuadro tiene desplazamiento (el `take(8)` de `TextoLibreConPrevias` no aplica acá).
+37. **Consulta de lectura nueva y lógica pura** (`valoresDeCampoDePaciente` + `historialTexto`). Descartado: reutilizar
+    `historialCampo` (no saca las anuladas; agregarle el filtro cambia el "Consultas previas" de texto de pediatría y
+    las demás, contra RF-90) y filtrar en la pantalla (sin test).
+
+## Decidido (2026-10-15, tanda C7, antes "Para decidir")
+C7-1. **Sin fecha propia del motivo: usa la de su consulta** (decisión del usuario; RF-85). La web tiene una:
+   `motivo_consultas.fecha`, con un selector en
+   `motivo_consulta.blade.php` (solo al crear la consulta, por defecto hoy) que se guarda aparte de la fecha de la
+   consulta, y sus previas se ordenan y muestran por esa fecha. En la app no: en la práctica es la fecha de la consulta, un segundo selector para el mismo dato
+   confunde y no hay dónde guardarla sin un campo nuevo (`seccion_valor` `fecha`). La 002 manda la fecha de la consulta
+   como `motivo_consultas.fecha` y, al leer de la web, se queda con la de la consulta. Descartado: un `DateField` como
+   los estudios, guardado en el campo `fecha` de la misma sección (sin esquema nuevo), que la 002 mapea 1 a 1.
+C7-2. **Opt-in por sección con `SeccionDef.conHistorial`, activada solo en motivo** (decisión del usuario; RF-90). Para
+   las demás secciones de texto (conductas, nota, datos subjetivos/objetivos, exámenes…), en esta tanda nada:
+   sumarla después a otra sección de la HC general es una línea en `HcGeneral.kt` y su caso en
+   `CatalogoHcGeneralTest`, sin tocar la pantalla. Cuáles se activan lo decide el usuario en otro cambio, después de
+   mirar cómo las muestra la web. Descartado: condicionar por id (`motivo_consulta` y
+   `CodigosHc.GENERAL`) dentro de `TextoSeccion` (no se reutiliza sin tocar código de pantalla) y activarlo en todas
+   las de texto de la HC general (no lo pidió el usuario y cambia la carga de conductas y nota).

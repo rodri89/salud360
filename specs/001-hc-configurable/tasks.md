@@ -1054,3 +1054,91 @@ Reglas de la tanda (las mismas de la tanda C5):
    `texto` de `ColoresSiNo`.
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda C7 — Motivo de consulta con historial (2026-10-15)
+
+Cambio aprobado por el usuario el 2026-10-15 (3) (spec: RF-83 a RF-90, casos límite del motivo; plan: sección 4
+`core/model`, `core/database`, `core/data`, `especialidades/clinica` y `features/hc` (cambio 2026-10-15 (3)), sección
+5, sección 9, "Decidido" 34 a 37 y "Decidido" C7-1 y C7-2). Todo en este repo, rama `hc-general`. Solo cambia
+Motivo de consulta de la HC general; los estudios con historial cambian solo por dentro (`CampoConHistorial`) y se
+tienen que ver igual; las demás secciones de texto e historias clínicas, igual (RF-90).
+
+Reglas de la tanda (las mismas de la tanda C6):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web).
+- Tests primero: la lógica pura va a `core/data/.../hcgeneral/` (y la consulta de lectura a `core/data` jvmTest, el
+  catálogo a `especialidades/clinica`) con su test, que se ve fallar antes del código. Pantallas no tienen tests: solo
+  muestran y delegan (constitución 4). Si Gradle pide `JAVA_HOME`:
+  `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm`, `.\gradlew :especialidades:clinica:compileKotlinJvm`
+  y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` que ya está corriendo tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar
+  la página. **No** correr `--stop` ni matar el `devWeb` en uso.
+- **Los renderers que leen valores se suscriben con `collectAsState`** (aprendido en C6, bug de T44 arreglado en
+  `b73f115`): el texto de esta consulta sale de los `valores` que pasa `RenderSeccion` (de
+  `vm.valores.collectAsState()`) o de un `collectAsState` propio, **nunca** de `ctx.valor` (lee el `.value` de un
+  StateFlow sin observarlo: se guarda pero no se pinta). Los flujos que se crean en el renderer (el historial) van
+  dentro de `remember(...)` antes del `collectAsState`.
+- La tarea de pantalla no se marca hecha hasta que el usuario confirme los pasos manuales, con la ventana ancha **y**
+  angosta (menos de 600 px, o el modo teléfono de DevTools), en modo claro y en modo oscuro.
+- Sin migración ni columnas nuevas: `HistoriaClinica.sq` solo suma la consulta de lectura `valoresDeCampoDePaciente`;
+  el motivo se sigue guardando en `seccion_valor` (`motivo_consulta`, `texto`) con el autoguardado de siempre. No se
+  toca `HcApiSync`/`SyncEngine`, no se registra un `HcBackend` para "clinica" y nada llama a la API.
+- "Decidido" C7-1 y C7-2 (confirmados por el usuario el 2026-10-15): el motivo no tiene fecha propia (usa la de su
+  consulta) y la marca `conHistorial` va por sección, activada solo en motivo.
+- Datos de prueba: el médico de prueba con "Hepatología" (tiene Motivo de consulta en "Consulta") en un paciente de
+  prueba con tres o más consultas en "Clínica"; si se usa un perfil "Prueba C7" (sin Motivo de consulta, para RF-22),
+  se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba: extenderla y restaurarla
+  como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
+
+- [ ] **T45. Historial del motivo: lógica pura, consulta de lectura y marca en el catálogo.** RF-83, RF-84, RF-85,
+  RF-90
+  - `core/model/.../EspecialidadDefinition.kt`: `SeccionDef.conHistorial: Boolean = false` como último parámetro.
+  - `HistoriaClinica.sq`: `valoresDeCampoDePaciente` (solo lectura, sin anuladas ni borradas) y
+    `HcRepository.observarValoresDeCampo(pacienteId, especialidad, seccion, campo): Flow<Map<Id, String>>`, como dice
+    el plan (sección 4, `core/database` y `core/data`). `historialCampo` no se toca.
+  - `hcgeneral/TextoConHistorial.kt`: `EntradaTexto(consultaId, fecha, texto)` e `historialTexto(consultas, valores,
+    consultaActual)`, como la tabla de la sección 5 del plan.
+  - `especialidades/clinica/.../HcGeneral.kt`: `SeccionCatalogo(G.motivo.copy(conHistorial = true))`;
+    `SeccionesGenericas.motivo` no cambia.
+  - Tests: `core/data` commonTest `TextoConHistorialTest`, `core/data` jvmTest `ValoresDeCampoDePacienteTest` y
+    `CatalogoHcGeneralTest` ampliado, con los casos de la sección 9 del plan (cambio 2026-10-15 (3)).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*TextoConHistorialTest*' --tests '*ValoresDeCampoDePacienteTest*'`
+    (vistos fallar antes del código), `.\gradlew :core:data:jvmTest` completo y
+    `.\gradlew :especialidades:clinica:jvmTest` en verde, y `.\gradlew :features:hc:compileKotlinJvm` compila.
+
+- [ ] **T46. Pantalla: motivo de consulta con consultas previas.** RF-83 a RF-90, RF-22, RF-38 a RF-42 (sin cambios)
+  - `features/hc/.../secciones/CampoConHistorial.kt` (nuevo) extraído de `EstudioConHistorialSeccion.kt`
+    (`EntradaHistorial`, layout ancho/angosto, `ConsultasPrevias`, `VerTodoDialog`), y `EstudioConHistorialSeccion`
+    usándolo sin cambiar lo que se ve ni cómo guarda.
+  - `secciones/TextoConHistorialSeccion.kt` (nuevo) y `TextoSeccion` que delega en él con `s.conHistorial` (sin la
+    marca, el código de hoy intacto); `RenderSeccionSola` le pasa `ui`; `ConsultaViewModel.historialTexto(seccion,
+    campo)` con `combine` de `observarConsultas` y `observarValoresDeCampo`, como dice el plan (sección 4,
+    `features/hc`, cambio 2026-10-15 (3)): texto de los `valores` observados (nunca `ctx.valor`), historial con
+    `remember` + `collectAsState`, `TextAreaField` sin `DateField`, `ctx.setValor` como hoy, "Ver todo" con la fecha
+    de la consulta, `SeccionVacia` en solo lectura sin texto ni previas.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs` (con las `-P` de
+    arriba) compilan, el `devWeb` se refresca con `wasmJsDevelopmentExecutableCompileSync`, y el usuario confirma con
+    "Hepatología", en un paciente de prueba, en modo claro y en modo oscuro:
+    1. Consulta A: escribir el motivo "motivo A" y cerrarla. Consulta B (otra fecha): el campo arranca vacío y a la
+       derecha "Consultas previas" muestra la fecha de A y "motivo A"; escribir "motivo B" → se ve al instante en el
+       campo; salir enseguida y volver → "motivo B" sigue (RF-83, RF-86).
+    2. Reabrir A (cerrada): el motivo se ve sin poder editarlo, y a la derecha sale "motivo B" aunque B sea posterior;
+       "Ver todo" anda (RF-84, RF-89).
+    3. Consulta C con el motivo vacío o solo espacios: no aparece en las previas de A ni de B (RF-83). Anular una
+       consulta con motivo → deja de aparecer en las previas de las demás (RF-84).
+    4. Cambiar la fecha de la consulta B → en las previas de otra consulta, "motivo B" sale con la fecha nueva y en su
+       lugar por fecha; no hay selector de fecha propio en el motivo (RF-85).
+    5. Con cuatro o más motivos largos, la derecha se desplaza sola sin estirar la sección; "Ver todo" abre la ventana
+       grande con "Esta consulta" (con la fecha de la consulta) primero y las previas debajo; cerrarla no cambia nada
+       (RF-87).
+    6. Ventana angosta (menos de 600 px o modo teléfono): las previas salen debajo del campo; achicar y agrandar no
+       pierde lo escrito (RF-88).
+    7. Con el médico en "Prueba C7" (sin Motivo de consulta), una consulta con motivo lo muestra al final, solo
+       lectura, con el mismo formato (RF-22, RF-89).
+    8. Biopsia hepática y los otros cuatro estudios con historial se ven y guardan igual que en la tanda C2 (fecha,
+       previas, "Ver todo", angosto). Conductas de una Telemedicina de la HC general, el motivo de una HC de hepatología aparte (si
+       queda a mano) y el de pediatría se ven como antes, con su lista de previas arriba del campo (RF-90, RF-33).
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.
