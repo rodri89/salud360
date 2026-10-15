@@ -19,6 +19,8 @@ data class ColoresSiNo(
     val texto: Color,
     /** Borde de foco (2 dp), por fuera del botón. */
     val bordeFoco: Color,
+    /** "Total: N · Clase X" de Child-Pugh: Indigo en claro; en oscuro Indigo no llega a 4,5:1 y va [texto] ("Decidido" 33). */
+    val textoTotal: Color,
 )
 
 fun coloresSiNo(oscuro: Boolean): ColoresSiNo = if (oscuro) {
@@ -29,6 +31,7 @@ fun coloresSiNo(oscuro: Boolean): ColoresSiNo = if (oscuro) {
         borde = Color(0xFFB8C6CA), // onSurfaceVariant oscuro
         texto = Salud360Colors.DarkOnBackground,
         bordeFoco = Salud360Colors.DarkOnBackground,
+        textoTotal = Salud360Colors.DarkOnBackground,
     )
 } else {
     ColoresSiNo(
@@ -38,5 +41,6 @@ fun coloresSiNo(oscuro: Boolean): ColoresSiNo = if (oscuro) {
         borde = Color(0xFF4F5B5E), // onSurfaceVariant claro
         texto = Salud360Colors.OnBackground,
         bordeFoco = Salud360Colors.OnBackground,
+        textoTotal = Salud360Colors.Indigo,
     )
 }

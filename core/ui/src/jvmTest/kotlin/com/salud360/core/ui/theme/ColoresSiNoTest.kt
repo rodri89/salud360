@@ -28,6 +28,12 @@ class ColoresSiNoTest {
         assertMinimo(4.5f, c.texto, c.fondoTarjeta, "texto/fondoTarjeta", oscuro)
     }
 
+    /** "Total: N · Clase X" de Child-Pugh ("Decidido" 33). */
+    @Test
+    fun totalContraLaTarjeta() = enLosDosModos { oscuro, c ->
+        assertMinimo(4.5f, c.textoTotal, c.fondoTarjeta, "textoTotal/fondoTarjeta", oscuro)
+    }
+
     @Test
     fun rellenoDistintoDeLaTarjeta() = enLosDosModos { oscuro, c ->
         assertNotEquals(c.fondoTarjeta, c.relleno, "relleno = fondoTarjeta (oscuro=$oscuro)")

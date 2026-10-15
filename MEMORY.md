@@ -79,7 +79,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   (composable `SiNoVacio` + `GrillaSiNo` en `FormSeccion.kt`; `modo` va antes de `onCambio` para no romper las
   lambdas finales). Tanda C5 completa: falta reviewer y prueba manual.
 - Tanda C6 (Child-Pugh en tabla, C6-1 a C6-4 decididos): T43 hecha (`especialidades/clinica/ChildPugh.kt` +
-  `ChildPughTest`; `ChildPughSeccion.kt` sigue con `PARAMETROS` y `toIntOrNull` hasta T44).
+  `ChildPughTest`). T44 compila, falta la prueba manual (`core/ui` `OpcionElegible`, que usa `SiNoVacio`;
+  `ColoresSiNo.textoTotal`: Indigo en oscuro daba 1,74:1, va `texto`). Tanda C6 completa: falta reviewer y prueba manual.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

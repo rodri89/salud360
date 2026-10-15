@@ -1005,7 +1005,7 @@ Reglas de la tanda (las mismas de la tanda C5):
   - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest` en verde (con `ChildPughTest` visto fallar antes del
     código) y `.\gradlew :core:ui:jvmTest` y `.\gradlew :core:data:jvmTest` siguen en verde.
 
-- [ ] **T44. Pantalla: Child-Pugh en tabla.** RF-74 a RF-82, RF-22
+- [x] **T44. Pantalla: Child-Pugh en tabla.** RF-74 a RF-82, RF-22 — compila; falta prueba manual del usuario.
   - `core/ui/.../components/OpcionElegible.kt`: el `BotonSiNo` de `SiNoVacio.kt` pasa a `OpcionElegible(texto,
     descripcion, elegido, onClick, modifier, colores)`, público, con el texto centrado en varias líneas; `SiNoVacio`
     lo usa con `"$etiqueta, $opcion"` (mismo dibujo y misma descripción que hoy).
