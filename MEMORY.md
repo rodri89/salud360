@@ -75,7 +75,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `LaboratorioSeccion.kt`; la de pediatría intacta). Tanda C4 completa: falta reviewer y prueba manual.
 - Tanda C5 (serologías en grilla SI/NO; C5-1 a C5-4 decididos): T41 hecha (`ModoForm` en `SeccionDef`, `SiNoVacio.kt`
   con `alternarSiNo`/`columnasPara`, `ColoresSiNo.kt`; foco por fuera del botón porque en oscuro no hay color a 3:1
-  contra tarjeta y relleno a la vez; el más justo, textoRelleno claro 4,84:1). Sigue T42 (pantalla).
+  contra tarjeta y relleno a la vez; el más justo, textoRelleno claro 4,84:1). T42 compila, falta la prueba manual
+  (composable `SiNoVacio` + `GrillaSiNo` en `FormSeccion.kt`; `modo` va antes de `onCambio` para no romper las
+  lambdas finales). Tanda C5 completa: falta reviewer y prueba manual.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

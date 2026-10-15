@@ -1,9 +1,14 @@
 package com.salud360.features.hc.secciones
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.salud360.core.model.especialidad.CampoDef
+import com.salud360.core.model.especialidad.ModoForm
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.TipoCampo
 import com.salud360.core.ui.components.CheckboxField
@@ -25,6 +31,8 @@ import com.salud360.core.ui.components.RadioGroupField
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.SelectField
 import com.salud360.core.ui.components.SiNoField
+import com.salud360.core.ui.components.SiNoVacio
+import com.salud360.core.ui.components.columnasPara
 import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
@@ -42,7 +50,7 @@ fun FormSeccion(s: SeccionDef, ctx: SeccionContext, valores: Map<String, String>
     val hayArchivos = s.conArchivos && hayArchivos(s.id, ctx)
     if (ctx.soloLectura && camposCompletos(s.campos, valores).isEmpty() && !hayArchivos) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "form"), initiallyExpanded = s.inicialmenteExpandida) {
-        CamposForm(s.campos, valores, ctx.soloLectura) { campo, valor -> ctx.setValor(s.id, campo, valor) }
+        CamposForm(s.campos, valores, ctx.soloLectura, s.modoForm) { campo, valor -> ctx.setValor(s.id, campo, valor) }
         if (s.conArchivos) ArchivosInline(s.id, ctx)
     }
 }
@@ -74,10 +82,14 @@ fun camposCompletos(campos: List<CampoDef>, valores: Map<String, String>): List<
     return resultado
 }
 
-/** Renderiza una lista de campos; reutilizado por registros repetibles y diálogos. En lectura solo pinta los completados. */
+/**
+ * Renderiza una lista de campos; reutilizado por registros repetibles y diálogos. En lectura solo pinta los completados.
+ * Con [ModoForm.GRILLA_SI_NO], tarjetas SI / NO de igual ancho, 2 o 4 por fila según el ancho (RF-65 a RF-72).
+ */
 @Composable
-fun CamposForm(campos: List<CampoDef>, valores: Map<String, String>, soloLectura: Boolean, onCambio: (String, String) -> Unit) {
+fun CamposForm(campos: List<CampoDef>, valores: Map<String, String>, soloLectura: Boolean, modo: ModoForm = ModoForm.FILAS, onCambio: (String, String) -> Unit) {
     val visibles = if (soloLectura) camposCompletos(campos, valores) else campos
+    if (modo == ModoForm.GRILLA_SI_NO) { GrillaSiNo(visibles, valores, soloLectura, onCambio); return }
     val grupos = mutableListOf<List<CampoDef>>()
     var actual = mutableListOf<CampoDef>()
     var grupoActual: String? = null
@@ -98,6 +110,24 @@ fun CamposForm(campos: List<CampoDef>, valores: Map<String, String>, soloLectura
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     grupo.forEach { c -> Campo(c, valores[c.clave] ?: "", soloLectura, Modifier.weight(c.peso)) { onCambio(c.clave, it) } }
+                }
+            }
+        }
+    }
+}
+
+/** Grilla de [SiNoVacio]: filas parejas con `weight` y huecos al final de la última (en lectura puede quedar incompleta). */
+@Composable
+private fun GrillaSiNo(campos: List<CampoDef>, valores: Map<String, String>, soloLectura: Boolean, onCambio: (String, String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columnas = columnasPara(maxWidth.value)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            campos.chunked(columnas).forEach { fila ->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    fila.forEach { c ->
+                        SiNoVacio(c.etiqueta, valores[c.clave] ?: "", { onCambio(c.clave, it) }, Modifier.weight(1f).fillMaxHeight(), soloLectura)
+                    }
+                    repeat(columnas - fila.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

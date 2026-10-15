@@ -925,7 +925,8 @@ Reglas de la tanda (las mismas de la tanda C4):
   - Hecho cuando: `.\gradlew :core:ui:jvmTest` y `.\gradlew :especialidades:clinica:jvmTest` en verde,
     `.\gradlew :core:data:jvmTest` sigue en verde y `.\gradlew :features:hc:compileKotlinJvm` compila.
 
-- [ ] **T42. Pantalla: serologías en tarjetas.** RF-65 a RF-73, RF-22
+- [x] **T42. Pantalla: serologías en tarjetas.** RF-65 a RF-73, RF-22
+  (compila; falta prueba manual del usuario)
   - `core/ui/.../components/SiNoVacio.kt`: el composable `SiNoVacio(etiqueta, valor, onCambio, modifier,
     soloLectura)` como dice el plan (sección 4, `core/ui`): etiqueta arriba sin cortar, "SI" y "NO" de al menos
     48 × 48 dp, elegido relleno con tilde y no elegido con borde, `selectable` con rol de opción, foco de 2 dp por
