@@ -124,6 +124,11 @@ data class SeccionDef(
     val subsecciones: List<String> = emptyList(),
     /** Cómo se dibujan los campos de una sección FORM. */
     val modoForm: ModoForm = ModoForm.FILAS,
+    /**
+     * Solo para TEXTO: el campo `texto` de esta consulta con las "Consultas previas" al lado, como los estudios con
+     * historial (ej. el motivo de consulta de la HC general). Sin la marca, la sección de texto de siempre.
+     */
+    val conHistorial: Boolean = false,
 )
 
 /**

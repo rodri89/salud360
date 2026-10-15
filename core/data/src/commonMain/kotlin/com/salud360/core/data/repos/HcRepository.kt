@@ -157,6 +157,11 @@ class HcRepository(
     fun observarHistorial(pacienteId: Id, especialidad: String, seccion: String, campo: String): Flow<List<ValorHistorico>> =
         q.historialCampo(pacienteId, especialidad, seccion, campo).flujoLista { ValorHistorico(LocalDate.parse(it.fecha), it.consulta_id, it.valor) }
 
+    /** Valor de un campo en cada consulta no anulada del paciente (consulta → valor), para `historialTexto`. */
+    fun observarValoresDeCampo(pacienteId: Id, especialidad: String, seccion: String, campo: String): Flow<Map<Id, String>> =
+        q.valoresDeCampoDePaciente(pacienteId, especialidad, seccion, campo).flujoLista { it.consulta_id to it.valor }
+            .map { it.toMap() }
+
     /**
      * Último valor conocido de cada campo de una sección en las demás consultas del paciente (se excluye
      * `consultaIdActual`). Sirve para lo que pertenece al paciente y se arrastra entre consultas, como los hitos

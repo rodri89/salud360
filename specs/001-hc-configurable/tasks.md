@@ -1092,7 +1092,7 @@ Reglas de la tanda (las mismas de la tanda C6):
   se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba: extenderla y restaurarla
   como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
 
-- [ ] **T45. Historial del motivo: lógica pura, consulta de lectura y marca en el catálogo.** RF-83, RF-84, RF-85,
+- [x] **T45. Historial del motivo: lógica pura, consulta de lectura y marca en el catálogo.** RF-83, RF-84, RF-85,
   RF-90
   - `core/model/.../EspecialidadDefinition.kt`: `SeccionDef.conHistorial: Boolean = false` como último parámetro.
   - `HistoriaClinica.sq`: `valoresDeCampoDePaciente` (solo lectura, sin anuladas ni borradas) y

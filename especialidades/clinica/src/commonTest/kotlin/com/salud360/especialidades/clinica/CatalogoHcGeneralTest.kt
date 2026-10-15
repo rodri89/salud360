@@ -15,6 +15,7 @@ import com.salud360.core.model.especialidad.TipoConsultaHc
 import com.salud360.core.model.especialidad.TipoConsultaHc.CONSULTA
 import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
 import com.salud360.core.model.especialidad.TipoSeccion
+import com.salud360.features.hc.SeccionesGenericas as G
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -163,6 +164,20 @@ class CatalogoHcGeneralTest {
         assertEquals(listOf("serologias"), enGrilla)
         assertTrue(hepatologia.secciones.all { it.modoForm == ModoForm.FILAS })
         assertTrue(clinicaMedica.secciones.all { it.modoForm == ModoForm.FILAS })
+    }
+
+    // RF-83, RF-90: solo el motivo de la HC general muestra las consultas previas al lado; lo guardado no cambia.
+    @Test
+    fun solo_el_motivo_de_la_hc_general_con_historial() {
+        val motivo = catalogoHcGeneral.seccion("motivo_consulta")!!.def
+        assertTrue(motivo.conHistorial)
+        assertEquals(G.motivo.copy(conHistorial = true), motivo)
+        assertTrue(armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion.seccion("motivo_consulta")!!.conHistorial)
+        val conHistorial = (catalogoHcGeneral.secciones + catalogoHcGeneral.legadas).map { it.def }.filter { it.conHistorial }.map { it.id }
+        assertEquals(listOf("motivo_consulta"), conHistorial)
+        assertFalse(G.motivo.conHistorial)
+        assertTrue(hepatologia.secciones.none { it.conHistorial })
+        assertTrue(clinicaMedica.secciones.none { it.conHistorial })
     }
 
     @Test

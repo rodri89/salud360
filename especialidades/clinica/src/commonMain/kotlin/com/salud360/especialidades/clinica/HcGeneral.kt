@@ -59,7 +59,7 @@ val catalogoHcGeneral = CatalogoHc(
             G.seccionFamiliares.comoCatalogo("Antecedentes familiares"),
             antecedentes = clinicaMedica.antecedentes.filter { it.categoria == "familiares" },
         ),
-        SeccionCatalogo(G.motivo),
+        SeccionCatalogo(G.motivo.copy(conHistorial = true)),
         SeccionCatalogo(G.documentos.comoCatalogo("Adjuntos (PDF)")),
         SeccionCatalogo(hepatologia.seccion("laboratorio_general")!!, laboratorios = listOf(labGeneralClinica)),
         deHepatologia("laboratorio_reducido", "Laboratorio reducido"),
