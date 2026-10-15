@@ -3,12 +3,14 @@ package com.salud360.especialidades.clinica
 import com.salud360.core.data.hcgeneral.armarDefinicion
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.model.especialidad.CampoExamenFisico
+import com.salud360.core.model.especialidad.ModoForm
 import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.PerfilHc
 import com.salud360.core.model.especialidad.PestaniaPerfil
 import com.salud360.core.model.especialidad.SeccionCatalogo
 import com.salud360.core.model.especialidad.SeccionPerfil
 import com.salud360.core.model.especialidad.SeccionesComunes
+import com.salud360.core.model.especialidad.TipoCampo
 import com.salud360.core.model.especialidad.TipoConsultaHc
 import com.salud360.core.model.especialidad.TipoConsultaHc.CONSULTA
 import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
@@ -130,6 +132,37 @@ class CatalogoHcGeneralTest {
         estudios.forEach { assertEquals(ModoRegistro.UNO_POR_CONSULTA, def.registro(it)?.modo, it) }
         assertTrue(hepatologia.registros.all { it.modo == ModoRegistro.LISTA })
         assertTrue(clinicaMedica.registros.all { it.modo == ModoRegistro.LISTA })
+    }
+
+    // RF-65, RF-68, RF-73: serologías de la HC general en grilla, con los mismos campos que se guardaban hasta ahora.
+    @Test
+    fun serologias_en_grilla_con_los_16_marcadores_de_siempre() {
+        val def = catalogoHcGeneral.seccion("serologias")!!.def
+        assertEquals(ModoForm.GRILLA_SI_NO, def.modoForm)
+        assertEquals(TipoSeccion.FORM, def.tipo)
+        assertEquals(
+            listOf(
+                "igm_hav" to "IgM HAV", "ags_hbv" to "AgS HBV", "ig_anti_hcv" to "Ig anti HCV", "fan" to "FAN",
+                "anti_lkm" to "Anti LKM", "igg_hav" to "IgG HAV", "ig_anti_core" to "Ig anti core",
+                "ig_anti_s_hbv" to "Ig anti S HBV", "ig_anti_hdv" to "Ig anti HDV", "asma" to "ASMA",
+                "fibrotest" to "Fibrotest", "hiv" to "HIV", "ag_e" to "Ag e", "anti_ag_e" to "Anti Ag e",
+                "ig_anti_hev" to "Ig anti HEV", "ama" to "AMA",
+            ),
+            def.campos.map { it.clave to it.etiqueta },
+        )
+        assertTrue(def.campos.all { it.tipo == TipoCampo.SELECT && it.opciones == listOf("SI", "NO") })
+        // Mismos campos que la de hepatología: lo guardado no cambia (RF-68).
+        assertEquals(hepatologia.seccion("serologias")!!.campos, def.campos)
+        assertEquals(ModoForm.GRILLA_SI_NO, armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion.seccion("serologias")?.modoForm)
+    }
+
+    @Test
+    fun ninguna_otra_seccion_ni_especialidad_en_grilla() {
+        val enGrilla = (catalogoHcGeneral.secciones + catalogoHcGeneral.legadas).map { it.def }
+            .filter { it.modoForm == ModoForm.GRILLA_SI_NO }.map { it.id }
+        assertEquals(listOf("serologias"), enGrilla)
+        assertTrue(hepatologia.secciones.all { it.modoForm == ModoForm.FILAS })
+        assertTrue(clinicaMedica.secciones.all { it.modoForm == ModoForm.FILAS })
     }
 
     @Test

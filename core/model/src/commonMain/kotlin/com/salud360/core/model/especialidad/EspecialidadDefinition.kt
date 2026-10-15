@@ -122,7 +122,16 @@ data class SeccionDef(
      * con varios componentes sin escribir una sección a medida.
      */
     val subsecciones: List<String> = emptyList(),
+    /** Cómo se dibujan los campos de una sección FORM. */
+    val modoForm: ModoForm = ModoForm.FILAS,
 )
+
+/**
+ * Cómo se dibuja un formulario: [FILAS], los campos en filas según `grupo`; [GRILLA_SI_NO], tarjetas SI / NO con
+ * vuelta a "sin cargar" (serologías de la HC general, RF-65 a RF-72). Exige que todos los campos sean `SELECT`
+ * con opciones `["SI", "NO"]`.
+ */
+enum class ModoForm { FILAS, GRILLA_SI_NO }
 
 sealed interface CondicionSeccion {
     data object SoloFemenino : CondicionSeccion

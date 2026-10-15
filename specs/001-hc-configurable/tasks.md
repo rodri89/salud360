@@ -911,7 +911,7 @@ Reglas de la tanda (las mismas de la tanda C4):
   serologías, para RF-22), se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba:
   extenderla y restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
 
-- [ ] **T41. Lógica, colores y catálogo de la grilla SI / NO.** RF-66, RF-67, RF-68, RF-70, RF-71 (contraste del
+- [x] **T41. Lógica, colores y catálogo de la grilla SI / NO.** RF-66, RF-67, RF-68, RF-70, RF-71 (contraste del
   foco), RF-73
   - `core/model/.../EspecialidadDefinition.kt`: `enum class ModoForm { FILAS, GRILLA_SI_NO }` y
     `SeccionDef.modoForm: ModoForm = ModoForm.FILAS` como último parámetro.
