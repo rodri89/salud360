@@ -14,6 +14,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -40,7 +42,10 @@ import com.salud360.features.hc.secciones.SeccionVacia
  */
 @Composable
 fun ChildPughSeccion(s: SeccionDef, ctx: SeccionContext) {
-    val valores = parametrosChildPugh.associate { it.clave to ctx.valor(s.id, it.clave) }
+    // Suscripto al flujo, no `ctx.valor`: esa lectura no se observa y, con los mismos `s` y `ctx`, Compose saltea
+    // esta función al cambiar un valor (la celda no se pintaba ni cambiaba el total).
+    val todos by ctx.vm.valores.collectAsState()
+    val valores = parametrosChildPugh.associate { it.clave to todos[s.id]?.get(it.clave).orEmpty() }
     if (ctx.soloLectura && valores.values.all { it.isBlank() }) {
         SeccionVacia()
         return
