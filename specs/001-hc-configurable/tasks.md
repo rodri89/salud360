@@ -928,7 +928,8 @@ Reglas de la tanda (las mismas de la tanda C4):
 - [ ] **T42. Pantalla: serologías en tarjetas.** RF-65 a RF-73, RF-22
   - `core/ui/.../components/SiNoVacio.kt`: el composable `SiNoVacio(etiqueta, valor, onCambio, modifier,
     soloLectura)` como dice el plan (sección 4, `core/ui`): etiqueta arriba sin cortar, "SI" y "NO" de al menos
-    48 × 48 dp, elegido relleno con tilde y no elegido con borde, `selectable` con rol de opción, foco de 2 dp,
+    48 × 48 dp, elegido relleno con tilde y no elegido con borde, `selectable` con rol de opción, foco de 2 dp por
+    fuera del botón con ~2 dp de margen (C5-4),
     descripciones para el lector de pantalla, valor desconocido como texto, y en solo lectura etiqueta + valor sin
     botones.
   - `features/hc/.../secciones/FormSeccion.kt`: `CamposForm(..., modo = FILAS)`; con `GRILLA_SI_NO`, la grilla de
@@ -960,5 +961,7 @@ Reglas de la tanda (las mismas de la tanda C4):
    desaparece en la tanda D.
 2. **C5-2 — Mismo relleno para SI y NO** (plan, "Decidido" C5-2).
 3. **C5-3 — Solo lectura con solo los marcadores cargados** (plan, "Decidido" C5-3 y 26).
+4. **C5-4 — Foco por fuera del botón** (plan, "Decidido" C5-4): borde de foco de 2 dp con ~2 dp de margen fuera del
+   botón, sobre `fondoTarjeta`; `ColoresSiNoTest` pide bordeFoco contra `fondoTarjeta` ≥ 3 y bordeFoco ≠ relleno.
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.

@@ -340,7 +340,7 @@ Documentación del contrato y pruebas con curl: `md/API_SALUD360_CLINICA.md` en 
     fondo `relleno`, texto `textoRelleno` y una tilde (`Icons.Filled.Check`) antes del texto; no elegido: borde 1 dp
     `borde` y texto `texto` (RF-69, RF-70). Cada botón con `selectable(selected, role = Role.RadioButton,
     onClick = { onCambio(alternarSiNo(valor, opcion)) })` (Enter/espacio con el teclado) y borde de foco 2 dp
-    `bordeFoco` con `collectIsFocusedAsState` (RF-71); la tarjeta con `semantics(mergeDescendants = false) {
+    `bordeFoco` con `collectIsFocusedAsState`, por fuera del botón con un margen de ~2 dp ("Decidido" C5-4; RF-71); la tarjeta con `semantics(mergeDescendants = false) {
     stateDescription = valor.ifBlank { "sin cargar" } }` y cada botón con `contentDescription = "$etiqueta, $opcion"`
     (el "elegido" lo pone `selected`). Valor que no es "SI", "NO" ni "" (casos límite): se muestra como texto debajo
     de la etiqueta y ningún botón elegido.
@@ -483,8 +483,8 @@ la pantalla le pasa a `cambioEstudio`).
 - (Cambio 2026-10-15) `core/ui` jvmTest `SiNoVacioTest`: `alternarSiNo` en sus seis combinaciones de `""`/"SI"/"NO" ×
   "SI"/"NO" (tocar el elegido → `""`; ninguna da "NO" sin tocar "NO") y con un valor desconocido; `columnasPara` en
   320, 599,9 → 2 y 600, 1200 → 4. `ColoresSiNoTest`: en los dos modos, relleno y borde contra `fondoTarjeta` ≥ 3,
-  bordeFoco contra `fondoTarjeta` y contra `relleno` ≥ 3, textoRelleno contra relleno ≥ 4,5, texto contra
-  `fondoTarjeta` ≥ 4,5, y relleno ≠ fondoTarjeta (RF-70, RF-71). `especialidades/clinica` `CatalogoHcGeneralTest`:
+  bordeFoco contra `fondoTarjeta` ≥ 3 y bordeFoco ≠ relleno (el foco va por fuera del botón, "Decidido" C5-4),
+  textoRelleno contra relleno ≥ 4,5, texto contra `fondoTarjeta` ≥ 4,5, y relleno ≠ fondoTarjeta (RF-70, RF-71). `especialidades/clinica` `CatalogoHcGeneralTest`:
   serologías del catálogo con `GRILLA_SI_NO`, sus 16 campos en el orden de RF-65 con las claves de hoy y todos
   `SELECT ["SI", "NO"]`; ninguna otra sección del catálogo, ni `hepatologia`/`clinicaMedica`, con `GRILLA_SI_NO`
   (RF-68, RF-73). RF-65, RF-67 (pantalla), RF-69, RF-71 (teclado y lector), RF-72 y el resto de RF-73 a mano con
@@ -763,3 +763,9 @@ C5-2. **Color propio para "SI"** (reactivo, lo que más importa clínicamente): 
    diferencia la dan el texto y la posición; dos colores exigen otro par con contraste en claro y oscuro y pueden
    leerse como "bien/mal").
 C5-3. **Solo lectura**: solo los marcadores cargados ("Decidido" 26), no "los 16 con —".
+C5-4. **Foco por fuera del botón** (coordinador, al empezar T41): el borde de foco de 2 dp se dibuja por fuera del
+   botón con un margen de ~2 dp, así lo que tiene al lado es siempre `fondoTarjeta`. Motivo: en oscuro ningún color
+   llega a 3:1 a la vez contra la tarjeta `#16262B` y contra el relleno `#6EC1D6` (haría falta luminancia ≥ 0,152 y
+   ≤ 0,121); en claro `#333333` da 2,61 contra el relleno. El test pide bordeFoco contra `fondoTarjeta` ≥ 3 y
+   bordeFoco ≠ relleno (RF-71 solo exige lo primero). Descartado: doble anillo (otro color y más dibujo) y oscurecer
+   el relleno (no cierra con el texto a 4,5).
