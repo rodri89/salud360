@@ -7,6 +7,7 @@ import com.salud360.core.data.files.mimeDe
 import com.salud360.core.data.hcgeneral.CambioEstudio
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.EntradaTexto
 import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
 import com.salud360.core.data.hcgeneral.cambioEstudio
@@ -42,6 +43,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -391,6 +393,13 @@ class ConsultaViewModel(
 
     /** Historial de un campo en consultas anteriores ("consultas previas"). */
     fun historial(seccion: String, campo: String) = ui.value.consulta?.let { c -> hc.observarHistorial(c.pacienteId, c.especialidad, seccion, campo) } ?: flowOf(emptyList())
+
+    /** Texto de un campo en las demás consultas no anuladas del paciente, con la fecha de cada una (RF-83 a RF-85). Solo lee. */
+    fun historialTexto(seccion: String, campo: String): Flow<List<EntradaTexto>> = ui.value.consulta?.let { c ->
+        combine(hc.observarConsultas(c.pacienteId, c.especialidad), hc.observarValoresDeCampo(c.pacienteId, c.especialidad, seccion, campo)) { consultas, valores ->
+            com.salud360.core.data.hcgeneral.historialTexto(consultas, valores, consultaId)
+        }
+    } ?: flowOf(emptyList())
 
     /** Último valor de cada campo de la sección en las otras consultas del paciente (lo que se arrastra entre consultas). */
     fun valoresPrevios(seccion: String) = ui.value.consulta?.let { c -> hc.observarUltimosValores(c.pacienteId, c.especialidad, seccion, consultaId) } ?: flowOf(emptyMap())

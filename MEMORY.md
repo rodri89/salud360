@@ -82,7 +82,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `ChildPughTest`). T44 compila, falta la prueba manual (`core/ui` `OpcionElegible`, que usa `SiNoVacio`;
   `ColoresSiNo.textoTotal`: Indigo en oscuro daba 1,74:1, va `texto`). Tanda C6 completa: falta reviewer y prueba manual.
 - Tanda C7 (motivo con consultas previas; C7-1 y C7-2 decididos): T45 hecha (`SeccionDef.conHistorial`, solo en el
-  motivo del catálogo; `valoresDeCampoDePaciente` + `observarValoresDeCampo`; `hcgeneral/TextoConHistorial.kt`).
+  motivo del catálogo; `valoresDeCampoDePaciente` + `observarValoresDeCampo`; `hcgeneral/TextoConHistorial.kt`). T46 compila, falta la
+  prueba manual (`CampoConHistorial` común a estudios y motivo; `TextoConHistorialSeccion`; `TextoSeccion` recibe `ui`).
+  Tanda C7 completa: falta reviewer y prueba manual.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.

@@ -37,6 +37,7 @@ import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
+import com.salud360.features.hc.ConsultaUi
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
 import kotlinx.datetime.LocalDate
@@ -162,10 +163,14 @@ fun Campo(c: CampoDef, valor: String, soloLectura: Boolean, modifier: Modifier =
     }
 }
 
-/** Sección de un único texto largo, con historial de consultas previas si existe. */
+/**
+ * Sección de un único texto largo, con historial de consultas previas si existe. Con `conHistorial`, las previas van
+ * al lado con su fecha ([TextoConHistorialSeccion]).
+ */
 @Composable
-fun TextoSeccion(s: SeccionDef, ctx: SeccionContext, valores: Map<String, String>) {
+fun TextoSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, valores: Map<String, String>) {
     val texto = valores["texto"] ?: ""
+    if (s.conHistorial) { TextoConHistorialSeccion(s, ctx, ui, texto); return }
     val hayArchivos = s.conArchivos && hayArchivos(s.id, ctx)
     if (ctx.soloLectura && texto.isBlank() && !hayArchivos) { SeccionVacia(); return }
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "texto"), initiallyExpanded = s.inicialmenteExpandida) {

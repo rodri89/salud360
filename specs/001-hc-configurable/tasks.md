@@ -1108,7 +1108,8 @@ Reglas de la tanda (las mismas de la tanda C6):
     (vistos fallar antes del código), `.\gradlew :core:data:jvmTest` completo y
     `.\gradlew :especialidades:clinica:jvmTest` en verde, y `.\gradlew :features:hc:compileKotlinJvm` compila.
 
-- [ ] **T46. Pantalla: motivo de consulta con consultas previas.** RF-83 a RF-90, RF-22, RF-38 a RF-42 (sin cambios)
+- [x] **T46. Pantalla: motivo de consulta con consultas previas.** RF-83 a RF-90, RF-22, RF-38 a RF-42 (sin cambios)
+  — compila; falta prueba manual del usuario.
   - `features/hc/.../secciones/CampoConHistorial.kt` (nuevo) extraído de `EstudioConHistorialSeccion.kt`
     (`EntradaHistorial`, layout ancho/angosto, `ConsultasPrevias`, `VerTodoDialog`), y `EstudioConHistorialSeccion`
     usándolo sin cambiar lo que se ve ni cómo guarda.

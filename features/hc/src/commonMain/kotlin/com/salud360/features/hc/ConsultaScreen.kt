@@ -323,7 +323,7 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
 private fun RenderSeccionSola(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
-        TipoSeccion.TEXTO -> TextoSeccion(s, ctx, valores[s.id] ?: emptyMap())
+        TipoSeccion.TEXTO -> TextoSeccion(s, ctx, ui, valores[s.id] ?: emptyMap())
         TipoSeccion.EXAMEN_FISICO -> ExamenFisicoSeccion(s, ctx, ui, valores[s.id] ?: emptyMap())
         TipoSeccion.LABORATORIO -> LaboratorioSeccion(s, ctx, ui)
         TipoSeccion.REGISTROS -> RegistrosSeccion(s, ctx, ui)
