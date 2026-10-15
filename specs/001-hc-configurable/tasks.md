@@ -996,7 +996,7 @@ Reglas de la tanda (las mismas de la tanda C5):
   RF-22), se borra al terminar y el médico vuelve a "Hepatología". Licencia del médico de prueba: extenderla y
   restaurarla como dice `MEMORY.md`. Ningún dato real ni credencial en el repo.
 
-- [ ] **T43. Lógica pura de Child-Pugh.** RF-74 (parámetros y textos), RF-76, RF-77, RF-78
+- [x] **T43. Lógica pura de Child-Pugh.** RF-74 (parámetros y textos), RF-76, RF-77, RF-78
   - `especialidades/clinica/.../ChildPugh.kt` (nuevo, sin Compose): `ParametroChildPugh(clave, nombre, criterios)`,
     `parametrosChildPugh` (las cinco claves y los textos de hoy, sin el sufijo "(n)"), `puntosDe`, `alternarPuntos`
     (llama a `alternarSiNo` de `core/ui`), `totalChildPugh`, `completosChildPugh` y `claseChildPugh`, como la tabla de
