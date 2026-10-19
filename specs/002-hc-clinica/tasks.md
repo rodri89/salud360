@@ -26,8 +26,8 @@ Reglas para todas:
   Si un test falla el printer se cae y no muestra el mensaje: verlo llamando el código con `php -r`.
 - PHP 7.3 de 32 bits (`PHP_INT_SIZE` 4): nada de sintaxis 7.4 (`fn`, propiedades tipadas) y números grandes
   comparados como texto antes de `(int)`.
-- Licencia del médico de prueba de hclinica: vencida a propósito; para probar como médico extenderla y al terminar
-  restaurarla con `UPDATE` puntual (incluidos `activo` y `updated_at`, ver `MEMORY.md`).
+- Licencia del médico de prueba de hclinica: extendida a propósito para las pruebas manuales del usuario; no
+  restaurarla (ver `MEMORY.md`).
 - No matar el `devWeb` (Gradle/Node) que tenga abierto el usuario.
 
 ## Tanda E1 — Servidor (hclinica y pediatría)
@@ -92,7 +92,7 @@ del administrador de prueba sacados de `auth/login` de turnos local.
     `404 paciente_no_encontrado`; `php artisan route:list` muestra las tres rutas con el middleware `salud360`;
     la web de hclinica sigue entrando normal.
 
-- [ ] **E1.4. Documentación y prueba de humo completa.** RF-8, RF-10, RF-11, RF-12, RF-36
+- [x] **E1.4. Documentación y prueba de humo completa.** RF-8, RF-10, RF-11, RF-12, RF-36
   - `md/API_SALUD360_CLINICA.md`: sección "Pacientes" (cuerpos, respuestas, códigos, columna creada en caliente,
     curl de humo sin credenciales) y tabla "Código" con los archivos nuevos.
   - Humo con curl contra la copia servida, con fichas de prueba creadas por SQL ("PRUEBA SALUD360", documentos

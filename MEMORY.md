@@ -92,8 +92,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   estática, con `elegible` y `comoLaWeb` además de lo del plan, + `ColumnasLegacy` + `PacienteVinculoReglasTest`). E1.2 hecha (`a7a4b67` `PacienteVinculoService`; la web
   guarda sexo solo `M`/`F`, `X` → vacío; error extra `ocupado` si no se toma el `GET_LOCK`; la columna
   `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas). E1.3 hecha (`2eb1bdf`
-  `PacienteController` + `soloMedico`/`atiende`/`formatearPaciente`; `ocupado` → 503; la licencia del médico de
-  prueba estaba vigente hasta 2027-12-31 y no se tocó).
+  `PacienteController` + `soloMedico`/`atiende`/`formatearPaciente`; `ocupado` → 503). E1.4 hecha (`cad1d2d`
+  sección "Pacientes" del md; humo con curl OK, incluido `503 ocupado` con un `GET_LOCK` tomado desde otra
+  conexión; base igual que antes, sin fichas vinculadas). Falta E1.5 (pediatría) y el reviewer de la tanda.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
@@ -102,8 +103,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - Bases `hc_clinica`, `turnosonlinebb` y `tobb` con datos reales: solo locales, nunca al repo.
 - Usuarios de prueba en `turnosonlinebb` local: un médico (vinculado en `hc_clinica`, con HC `clinica`) y un admin;
   las credenciales no van en el repo.
-- La licencia del médico de prueba en `hc_clinica` está vencida a propósito. Para un 200 extenderla y después
-  restaurarla, incluidos `activo` (el middleware la pone en 0 al verla vencida) y `updated_at`.
+- La licencia del médico de prueba en `hc_clinica` está extendida a propósito para las pruebas manuales del
+  usuario: no restaurarla. El respaldo para volver a como estaba, en
+  `C:\Users\flor\AppData\Local\Temp\opencode\respaldos\licencia6-antes-prueba-tandaC.sql`.
 - Las dos copias servidas comparten el entorno del proceso de Apache (una leía el `.env` de la otra): por eso tienen
   `config:cache`. Después de tocar `.env` o `config/`: `php artisan config:cache` (no `config:clear`).
 - El `.env` de la copia de hclinica tiene `SALUD360_TOBB_URL` a turnos local. Los `-P` de Gradle sí llegan a HC_URLS.
