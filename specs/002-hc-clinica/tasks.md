@@ -75,7 +75,7 @@ del administrador de prueba sacados de `auth/login` de turnos local.
     prueba (`pacientes` y `medico_pacientes`) borradas con `DELETE` puntual; la columna nueva queda (es la misma
     que creará la API).
 
-- [ ] **E1.3. Controladores y rutas de pacientes.** RF-8, RF-10, RF-11, RF-12
+- [x] **E1.3. Controladores y rutas de pacientes.** RF-8, RF-10, RF-11, RF-12
   - `Salud360Controller`: `formatearPaciente` de clínica (sin padre/madre; con `nombre_familiar`,
     `telefono_familiar`, `paciente_id_tobb`), `fechaCorta`, `atiende`, `soloMedico` (admin y secretaria →
     `403 sin_permiso`).

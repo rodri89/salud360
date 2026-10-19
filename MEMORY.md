@@ -91,7 +91,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - Spec 002 parte 1 y 003 aprobadas (`648c763`). Tanda E1: E1.1 hecha (hclinica `6c7507f`: `PacienteVinculoReglas`
   estática, con `elegible` y `comoLaWeb` además de lo del plan, + `ColumnasLegacy` + `PacienteVinculoReglasTest`). E1.2 hecha (`a7a4b67` `PacienteVinculoService`; la web
   guarda sexo solo `M`/`F`, `X` → vacío; error extra `ocupado` si no se toma el `GET_LOCK`; la columna
-  `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas).
+  `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas). E1.3 hecha (`2eb1bdf`
+  `PacienteController` + `soloMedico`/`atiende`/`formatearPaciente`; `ocupado` → 503; la licencia del médico de
+  prueba estaba vigente hasta 2027-12-31 y no se tocó).
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
