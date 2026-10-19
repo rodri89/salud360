@@ -1,5 +1,7 @@
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import java.io.InputStreamReader
+import java.util.Properties
 
 /**
  * Módulo compartido de la aplicación: navegación, inyección de dependencias y puntos de entrada
@@ -21,13 +23,39 @@ val entornoElegido: String = (findProperty("entorno") as String?)?.trim()?.lower
 require(entornoElegido == "dev" || entornoElegido == "release") { "-Pentorno debe ser dev o release (fue '$entornoElegido')" }
 val devHost: String = (findProperty("devHost") as String?)?.trim().orEmpty()
 
-fun propiedadEntorno(clave: String): String =
-    (findProperty("salud360.entorno.$entornoElegido.$clave") as String?)?.trim()
-        ?: error("Falta salud360.entorno.$entornoElegido.$clave en gradle.properties")
+// Overrides por máquina: `local.properties` (no se versiona) pisa a `gradle.properties`; la línea de
+// comandos (-P) pisa a los dos. Así cada compu apunta al servidor local sin tocar el archivo compartido.
+val localProperties: Properties = Properties().apply {
+    val archivo = rootProject.file("local.properties")
+    if (archivo.isFile) archivo.inputStream().use { entrada ->
+        InputStreamReader(entrada, Charsets.UTF_8).use { load(it) }
+    }
+}
+val prefijoEntorno = "salud360.entorno.$entornoElegido."
 
-val hcUrls: Map<String, String> = properties.keys.map { it.toString() }
-    .filter { it.startsWith("salud360.entorno.$entornoElegido.hc.") }
-    .associate { it.removePrefix("salud360.entorno.$entornoElegido.hc.") to propiedadEntorno("hc." + it.removePrefix("salud360.entorno.$entornoElegido.hc.")) }
+/** Valor efectivo de una clave de entorno, por precedencia: -P > local.properties > gradle.properties. */
+fun valorEntorno(clave: String): String? {
+    val completa = prefijoEntorno + clave
+    return gradle.startParameter.projectProperties[completa]?.trim()?.takeIf { it.isNotEmpty() }
+        ?: localProperties.getProperty(completa)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: (findProperty(completa) as String?)?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+fun propiedadEntorno(clave: String): String =
+    valorEntorno(clave) ?: error("Falta $prefijoEntorno$clave en gradle.properties o local.properties")
+
+// Las especialidades de HC pueden venir de gradle.properties, de local.properties o de -P.
+val codigosHc: List<String> = (
+    properties.keys.toList() +
+        localProperties.keys.map { it.toString() } +
+        gradle.startParameter.projectProperties.keys
+    )
+    .filter { it.startsWith(prefijoEntorno + "hc.") }
+    .map { it.removePrefix(prefijoEntorno + "hc.") }
+    .distinct()
+    .sorted()
+
+val hcUrls: Map<String, String> = codigosHc.associate { it to propiedadEntorno("hc.$it") }
 
 val dirEntorno = layout.buildDirectory.dir("generated/entorno/commonMain/kotlin")
 val generarEntorno by tasks.registering {
@@ -45,7 +73,7 @@ val generarEntorno by tasks.registering {
             """
             |package com.salud360.app
             |
-            |/** Generado por Gradle a partir de gradle.properties (-Pentorno=$entorno). No editar a mano. */
+            |/** Generado por Gradle a partir de gradle.properties y local.properties (-Pentorno=$entorno). No editar a mano. */
             |object Entornos {
             |    const val ENTORNO = "$entorno"
             |    const val TURNOS_URL = "$turnos"

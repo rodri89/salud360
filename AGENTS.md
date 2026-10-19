@@ -26,8 +26,12 @@ leer "Cosas que hay que saber antes de tocar" antes de tocar HC/sync/API).
 - Si Gradle dice que falta `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
 - Web: `.\gradlew devWeb` → http://localhost:8080. Build prod: `.\gradlew releaseWeb`
   (sale en `composeApp/build/dist/wasmJs/productionExecutable`).
-- Web contra turnos y HC general en XAMPP (sin tocar `gradle.properties`; comillas obligatorias en PowerShell):
-  `.\gradlew devWeb "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`
+- URLs locales por máquina: van en `local.properties` (no se versiona), nunca en `gradle.properties`.
+  Precedencia: `-P` > `local.properties` > `gradle.properties`. En esta compu (Windows + XAMPP) ya están
+  cargadas (turnos y HC clínica a `localhost`), así que `.\gradlew devWeb` a secas ya funciona contra el
+  XAMPP; en la Mac siguen mandando las de `gradle.properties` (MAMP `:8888`).
+- Para probar contra otra URL sin tocar nada: `.\gradlew devWeb "-Psalud360.entorno.dev.turnos=<url>"`
+  (comillas obligatorias en PowerShell).
 - Android: `.\gradlew devAndroid` / `releaseAndroid`. iOS solo en macOS (`iosApp`, XcodeGen); en Windows los
   targets iOS se saltean solos.
 - Tests: `.\gradlew :core:data:jvmTest`, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest` (solo hay tests ahí).
@@ -37,12 +41,14 @@ leer "Cosas que hay que saber antes de tocar" antes de tocar HC/sync/API).
 - `:server` (Ktor) existe pero **la app hoy no lo usa**; no asumir que el sync contra él funciona.
 
 ## Entorno dev/release (generado)
-- `composeApp` genera `Entornos.kt` desde `gradle.properties` (`salud360.entorno.{dev,release}.*`). No editarlo a mano;
-  para agregar una URL de HC: `salud360.entorno.<env>.hc.<especialidad>=...` en ambos entornos.
+- `composeApp` genera `Entornos.kt` desde `gradle.properties` (`salud360.entorno.{dev,release}.*`) y los
+  overrides de `local.properties` (`salud360.entorno.<env>.turnos`, `salud360.entorno.<env>.hc.<código>`).
+  No editarlo a mano; para agregar una URL de HC: `salud360.entorno.<env>.hc.<especialidad>=...` en ambos entornos.
 - Sin `-Pentorno`, Gradle elige `dev` si las tareas pedidas contienen `dev`/`debug`/`DevelopmentRun`, si no `release`.
   Ojo: cualquier otra tarea que compile `composeApp` (p. ej. `build`) queda contra **producción**.
-- `dev` apunta a un MAMP local en `:8888`; `-PdevHost=<ip>` para teléfono físico. No cambiar las URLs de
-  `gradle.properties` para probar: usar `-Pentorno=release` o pasar la URL al test.
+- `dev` apunta a un MAMP local en `:8888` en la Mac; en esta compu lo apunta el XAMPP (`local.properties`).
+  `-PdevHost=<ip>` para teléfono físico. No cambiar las URLs de `gradle.properties` para probar: usar
+  `-Pentorno=release` o pasar la URL al test.
 - Si cambia el entorno en un mismo dispositivo/navegador, cerrar sesión (la sesión queda guardada).
 
 ## Tests E2E contra la API real de pediatría
