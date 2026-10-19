@@ -265,9 +265,10 @@ Cuatro cosas para entenderlo:
 - **Turnos no se consulta desde esta máquina.** `SALUD360_TOBB_URL` apunta a un puerto muerto a
   propósito, para que ningún pedido salga a producción. La sesión vale igual porque hay una fila
   sembrada en `salud360_token_cache`, que es el camino que la API ya usa cuando turnos no responde.
-  Los tokens en claro son `salud360-prueba-medico`, del usuario 2 de pediatría (médico 1 de turnos),
-  y `salud360-prueba-admin`, del administrador (usuario 1); el segundo es el que hace falta para las
-  licencias. De un hash no se vuelve al texto, así que si alguno deja de servir se siembra otro. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
+  Hay dos tokens sembrados: `<token de prueba del médico>`, del usuario 2 de pediatría (médico 1 de
+  turnos), y `<token de prueba del administrador>`, del administrador (usuario 1); el segundo es el que
+  hace falta para las licencias. Sus valores no van en el repo (es público): se piden a quien los sembró
+  o se siembran otros. De un hash no se vuelve al texto, así que si alguno deja de servir se siembra otro. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
 - **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
   historia clínica real.
 - **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
@@ -293,7 +294,7 @@ Cómo se corre acá:
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcPediatriaE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token=salud360-prueba-medico
+  -Psalud360.test.hc.token=<token de prueba del médico>
 ```
 
 Y las licencias, que van con el token del administrador porque a un médico la API no le informa
@@ -302,7 +303,7 @@ ninguna. La prueba le cambia la fecha a la primera, la vuelve a leer y la deja c
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcLicenciasE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token.admin=salud360-prueba-admin   -Psalud360.test.hc.token=salud360-prueba-medico
+  -Psalud360.test.hc.token.admin=<token de prueba del administrador>   -Psalud360.test.hc.token=<token de prueba del médico>
 ```
 
 **Cuando terminemos, borrar las dos bases y `bd_test/`**: son pacientes, contraseñas y credenciales
