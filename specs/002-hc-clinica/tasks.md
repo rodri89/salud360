@@ -37,7 +37,7 @@ Sección "Servidor" del plan y diferencias con pediatría (P4 a P6, PD1). E1.1 a
 las pruebas de clínica: `http://localhost/HClinica-salud360/public/index.php/api/salud360/...`, tokens del médico y
 del administrador de prueba sacados de `auth/login` de turnos local.
 
-- [ ] **E1.1. Relleno de columnas y reglas del vínculo (puras) con phpunit.** RF-11, RF-12, RF-13, RF-36
+- [x] **E1.1. Relleno de columnas y reglas del vínculo (puras) con phpunit.** RF-11, RF-12, RF-13, RF-36
   - `app/Services/Salud360/ColumnasLegacy.php` copiada de pediatría, con una constante propia en lugar de
     `SeccionesService::SIN_CARGAR` (que en hclinica no existe).
   - `app/Services/Salud360/PacienteVinculoReglas.php` sin base: `normalizarDni` (quita puntos y espacios; cualquier
@@ -55,7 +55,7 @@ del administrador de prueba sacados de `auth/login` de turnos local.
     `php -l` sin errores en los dos archivos nuevos, y buscar `fn (` y `SeccionesService` en ellos no da
     resultados.
 
-- [ ] **E1.2. Servicio del vínculo: columna en caliente, resolver y alta.** RF-10, RF-11, RF-12, RF-13, RF-35, RF-36
+- [x] **E1.2. Servicio del vínculo: columna en caliente, resolver y alta.** RF-10, RF-11, RF-12, RF-13, RF-35, RF-36
   - Antes de escribir: SQL de solo lectura sobre `hc_clinica` (estructura): `SHOW CREATE TABLE pacientes` y
     `medico_pacientes` (tipo de `dni`, columnas NOT NULL sin default) y `SELECT DISTINCT sexo FROM pacientes` (solo
     los valores) para el mapeo `M/F/X` (plan, Riesgos); anotar el mapeo en el KDoc/PHPDoc del servicio.

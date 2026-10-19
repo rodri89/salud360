@@ -88,6 +88,10 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
 - Spec 002 (HC general contra hclinica) en borrador.
+- Spec 002 parte 1 y 003 aprobadas (`648c763`). Tanda E1: E1.1 hecha (hclinica `6c7507f`: `PacienteVinculoReglas`
+  estática, con `elegible` y `comoLaWeb` además de lo del plan, + `ColumnasLegacy` + `PacienteVinculoReglasTest`). E1.2 hecha (`a7a4b67` `PacienteVinculoService`; la web
+  guarda sexo solo `M`/`F`, `X` → vacío; error extra `ocupado` si no se toma el `GET_LOCK`; la columna
+  `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas).
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
