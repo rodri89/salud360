@@ -122,6 +122,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 
 ## Aprendizajes y errores a evitar
 - Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto.
+- Las URLs del entorno se pisan por máquina desde `local.properties` (no versionado), con las mismas claves que
+  `gradle.properties`: precedencia `-P` > `local.properties` > `gradle.properties`. En esta compu apunta al XAMPP
+  (turnos y HC clínica); en la Mac sigue mandando el MAMP `:8888` de `gradle.properties`. `release` no se altera.
 - La app guarda para siempre a qué ficha de pediatría corresponde cada paciente (`hc_paciente_id`); no lo revalida.
 - En la web el perfil 1 NO tiene motivo de consulta; telemedicina es igual para todos; perfiles 5 y 9 = 1.
 - En PowerShell no escribir markdown con here-strings: los backticks se toman como escapes. Usar el editor.
@@ -135,3 +138,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - El PHP del XAMPP es de 32 bits (`PHP_INT_SIZE` 4): `(int)` de números grandes satura en 2147483647.
 - phpunit en la copia servida: si un test falla, el printer se cae (`phpDocumentor` del `vendor` usa sintaxis PHP
   7.4 y XAMPP tiene 7.3); se ve `E`/`F` pero no el mensaje. Para verlo, llamar el código con `php -r`.
+- OpenCode no habla con Anthropic por API key: el plugin `@xtruder/opencode-claude-max-plugin` (provider
+  `anthropic-sdk`) usa el OAuth de Claude Code de `~/.claude/.credentials.json`. Si ese archivo se vacía (la sesión
+  OAuth venció, ~8 h de vida del refresh), el error es "Could not resolve authentication method" y no es de red:
+  se arregla con `claude auth login` (abre el navegador y la página muestra un código que hay que pegar).
+  Diagnóstico rápido: `claude auth status` → `loggedIn: false`.

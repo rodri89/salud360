@@ -1,5 +1,7 @@
 # Plan 002 — HC de clínica y hepatología contra su propia base
 
+Ver `plan-parte1.md` para pacientes y cartera (RF-8 a RF-14, RF-35 a RF-37).
+
 Estado: borrador previo. Se escribió antes de separar la spec 001 (historias clínicas configurables) y se rehace
 cuando la 001 esté aprobada y planificada. Lo que cambia: qué historia clínica usa un médico y qué secciones ve ya
 no lo decide el perfil, sino la configuración de la 001; en la app, la definición fija de clínica y hepatología
