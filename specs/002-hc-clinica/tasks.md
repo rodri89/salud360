@@ -107,7 +107,7 @@ del administrador de prueba sacados de `auth/login` de turnos local.
     tiene tokens, contraseñas ni nombres de médicos o pacientes; al terminar, `SELECT COUNT(*)` de `pacientes` y
     `medico_pacientes` con los documentos de prueba da 0 y la licencia del médico de prueba está restaurada.
 
-- [ ] **E1.5. Mismos arreglos en pediatría, sin cambiar lo que responde a la app.** PD1 (P4, P6), RF-11, RF-12
+- [x] **E1.5. Mismos arreglos en pediatría, sin cambiar lo que responde a la app.** PD1 (P4, P6), RF-11, RF-12
   - En `rebonline\hc_pediatria` (rama `salud360-api`): elegida (`pediatria_paciente_id`) solo si es activa, del
     mismo documento y no vinculada con otro paciente de turnos (P4); documento con la regla de E1.1 (P6: signo o
     letras → `dni_invalido`; comparación como texto para 32 bits); `asegurarColumna` con estático y "duplicate
@@ -120,8 +120,8 @@ del administrador de prueba sacados de `auth/login` de turnos local.
     `422 dni_invalido`, elegida de otro documento → rechazada; `HcPediatriaE2ETest` y `HcCarteraE2ETest` con
     `--rerun` contra la copia servida de pediatría siguen en verde (respuestas a la app sin cambios). Filas de prueba
     borradas con `DELETE` puntual.
-  - Pendiente antes de empezar E1.5: con qué código y estado rechaza pediatría la elegida que no corresponde (hoy
-    solo existen `no_encontrado` 404 y `paciente_ya_vinculado` 409; `ficha_no_elegible` sería nuevo) y si la copia
-    servida de pediatría necesita `config:cache` (hoy no tiene `bootstrap/cache/config.php`).
+  - Decidido (coordinador, 2026-10-19): la elegida que no corresponde → `422 ficha_no_elegible`, como hclinica (la
+    inexistente o inactiva sigue `404 no_encontrado`); por eso el `git diff` incluye también un `case` en
+    `PacienteController`. La copia servida de pediatría ya tiene `config:cache`.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.

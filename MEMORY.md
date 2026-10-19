@@ -94,7 +94,13 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas). E1.3 hecha (`2eb1bdf`
   `PacienteController` + `soloMedico`/`atiende`/`formatearPaciente`; `ocupado` → 503). E1.4 hecha (`cad1d2d`
   sección "Pacientes" del md; humo con curl OK, incluido `503 ocupado` con un `GET_LOCK` tomado desde otra
-  conexión; base igual que antes, sin fichas vinculadas). Falta E1.5 (pediatría) y el reviewer de la tanda.
+  conexión; base igual que antes, sin fichas vinculadas). E1.5 hecha (hc_pediatria `635a33a`:
+  `PacienteVinculoReglas` reducida a documento + elegible; elegida no elegible → `422 ficha_no_elegible`; E2E de
+  pediatría en verde; base `hc_pediatrica` igual que antes). Falta el reviewer de la tanda.
+- Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
+  el historial de git (ya en `origin/main`). Solo valen contra la base local: no se rotaron.
+- El E2E de pediatría deja en `hc_pediatrica` una consulta de baja (y sus filas) y dos imágenes en
+  `public/img/salud360` por corrida: borrarlas por id después. Ya hay 5 consultas de baja de corridas viejas.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
@@ -107,7 +113,7 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   usuario: no restaurarla. El respaldo para volver a como estaba, en
   `C:\Users\flor\AppData\Local\Temp\opencode\respaldos\licencia6-antes-prueba-tandaC.sql`.
 - Las dos copias servidas comparten el entorno del proceso de Apache (una leía el `.env` de la otra): por eso tienen
-  `config:cache`. Después de tocar `.env` o `config/`: `php artisan config:cache` (no `config:clear`).
+  `config:cache` (también la de pediatría desde E1.5). Después de tocar `.env` o `config/`: `php artisan config:cache` (no `config:clear`).
 - El `.env` de la copia de hclinica tiene `SALUD360_TOBB_URL` a turnos local. Los `-P` de Gradle sí llegan a HC_URLS.
 - Nunca restaurar tablas con `DROP TABLE`.
 - `auth/login` de turnos devuelve el token en `access_token` (no `token`); `POST auth/logout` existe.
