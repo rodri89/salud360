@@ -60,7 +60,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     verde en la copia servida; `php -l` sin errores en los dos archivos nuevos; buscar `fn (` y `DB::` en ellos no
     da resultados; `git diff --stat` en `hclinica` muestra solo esos dos archivos.
 
-- [ ] **F1.2. "Enfermedades" en el catálogo de secciones.** RF-1, RF-2
+- [x] **F1.2. "Enfermedades" en el catálogo de secciones.** RF-1, RF-2
   - `app/Services/Salud360/CatalogoSecciones.php`: `'enfermedades' => ['nombre' => 'Enfermedades', 'descripcion' =>
     'Casillas con las enfermedades del paciente, de la lista de cada médico.']`, segunda, entre
     `antecedentes_familiares` y `motivo_consulta` (PD9). `PerfilesService::validar` no cambia (usa `existe`).

@@ -121,6 +121,7 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   vaciarla. Tanda E2 completa: falta reviewer y prueba manual (RF-10, RF-14).
 - Spec 003: plan aprobado (`c470a85`, decisiones C1-C4 en `tasks.md`). Tanda F1: F1.1 hecha (hclinica `17836c5`:
   `EnfermedadesReglas` pura + `EnfermedadesReglasTest`, cuya tabla de nombres va igual a `NombreEnfermedadTest`).
+  F1.2 hecha (hclinica `80f4a04`: `enfermedades` segunda en `CatalogoSecciones`; `config/catalogo` da 25).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).
