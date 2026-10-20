@@ -3,9 +3,14 @@ package com.salud360.core.data.repos
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.hcgeneral.MotivoHc
+import com.salud360.core.data.hcgeneral.ResultadoVinculo
+import com.salud360.core.data.hcgeneral.documentoParaHc
 import com.salud360.core.data.hcgeneral.historiasConCartera
 import com.salud360.core.data.hcgeneral.idLocalDeFicha
+import com.salud360.core.data.hcgeneral.mensajeDocumentoInvalido
 import com.salud360.core.data.hcgeneral.motivoHc
+import com.salud360.core.data.hcgeneral.pedidoResolver
+import com.salud360.core.data.hcgeneral.resultadoDe
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -15,11 +20,13 @@ import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
+import com.salud360.core.model.TobbIds
 import com.salud360.core.model.pacientes.MedicoPaciente
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.pacientes.PacienteExtra
 import com.salud360.core.model.pacientes.Sexo
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDate
 
 /** Cuántos pacientes llegaron de las carteras y por qué no llegaron las que fallaron (una por HC). */
@@ -33,11 +40,13 @@ data class ResultadoCarteras(val traidos: Int, val motivos: List<MotivoHc>)
  * vive en `paciente_extra` con la especialidad y la clave [EXTRA_HC_PACIENTE_ID]).
  *
  * @param nombresHc código de HC → nombre visible, para nombrarla en los motivos (D3).
+ * @param esperar la pausa antes de reintentar un `503 ocupado`; los tests la pasan sin dormir.
  */
 class PacientesHcRepository(
     private val db: Salud360Db,
     private val apis: PacientesHcApis,
     private val nombresHc: Map<String, String>,
+    private val esperar: suspend (Long) -> Unit = { delay(it) },
 ) {
     private val log = Logger.withTag("PacientesHc")
     private val pq get() = db.pacientesQueries
@@ -100,6 +109,61 @@ class PacientesHcRepository(
         pq.extrasDePaciente(pacienteId, especialidad).lista { it.toModel() }
             .firstOrNull { it.clave == EXTRA_HC_PACIENTE_ID }?.valor?.toLongOrNull()
 
+    /**
+     * La ficha del paciente en [especialidad] (RF-10). Si ya se conoce la devuelve sin red (RF-35); si no, la pide a
+     * la web, que la busca por paciente de turnos o por documento y la crea si no hay ninguna. Con un documento que
+     * no sirve no se pide nada (RF-12). Lo llama quien la necesita: abrir una sección que lee de la web o enviar la
+     * primera consulta.
+     */
+    suspend fun vinculo(pacienteId: Id, especialidad: String): ResultadoVinculo {
+        fichaConocida(pacienteId, especialidad)?.let { return ResultadoVinculo.Vinculado(it) }
+        return resolver(pacienteId, especialidad, elegida = null)
+    }
+
+    /** Vincula con la ficha que eligió el médico entre las candidatas de [ResultadoVinculo.ElegirFicha] (RF-11). */
+    suspend fun elegirFicha(pacienteId: Id, especialidad: String, fichaId: Long): ResultadoVinculo =
+        resolver(pacienteId, especialidad, elegida = fichaId)
+
+    /**
+     * `pacientes/resolver` y, si queda vinculado, el vínculo guardado sin `dirty` (el dueño es la web). Lo que no
+     * vincula no guarda nada. Solo se traducen los errores de la API ([TobbException]); otro error sigue de largo,
+     * como antes en pediatría.
+     */
+    private suspend fun resolver(pacienteId: Id, especialidad: String, elegida: Long?): ResultadoVinculo {
+        val api = apis.porEspecialidad[especialidad]
+            ?: return ResultadoVinculo.NoSePudo(TobbException(0, "sin_api", "La historia clínica de $especialidad no tiene API"))
+        val paciente = pq.pacientePorId(pacienteId).uno { it.toModel() }
+            ?: return ResultadoVinculo.NoSePudo(TobbException(0, "paciente_no_esta", "El paciente no está en el dispositivo"))
+        if (documentoParaHc(paciente.dni) == null) {
+            return ResultadoVinculo.DocumentoInvalido(mensajeDocumentoInvalido(paciente.dni))
+        }
+        val pedido = pedidoResolver(paciente, TobbIds.numero(pacienteId) ?: idTobbDeExtras(pacienteId))
+        val respuesta = try {
+            try {
+                api.resolver(pedido, elegida)
+            } catch (e: TobbException) {
+                // Otro pedido con el mismo documento está creando la ficha (D4): una vez más, cuando ya terminó.
+                if (e.codigo != "ocupado") throw e
+                log.i { "la web está ocupada con el documento de $pacienteId en $especialidad: se reintenta" }
+                esperar(ESPERA_OCUPADO)
+                api.resolver(pedido, elegida)
+            }
+        } catch (e: TobbException) {
+            log.w(e) { "no quedó vinculado $pacienteId en $especialidad" }
+            return resultadoDe(e)
+        }
+        val fichaId = respuesta.paciente.id
+        pq.upsertPacienteExtra(
+            PacienteExtra(pacienteId, especialidad, EXTRA_HC_PACIENTE_ID, fichaId.toString()).toRow(ahoraMillis(), dirty = false),
+        )
+        log.i { "$pacienteId vinculado con la ficha $fichaId de $especialidad (${respuesta.vinculadoPor})" }
+        return ResultadoVinculo.Vinculado(fichaId)
+    }
+
+    private suspend fun idTobbDeExtras(pacienteId: Id): Long? =
+        pq.extrasDePaciente(pacienteId, "turnos").lista { it.toModel() }
+            .firstOrNull { it.clave == "tobb_id" }?.valor?.toLongOrNull()
+
     private suspend fun guardarPacienteDeCartera(ficha: HcPacienteFicha, especialidad: String, medicoId: Id, ahora: Long) {
         val id = idLocalDeFicha(especialidad, ficha)
         if (pq.pacientePorId(id).uno { it } == null) {
@@ -140,5 +204,8 @@ class PacientesHcRepository(
 
         /** Cuántos pacientes por pedido al traer la cartera (las APIs aceptan hasta 1000). */
         const val PAGINA_PACIENTES = 300
+
+        /** Cuánto se espera antes de reintentar un `503 ocupado` (D4). */
+        const val ESPERA_OCUPADO = 2_000L
     }
 }

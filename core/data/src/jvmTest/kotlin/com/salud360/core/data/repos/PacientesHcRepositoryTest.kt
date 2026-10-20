@@ -3,9 +3,13 @@ package com.salud360.core.data.repos
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import com.salud360.core.data.hcgeneral.MotivoHc
+import com.salud360.core.data.hcgeneral.ResultadoVinculo
+import com.salud360.core.data.hcgeneral.mensajeDocumentoInvalido
 import com.salud360.core.data.hcgeneral.motivoHc
+import com.salud360.core.data.hcgeneral.pedidoResolver
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.HcPacienteCandidato
 import com.salud360.core.data.network.hc.HcPacienteFicha
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.data.network.hc.HcResolverRespuesta
@@ -32,12 +36,17 @@ class PacientesHcRepositoryTest {
     private val medico = "tobb-m1"
     private val nombres = mapOf("pediatria" to "Pediatría", "clinica" to "Clínica")
 
-    /** API falsa: pagina [fichas] según `desde`/`limite`, o lanza [fallo]; anota cada pedido. */
+    /**
+     * API falsa: pagina [fichas] según `desde`/`limite`, o lanza [fallo]; anota cada pedido. `resolver` contesta en
+     * orden lo que hay en [respuestas] (una [HcResolverRespuesta] o una [TobbException] para lanzar).
+     */
     private class ApiFalsa(var fichas: List<HcPacienteFicha> = emptyList()) : PacientesHcApi {
         var fallo: Throwable? = null
         /** Contesta "hay más" siempre, para ver que una página vacía corta igual. */
         var siempreHayMas = false
         val pedidos = mutableListOf<Pair<Int, Int>>()
+        val respuestas = ArrayDeque<Any>()
+        val resueltos = mutableListOf<Pair<HcPacienteRequest, Long?>>()
 
         override suspend fun pagina(desde: Int, limite: Int): PaginaCartera {
             pedidos += desde to limite
@@ -46,9 +55,17 @@ class PacientesHcRepositoryTest {
             return PaginaCartera(pagina, siempreHayMas || desde + pagina.size < fichas.size)
         }
 
-        override suspend fun resolver(pedido: HcPacienteRequest, elegida: Long?): HcResolverRespuesta =
-            error("la cartera no resuelve")
+        override suspend fun resolver(pedido: HcPacienteRequest, elegida: Long?): HcResolverRespuesta {
+            resueltos += pedido to elegida
+            return when (val r = respuestas.removeFirstOrNull() ?: error("no había respuesta para resolver")) {
+                is Throwable -> throw r
+                else -> r as HcResolverRespuesta
+            }
+        }
     }
+
+    /** Lo que se esperó entre intentos, en milisegundos, sin dormir. */
+    private val esperas = mutableListOf<Long>()
 
     private fun ficha(id: Long, tobb: Long = 0, apellido: String = "PRUEBA", dni: String = "${30_000_000 + id}") =
         HcPacienteFicha(
@@ -73,7 +90,7 @@ class PacientesHcRepositoryTest {
     }
 
     private fun repo(db: Salud360Db, vararg apis: Pair<String, PacientesHcApi>) =
-        PacientesHcRepository(db, PacientesHcApis(apis.toMap()), nombres)
+        PacientesHcRepository(db, PacientesHcApis(apis.toMap()), nombres, esperar = { esperas += it })
 
     private suspend fun guardarMedico(db: Salud360Db, vararg hc: String) {
         db.authQueries.upsertMedico(
@@ -214,6 +231,171 @@ class PacientesHcRepositoryTest {
         val clinica = ApiFalsa(listOf(ficha(2)))
         assertEquals(ResultadoCarteras(0, emptyList()), repo(db, "clinica" to clinica).sincronizarCarteras(medico))
         assertEquals(emptyList(), clinica.pedidos)
+    }
+
+    // ------------------------------------------------------------------
+    // Vínculo y elegir ficha (RF-10, RF-11, RF-12, RF-35, RF-36)
+    // ------------------------------------------------------------------
+
+    private val paciente = Paciente(
+        "tobb-p55", "30.111.222", "Salud360", "Prueba", telefono = "", mail = "prueba@ejemplo.com",
+        nombreFamiliar = "FAMILIAR", telefonoFamiliar = "4000",
+    )
+
+    private suspend fun guardarPaciente(db: Salud360Db, p: Paciente = paciente) =
+        db.pacientesQueries.upsertPaciente(p.toRow(0, dirty = false))
+
+    private fun respuesta(fichaId: Long, vinculadoPor: String, creado: Boolean = false) =
+        HcResolverRespuesta(ficha(fichaId), creado = creado, vinculadoPor = vinculadoPor)
+
+    private fun extras(driver: SqlDriver, pacienteId: String): List<String> = textos(
+        driver,
+        "SELECT especialidad || '|' || clave || '|' || valor || '|' || dirty FROM paciente_extra " +
+            "WHERE paciente_id = '$pacienteId' ORDER BY especialidad, clave",
+    )
+
+    @Test
+    fun un_vinculo_guardado_no_se_vuelve_a_pedir() = conBase { db, driver ->
+        guardarPaciente(db)
+        db.pacientesQueries.upsertPacienteExtra(PacienteExtra("tobb-p55", "clinica", "hc_paciente_id", "10").toRow(0, dirty = false))
+        val api = ApiFalsa()
+        assertEquals(ResultadoVinculo.Vinculado(10), repo(db, "clinica" to api).vinculo("tobb-p55", "clinica"))
+        assertEquals(emptyList(), api.resueltos)
+    }
+
+    @Test
+    fun un_documento_invalido_no_hace_ningun_pedido() = conBase { db, driver ->
+        guardarPaciente(db, paciente.copy(dni = "12345678A"))
+        val api = ApiFalsa()
+        val r = repo(db, "clinica" to api).vinculo("tobb-p55", "clinica")
+        assertEquals(ResultadoVinculo.DocumentoInvalido(mensajeDocumentoInvalido("12345678A")), r)
+        assertEquals(emptyList(), api.resueltos)
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun creado_o_vinculado_queda_guardado_sin_dirty() {
+        for ((vinculadoPor, creado) in listOf("nuevo" to true, "tobb_id" to false, "dni" to false, "elegido" to false)) {
+            conBase { db, driver ->
+                guardarPaciente(db)
+                val api = ApiFalsa().apply { respuestas += respuesta(20, vinculadoPor, creado) }
+                assertEquals(ResultadoVinculo.Vinculado(20), repo(db, "clinica" to api).vinculo("tobb-p55", "clinica"), vinculadoPor)
+                assertEquals(listOf("clinica|hc_paciente_id|20|0"), extras(driver, "tobb-p55"), vinculadoPor)
+                // El pedido sale de la ficha de la app, con el id de turnos y sin la elegida.
+                val (pedido, elegida) = api.resueltos.single()
+                assertEquals(pedidoResolver(paciente, 55), pedido)
+                assertEquals(null, elegida)
+            }
+        }
+    }
+
+    @Test
+    fun el_id_de_turnos_sale_del_extra_si_el_paciente_no_es_de_turnos() = conBase { db, _ ->
+        guardarPaciente(db, paciente.copy(id = "local-1"))
+        db.pacientesQueries.upsertPacienteExtra(PacienteExtra("local-1", "turnos", "tobb_id", "88").toRow(0, dirty = false))
+        val api = ApiFalsa().apply { respuestas += respuesta(20, "nuevo", creado = true) }
+        repo(db, "clinica" to api).vinculo("local-1", "clinica")
+        assertEquals(88L, api.resueltos.single().first.pacienteIdTobb)
+    }
+
+    @Test
+    fun ambiguo_da_las_candidatas_y_no_guarda_nada() = conBase { db, driver ->
+        guardarPaciente(db)
+        val candidatas = listOf(HcPacienteCandidato(20, "A", "B", "30111222"), HcPacienteCandidato(21, "A", "B", "30111222"))
+        val api = ApiFalsa().apply { respuestas += TobbException(409, "paciente_ambiguo", "Varias fichas", candidatos = candidatas) }
+        assertEquals(ResultadoVinculo.ElegirFicha(candidatas), repo(db, "clinica" to api).vinculo("tobb-p55", "clinica"))
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun elegir_manda_la_elegida_y_la_guarda() = conBase { db, driver ->
+        guardarPaciente(db)
+        val api = ApiFalsa().apply { respuestas += respuesta(21, "elegido") }
+        assertEquals(ResultadoVinculo.Vinculado(21), repo(db, "clinica" to api).elegirFicha("tobb-p55", "clinica", 21))
+        assertEquals(21L, api.resueltos.single().second)
+        assertEquals(listOf("clinica|hc_paciente_id|21|0"), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun la_ficha_no_elegible_no_guarda_nada() = conBase { db, driver ->
+        guardarPaciente(db)
+        val api = ApiFalsa().apply { respuestas += TobbException(422, "ficha_no_elegible", "No se puede elegir esa ficha") }
+        assertEquals(ResultadoVinculo.FichaNoElegible, repo(db, "clinica" to api).elegirFicha("tobb-p55", "clinica", 99))
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun la_ficha_de_otro_paciente_da_el_texto_de_rf36() = conBase { db, driver ->
+        guardarPaciente(db)
+        val api = ApiFalsa().apply { respuestas += TobbException(409, "paciente_ya_vinculado", "de otro") }
+        val r = repo(db, "clinica" to api).vinculo("tobb-p55", "clinica")
+        assertEquals(
+            ResultadoVinculo.FichaDeOtroPaciente(
+                "La ficha de la web con ese documento ya corresponde a otro paciente de turnosonlinebb: avisale al administrador",
+            ),
+            r,
+        )
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun ocupado_una_vez_se_reintenta_a_los_2_segundos() = conBase { db, driver ->
+        guardarPaciente(db)
+        val api = ApiFalsa().apply {
+            respuestas += TobbException(503, "ocupado", "Otro pedido con el mismo documento")
+            respuestas += respuesta(20, "dni")
+        }
+        assertEquals(ResultadoVinculo.Vinculado(20), repo(db, "clinica" to api).vinculo("tobb-p55", "clinica"))
+        assertEquals(2, api.resueltos.size)
+        assertEquals(listOf(2_000L), esperas)
+        assertEquals(listOf("clinica|hc_paciente_id|20|0"), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun ocupado_dos_veces_no_se_pudo_con_el_error_original() = conBase { db, driver ->
+        guardarPaciente(db)
+        val segundo = TobbException(503, "ocupado", "Otro pedido con el mismo documento")
+        val api = ApiFalsa().apply {
+            respuestas += TobbException(503, "ocupado", "Otro pedido con el mismo documento")
+            respuestas += segundo
+        }
+        assertEquals(ResultadoVinculo.NoSePudo(segundo), repo(db, "clinica" to api).vinculo("tobb-p55", "clinica"))
+        assertEquals(2, api.resueltos.size)
+        assertEquals(listOf(2_000L), esperas)
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun sin_senal_no_se_pudo_y_nada_guardado() = conBase { db, driver ->
+        guardarPaciente(db)
+        val red = TobbException(0, "red", "Sin conexión con la historia clínica de clinica")
+        val api = ApiFalsa().apply { respuestas += red }
+        val r = repo(db, "clinica" to api).vinculo("tobb-p55", "clinica")
+        assertEquals(ResultadoVinculo.NoSePudo(red), r)
+        assertEquals(MotivoHc.Tipo.SIN_CONEXION, motivoHc("Clínica", (r as ResultadoVinculo.NoSePudo).error).tipo)
+        assertEquals(emptyList(), esperas)
+        assertEquals(emptyList(), extras(driver, "tobb-p55"))
+    }
+
+    @Test
+    fun el_vinculo_de_clinica_no_pisa_el_de_pediatria() = conBase { db, driver ->
+        guardarPaciente(db)
+        db.pacientesQueries.upsertPacienteExtra(PacienteExtra("tobb-p55", "pediatria", "hc_paciente_id", "10").toRow(0, dirty = false))
+        val pediatria = ApiFalsa()
+        val clinica = ApiFalsa().apply { respuestas += respuesta(20, "tobb_id") }
+        val repo = repo(db, "pediatria" to pediatria, "clinica" to clinica)
+        assertEquals(ResultadoVinculo.Vinculado(20), repo.vinculo("tobb-p55", "clinica"))
+        assertEquals(listOf("clinica|hc_paciente_id|20|0", "pediatria|hc_paciente_id|10|0"), extras(driver, "tobb-p55"))
+        assertEquals(ResultadoVinculo.Vinculado(10), repo.vinculo("tobb-p55", "pediatria"))
+        assertEquals(emptyList(), pediatria.resueltos)
+    }
+
+    @Test
+    fun un_paciente_que_no_esta_en_el_dispositivo_no_pide_nada() = conBase { db, _ ->
+        val api = ApiFalsa()
+        val r = repo(db, "clinica" to api).vinculo("tobb-p404", "clinica")
+        assertTrue(r is ResultadoVinculo.NoSePudo, r.toString())
+        assertEquals(emptyList(), api.resueltos)
     }
 
     private fun contar(driver: SqlDriver, sql: String): Long =

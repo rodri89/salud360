@@ -225,7 +225,7 @@ Reglas de la tanda (además de las de arriba):
     se pide la de clínica.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PacientesHcRepositoryTest*'` en verde (antes, en rojo).
 
-- [ ] **E2.5. `PacientesHcRepository`: vínculo y elegir ficha.** RF-10, RF-11, RF-12, RF-35, RF-36
+- [x] **E2.5. `PacientesHcRepository`: vínculo y elegir ficha.** RF-10, RF-11, RF-12, RF-35, RF-36
   - `vinculo(pacienteId, especialidad): ResultadoVinculo`: con vínculo guardado lo devuelve sin red; si no, valida
     el documento en el dispositivo (inválido → `DocumentoInvalido`, **sin pedido**), arma `pedidoResolver` (id de
     turnos con `TobbIds.numero` o el extra `turnos/tobb_id`) y llama a `resolver`; `200`/`201` → guarda el vínculo

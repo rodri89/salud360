@@ -107,6 +107,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   E2.4 hecha (`repos/PacientesHcRepository.kt` + `PacientesHcRepositoryTest`; corta por página vacía o `hayMas`
   false; un error no Tobb da motivo `OTRO` vía `TobbException(0, "respuesta")`; el extra se reescribe sin `dirty` si
   falta o es la misma ficha; `EXTRA_HC_PACIENTE_ID` duplicada con `HcPediatriaBackend` hasta la E2.6).
+  E2.5 hecha (`vinculo`/`elegirFicha`; pausa del `503` inyectable `esperar`, `ESPERA_OCUPADO` 2 s; solo traduce
+  `TobbException`, otro error sigue de largo; paciente ausente → `NoSePudo` `paciente_no_esta`, HC sin API → `sin_api`).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).
