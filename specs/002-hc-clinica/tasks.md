@@ -207,7 +207,7 @@ Reglas de la tanda (además de las de arriba):
     de la HC; un código desconocido conserva el mensaje de la web; `status 0` sin código = sin conexión.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MotivoHcTest*'` en verde (antes, en rojo).
 
-- [ ] **E2.4. `PacientesHcRepository`: cartera.** RF-8, RF-9, RF-13, RF-35, RF-37
+- [x] **E2.4. `PacientesHcRepository`: cartera.** RF-8, RF-9, RF-13, RF-35, RF-37
   - `core/data/.../repos/PacientesHcRepository.kt` (nuevo), `PacientesHcRepository(db, apis: PacientesHcApis,
     nombresHc: Map<String, String>)` (código de HC → nombre visible para los motivos, D3):
     `traerCartera(medicoId, especialidad): Int` (lo que hoy es `HcPediatriaBackend.traerPacientes`, genérico:
