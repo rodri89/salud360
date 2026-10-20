@@ -133,7 +133,7 @@ class PacientesHcRepository(
         val api = apis.porEspecialidad[especialidad]
             ?: return ResultadoVinculo.NoSePudo(TobbException(0, "sin_api", "La historia clínica de $especialidad no tiene API"))
         val paciente = pq.pacientePorId(pacienteId).uno { it.toModel() }
-            ?: return ResultadoVinculo.NoSePudo(TobbException(0, "paciente_no_esta", "El paciente no está en el dispositivo"))
+            ?: return ResultadoVinculo.NoSePudo(TobbException(0, PACIENTE_NO_ESTA, "El paciente no está en el dispositivo"))
         if (documentoParaHc(paciente.dni) == null) {
             return ResultadoVinculo.DocumentoInvalido(mensajeDocumentoInvalido(paciente.dni))
         }
@@ -204,6 +204,9 @@ class PacientesHcRepository(
 
         /** Cuántos pacientes por pedido al traer la cartera (las APIs aceptan hasta 1000). */
         const val PAGINA_PACIENTES = 300
+
+        /** Código del [ResultadoVinculo.NoSePudo] cuando el paciente no está en el dispositivo (no se pidió nada). */
+        const val PACIENTE_NO_ESTA = "paciente_no_esta"
 
         /** Cuánto se espera antes de reintentar un `503 ocupado` (D4). */
         const val ESPERA_OCUPADO = 2_000L

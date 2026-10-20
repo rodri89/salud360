@@ -109,6 +109,10 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   falta o es la misma ficha; `EXTRA_HC_PACIENTE_ID` duplicada con `HcPediatriaBackend` hasta la E2.6).
   E2.5 hecha (`vinculo`/`elegirFicha`; pausa del `503` inyectable `esperar`, `ESPERA_OCUPADO` 2 s; solo traduce
   `TobbException`, otro error sigue de largo; paciente ausente → `NoSePudo` `paciente_no_esta`, HC sin API → `sin_api`).
+  E2.6 hecha (`HcPediatriaBackend` delega en su `PacientesHcRepository`, constructor `internal` con `PacientesHcApi` para
+  `HcPediatriaVinculoTest`; `ElegirFicha`/`FichaDeOtroPaciente` se relanzan con el mismo status/código pero otro
+  mensaje; `dataModule(db, config, nombresHc)`; la lista llama a `sincronizarCarteras` y junta los motivos en `mensaje`
+  hasta la E2.7; E2E de pediatría en verde, `hc_pediatrica` limpia por id).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

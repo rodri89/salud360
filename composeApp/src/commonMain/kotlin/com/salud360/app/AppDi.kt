@@ -50,11 +50,13 @@ fun configEntorno(hostLocal: String): AppConfig {
 private val catalogoModule = module { single<CatalogoHc> { catalogoHcGeneral } }
 
 fun iniciarKoin(db: Salud360Db, modulosPlataforma: List<Module>, config: AppConfig): KoinApplication = startKoin {
+    // Código de HC → nombre visible: para el administrador y para nombrar la HC en los motivos de la cartera.
+    val nombresHc = especialidades.map { it.definicion.codigo to it.definicion.nombre }
     modules(
         modulosPlataforma +
-            dataModule(db, config) + catalogoModule +
+            dataModule(db, config, nombresHc.toMap()) + catalogoModule +
             authFeatureModule + pacientesFeatureModule + turnosFeatureModule +
             hcFeatureModule(especialidades) +
-            adminFeatureModule(especialidades.map { it.definicion.codigo to it.definicion.nombre }),
+            adminFeatureModule(nombresHc),
     )
 }

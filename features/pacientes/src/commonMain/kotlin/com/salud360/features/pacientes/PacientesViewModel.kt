@@ -3,6 +3,7 @@ package com.salud360.features.pacientes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.model.Id
@@ -41,7 +42,7 @@ import kotlinx.coroutines.launch
 class PacientesListViewModel(
     private val pacientes: PacientesRepository,
     private val turnos: TurnosRepository,
-    private val hc: HcRepository,
+    private val pacientesHc: PacientesHcRepository,
     private val medicoId: Id?,
 ) : ViewModel() {
     val busqueda = MutableStateFlow("")
@@ -92,8 +93,9 @@ class PacientesListViewModel(
                 // Si falla se avisa. Una lista vacía y un error acá se ven igual —no hay pacientes—,
                 // y el motivo real (el médico sin vincular, la historia clínica sin habilitar) queda
                 // escondido en el log, donde no lo ve nadie.
-                runCatching { hc.sincronizarPacientes(medicoId) }
-                    .onFailure { _mensaje.value = "No se pudo traer tu cartera de la historia clínica: ${it.message ?: "sin conexión"}" }
+                // Un motivo por cada historia clínica que no llegó, todos en el mismo aviso.
+                val motivos = pacientesHc.sincronizarCarteras(medicoId).motivos
+                if (motivos.isNotEmpty()) _mensaje.value = motivos.joinToString("\n") { it.texto }
                 _cargandoCartera.value = false
             }
         }

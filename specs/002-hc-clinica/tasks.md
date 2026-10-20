@@ -243,7 +243,7 @@ Reglas de la tanda (además de las de arriba):
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PacientesHcRepositoryTest*'` en verde (antes, en rojo
     los casos nuevos).
 
-- [ ] **E2.6. Pediatría delega; `HcBackend`, `HcRepository` y `DataModule`.** RF-35 (RF-33 de la 001: pediatría
+- [x] **E2.6. Pediatría delega; `HcBackend`, `HcRepository` y `DataModule`.** RF-35 (RF-33 de la 001: pediatría
   no cambia de comportamiento)
   - `HcPediatriaBackend`: crea su `PacientesHcRepository` con `PacientesHcApiRemota(api, "pediatria_paciente_id")`
     (el constructor no cambia); `resolverPaciente` delega en `vinculo` y, si no queda vinculado, lanza una

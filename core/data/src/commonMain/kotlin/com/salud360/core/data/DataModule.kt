@@ -4,6 +4,8 @@ import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
+import com.salud360.core.data.network.hc.PacientesHcApiRemota
+import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
@@ -12,6 +14,7 @@ import com.salud360.core.data.repos.ConfigHcRepository
 import com.salud360.core.data.repos.HcBackends
 import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.PerfilesHcRepository
 import com.salud360.core.data.repos.TurnosRepository
@@ -48,8 +51,10 @@ data class AppConfig(
  * Módulo Koin de la capa de datos.
  * La base se crea de forma asíncrona en el arranque de cada plataforma (`createDatabase`) y se
  * pasa ya lista; la plataforma también aporta [com.salud360.core.data.files.ArchivoStore].
+ *
+ * @param nombresHc código de HC → nombre visible, del registro de especialidades (para los motivos de la cartera).
  */
-fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
+fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>): Module = module {
     single { config }
     single { db }
     single { Settings() }
@@ -79,6 +84,18 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
             }.toMap(),
         )
     }
+    // Cartera y vínculo de pacientes de cada HC con API, pediatría y la general por igual (spec 002). La general
+    // no tiene `HcBackend`: sus consultas todavía no viajan.
+    single {
+        val clientes = get<HcApiClients>().porEspecialidad
+        PacientesHcApis(
+            listOfNotNull(
+                clientes["pediatria"]?.let { "pediatria" to PacientesHcApiRemota(it, "pediatria_paciente_id") },
+                clientes[CodigosHc.GENERAL]?.let { CodigosHc.GENERAL to PacientesHcApiRemota(it, "hc_paciente_id") },
+            ).toMap(),
+        )
+    }
+    single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
     single { AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad) }
     single { PacientesRepository(get()) }
