@@ -124,6 +124,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   F1.2 hecha (hclinica `80f4a04`: `enfermedades` segunda en `CatalogoSecciones`; `config/catalogo` da 25).
   F1.3 hecha (hclinica `3130820`: `EnfermedadesService`, errores por `error()` como `PacienteVinculoService`; el servicio
   también controla ficha y cartera; upsert que no toca `updated_at` si ya estaba activa). Unique verificados.
+  F1.4 hecha (hclinica `478f25e`: `crear` + `mensaje()`; `creada`/`reutilizada` son opuestos; marcar va por
+  `marcar`, así que en una carrera `sin_marcar_por` puede ser `no_en_tu_lista`/`enfermedad_dada_de_baja`; en esta
+  MySQL `ß` = `ss` y `ａ` = `a` para la intercalación, no para la clave: sirven para probar el choque del `unique`).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

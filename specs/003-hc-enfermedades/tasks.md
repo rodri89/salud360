@@ -91,7 +91,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     baja por SQL → `enfermedad_dada_de_baja`. Filas de prueba borradas con `DELETE` puntual (conteos con el prefijo
     de prueba y el documento de prueba en 0).
 
-- [ ] **F1.4. Servicio: crear (reutilizar, reactivar, `unique`, marcar al paciente).** RF-44, RF-54, RF-55
+- [x] **F1.4. Servicio: crear (reutilizar, reactivar, `unique`, marcar al paciente).** RF-44, RF-54, RF-55
   - `EnfermedadesService::crear($medicoId, $nombre, $pacienteId)` como el plan: `normalizar` → `errorDeNombre`
     (`nombre_invalido` con el texto de RF-43) → todas las filas de `enfermedades` y `elegirExistente` por clave; sin
     existente, `INSERT` y, si choca con `unique(nombre)`, `WHERE nombre = ?` y se usa esa; inactiva → `activo = 1`;
