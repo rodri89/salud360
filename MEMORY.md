@@ -102,6 +102,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `HcCarteraPagina`; `HcApiClient.leerTodo`; `TobbException.candidatos` desde el 409; `PacientesDtoTest`).
   E2.2 hecha (`hcgeneral/VinculoPacientes.kt` + `VinculoPacientesTest`; `NoSePudo(error: TobbException)`,
   `FichaNoElegible` es `data object`; el pedido manda el documento recortado, no normalizado: lo normaliza la web).
+  E2.3 hecha (`hcgeneral/MotivoHc.kt` + `MotivoHcTest`; `MotivoHc(tipo, texto)`, texto "Historia clínica de <nombre>:
+  …", `Tipo` en el orden de prioridad de 003 RF-14; `ocupado`, 500 y desconocidos → `OTRO` con el mensaje de la web).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

@@ -197,7 +197,7 @@ Reglas de la tanda (además de las de arriba):
     afuera; `idLocalDeFicha` con y sin `paciente_id_tobb`, y dos fichas del mismo documento sin vínculo → dos ids.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*VinculoPacientesTest*'` en verde (antes, en rojo).
 
-- [ ] **E2.3. Motivos por historia clínica (`MotivoHc`).** RF-9
+- [x] **E2.3. Motivos por historia clínica (`MotivoHc`).** RF-9
   - En `VinculoPacientes.kt` (o archivo propio en `hcgeneral/`): `MotivoHc` + `motivoHc(nombreHc, e)`: sin conexión
     (`red`, `tobb_caido`), sesión vencida (`token`, `sin_token`), `hc_no_habilitada`, `medico_no_vinculado`,
     `licencia_vencida`, otro (con el mensaje de la web; también `ocupado` agotado y el `500` sin código). El texto
