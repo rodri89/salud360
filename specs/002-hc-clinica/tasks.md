@@ -176,7 +176,7 @@ Reglas de la tanda (además de las de arriba):
     `.\gradlew :core:data:compileKotlinJvm` sin errores (`HcPediatriaBackend` adaptado a que el request ya no tiene
     la elegida, sin cambiar lo que manda).
 
-- [ ] **E2.2. Lógica pura del vínculo (`VinculoPacientes.kt`).** RF-8, RF-11, RF-12, RF-13, RF-36, RF-37
+- [x] **E2.2. Lógica pura del vínculo (`VinculoPacientes.kt`).** RF-8, RF-11, RF-12, RF-13, RF-36, RF-37
   - `core/data/.../hcgeneral/VinculoPacientes.kt` (commonMain, sin red ni Compose): `documentoParaHc(dni): String?`
     (misma regla que `PacienteVinculoReglas::normalizarDni`: quita puntos y espacios; otro no dígito → null; tope
     `2147483647` comparado como texto/longitud, sin desbordar; < 1000 y 99999 → null) y

@@ -100,6 +100,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - Tanda E2 (app, decisiones D1-D8 en `tasks.md`): E2.1 hecha (`PacientesHcApi.kt` con `PacientesHcApiRemota`
   —`cuerpo`/`paginaDe`/`resolucionDe` internos para testear sin red— y `PacientesHcApis`; `HcResolverRespuesta`,
   `HcCarteraPagina`; `HcApiClient.leerTodo`; `TobbException.candidatos` desde el 409; `PacientesDtoTest`).
+  E2.2 hecha (`hcgeneral/VinculoPacientes.kt` + `VinculoPacientesTest`; `NoSePudo(error: TobbException)`,
+  `FichaNoElegible` es `data object`; el pedido manda el documento recortado, no normalizado: lo normaliza la web).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).
