@@ -41,7 +41,7 @@ Sección "Servidor" del plan. F1.1 a F1.6 en `rebonline\hclinica` (rama `salud36
 `http://localhost/HClinica-salud360/public/index.php/api/salud360/...`, con los tokens del médico y del
 administrador de prueba sacados de `auth/login` de turnos local.
 
-- [ ] **F1.1. Reglas de enfermedades (puras) con phpunit.** RF-16, RF-43, RF-44, RF-50, RF-52, RF-54
+- [x] **F1.1. Reglas de enfermedades (puras) con phpunit.** RF-16, RF-43, RF-44, RF-50, RF-52, RF-54
   - `app/Services/Salud360/EnfermedadesReglas.php` (estática, sin base, como `PacienteVinculoReglas`):
     `normalizar` (recorta y junta solo los espacios de la spec, `[ \t\n\r\x0B\x0C]`, sin el `trim` por defecto de
     PHP), `clave` (`normalizar` + `mb_strtolower(..., 'UTF-8')` + `strtr` con la tabla fija de `claveDeNombre`),
