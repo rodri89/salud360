@@ -37,6 +37,9 @@ import kotlinx.coroutines.launch
  * (`pacientes/vinculados`) y se guarda vinculada localmente, así la lista aparece cargada sin
  * tener que escribir. Además, la búsqueda (2+ caracteres) también consulta la web en vivo —igual
  * que al asignar un turno—, para encontrar cualquier paciente aunque todavía no tenga turno acá.
+ *
+ * La cartera de cada historia clínica la pide solo el médico mismo ([traerCarteras]): las APIs de HC se la niegan a
+ * la secretaria y al administrador (`403 sin_permiso`), que verían ese motivo en cada lista de un médico.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class PacientesListViewModel(
@@ -44,6 +47,7 @@ class PacientesListViewModel(
     private val turnos: TurnosRepository,
     private val pacientesHc: PacientesHcRepository,
     private val medicoId: Id?,
+    private val traerCarteras: Boolean,
 ) : ViewModel() {
     val busqueda = MutableStateFlow("")
     private val remota = medicoId != null && turnos.esRemota(medicoId)
@@ -51,9 +55,9 @@ class PacientesListViewModel(
     private val _cargandoCartera = MutableStateFlow(false)
     val cargandoCartera: StateFlow<Boolean> = _cargandoCartera
 
-    /** Por qué la lista puede estar vacía sin que sea culpa del médico. Null si no hubo problema. */
-    private val _mensaje = MutableStateFlow<String?>(null)
-    val mensaje: StateFlow<String?> = _mensaje
+    /** Por qué no llegó la cartera de una historia clínica: uno por HC que falló, nombrándola. Vacía si no hubo problema. */
+    private val _motivos = MutableStateFlow<List<String>>(emptyList())
+    val motivos: StateFlow<List<String>> = _motivos
 
     /**
      * Paginado: la lista observa solo los primeros `limite` pacientes (filtro resuelto en SQL) y el límite crece de a
@@ -92,10 +96,9 @@ class PacientesListViewModel(
                 //
                 // Si falla se avisa. Una lista vacía y un error acá se ven igual —no hay pacientes—,
                 // y el motivo real (el médico sin vincular, la historia clínica sin habilitar) queda
-                // escondido en el log, donde no lo ve nadie.
-                // Un motivo por cada historia clínica que no llegó, todos en el mismo aviso.
-                val motivos = pacientesHc.sincronizarCarteras(medicoId).motivos
-                if (motivos.isNotEmpty()) _mensaje.value = motivos.joinToString("\n") { it.texto }
+                // escondido en el log, donde no lo ve nadie. Un motivo por cada historia clínica que
+                // no llegó; las demás se guardan igual.
+                if (traerCarteras) _motivos.value = pacientesHc.sincronizarCarteras(medicoId).motivos.map { it.texto }
                 _cargandoCartera.value = false
             }
         }

@@ -88,15 +88,16 @@ import org.koin.core.parameter.parametersOf
 @Composable
 fun PacientesListScreen(
     medicoId: Id?,
+    traerCarteras: Boolean,
     onAbrir: (Paciente) -> Unit,
     onNuevo: () -> Unit,
     titulo: String = "Pacientes",
-    vm: PacientesListViewModel = koinViewModel(key = "pacientes-$medicoId") { parametersOf(medicoId) },
+    vm: PacientesListViewModel = koinViewModel(key = "pacientes-$medicoId-$traerCarteras") { parametersOf(medicoId, traerCarteras) },
 ) {
     val lista by vm.lista.collectAsState()
     val busqueda by vm.busqueda.collectAsState()
     val cargandoCartera by vm.cargandoCartera.collectAsState()
-    val mensaje by vm.mensaje.collectAsState()
+    val motivos by vm.motivos.collectAsState()
     val total by vm.total.collectAsState()
     val hayMas by vm.hayMas.collectAsState()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -117,9 +118,9 @@ fun PacientesListScreen(
             ScreenTitle(titulo, if (hayMas) "$total pacientes · mostrando ${lista.size}" else "$total pacientes")
             SearchBar(value = busqueda, onValueChange = { vm.busqueda.value = it })
             Spacer(Modifier.height(12.dp))
-            // El aviso va antes de la lista y no en lugar de ella: puede haber pacientes viejos en el
-            // dispositivo y aun así no haberse podido traer los de la historia clínica.
-            mensaje?.let { texto ->
+            // Los avisos van antes de la lista y no en lugar de ella: puede haber pacientes viejos en el
+            // dispositivo y aun así no haberse podido traer los de una historia clínica.
+            motivos.forEach { texto ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
                     Icon(Icons.Default.CloudOff, contentDescription = null, tint = Salud360Colors.Warning)
                     Text(texto, style = MaterialTheme.typography.bodyMedium)
@@ -128,7 +129,10 @@ fun PacientesListScreen(
             if (lista.isEmpty() && cargandoCartera) {
                 LoadingIndicator(text = "Cargando pacientes...")
             } else if (lista.isEmpty()) {
-                EmptyState(if (busqueda.isBlank()) "Todavía no hay pacientes cargados" else "No se encontraron pacientes", icon = Icons.Default.PersonSearch)
+                // Sin búsqueda y con motivos, los motivos de arriba ya dicen por qué está vacía: "no hay pacientes"
+                // haría creer que el médico no tiene ninguno.
+                if (busqueda.isNotBlank()) EmptyState("No se encontraron pacientes", icon = Icons.Default.PersonSearch)
+                else if (motivos.isEmpty()) EmptyState("Todavía no hay pacientes cargados", icon = Icons.Default.PersonSearch)
             } else {
                 LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(lista, key = { it.id }) { p -> PacienteItem(p, onClick = { onAbrir(p) }) }

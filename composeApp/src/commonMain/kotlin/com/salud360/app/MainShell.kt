@@ -255,7 +255,7 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         composable(Rutas.ASIGNAR) { contexto?.let { c -> c.consultorioId?.let { AsignarTurnoScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }) } } }
 
                         composable(Rutas.PACIENTES) {
-                            PacientesListScreen(medicoId = if (rol == Rol.ADMIN) null else contexto?.medicoId, onAbrir = { nav.navigate("pacientes/${it.id}") }, onNuevo = { nav.navigate(Rutas.PACIENTE_NUEVO) },
+                            PacientesListScreen(medicoId = if (rol == Rol.ADMIN) null else contexto?.medicoId, traerCarteras = rol == Rol.MEDICO, onAbrir = { nav.navigate("pacientes/${it.id}") }, onNuevo = { nav.navigate(Rutas.PACIENTE_NUEVO) },
                                 titulo = if (rol == Rol.SECRETARIA && contexto != null) "Pacientes de ${contexto!!.nombre}" else "Pacientes")
                         }
                         composable(Rutas.PACIENTE_NUEVO) { PacienteFormScreen(null, contexto?.medicoId, onGuardado = { nav.popBackStack(); nav.navigate("pacientes/${it.id}") }, onVolver = { nav.popBackStack() }) }

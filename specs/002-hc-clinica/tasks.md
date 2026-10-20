@@ -262,7 +262,7 @@ Reglas de la tanda (además de las de arriba):
     (`-Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php` y el token de prueba,
     sin escribirlo) en verde; lo que deja el E2E de pediatría (la consulta de baja y sus imágenes) borrado por id.
 
-- [ ] **E2.7. Lista de pacientes: motivos y `traerCarteras`.** RF-8, RF-9
+- [x] **E2.7. Lista de pacientes: motivos y `traerCarteras`.** RF-8, RF-9 — compila; falta prueba manual del usuario.
   - `features/pacientes`: `PacientesListViewModel(…, PacientesHcRepository, medicoId, traerCarteras: Boolean)` en
     lugar de `HcRepository`; pide `sincronizarCarteras(medicoId)` solo si `traerCarteras`; expone
     `motivos: StateFlow<List<String>>` en lugar de `mensaje`. `PacientesModule` y `PacientesListScreen` reciben
