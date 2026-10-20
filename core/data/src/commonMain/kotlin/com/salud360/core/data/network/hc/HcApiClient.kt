@@ -109,7 +109,7 @@ class HcApiClient(
 
     /**
      * La respuesta ya leída: el objeto si salió bien; si no, [TobbException] con el código y, en un `422 validacion`,
-     * los `errores` campo por campo (RF-13).
+     * los `errores` campo por campo (RF-13); en un `409 paciente_ambiguo`, los `candidatos` (RF-11).
      */
     internal fun interpretar(status: Int, texto: String): JsonObject {
         val obj = runCatching { json.parseToJsonElement(texto).jsonObject }.getOrNull()
@@ -121,7 +121,10 @@ class HcApiClient(
             val errores = obj?.get("errores")
                 ?.let { runCatching { json.decodeFromJsonElement(ListSerializer(ErrorPerfil.serializer()), it) }.getOrNull() }
                 .orEmpty()
-            throw TobbException(status, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, errores)
+            val candidatos = obj?.get("candidatos")
+                ?.let { runCatching { json.decodeFromJsonElement(ListSerializer(HcPacienteCandidato.serializer()), it) }.getOrNull() }
+                .orEmpty()
+            throw TobbException(status, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, errores, candidatos)
         }
         return obj
     }
@@ -201,6 +204,14 @@ class HcApiClient(
     /** Decodifica una parte de la respuesta (`paciente`, `consulta`, ...). */
     fun <T> leer(serializer: KSerializer<T>, obj: JsonObject, clave: String): T =
         json.decodeFromJsonElement(serializer, obj[clave] ?: throw TobbException(0, "respuesta", "Falta '$clave' en la respuesta de $especialidad"))
+
+    /**
+     * Decodifica la respuesta entera (`{ok, pacientes, hay_mas, ...}`); lo que el DTO no tiene se ignora. Si no tiene
+     * la forma esperada, [TobbException] `respuesta`, como [leer] cuando falta la clave.
+     */
+    fun <T> leerTodo(serializer: KSerializer<T>, obj: JsonObject): T =
+        runCatching { json.decodeFromJsonElement(serializer, obj) }
+            .getOrElse { throw TobbException(0, "respuesta", "Respuesta inesperada de $especialidad: ${it.message}") }
 
     /** Decodifica una parte opcional; null si no vino o vino nula. */
     fun <T> leerOpcional(serializer: KSerializer<T>, obj: JsonObject, clave: String): T? {

@@ -97,6 +97,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   conexión; base igual que antes, sin fichas vinculadas). E1.5 hecha (hc_pediatria `635a33a`:
   `PacienteVinculoReglas` reducida a documento + elegible; elegida no elegible → `422 ficha_no_elegible`; E2E de
   pediatría en verde; base `hc_pediatrica` igual que antes). Falta el reviewer de la tanda.
+- Tanda E2 (app, decisiones D1-D8 en `tasks.md`): E2.1 hecha (`PacientesHcApi.kt` con `PacientesHcApiRemota`
+  —`cuerpo`/`paginaDe`/`resolucionDe` internos para testear sin red— y `PacientesHcApis`; `HcResolverRespuesta`,
+  `HcCarteraPagina`; `HcApiClient.leerTodo`; `TobbException.candidatos` desde el 409; `PacientesDtoTest`).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

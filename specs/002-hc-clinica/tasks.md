@@ -154,7 +154,7 @@ Reglas de la tanda (además de las de arriba):
   (1..1000) con `total` y `hay_mas` (`0`/`1`, número). La ficha elegida va en `hc_paciente_id` en clínica y en
   `pediatria_paciente_id` en pediatría. La `X` de sexo la web no la guarda (el servidor la toma como vacía).
 
-- [ ] **E2.1. DTOs y API de pacientes por especialidad.** RF-8, RF-11, RF-13
+- [x] **E2.1. DTOs y API de pacientes por especialidad.** RF-8, RF-11, RF-13
   - `core/data/.../network/hc/HcDtos.kt`: `HcPacienteRequest` sin `pacienteElegido` (se va el
     `@SerialName("pediatria_paciente_id")` fijo) y con `nombre_familiar`, `telefono_familiar` opcionales;
     `HcPacienteFicha` suma `nombre_familiar`, `telefono_familiar` con default `""` (pediatría no los manda; clínica

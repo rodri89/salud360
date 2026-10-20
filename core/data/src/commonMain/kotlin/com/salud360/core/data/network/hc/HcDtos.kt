@@ -9,7 +9,11 @@ import kotlinx.serialization.Serializable
  * especialidad puede no informar todavía algún campo.
  */
 
-/** Cuerpo de `POST pacientes/resolver`: la ficha que la app ya tiene. */
+/**
+ * Cuerpo de `POST pacientes/resolver`: la ficha que la app ya tiene. Los nulos viajan como `null`, que las APIs toman
+ * como "no vino". La ficha elegida no va acá: cada API la llama distinto y la agrega [PacientesHcApiRemota].
+ * Padre, madre y hermanos son de pediatría; el familiar de contacto, de la HC general.
+ */
 @Serializable
 data class HcPacienteRequest(
     val dni: String,
@@ -28,8 +32,25 @@ data class HcPacienteRequest(
     @SerialName("nombre_padre") val nombrePadre: String? = null,
     @SerialName("nombre_madre") val nombreMadre: String? = null,
     @SerialName("cantidad_hermanos") val cantidadHermanos: Int? = null,
-    /** Solo al confirmar una ambigüedad: con cuál de los candidatos quedarse. */
-    @SerialName("pediatria_paciente_id") val pacienteElegido: Long? = null,
+    @SerialName("nombre_familiar") val nombreFamiliar: String? = null,
+    @SerialName("telefono_familiar") val telefonoFamiliar: String? = null,
+)
+
+/** Respuesta de `POST pacientes/resolver`; `vinculado_por` es `tobb_id`, `dni`, `elegido` o `nuevo`. */
+@Serializable
+data class HcResolverRespuesta(
+    val paciente: HcPacienteFicha,
+    val creado: Boolean = false,
+    @SerialName("vinculado_por") val vinculadoPor: String = "",
+)
+
+/** Respuesta de `GET pacientes`, la cartera de a páginas. `hay_mas` llega como número: `1` o `0`. */
+@Serializable
+data class HcCarteraPagina(
+    val pacientes: List<HcPacienteFicha> = emptyList(),
+    val total: Int = 0,
+    val desde: Int = 0,
+    @SerialName("hay_mas") val hayMas: Int = 0,
 )
 
 @Serializable
@@ -193,6 +214,9 @@ data class HcLicenciaPropia(
  * Es la misma forma que usa el resto de la API de pediatría para un paciente. Hace falta completa
  * porque para el médico que solo usa historia clínica **este es el único lugar de donde salen sus
  * pacientes**: en turnos no tiene ninguno.
+ *
+ * Pediatría no manda el familiar de contacto y la HC general no manda padre, madre ni hermanos: quedan en su
+ * valor por defecto. `fecha_nacimiento` es null si la web no la tiene.
  */
 @Serializable
 data class HcPacienteFicha(
@@ -213,4 +237,6 @@ data class HcPacienteFicha(
     @SerialName("nombre_padre") val nombrePadre: String = "",
     @SerialName("nombre_madre") val nombreMadre: String = "",
     @SerialName("cantidad_hermanos") val cantidadHermanos: Int = 0,
+    @SerialName("nombre_familiar") val nombreFamiliar: String = "",
+    @SerialName("telefono_familiar") val telefonoFamiliar: String = "",
 )
