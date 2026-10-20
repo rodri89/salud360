@@ -116,6 +116,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   E2.7 compila (`PacientesListViewModel(…, medicoId, traerCarteras)` con `motivos: List<String>`, uno por HC, arriba de
   la lista y sin "no hay pacientes" si está vacía; `MainShell` pasa `rol == Rol.MEDICO`; sin test de VM: no hay
   `coroutines-test` en `features/`); falta la prueba manual del usuario.
+  E2.8 hecha (`HcClinicaPacientesE2ETest`, pide `-Psalud360.test.hc.dni` explícito; en verde contra la copia de
+  hclinica, base limpiada por `DELETE`). Tras el logout hclinica sigue aceptando el token por `salud360_token_cache`:
+  vaciarla. Tanda E2 completa: falta reviewer y prueba manual (RF-10, RF-14).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

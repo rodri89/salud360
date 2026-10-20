@@ -277,7 +277,8 @@ Reglas de la tanda (además de las de arriba):
     con lo que ya tenía; administrador y secretaria no ven motivos de cartera. (La prueba con licencia vencida queda
     para el usuario: la licencia del médico de prueba está extendida a propósito, D8.)
 
-- [ ] **E2.8. E2E de la HC general y verificación manual de RF-10 y RF-14.** RF-8, RF-10, RF-14
+- [x] **E2.8. E2E de la HC general y verificación manual de RF-10 y RF-14.** RF-8, RF-10, RF-14 — E2E en verde
+  contra la copia servida; falta prueba manual del usuario (RF-10, RF-14).
   - `core/data/src/jvmTest/.../repos/HcClinicaPacientesE2ETest.kt`: se saltea sin `salud360.test.hc.clinica` /
     `.clinica.token`; con ellas y `salud360.test.hc.dni/.nombre/.apellido` (paciente "PRUEBA SALUD360" con un
     documento verificado libre antes por `SELECT COUNT(*)`), sobre una base SQLite temporal: trae la cartera dos
@@ -295,6 +296,10 @@ Reglas de la tanda (además de las de arriba):
   - Hecho cuando: el E2E en verde contra la copia servida; sin las propiedades, `.\gradlew :core:data:jvmTest` en
     verde y el E2E se saltea; `SELECT COUNT(*)` con el documento de prueba en `pacientes` y `medico_pacientes` da 0
     al terminar; los dos pasos manuales anotados con su resultado. La licencia vencida no se prueba acá (D8).
+  - Resultado (2026-10-20): E2E en verde con el médico de prueba (cartera de una sola página: se quitó la
+    aserción de "más de una página" de pediatría; la paginación la cubre `PacientesHcRepositoryTest`); suma un
+    documento inválido sin pedido. `hc_clinica` limpia con `DELETE` puntual (conteos iguales a antes), token
+    revocado (401 en turnos y hclinica) y `salud360_token_cache` vacía. Pasos manuales: pendientes del usuario.
 
 Decidido (2026-10-20, coordinador), sobre los puntos que no cerraban con el código:
 - D1. `TobbException` suma `candidatos: List<HcPacienteCandidato> = emptyList()` **al final**, con valor por defecto;
