@@ -98,7 +98,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `PacienteVinculoReglas` reducida a documento + elegible; elegida no elegible → `422 ficha_no_elegible`; E2E de
   pediatría en verde; base `hc_pediatrica` igual que antes). Falta el reviewer de la tanda.
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
-  el historial de git (ya en `origin/main`). Solo valen contra la base local: no se rotaron.
+  el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
+  nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).
 - El E2E de pediatría deja en `hc_pediatrica` una consulta de baja (y sus filas) y dos imágenes en
   `public/img/salud360` por corrida: borrarlas por id después. Ya hay 5 consultas de baja de corridas viejas.
 
