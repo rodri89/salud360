@@ -1,6 +1,6 @@
 # Spec 003 — Sección "Enfermedades" de la HC general
 
-Estado: aprobada (2026-10-19) · Depende de la spec 001 (catálogo de
+Estado: aprobada (2026-10-19; cambio aprobado el 2026-10-20, ver al pie) · Depende de la spec 001 (catálogo de
 secciones, perfiles, `claveDeNombre`, RF-28 y RF-34) · Depende de la spec 002 **solo** en la pieza de vincular
 pacientes (resolver la ficha de la web por paciente de turnos y DNI con desempate, y que el médico elija si hay más
 de una: RF-11 de la 002) y la cartera (RF-8, RF-9 de la 002); no depende del envío de consultas de la 002.
@@ -99,8 +99,12 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
 - RF-9: SI al resolver el vínculo hay más de una ficha posible, ENTONCES EL SISTEMA muestra en la sección "Elegí la
   ficha del paciente" con las candidatas (nombre, apellido, documento y fecha de nacimiento de cada una) y, cuando el
   médico elige una, guarda el vínculo y carga la sección; mientras no elija, no muestra casillas.
-- RF-10: SI al resolver el vínculo no hay ninguna ficha posible, ENTONCES EL SISTEMA muestra "Este paciente todavía
-  no tiene ficha en la historia clínica de la web" y no muestra casillas.
+- RF-10: SI al resolver el vínculo no hay ninguna ficha posible (el documento del paciente no sirve para la historia
+  clínica, la única ficha con ese documento ya corresponde a otro paciente de turnos, o la ficha elegida en RF-9 ya
+  no es posible), ENTONCES EL SISTEMA muestra el texto de la spec 002 para ese caso, que dice qué hacer (corregir el
+  documento en la ficha del paciente: 002 RF-12; avisar al administrador: 002 RF-36), y no muestra casillas. Para
+  la ficha elegida que ya no es posible (`ficha_no_elegible`) el texto es "La ficha elegida no corresponde a este
+  paciente. Elegí otra o pedile al administrador que revise el documento."
 - RF-11: SI la web responde que el paciente no está en la cartera del médico, ENTONCES EL SISTEMA muestra "Este
   paciente no está en tu cartera", no muestra enfermedades (tampoco las de la copia del dispositivo) y borra de la
   copia el estado de la sección de ese paciente.
@@ -110,8 +114,8 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
   sesión vencida, ENTONCES EL SISTEMA aplica a la sección el mismo motivo, el mismo texto y la misma conducta que el
   resto de la HC general (spec 002 RF-2, RF-3, RF-4), sin mostrar enfermedades.
 - RF-14: CUANDO aplica más de un motivo, EL SISTEMA muestra solo el primero de este orden: (1) sesión vencida,
-  (2) historia clínica no habilitada, (3) médico no vinculado, (4) licencia vencida, (5) sin conexión (RF-30,
-  RF-31), (6) elegir ficha (RF-9), (7) sin ficha (RF-10), (8) ficha no disponible (RF-12), (9) fuera de la cartera
+  (2) historia clínica no habilitada, (3) médico no vinculado, (4) licencia vencida, (5) sin conexión o error no
+  previsto de la web (RF-30, RF-31), (6) elegir ficha (RF-9), (7) sin ficha (RF-10), (8) ficha no disponible (RF-12), (9) fuera de la cartera
   (RF-11). La lista vacía (RF-18) no es un motivo: se muestra junto con lo demás.
 
 ### Consulta abierta: la grilla
@@ -162,9 +166,12 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
 - RF-30: MIENTRAS no haya conexión, EL SISTEMA muestra el estado de la sección del paciente tal como está en la copia
   del dispositivo, sin permitir marcar, desmarcar ni abrir "Administrar enfermedades", con el aviso "Sin conexión:
   las enfermedades se pueden ver pero no cambiar" y un botón "Reintentar" que vuelve a pedir el estado de la
-  sección.
+  sección. SI al abrir la sección la web responde con un error no previsto (error interno, ocupado después del
+  reintento, respuesta que no se puede leer), ENTONCES EL SISTEMA hace lo mismo, con el texto que manda la web en
+  lugar de ese aviso.
 - RF-31: SI no hay conexión y el dispositivo no tiene el estado de la sección de ese paciente, ENTONCES EL SISTEMA
-  muestra "Hace falta conexión para ver las enfermedades" y no muestra una grilla vacía.
+  muestra "Hace falta conexión para ver las enfermedades" (con un error no previsto, el texto que manda la web) y no
+  muestra una grilla vacía.
 
 ### Copia en el dispositivo
 - RF-32: EL SISTEMA guarda en una tabla nueva de la base del dispositivo (migración nueva) la lista del médico, el
@@ -265,7 +272,8 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
 - RF-56: EL SISTEMA no mezcla las enfermedades del paciente con la sección legada "Diagnósticos / enfermedades" de
   la app: no copia datos de una a otra y cada una se ve según sus reglas (los diagnósticos ya cargados, según la
   spec 001 RF-22 y RF-30).
-- RF-57: EL SISTEMA no cambia nada de las historias clínicas que no son la HC general (pediatría y las demás).
+- RF-57: EL SISTEMA no cambia nada de las historias clínicas que no son la HC general (pediatría y las demás), salvo
+  el cierre de sesión de RF-59.
 
 ### Crear sin poder marcar
 - RF-58: SI al tocar "Crear" el paciente de la consulta no está vinculado (sin vínculo, eligiendo ficha, sin ficha o
@@ -277,6 +285,10 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
   ficha de la web", "el paciente no está en tu cartera" o "la consulta no se puede editar". SI se reutilizó una
   existente, ENTONCES el aviso empieza por "Ya existía en el catálogo como «<nombre>»." (o "«<nombre>» ya estaba en
   tu lista." si ya lo estaba). Si el paciente ya la tenía marcada, sigue marcada.
+
+### Cierre de sesión (cambio del 2026-10-20)
+- RF-59: CUANDO el usuario cierra sesión, EL SISTEMA revoca su token en turnos y le pide a cada HC con API que lo
+  olvide; SI alguna no responde, ENTONCES igual cierra la sesión en el dispositivo.
 
 ## Requisitos no funcionales
 - **Dueño del dato = la web**: el catálogo, las listas y las enfermedades de los pacientes viven en la base de la web;
@@ -369,9 +381,11 @@ mientras tanto. Aprobada por el usuario el 2026-10-19.
   - `EnfermedadesSeccionTest`: grilla de marcables y su marca (RF-15), orden alfabético con desempate por id
     (RF-16), lista vacía con "Otras" y "Administrar" (RF-18), "Otras" (RF-19), cerrada/solo lectura con "Estado
     actual del paciente" y "Sin enfermedades registradas" (RF-35), "Datos" sin repetir (RF-6, RF-7).
-  - `ColumnasEnfermedadesTest`: 2 o 4 columnas según el ancho disponible, borde en 600 (RF-17).
-  - `MotivosEnfermedadesTest`: elegir ficha, sin ficha, ficha no disponible, fuera de la cartera sin datos
-    (RF-9 a RF-12), motivos generales (RF-13) y su prioridad (RF-14).
+  - `ColumnasEnfermedadesTest` (en `.\gradlew :core:ui:jvmTest`, sobre `columnasPara` de `core/ui`, PD4): 2 o 4
+    columnas según el ancho disponible, borde en 600 (RF-17).
+  - `MotivosEnfermedadesTest`: elegir ficha, sin ficha (los tres casos, con el texto de la 002), ficha no
+    disponible, fuera de la cartera sin datos (RF-9 a RF-12), motivos generales (RF-13), error no previsto en el
+    lugar de sin conexión (RF-14, RF-30) y su prioridad (RF-14).
   - `MarcadoEnfermedadesTest`: estado elegido y "Guardando…" (RF-21), casilla con pedido en camino bloqueada
     (RF-22), orden de respuestas y casillas en camino que conservan su estado (RF-23), aviso "Guardado" único que se
     renueva (RF-24), rechazos que piden el estado (RF-25), 429 (RF-26), rechazos que revierten (RF-27), sin respuesta
@@ -388,7 +402,9 @@ mientras tanto. Aprobada por el usuario el 2026-10-19.
     (RF-46), estado completo de la respuesta (RF-48).
   - `NombreEnfermedadTest`: nombre normalizado, mismo nombre por clave, largo en caracteres (255 sí, 256 no, con
     emojis), invisibles y solo espacios (RF-43, RF-44).
-- Los endpoints nuevos de `hclinica` con sus tests (`tests/Feature/Salud360EnfermedadesTest.php`): `sin_permiso`
+- Los endpoints nuevos de `hclinica` probados sin tests de phpunit que escriban en la base (la local tiene datos
+  reales, PD5): las reglas sin base en `tests/Unit/EnfermedadesReglasTest.php`, y el resto con el humo con curl
+  sobre datos de prueba y el E2E de la app contra la copia local, con limpieza por SQL puntual: `sin_permiso`
   para el administrador y sin mirar `users.perfil` (RF-49), estado con listas vacías, 404 y `fuera_de_cartera`
   (RF-50), marcar idempotente, `no_en_tu_lista` y `enfermedad_dada_de_baja` (RF-51), estado de administrar (RF-52),
   quitar no desmarca a ningún paciente (RF-53), crear con reutilización por clave, menor id, reactivación, nombre
@@ -396,6 +412,8 @@ mientras tanto. Aprobada por el usuario el 2026-10-19.
   o ya en la lista) y devuelve el estado de la sección, ya marcada sigue marcada, sin paciente no marca, con paciente
   inexistente, dado de baja o fuera de la cartera crea y suma a la lista sin marcar con el motivo (RF-54), sin
   borrados ni `medico_infos` (RF-55).
+- Cierre de sesión (RF-59): con conexión, después de cerrar sesión el token ya no entra a turnos ni a ninguna HC con
+  API; con una HC caída o sin conexión, la sesión se cierra igual en el dispositivo.
 - Verificación manual: RF-1 a RF-5, RF-17 (aspecto), RF-20 (teclado y lector de pantalla), RF-38, RF-56, RF-57.
 - De punta a punta contra la copia local (nunca producción): el administrador agrega "Enfermedades" a un perfil; el
   médico de prueba administra su lista desde la sección, crea enfermedades con el prefijo "Prueba Salud360 …", marca
@@ -434,3 +452,10 @@ mientras tanto. Aprobada por el usuario el 2026-10-19.
 - (ninguna)
 
 Revisada por QA el 2026-10-19 (53 hallazgos) y corregida.
+
+Cambio aprobado el 2026-10-20 (al aprobar el plan, PD2, PD3 y PD7): RF-10 cubre los tres casos sin ficha posible
+(documento inválido, ficha ya vinculada a otro paciente, ficha elegida no posible), en el lugar 7 de RF-14 y con el
+texto de la 002 que dice qué hacer, en lugar de un texto fijo (el `resolver` de la 002 crea la ficha cuando no hay
+ninguna, así que el caso original no ocurre); los errores no previstos al abrir se tratan como sin conexión, con el
+texto de la web (RF-14, RF-30, RF-31); nuevo RF-59 (cierre de sesión revoca el token en turnos y en cada HC con API,
+porque las HC guardan el token aceptado unos minutos y un token revocado seguía entrando), con RF-57 ajustado.

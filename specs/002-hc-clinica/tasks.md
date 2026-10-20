@@ -316,3 +316,7 @@ Decidido (2026-10-20, coordinador), sobre los puntos que no cerraban con el cód
   manual del usuario.
 
 Al terminar la tanda: validación del reviewer, prueba manual del usuario y MEMORY.md.
+
+Validada por el reviewer el 2026-10-20: APROBADO.
+Nota del reviewer: en RF-10 la prueba manual solo comprueba que no se cree la ficha en hclinica antes de tiempo; el
+vínculo lo cubren el E2E (`HcClinicaPacientesE2ETest`) y los tests del repositorio (`PacientesHcRepositoryTest`).
