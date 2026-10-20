@@ -68,7 +68,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     copia servida; copiado a la servida, `curl` con el token del administrador a `GET config/catalogo` → `200` y
     `enfermedades` es la segunda sección (solo se miran los ids); `git diff` limitado a `CatalogoSecciones.php`.
 
-- [ ] **F1.3. Servicio: estado de la sección, marcar, estado de administrar, agregar y quitar.** RF-50, RF-51,
+- [x] **F1.3. Servicio: estado de la sección, marcar, estado de administrar, agregar y quitar.** RF-50, RF-51,
   RF-52, RF-53, RF-55
   - Antes de escribir: SQL de solo lectura sobre `hc_clinica` (estructura): `SHOW CREATE TABLE` de `enfermedades`,
     `medico_enfermedades` y `paciente_enfermedades` (columnas `activo`, `created_at`/`updated_at`, `unique(nombre)`,
