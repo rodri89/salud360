@@ -238,7 +238,7 @@ Reglas de la F2, además de las de arriba:
     `.\gradlew :core:data:jvmTest` y `.\gradlew :especialidades:clinica:jvmTest` en verde; buscar `trim(`,
     `isWhitespace` y `\\s` en `claveDeNombre` y en `NombreEnfermedad.kt` no da resultados.
 
-- [ ] **F2.2. Estado y vista de la sección.** RF-5, RF-6, RF-7, RF-15, RF-16, RF-17, RF-18, RF-19, RF-35, RF-36
+- [x] **F2.2. Estado y vista de la sección.** RF-5, RF-6, RF-7, RF-15, RF-16, RF-17, RF-18, RF-19, RF-35, RF-36
   - `hcgeneral/EnfermedadesSeccion.kt` (nuevo): `Enfermedad(id: Long, nombre)`, `Marcable(id, nombre, tiene)`,
     `EstadoSeccionEnfermedades(marcables, otras)`, `EstadoAdministrar(lista, catalogo)`; `ordenAlfabetico` (por
     `claveDeNombre` y, a igual clave, id); `vistaSeccion(estado, editable)` (abierta: grilla o el texto de RF-18, más
