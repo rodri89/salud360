@@ -131,6 +131,11 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   leído del JSON crudo por `TrimStrings`; token de admin de prueba emitido con `TokenService` en turnos y revocado).
   F1.6 hecha (hclinica `ab0e191`: sección "Enfermedades" del md; humo con curl 56/56 OK, 429 al pedido 36 del
   bucle; el throttle es por IP y cuenta todo el grupo `api`: en el humo, ~1,1 s entre pedidos; base limpia).
+  F1.7 hecha (hclinica `39d13cf`, hc_pediatria `72196ce`: `POST auth/salir` fuera del middleware, en
+  `AuthController@salir` + `TobbAuthService::olvidar`; curl OK en las dos, en pediatría con un token temporal
+  sembrado copiando la fila del médico; E2E de pediatría en verde y `hc_pediatrica` limpiada por id: ojo con el
+  orden de las FK al borrar, fotos → padres, `internaciones` antes que `antecedentes_personales`, `consultas` al
+  final). Tanda F1 completa: falta reviewer. Desde ahora `auth/salir` también vacía la caché de un token.
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

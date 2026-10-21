@@ -144,7 +144,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     `pacientes`/`medico_pacientes` con los documentos de prueba da 0; ninguna fila preexistente cambió de `activo`
     (conteos por `activo` iguales a los de antes de empezar); `salud360_token_cache` vaciada.
 
-- [ ] **F1.7. `auth/salir` en hclinica y pediatría.** RF-59 (PD7)
+- [x] **F1.7. `auth/salir` en hclinica y pediatría.** RF-59 (PD7)
   - En los dos repos: `POST salud360/auth/salir` **fuera** del middleware `salud360` (en `routes/api.php`, mismo
     prefijo y namespace): toma el token con `TobbAuthService::tokenDelPedido`, borra la fila de
     `salud360_token_cache` con su `hash('sha256', …)` (`token_hash`) y contesta siempre `200 {ok: true}`, sin decir
