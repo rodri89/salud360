@@ -107,7 +107,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     tildes) → usa la existente sin error. Buscar `DELETE` y `medico_infos` en el diff no da resultados. Filas de
     prueba borradas con `DELETE` puntual.
 
-- [ ] **F1.5. Controlador y rutas.** RF-49, RF-50, RF-51, RF-52, RF-53, RF-54
+- [x] **F1.5. Controlador y rutas.** RF-49, RF-50, RF-51, RF-52, RF-53, RF-54
   - `app/Http/Controllers/Api/Salud360/EnfermedadController.php` (nuevo): todos con `soloMedico` (`403 sin_permiso`,
     sin mirar `users.perfil`); ids de la ruta con `ctype_digit` y ≤ 9 cifras (si no, `422 datos_invalidos`); ficha
     (`404 paciente_no_encontrado`) y cartera (`403 fuera_de_cartera`) como `PacienteController@show` (si hace falta,
@@ -169,5 +169,7 @@ Decidido (2026-10-20, coordinador):
   `ktor-client-mock`).
 - C4 La revocación del token al cerrar sesión corre en segundo plano y no demora el cierre en el dispositivo (RF-59:
   si alguna HC no responde, igual cierra).
+- C5 `crear` va sin transacción global (como lo implementó F1.4): cada paso es idempotente y la búsqueda después del
+  rechazo del `unique` tiene que ver lo que otro pedido ya confirmó. Aceptado.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
