@@ -140,7 +140,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   `claveDeNombre` pasa por `nombreNormalizado`, solo los seis espacios de la spec: NBSP ya no se recorta; los tests de
   perfiles no cambiaron). F2.2 hecha (`hcgeneral/EnfermedadesSeccion.kt` + `EnfermedadesSeccionTest`,
   `ColumnasEnfermedadesTest` en `core/ui`; `ordenAlfabetico` compara claves por punto de código como `strcmp`;
-  "Datos" si oculta aunque esté en el perfil, al revés que los antecedentes de la 001).
+  "Datos" si oculta aunque esté en el perfil, al revés que los antecedentes de la 001). F2.3 hecha
+  (`hcgeneral/MotivosEnfermedades.kt` + `MotivosEnfermedadesTest`; 404/403 propios por código; `muestraCopia` = lugar 5).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

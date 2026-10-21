@@ -259,7 +259,7 @@ Reglas de la F2, además de las de arriba:
     `.\gradlew :core:ui:jvmTest --tests '*ColumnasEnfermedadesTest*'` en verde (rojo antes); `:core:data:jvmTest` y
     `:core:ui:jvmTest` completos en verde.
 
-- [ ] **F2.3. Motivos.** RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RF-30, RF-31
+- [x] **F2.3. Motivos.** RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RF-30, RF-31
   - `hcgeneral/MotivosEnfermedades.kt` (nuevo): `sealed interface MotivoEnfermedades { prioridad; texto }` con
     `General(MotivoHc)` (prioridad por `MotivoHc.Tipo`: sesión 1, HC 2, médico 3, licencia 4, `SIN_CONEXION` y `OTRO`
     5, PD3), `ElegirFicha(candidatas)` 6, `SinFicha(texto)` 7 (`DocumentoInvalido` con su mensaje,
