@@ -129,6 +129,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   MySQL `ß` = `ss` y `ａ` = `a` para la intercalación, no para la clave: sirven para probar el choque del `unique`).
   F1.5 hecha (hclinica `48cec69`: `EnfermedadController` + 5 rutas; `tiene`/`en_lista` solo booleanos JSON, cuerpo
   leído del JSON crudo por `TrimStrings`; token de admin de prueba emitido con `TokenService` en turnos y revocado).
+  F1.6 hecha (hclinica `ab0e191`: sección "Enfermedades" del md; humo con curl 56/56 OK, 429 al pedido 36 del
+  bucle; el throttle es por IP y cuenta todo el grupo `api`: en el humo, ~1,1 s entre pedidos; base limpia).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

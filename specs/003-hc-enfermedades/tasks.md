@@ -124,7 +124,7 @@ administrador de prueba sacados de `auth/login` de turnos local.
     `404 paciente_no_encontrado`; `GET enfermedades/pacientes/1234567890` → `422 datos_invalidos`; `PUT` sin `tiene`
     → `422 datos_invalidos`; la web de hclinica sigue entrando normal. `salud360_token_cache` vaciada al terminar.
 
-- [ ] **F1.6. Documentación y prueba de humo completa.** RF-49, RF-50, RF-51, RF-52, RF-53, RF-54, RF-55
+- [x] **F1.6. Documentación y prueba de humo completa.** RF-49, RF-50, RF-51, RF-52, RF-53, RF-54, RF-55
   - `md/API_SALUD360_CLINICA.md`: sección "Enfermedades" (rutas, cuerpos, respuestas, códigos, PD8, curl de humo sin
     credenciales) y tabla "Código" con los archivos nuevos.
   - Humo con curl contra la copia servida (lista del plan, "Tests" → hclinica), con datos de prueba creados por SQL
