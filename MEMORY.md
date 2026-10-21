@@ -136,6 +136,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   sembrado copiando la fila del médico; E2E de pediatría en verde y `hc_pediatrica` limpiada por id: ojo con el
   orden de las FK al borrar, fotos → padres, `internaciones` antes que `antecedentes_personales`, `consultas` al
   final). Tanda F1 completa: falta reviewer. Desde ahora `auth/salir` también vacía la caché de un token.
+  Tanda F2 (app, decisiones E1-E9 en `tasks.md`): F2.1 hecha (`hcgeneral/NombreEnfermedad.kt` + `NombreEnfermedadTest`;
+  `claveDeNombre` pasa por `nombreNormalizado`, solo los seis espacios de la spec: NBSP ya no se recorta; los tests de
+  perfiles no cambiaron).
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

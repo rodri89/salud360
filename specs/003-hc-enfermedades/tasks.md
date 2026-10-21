@@ -202,7 +202,7 @@ Reglas de la F2, además de las de arriba:
   `ConfigHcRepositoryTest`).
 - Textos de la spec copiados tal cual (RF-11, RF-12, RF-18, RF-24 a RF-31, RF-35, RF-43, RF-44, RF-58).
 
-- [ ] **F2.1. `claveDeNombre` con los espacios de la spec + nombre de enfermedad.** RF-42, RF-43, RF-44
+- [x] **F2.1. `claveDeNombre` con los espacios de la spec + nombre de enfermedad.** RF-42, RF-43, RF-44
   - `hcgeneral/PerfilValidacion.kt` (`claveDeNombre`, l. 108-129): hoy usa `trim()` + `Regex("\\s+")`, que no
     coinciden con el PHP (`EnfermedadesReglas::normalizar`, solo `[ \t\n\r\x0B\x0C]`) y dependen de la plataforma
     (`trim()` usa `isWhitespace`, que en JVM recorta además NBSP, los demás `Zs`, U+2028/U+2029 y U+001C–U+001F; `\s`

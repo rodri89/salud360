@@ -102,11 +102,14 @@ fun nuevaSeccion(seccionId: String, catalogo: List<SeccionCatalogoRemota>): Secc
 }
 
 /**
- * Forma de comparar nombres de perfil y de pestaña: sin espacios de más, sin mayúsculas y sin tildes. Pública para
- * que el resto de la HC general (por ejemplo, el nombre de una copia) compare igual.
+ * Forma de comparar nombres de perfil, de pestaña y de enfermedad: sin espacios de más, sin mayúsculas y sin tildes.
+ * Pública para que el resto de la HC general (por ejemplo, el nombre de una copia) compare igual.
+ *
+ * Es la misma regla que `EnfermedadesReglas::normalizar`/`clave` de hclinica: [nombreNormalizado] (solo los espacios
+ * de la spec, no NBSP ni los demás Unicode), minúsculas y la tabla [SIN_TILDE].
  */
 fun claveDeNombre(nombre: String): String =
-    nombre.trim().replace(ESPACIOS, " ").lowercase().map { SIN_TILDE[it] ?: it }.joinToString("")
+    nombreNormalizado(nombre).lowercase().map { SIN_TILDE[it] ?: it }.joinToString("")
 
 /** Mensaje si el nombre (ya recortado) está vacío o es largo; null si está bien. */
 private fun errorDeNombre(nombre: String, que: String): String? = when {
@@ -125,8 +128,6 @@ internal fun caracteres(texto: String): Int {
     }
     return n
 }
-
-private val ESPACIOS = Regex("\\s+")
 
 /**
  * Letras con tilde (ya en minúscula) y su base, como las iguala `utf8mb4_unicode_ci` de hclinica (también ñ = n).
