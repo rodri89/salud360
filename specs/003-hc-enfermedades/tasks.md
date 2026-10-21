@@ -277,7 +277,7 @@ Reglas de la F2, además de las de arriba:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MotivosEnfermedadesTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde.
 
-- [ ] **F2.4. Marcado (respuestas desordenadas, Guardando/Guardado, rechazos).** RF-21 a RF-29
+- [x] **F2.4. Marcado (respuestas desordenadas, Guardando/Guardado, rechazos).** RF-21 a RF-29
   - `hcgeneral/MarcadoEnfermedades.kt` (nuevo), como el plan: `EstadoMarcado(confirmado, enCamino: Map<Long,
     EnCamino(tiene, secuencia)>, ultimaAplicada, aviso, guardado, soloLectura)` y las transiciones `tocar`,
     `confirmado(secuencia, id, estado)`, `rechazado(secuencia, id, error)`, `sinRespuesta(secuencia, id)`,
