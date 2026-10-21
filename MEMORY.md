@@ -145,6 +145,9 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   F2.4 hecha (`hcgeneral/MarcadoEnfermedades.kt` + `MarcadoEnfermedadesTest`; extensiones de `EstadoMarcado` que
   devuelven `PasoMarcado(estado, pedido)`; `ultimaEnviada` numera los pedidos y `siguienteSecuencia` es para F2.8;
   `EnCamino` guarda el nombre y `sinRespuesta`; `red` = sin respuesta, `tobb_caido` = no previsto).
+  F2.5 hecha (`hcgeneral/AdministrarEnfermedades.kt` + `AdministrarEnfermedadesTest`; `ofrecerCrear` devuelve
+  `OfertaCrear(nombre, error)` con el error de RF-43; `pacienteParaCrear` → `ConFicha`/`SinMarcar(MotivoSinMarcar)`,
+  "no editable" gana; sin marcar y ya en la lista: "«X» ya estaba en tu lista. No se marcó al paciente …").
 - Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
   el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
   nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).

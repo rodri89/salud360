@@ -295,7 +295,7 @@ Reglas de la F2, además de las de arriba:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MarcadoEnfermedadesTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde.
 
-- [ ] **F2.5. Administrar (buscador, crear, avisos).** RF-37, RF-39, RF-42, RF-44, RF-45, RF-46, RF-48, RF-58
+- [x] **F2.5. Administrar (buscador, crear, avisos).** RF-37, RF-39, RF-42, RF-44, RF-45, RF-46, RF-48, RF-58
   - `hcgeneral/AdministrarEnfermedades.kt` (nuevo): `filtrar(estado, buscado)`, `ofrecerCrear(estado, buscado)`,
     `pacienteParaCrear(fichaId, motivo, editable)`, `puedeAdministrar(editable, propia, conConexion, motivo)` y
     `avisoCrear(resultado, motivoLocal)` como el plan. `avisoCrear` recibe un modelo propio de este archivo
