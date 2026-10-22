@@ -429,5 +429,8 @@ Decidido (2026-10-21, coordinador):
 - E8 El caso de UTF-8 inválido del PHP no se copia a Kotlin; los surrogates sueltos no están en la lista de
   invisibles: aceptado.
 - E9 `ColumnasEnfermedadesTest` se mantiene aunque repita `SiNoVacioTest`.
+- E10 (decisión de F2.5, aceptada) Crear con una enfermedad ya en la lista y sin marcar al paciente: «X» ya estaba en
+  tu lista. No se marcó al paciente porque …
+- E11 (decisión de F2.5, aceptada) Crear una enfermedad nueva y marcada al paciente: sin aviso.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.

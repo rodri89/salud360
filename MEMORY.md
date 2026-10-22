@@ -1,171 +1,68 @@
 # MEMORY.md — Salud 360
 
-Memoria del proyecto entre sesiones. Máximo ~50 líneas: resumir o borrar lo que ya no aporte.
-Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de registros de personas): el repo es público.
+Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el detalle por tarea vive en
+`specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
+registros de personas): el repo es público.
+
+## Traspaso (2026-10-22)
+- Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
+  pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
+  (envío de consultas).
+- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.5
+  hechas y commiteadas (último commit `a89c635`). F2.6 se cortó dos veces por reinicios del servidor: a medias y sin
+  commitear están `core/data/.../network/hc/EnfermedadesApi.kt`, `EnfermedadesDtos.kt` y el test
+  `commonTest/.../EnfermedadesDtoTest.kt` (escritos el 2026-10-21; no se sabe si compilan ni si pasan: revisarlos y
+  decidir si se siguen o se rehacen). Pendientes F2.7 a F2.10 y la tanda F3 (pantallas).
+- Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
+  implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
+  `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
+- Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Al 2026-10-22 el devWeb de antes sigue
+  vivo (node en :8080, desde el 13/10), Apache y MySQL del XAMPP también (login de turnos da 422 como se espera).
+  Tokens de prueba de pediatría: archivo local fuera del repo (`%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt`).
+- Las contraseñas de prueba locales no están en ningún archivo: la sesión nueva se las pide al usuario.
+- Menores: ofrecer actualizar el plugin `@xtruder/opencode-claude-max-plugin` (hay versión nueva); revisar si
+  `DibujoCanvas.kt` lee valores con `ctx.valor` (el bug de Child-Pugh); `ColumnasEnfermedadesTest` repite
+  `SiNoVacioTest` (aceptado, E9).
 
 ## Estado actual
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
-- HC de pediatría lee y escribe su base real (consulta, secciones, examen físico, adjuntos); detalle y pendientes en
-  `docs/hc-pediatria-estado-y-plan.md`. Licencias y alta de usuarios desde el admin, leyendo de su dueño.
-  El médico que solo usa HC ve su cartera de pacientes y no una agenda vacía.
-- Spec 001 (perfiles configurables de la HC general): spec y plan aprobados; tanda A1 hecha y validada. T3 parcial:
-  falta el login en el navegador (prueba manual del usuario). Commits sin push: hclinica rama `salud360-api`
-  (`a3dccdb` config + CORS, `b729af4` middleware + `TobbAuthService`, `56fe71c` controller + `auth/perfil` + doc) y
-  turnosonlinebb rama `salud360-hc-general` (`0077ed4` `PUT medicos/{id}/historias-clinicas`, solo admin).
-  Tanda A2 en curso: T8 hecha (`fd24365` catálogo + 5 tablas `salud360_perfil*`/`salud360_cargas` ya creadas,
-  vacías, en la base local), T9 hecha (`488bbb7` `PerfilesService::validar` + `PerfilesTest`), T10 hecha (`d5c38ec`
-  CRUD `config/perfiles` en `PerfilController` + `PerfilesService` leer/guardar/borrar; tablas otra vez vacías).
-  T11 hecha (`9f69ee0` `config/asignaciones` + `GET config`). T12 hecha (`4cbb989` `CargaInicialPerfiles`): la base
-  local queda con la carga inicial aplicada (perfiles 1 Clínica general y 2 Hepatología, asignaciones, marcador);
-  no vaciarla. T13 hecha (`97e7fe4` md completo; humo de los 9 endpoints OK, base igual que tras T12). Tanda A2
-  validada. Tanda B en la rama `hc-general` de este repo (sin push): T14 hecha (tipos `PerfilHc.kt`,
-  `TipoConsultaDef.grupos`). T15 hecha (`hcgeneral/PerfilValidacion.kt`: `validarPerfil`, `nuevaSeccion`,
-  `claveDeNombre` pública para T16). T16 hecha (`PerfilCopia.kt`: `nombreCopia` recorta X, nunca el número;
-  `CatalogoAdmin.kt`: `catalogoParaAdmin` + `seccionesParaAgregar`). T17 hecha (`DefinicionHcGeneral.kt`: tipos
-  con `pestanias` = solo la ficha, `grupos` con id `pestania_<índice en el perfil>`, `secciones` = las de los grupos,
-  `foto` vacío; legadas en el perfil = desconocidas; `EstadoConfig.kt`: `ConfigGuardada?`/`ConfigRemota`). T18 hecha (`SeccionesSoloLectura.kt`:
-  `DatosConsulta` que llena la tanda C —antecedentes del paciente, el resto de la consulta—; `seccionesSoloLectura`
-  con `enPerfil` opcional para no mostrar ocultas del perfil). T19 hecha (`especialidades/clinica/HcGeneral.kt`:
-  `catalogoHcGeneral` + `hcGeneralBase`, sin contribución todavía; primer test del módulo, `CatalogoHcGeneralTest`;
-  legada `antecedentes_personales` con `personalesEstandar`, que también muestra la nota libre de clínica).
-  T20 hecha (`6.sqm` + `HcConfig.sq`, esquema ahora v7; `ConfigHcRepository(db, api: ConfigHcApi?)`: sin cliente o
-  sin red = `red`; fallos no Tobb de la API → `TobbException` `respuesta`; JSON guardado ilegible = sin fila).
-  T21 hecha (`HcConfigDtos.kt`, `ConfigHcApiRemota`, `PerfilesHcRepository` que lanza `TobbException`;
-  `TobbException.errores` desde el 422; ambos repos en `DataModule` sobre el cliente "clinica", fuera de `HcBackends`;
-  URL release de hclinica en `gradle.properties`: la web release ya crea ese cliente). Tanda B completa, falta
-  validación del reviewer. Después C admin + médico, D hepatología + E2E.
-- Tanda C: T22 hecha (`hcgeneral/EditorPerfil.kt`: extensiones de `PerfilHc`; `agregarSeccion` ignora ids fuera
-  del catálogo o ya en el perfil; "Pestaña N" con el primer N libre). T23 hecha, falta la prueba manual
-  (`PerfilesHcViewModel`/`PerfilesHcScreens.kt`, solapa "Perfiles HC"; `CatalogoHc` como `single` en `AppDi.kt`).
-  T24 hecha, falta la prueba manual (editor en el mismo ViewModel, `PerfilesHcUi.editor`; errores con
-  `hcgeneral/ErroresPorCampo.kt` `ubicarErrores`; tras un intento fallido cada cambio revalida en la app).
-  T25 hecha, falta la prueba manual (`hcgeneral/AsignacionesMedicos.kt` `medicosParaAsignar` + sección "Médicos";
-  selector por id, no por nombre; las asignaciones de números que no están en la lista local no se muestran).
-  T26 hecha, falta la prueba manual (HC del médico por `PUT medicos/{id}/historias-clinicas` de turnos, sin
-  `dirty`; `AdminRepository.setEspecialidadHc` quitado; un solo `PerfilesHcViewModel` para todo el panel, que
-  recarga con `PerfilesHcRepository.asignacionesCambiadas` cuando el alta asigna un perfil).
-  T27 hecha (`HcRepository.observarDatosConsulta` + 3 consultas de lectura en `HistoriaClinica.sq`; `DatosConsulta`
-  sin antecedentes; `seccionesDelPacienteSoloLectura` solo mira antecedentes; `enPerfil` obligatorio).
-  T28 hecha, falta la prueba manual (`hcGeneralContribution` en lugar de `clinicaContribution`, que se borró;
-  `DefinicionesHc`/`AvisosHcGeneral`; `DefinicionResuelta`, `resolverDefinicion` y `copiaDiagnosticos` en
-  `DefinicionHcGeneral.kt`; `ConfigHcRepository.estadoConEspera`).
-  T29 hecha, falta la prueba manual (`pestaniasConsulta`, `soloLecturaPorTipo`/`puedeReabrir` en
-  `DefinicionResuelta`; `EspecialidadDefinition.examenFisicoSoloLectura` + `modoCampoExamen` para FC/CA; la consulta
-  resuelve con `DefinicionesHc` una vez; sin perfil o primera vez, las cerradas no se reabren).
-  T30 hecha, falta la prueba manual (`soloLecturaConsulta` → `ConsultaUi.fueraDelPerfil`; vale para toda definición
-  `porPerfil`, también sin perfil y "HC digitalizada"; `AvisoSeccionesDesconocidas` en la HC y en la consulta).
-  T31 hecha, falta la prueba manual (`seccionesDelPerfil` y `mostrarTodas` en `DefinicionHcGeneral.kt`; la
-  Configuración resuelve "clinica" con `DefinicionesHc`). Tanda C completa: falta reviewer y prueba manual.
-- Tanda C2: T32 hecha (`layoutConsulta`/`LayoutConsulta` reemplazan a `pestaniasConsulta`; hasta T33 la pantalla
-  no dibuja el cuerpo: en `devWeb` las secciones de "Consulta" no se ven). T33 compila, falta la prueba manual
-  (cuerpo debajo de las pestañas en `ConsultaScreen`). `devWeb` no recompila solo (no es `-t`): para refrescarlo,
-  `:composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas `-P` y webpack lo toma.
-  T34 hecha (`ModoRegistro`/`RegistroDef.modo`; `hcgeneral/EstudioConHistorial.kt`: el desempate por updated_at es
-  el orden de entrada de `registrosDePaciente`, que el modelo no trae). T35 compila, falta la prueba manual
-  (`EstudioConHistorialSeccion`; `ConsultaViewModel.guardarEstudio`/`flushEstudios` con espera de 600 ms, `Mutex` y
-  volcado en `onCleared` y al cerrar; lo pendiente se suelta recién guardado). Tanda C2 completa: falta reviewer.
-- Tanda C3: T36 hecha (`hcgeneral/FilasLaboratorio.kt`; "Elegir filas" solo en la HC general, C3-1; si lo
-  guardado oculta todas, `alternarFila` parte de "todas visibles"; botón "(1 oculta)" en singular).
-  T37 compila, falta la prueba manual (`LaboratorioSeccion`: `ElegirFilasDialog`; las ocultas no se pisan al guardar
-  porque `valores` arranca con toda la carga y `guardarLaboratorio` solo descarta vacíos).
-  T38 compila, falta la prueba manual (`theme/ColoresCelda.kt` + `CeldaEditable` en `FormFields.kt`, todas las
-  especialidades; foco claro 3,91:1, el más justo). Tanda C3 completa: falta reviewer y prueba manual.
-- Tanda C4 (varias cargas de laboratorio, solo HC general: C4-1 decidido): T39 hecha (`hcgeneral/CargasLaboratorio.kt`
-  + `ORDER BY fecha DESC, updated_at DESC`; sin él, a igual fecha SQLite devuelve el orden del índice/rowid). T40 compila, falta la prueba manual (rama `LaboratorioVariasCargas` en
-  `LaboratorioSeccion.kt`; la de pediatría intacta). Tanda C4 completa: falta reviewer y prueba manual.
-- Tanda C5 (serologías en grilla SI/NO; C5-1 a C5-4 decididos): T41 hecha (`ModoForm` en `SeccionDef`, `SiNoVacio.kt`
-  con `alternarSiNo`/`columnasPara`, `ColoresSiNo.kt`; foco por fuera del botón porque en oscuro no hay color a 3:1
-  contra tarjeta y relleno a la vez; el más justo, textoRelleno claro 4,84:1). T42 compila, falta la prueba manual
-  (composable `SiNoVacio` + `GrillaSiNo` en `FormSeccion.kt`; `modo` va antes de `onCambio` para no romper las
-  lambdas finales). Tanda C5 completa: falta reviewer y prueba manual.
-- Tanda C6 (Child-Pugh en tabla, C6-1 a C6-4 decididos): T43 hecha (`especialidades/clinica/ChildPugh.kt` +
-  `ChildPughTest`). T44 compila, falta la prueba manual (`core/ui` `OpcionElegible`, que usa `SiNoVacio`;
-  `ColoresSiNo.textoTotal`: Indigo en oscuro daba 1,74:1, va `texto`). Tanda C6 completa: falta reviewer y prueba manual.
-- Tanda C7 (motivo con consultas previas; C7-1 y C7-2 decididos): T45 hecha (`SeccionDef.conHistorial`, solo en el
-  motivo del catálogo; `valoresDeCampoDePaciente` + `observarValoresDeCampo`; `hcgeneral/TextoConHistorial.kt`). T46 compila, falta la
-  prueba manual (`CampoConHistorial` común a estudios y motivo; `TextoConHistorialSeccion`; `TextoSeccion` recibe `ui`).
-  Tanda C7 completa: falta reviewer y prueba manual.
+- HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
+  Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
+- Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
+  C a C7 (admin de perfiles, HC del médico, estudios con historial, filas de laboratorio, varias cargas, serologías
+  SI/NO, Child-Pugh, motivo con consultas previas): todas hechas, ver `specs/001-hc-configurable/tasks.md`.
+  La base local de hclinica tiene la carga inicial de perfiles aplicada (1 Clínica general, 2 Hepatología): no vaciarla.
+- Spec 002 parte 1: E1 (servidor, hclinica y hc_pediatria) y E2 (app: `PacientesHcApi`, `VinculoPacientes`,
+  `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
+  `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
+- Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
+  en hclinica y pediatría) y F2.1 a F2.5 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
+  `MarcadoEnfermedades`, `AdministrarEnfermedades`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
-  contesta 422 igual. La app (`claveDeNombre`) ignora tildes y ñ = n para avisar antes.
-- Spec 002 (HC general contra hclinica) en borrador.
-- Spec 002 parte 1 y 003 aprobadas (`648c763`). Tanda E1: E1.1 hecha (hclinica `6c7507f`: `PacienteVinculoReglas`
-  estática, con `elegible` y `comoLaWeb` además de lo del plan, + `ColumnasLegacy` + `PacienteVinculoReglasTest`). E1.2 hecha (`a7a4b67` `PacienteVinculoService`; la web
-  guarda sexo solo `M`/`F`, `X` → vacío; error extra `ocupado` si no se toma el `GET_LOCK`; la columna
-  `paciente_id_tobb` + índice ya existe en la base local, sin filas vinculadas). E1.3 hecha (`2eb1bdf`
-  `PacienteController` + `soloMedico`/`atiende`/`formatearPaciente`; `ocupado` → 503). E1.4 hecha (`cad1d2d`
-  sección "Pacientes" del md; humo con curl OK, incluido `503 ocupado` con un `GET_LOCK` tomado desde otra
-  conexión; base igual que antes, sin fichas vinculadas). E1.5 hecha (hc_pediatria `635a33a`:
-  `PacienteVinculoReglas` reducida a documento + elegible; elegida no elegible → `422 ficha_no_elegible`; E2E de
-  pediatría en verde; base `hc_pediatrica` igual que antes). Falta el reviewer de la tanda.
-- Tanda E2 (app, decisiones D1-D8 en `tasks.md`): E2.1 hecha (`PacientesHcApi.kt` con `PacientesHcApiRemota`
-  —`cuerpo`/`paginaDe`/`resolucionDe` internos para testear sin red— y `PacientesHcApis`; `HcResolverRespuesta`,
-  `HcCarteraPagina`; `HcApiClient.leerTodo`; `TobbException.candidatos` desde el 409; `PacientesDtoTest`).
-  E2.2 hecha (`hcgeneral/VinculoPacientes.kt` + `VinculoPacientesTest`; `NoSePudo(error: TobbException)`,
-  `FichaNoElegible` es `data object`; el pedido manda el documento recortado, no normalizado: lo normaliza la web).
-  E2.3 hecha (`hcgeneral/MotivoHc.kt` + `MotivoHcTest`; `MotivoHc(tipo, texto)`, texto "Historia clínica de <nombre>:
-  …", `Tipo` en el orden de prioridad de 003 RF-14; `ocupado`, 500 y desconocidos → `OTRO` con el mensaje de la web).
-  E2.4 hecha (`repos/PacientesHcRepository.kt` + `PacientesHcRepositoryTest`; corta por página vacía o `hayMas`
-  false; un error no Tobb da motivo `OTRO` vía `TobbException(0, "respuesta")`; el extra se reescribe sin `dirty` si
-  falta o es la misma ficha; `EXTRA_HC_PACIENTE_ID` duplicada con `HcPediatriaBackend` hasta la E2.6).
-  E2.5 hecha (`vinculo`/`elegirFicha`; pausa del `503` inyectable `esperar`, `ESPERA_OCUPADO` 2 s; solo traduce
-  `TobbException`, otro error sigue de largo; paciente ausente → `NoSePudo` `paciente_no_esta`, HC sin API → `sin_api`).
-  E2.6 hecha (`HcPediatriaBackend` delega en su `PacientesHcRepository`, constructor `internal` con `PacientesHcApi` para
-  `HcPediatriaVinculoTest`; `ElegirFicha`/`FichaDeOtroPaciente` se relanzan con el mismo status/código pero otro
-  mensaje; `dataModule(db, config, nombresHc)`; la lista llama a `sincronizarCarteras` y junta los motivos en `mensaje`
-  hasta la E2.7; E2E de pediatría en verde, `hc_pediatrica` limpia por id).
-  E2.7 compila (`PacientesListViewModel(…, medicoId, traerCarteras)` con `motivos: List<String>`, uno por HC, arriba de
-  la lista y sin "no hay pacientes" si está vacía; `MainShell` pasa `rol == Rol.MEDICO`; sin test de VM: no hay
-  `coroutines-test` en `features/`); falta la prueba manual del usuario.
-  E2.8 hecha (`HcClinicaPacientesE2ETest`, pide `-Psalud360.test.hc.dni` explícito; en verde contra la copia de
-  hclinica, base limpiada por `DELETE`). Tras el logout hclinica sigue aceptando el token por `salud360_token_cache`:
-  vaciarla. Tanda E2 completa: falta reviewer y prueba manual (RF-10, RF-14).
-- Spec 003: plan aprobado (`c470a85`, decisiones C1-C4 en `tasks.md`). Tanda F1: F1.1 hecha (hclinica `17836c5`:
-  `EnfermedadesReglas` pura + `EnfermedadesReglasTest`, cuya tabla de nombres va igual a `NombreEnfermedadTest`).
-  F1.2 hecha (hclinica `80f4a04`: `enfermedades` segunda en `CatalogoSecciones`; `config/catalogo` da 25).
-  F1.3 hecha (hclinica `3130820`: `EnfermedadesService`, errores por `error()` como `PacienteVinculoService`; el servicio
-  también controla ficha y cartera; upsert que no toca `updated_at` si ya estaba activa). Unique verificados.
-  F1.4 hecha (hclinica `478f25e`: `crear` + `mensaje()`; `creada`/`reutilizada` son opuestos; marcar va por
-  `marcar`, así que en una carrera `sin_marcar_por` puede ser `no_en_tu_lista`/`enfermedad_dada_de_baja`; en esta
-  MySQL `ß` = `ss` y `ａ` = `a` para la intercalación, no para la clave: sirven para probar el choque del `unique`).
-  F1.5 hecha (hclinica `48cec69`: `EnfermedadController` + 5 rutas; `tiene`/`en_lista` solo booleanos JSON, cuerpo
-  leído del JSON crudo por `TrimStrings`; token de admin de prueba emitido con `TokenService` en turnos y revocado).
-  F1.6 hecha (hclinica `ab0e191`: sección "Enfermedades" del md; humo con curl 56/56 OK, 429 al pedido 36 del
-  bucle; el throttle es por IP y cuenta todo el grupo `api`: en el humo, ~1,1 s entre pedidos; base limpia).
-  F1.7 hecha (hclinica `39d13cf`, hc_pediatria `72196ce`: `POST auth/salir` fuera del middleware, en
-  `AuthController@salir` + `TobbAuthService::olvidar`; curl OK en las dos, en pediatría con un token temporal
-  sembrado copiando la fila del médico; E2E de pediatría en verde y `hc_pediatrica` limpiada por id: ojo con el
-  orden de las FK al borrar, fotos → padres, `internaciones` antes que `antecedentes_personales`, `consultas` al
-  final). Tanda F1 completa: falta reviewer. Desde ahora `auth/salir` también vacía la caché de un token.
-  Tanda F2 (app, decisiones E1-E9 en `tasks.md`): F2.1 hecha (`hcgeneral/NombreEnfermedad.kt` + `NombreEnfermedadTest`;
-  `claveDeNombre` pasa por `nombreNormalizado`, solo los seis espacios de la spec: NBSP ya no se recorta; los tests de
-  perfiles no cambiaron). F2.2 hecha (`hcgeneral/EnfermedadesSeccion.kt` + `EnfermedadesSeccionTest`,
-  `ColumnasEnfermedadesTest` en `core/ui`; `ordenAlfabetico` compara claves por punto de código como `strcmp`;
-  "Datos" si oculta aunque esté en el perfil, al revés que los antecedentes de la 001). F2.3 hecha
-  (`hcgeneral/MotivosEnfermedades.kt` + `MotivosEnfermedadesTest`; 404/403 propios por código; `muestraCopia` = lugar 5).
-  F2.4 hecha (`hcgeneral/MarcadoEnfermedades.kt` + `MarcadoEnfermedadesTest`; extensiones de `EstadoMarcado` que
-  devuelven `PasoMarcado(estado, pedido)`; `ultimaEnviada` numera los pedidos y `siguienteSecuencia` es para F2.8;
-  `EnCamino` guarda el nombre y `sinRespuesta`; `red` = sin respuesta, `tobb_caido` = no previsto).
-  F2.5 hecha (`hcgeneral/AdministrarEnfermedades.kt` + `AdministrarEnfermedadesTest`; `ofrecerCrear` devuelve
-  `OfertaCrear(nombre, error)` con el error de RF-43; `pacienteParaCrear` → `ConFicha`/`SinMarcar(MotivoSinMarcar)`,
-  "no editable" gana; sin marcar y ya en la lista: "«X» ya estaba en tu lista. No se marcó al paciente …").
-- Los tokens de prueba de la copia servida de pediatría se sacaron del repo (`1c7ad61`, placeholders); siguen en
-  el historial de git (ya en `origin/main`). El 2026-10-20 se rotaron (solo local): los viejos ya no entran y los
-  nuevos están en `%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt` (fuera del repo).
+  contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
+  ignora tildes y ñ = n para avisar antes.
+- Los tokens de prueba de pediatría se sacaron del repo (`1c7ad61`, placeholders) pero siguen en el historial (ya en
+  `origin/main`). Rotados el 2026-10-20 (solo local).
 - El E2E de pediatría deja en `hc_pediatrica` una consulta de baja (y sus filas) y dos imágenes en
-  `public/img/salud360` por corrida: borrarlas por id después. Ya hay 5 consultas de baja de corridas viejas.
+  `public/img/salud360` por corrida: borrarlas por id. Orden de las FK al borrar: fotos → padres, `internaciones`
+  antes que `antecedentes_personales`, `consultas` al final. Ya hay 5 consultas de baja de corridas viejas.
+- Tras el logout, hclinica aceptaba el token por `salud360_token_cache`: vaciarla en las pruebas (desde F1.7
+  `POST auth/salir` también la vacía). Su throttle es por IP y cuenta todo el grupo `api` (~1,1 s entre pedidos).
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
   transcriptor) y turnos. Copias servidas: `HClinica-salud360` y `TurnosOnlineBB-salud360` (sin git; los commits se
   copian a mano; la de turnos ya no es igual a `main`). Comando de `devWeb` contra ellas en `AGENTS.md`.
+- `devWeb` no recompila solo (no es `-t`): para refrescarlo, `:composeApp:wasmJsDevelopmentExecutableCompileSync
+  -Pentorno=dev` con las mismas `-P` y webpack lo toma.
 - Bases `hc_clinica`, `turnosonlinebb` y `tobb` con datos reales: solo locales, nunca al repo.
 - Usuarios de prueba en `turnosonlinebb` local: un médico (vinculado en `hc_clinica`, con HC `clinica`) y un admin;
   las credenciales no van en el repo.
-- La licencia del médico de prueba en `hc_clinica` está extendida a propósito para las pruebas manuales del
-  usuario: no restaurarla. El respaldo para volver a como estaba, en
+- La licencia del médico de prueba en `hc_clinica` está extendida a propósito: no restaurarla. Respaldo en
   `C:\Users\flor\AppData\Local\Temp\opencode\respaldos\licencia6-antes-prueba-tandaC.sql`.
 - Las dos copias servidas comparten el entorno del proceso de Apache (una leía el `.env` de la otra): por eso tienen
-  `config:cache` (también la de pediatría desde E1.5). Después de tocar `.env` o `config/`: `php artisan config:cache` (no `config:clear`).
+  `config:cache`. Después de tocar `.env` o `config/`: `php artisan config:cache` (no `config:clear`).
 - El `.env` de la copia de hclinica tiene `SALUD360_TOBB_URL` a turnos local. Los `-P` de Gradle sí llegan a HC_URLS.
 - Nunca restaurar tablas con `DROP TABLE`.
 - `auth/login` de turnos devuelve el token en `access_token` (no `token`); `POST auth/logout` existe.
@@ -184,7 +81,8 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
   muestra lo que tiene la web, ni más ni menos (para la app manda la config de la app). Médico sin agenda igual que
   pediatría; secretarias, audio y HC digitalizada afuera; PDFs adentro. Perfiles 3 y 4 los arma el usuario.
 - 001 y 002 se entregan juntas (rama `hc-general`; push a main publica).
-- Endpoint nuevo en turnos para editar HC habilitadas: mismo servicio que `admin_hc_medico` (desactiva, no borra).
+- Endpoint nuevo en turnos para editar HC habilitadas (`PUT medicos/{id}/historias-clinicas`, solo admin): mismo
+  servicio que `admin_hc_medico` (desactiva, no borra); el HC del médico queda sin `dirty`.
 
 ## Aprendizajes y errores a evitar
 - Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto.
@@ -195,12 +93,13 @@ Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de regis
 - En la web el perfil 1 NO tiene motivo de consulta; telemedicina es igual para todos; perfiles 5 y 9 = 1.
 - En PowerShell no escribir markdown con here-strings: los backticks se toman como escapes. Usar el editor.
 - hclinica: Laravel 5.8 / PHP 7.3; la HC cambia según `users.perfil` (2 = hepatología). Producción:
-  `https://clinica.hclinicadigital.com`. Su API va con `throttle:60,1` por IP: tenerlo en cuenta en la 002.
-  Commits como rodri89.
+  `https://clinica.hclinicadigital.com`. Su API va con `throttle:60,1` por IP. Commits como rodri89.
 - PowerShell no distingue mayúsculas en variables (`$t` pisa `$T`): un logout falló así; tokens de turnos en
   `salud360_tokens` (revocar = borrar la fila). Quedan filas viejas de pruebas anteriores sin revocar.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose
   saltea la sección: el bug de Child-Pugh que no se pintaba).
+- Cargas de laboratorio: `ORDER BY fecha DESC, updated_at DESC`; sin el desempate, a igual fecha SQLite devuelve el
+  orden del índice/rowid.
 - El PHP del XAMPP es de 32 bits (`PHP_INT_SIZE` 4): `(int)` de números grandes satura en 2147483647.
 - phpunit en la copia servida: si un test falla, el printer se cae (`phpDocumentor` del `vendor` usa sintaxis PHP
   7.4 y XAMPP tiene 7.3); se ve `E`/`F` pero no el mensaje. Para verlo, llamar el código con `php -r`.
