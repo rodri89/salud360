@@ -8,11 +8,9 @@ registros de personas): el repo es público.
 - Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
   pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
-- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.5
-  hechas y commiteadas (último commit `a89c635`). F2.6 se cortó dos veces por reinicios del servidor: a medias y sin
-  commitear están `core/data/.../network/hc/EnfermedadesApi.kt`, `EnfermedadesDtos.kt` y el test
-  `commonTest/.../EnfermedadesDtoTest.kt` (escritos el 2026-10-21; no se sabe si compilan ni si pasan: revisarlos y
-  decidir si se siguen o se rehacen). Pendientes F2.7 a F2.10 y la tanda F3 (pantallas).
+- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.6
+  hechas y commiteadas (F2.6 = `EnfermedadesDtos`, `EnfermedadesApi` y `EnfermedadesDtoTest`; el último commit de
+  código está en `git log`). Pendientes F2.7 a F2.10 y la tanda F3 (pantallas).
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -37,8 +35,8 @@ registros de personas): el repo es público.
   `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
-  en hclinica y pediatría) y F2.1 a F2.5 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
-  `MarcadoEnfermedades`, `AdministrarEnfermedades`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
+  en hclinica y pediatría) y F2.1 a F2.6 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
+  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

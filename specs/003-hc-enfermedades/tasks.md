@@ -317,7 +317,7 @@ Reglas de la F2, además de las de arriba:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AdministrarEnfermedadesTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde. (RF-45, RF-46 y RF-48 se terminan de probar en F2.8.)
 
-- [ ] **F2.6. DTOs y `EnfermedadesApi`.** RF-50, RF-51, RF-52, RF-53, RF-54
+- [x] **F2.6. DTOs y `EnfermedadesApi`.** RF-50, RF-51, RF-52, RF-53, RF-54
   - `core/data/.../network/hc/EnfermedadesDtos.kt` (nuevo): los DTOs del plan con `@SerialName` en snake_case
     (`ya_en_lista`, `sin_marcar_por`, `en_lista`, `paciente_id`) según la sección "Enfermedades" de
     `hclinica/md/API_SALUD360_CLINICA.md`; `RespuestaCrearDto` suma `creada` (el servidor lo manda; el plan no lo
