@@ -8,9 +8,9 @@ registros de personas): el repo es público.
 - Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
   pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
-- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.6
-  hechas y commiteadas (F2.6 = `EnfermedadesDtos`, `EnfermedadesApi` y `EnfermedadesDtoTest`; el último commit de
-  código está en `git log`). Pendientes F2.7 a F2.10 y la tanda F3 (pantallas).
+- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.7
+  hechas y commiteadas (F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
+  `AuthRepository`; el último commit de código está en `git log`). Pendientes F2.8 a F2.10 y la tanda F3 (pantallas).
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -35,8 +35,9 @@ registros de personas): el repo es público.
   `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
-  en hclinica y pediatría) y F2.1 a F2.6 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
-  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
+  en hclinica y pediatría) y F2.1 a F2.7 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
+  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; base v8 con
+  `hc_enfermedades` y `repos/EnfermedadesRepository`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
@@ -94,6 +95,9 @@ registros de personas): el repo es público.
   `https://clinica.hclinicadigital.com`. Su API va con `throttle:60,1` por IP. Commits como rodri89.
 - PowerShell no distingue mayúsculas en variables (`$t` pisa `$T`): un logout falló así; tokens de turnos en
   `salud360_tokens` (revocar = borrar la fila). Quedan filas viejas de pruebas anteriores sin revocar.
+- SQLDelight con `generateAsync`: los `INSERT`/`DELETE` generados son `suspend` (los helpers que escriben también). Un
+  test que simula una base de versión anterior tiene que borrar todas las tablas que crean las migraciones siguientes
+  (si no, `CREATE TABLE` falla con "already exists").
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose
   saltea la sección: el bug de Child-Pugh que no se pintaba).
 - Cargas de laboratorio: `ORDER BY fecha DESC, updated_at DESC`; sin el desempate, a igual fecha SQLite devuelve el

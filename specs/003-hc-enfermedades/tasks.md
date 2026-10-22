@@ -335,7 +335,7 @@ Reglas de la F2, además de las de arriba:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EnfermedadesDtoTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde.
 
-- [ ] **F2.7. Migración `7.sqm`, copia en el dispositivo y borrado al cambiar de sesión.** RF-11, RF-30, RF-31,
+- [x] **F2.7. Migración `7.sqm`, copia en el dispositivo y borrado al cambiar de sesión.** RF-11, RF-30, RF-31,
   RF-32, RF-33, RF-34
   - `core/database`: `migrations/7.sqm` (v7 → v8, PD1) y `HcEnfermedades.sq` con la misma tabla `hc_enfermedades`
     del plan (sin `dirty` ni `deleted`) y las consultas `copia`, `guardar` (`INSERT OR REPLACE` con columnas
@@ -365,6 +365,12 @@ Reglas de la F2, además de las de arriba:
     en verde (rojo antes); `:core:data:jvmTest` completo en verde; `7.sqm` y la tabla de `HcEnfermedades.sq` son iguales
     (comparación de texto del `CREATE TABLE`); `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila (driver web con
     `generateAsync`).
+  - Hecho (2026-10-22). Quedó así: `EnfermedadesRepository(db, api, nombreHc, espera, scope)` con un `pedir…` por
+    endpoint (devuelve el `Deferred`), `esperar(pedido)` (`Ok` / `Error` / `SinRespuesta`) y `abrirSeccion` →
+    `CargaSeccion` (`Actual`, `SoloLectura`, `SinCopia`, `Motivo`); `AuthRepository.borrarCopiaEnfermedadesAlEntrar`
+    (`internal`). Sin `pacientesHc` en el constructor: el vínculo es del controlador (F2.8). Los mutadores de SQLDelight
+    son `suspend` (`generateAsync`). Para que `ConfigHcRepositoryTest` (base v6) siga migrando, su armado también borra
+    `hc_enfermedades` (la `7.sqm` la crea); `7.sqm` no lleva `IF NOT EXISTS` para ser igual al `.sq`.
 
 - [ ] **F2.8. Controlador de la sección y `DataModule`.** RF-8, RF-15, RF-21 a RF-28, RF-40, RF-41, RF-44, RF-45,
   RF-46, RF-48

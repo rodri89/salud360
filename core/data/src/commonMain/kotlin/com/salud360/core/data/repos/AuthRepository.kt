@@ -140,6 +140,8 @@ class AuthRepository(
 
     suspend fun logout() {
         db.authQueries.borrarSesion()
+        // RF-34: la copia de enfermedades es del médico que cerró sesión.
+        db.hcEnfermedadesQueries.borrarTodo()
         settings?.remove(CLAVE_SESION)
         api.token = null
         turnos.token = null
@@ -158,7 +160,18 @@ class AuthRepository(
         guardarSesion(nueva)
     }
 
+    /**
+     * RF-34: al entrar alguien, de la copia de enfermedades queda solo lo del médico que entra, con el mismo id que usa
+     * [ConfigHcRepository] (`PerfilMedico.medicoId`); el administrador y la secretaria no tienen copia propia y borran
+     * todo. `internal` para probarlo sin pasar por `login` ni `restaurar`, que piden a turnosonlinebb.
+     */
+    internal suspend fun borrarCopiaEnfermedadesAlEntrar(s: Sesion) {
+        val medicoId = s.medico?.medicoId
+        if (medicoId == null) db.hcEnfermedadesQueries.borrarTodo() else db.hcEnfermedadesQueries.borrarDeOtros(medicoId)
+    }
+
     private suspend fun guardarSesion(s: Sesion) {
+        borrarCopiaEnfermedadesAlEntrar(s)
         api.token = s.token
         turnos.token = s.token
         hcClients.values.forEach { it.token = s.token }
