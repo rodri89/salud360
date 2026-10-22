@@ -27,6 +27,7 @@ class CatalogoHcGeneralTest {
     // Copia de `CatalogoSecciones::SECCIONES` de hclinica: ids, orden y nombre por defecto ("Decidido" B1).
     private val catalogoServidor = listOf(
         "antecedentes_familiares" to "Antecedentes familiares",
+        "enfermedades" to "Enfermedades",
         "motivo_consulta" to "Motivo de consulta",
         "documentos" to "Adjuntos (PDF)",
         "laboratorio_general" to "Laboratorio general",
@@ -340,6 +341,19 @@ class CatalogoHcGeneralTest {
         assertEquals(setOf("child_pugh"), hcGeneralContribution.renderers.keys)
         assertEquals("child_pugh", catalogoHcGeneral.seccion("child_pugh")?.def?.renderKey)
         assertEquals(null, hepatologiaContribution.catalogo)
+    }
+
+    // RF-56: "Enfermedades" es una sección propia (CUSTOM), distinta de la legada de diagnósticos; su renderer llega en F3.4.
+    @Test
+    fun enfermedades_es_custom_segunda_y_no_es_diagnostico_ni_legada() {
+        val seccion = catalogoHcGeneral.seccion("enfermedades")!!
+        assertEquals(TipoSeccion.CUSTOM, seccion.def.tipo)
+        assertEquals(seccion.def.id, seccion.def.renderKey)
+        assertEquals("Enfermedades", seccion.def.titulo)
+        assertEquals(1, catalogoHcGeneral.secciones.indexOfFirst { it.id == "enfermedades" })
+        assertTrue(catalogoHcGeneral.legadas.none { it.id == "enfermedades" })
+        assertTrue(catalogoHcGeneral.secciones.none { it.id == SeccionesComunes.DIAGNOSTICO })
+        assertTrue(seccion.laboratorios.isEmpty() && seccion.registros.isEmpty() && seccion.antecedentes.isEmpty())
     }
 
     // "Decidido" C2: la legada de diagnósticos no hace copiar; la clínica médica de antes sí copiaba.

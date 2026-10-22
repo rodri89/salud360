@@ -9,6 +9,7 @@ import com.salud360.core.model.especialidad.ModoForm
 import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.SeccionCatalogo
 import com.salud360.core.model.especialidad.SeccionDef
+import com.salud360.core.model.especialidad.TipoSeccion
 import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas as G
 
@@ -48,7 +49,7 @@ private fun deHepatologia(id: String, titulo: String): SeccionCatalogo {
 }
 
 /**
- * Las 24 secciones de `CatalogoSecciones.php` de hclinica, con sus ids, en su orden y con sus nombres por defecto.
+ * Las 25 secciones de `CatalogoSecciones.php` de hclinica, con sus ids, en su orden y con sus nombres por defecto.
  * Las legadas (diagnósticos, audio, fotos, antecedentes personales) no van en perfiles: solo muestran datos viejos de
  * clínica y hepatología (RF-22, RF-30).
  */
@@ -59,6 +60,9 @@ val catalogoHcGeneral = CatalogoHc(
             G.seccionFamiliares.comoCatalogo("Antecedentes familiares"),
             antecedentes = clinicaMedica.antecedentes.filter { it.categoria == "familiares" },
         ),
+        // Segunda, como en el catálogo de hclinica. Su renderer se registra con la pantalla (spec 003, F3.4): hasta
+        // entonces un perfil que la tenga muestra "Sección no disponible". No es la legada de diagnósticos (RF-56).
+        SeccionCatalogo(SeccionDef("enfermedades", "Enfermedades", TipoSeccion.CUSTOM, renderKey = "enfermedades", icono = "diagnostico")),
         SeccionCatalogo(G.motivo.copy(conHistorial = true)),
         SeccionCatalogo(G.documentos.comoCatalogo("Adjuntos (PDF)")),
         SeccionCatalogo(hepatologia.seccion("laboratorio_general")!!, laboratorios = listOf(labGeneralClinica)),

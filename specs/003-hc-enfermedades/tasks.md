@@ -410,7 +410,7 @@ Reglas de la F2, además de las de arriba:
     discreparía de la web si se tocó esa misma casilla en medio; no debería darse con la ventana de administrar abierta (es
     modal). Si se quisiera cerrar del todo, haría falta una transición propia en `MarcadoEnfermedades` (no se agregó).
 
-- [ ] **F2.9. "Enfermedades" en el catálogo de la app.** RF-1, RF-2, RF-3, RF-56, RF-57
+- [x] **F2.9. "Enfermedades" en el catálogo de la app.** RF-1, RF-2, RF-3, RF-56, RF-57
   - `especialidades/clinica/HcGeneral.kt`: `SeccionCatalogo(SeccionDef("enfermedades", "Enfermedades",
     TipoSeccion.CUSTOM, renderKey = "enfermedades", icono = …))` segunda, entre `antecedentes_familiares` y
     `motivo_consulta` (PD9); el KDoc pasa de "24 secciones" a 25. El renderer se registra en F3.4: hasta entonces, un
@@ -421,6 +421,10 @@ Reglas de la F2, además de las de arriba:
     y los perfiles iniciales sin cambios (RF-57). RF-3: sin código; `CatalogoAdminTest` existente en verde.
   - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest` en verde (rojo antes por el catálogo);
     `.\gradlew :core:data:jvmTest` en verde; `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` compila.
+  - Hecho (2026-10-22): rojo previo en `ids_y_nombres_por_defecto_...` y en el caso nuevo
+    `enfermedades_es_custom_segunda_y_no_es_diagnostico_ni_legada`; luego los tres comandos en verde (`:core:data:jvmTest`
+    con `--rerun`, porque `core:data` no depende de `clinica`). Ícono `"diagnostico"` (el de la sección que reemplaza; no hay
+    ícono de enfermedades en `Iconos.kt` y no se agregó uno). Ningún test de otro módulo cambió de resultado.
 
 - [ ] **F2.10. E2E contra la copia local de hclinica.** RF-15, RF-41, RF-44, RF-51, RF-53, RF-54
   - `core/data/src/jvmTest/.../repos/HcClinicaEnfermedadesE2ETest.kt` (nuevo): se saltea solo sin
