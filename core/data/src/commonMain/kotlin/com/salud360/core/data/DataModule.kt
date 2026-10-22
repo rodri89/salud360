@@ -2,6 +2,7 @@ package com.salud360.core.data
 
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.EnfermedadesApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
 import com.salud360.core.data.network.hc.PacientesHcApiRemota
@@ -11,6 +12,7 @@ import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.repos.ConfigHcApiRemota
 import com.salud360.core.data.repos.ConfigHcRepository
+import com.salud360.core.data.repos.EnfermedadesRepository
 import com.salud360.core.data.repos.HcBackends
 import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
@@ -97,7 +99,11 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     }
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
-    single { AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad) }
+    // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
+    single {
+        val enfermedades = get<EnfermedadesRepository>()
+        AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad, enfermedades::cerrarSesion)
+    }
     single { PacientesRepository(get()) }
     single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
     single { AgendaTurnosOnline(get(), get()) }
@@ -107,4 +113,13 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     // Sin URL de hclinica en el entorno los dos se comportan como sin conexión.
     single { ConfigHcRepository(get(), get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ConfigHcApiRemota(it) }) }
     single { PerfilesHcRepository(get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]) }
+    // Enfermedades de la HC general (spec 003): también fuera de `HcBackends`; nunca pasan por `HcApiSync` ni `SyncEngine`.
+    // El controlador de cada consulta lo arma su ViewModel con `PacientesHcRepository`.
+    single {
+        EnfermedadesRepository(
+            get(),
+            get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { EnfermedadesApiRemota(it) },
+            nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
+        )
+    }
 }

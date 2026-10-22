@@ -27,6 +27,10 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -75,6 +79,10 @@ sealed interface CargaSeccion {
  * La copia se reemplaza por parte solo con una respuesta correcta (también una lista vacía, RF-33); un error nunca la
  * toca, salvo `403 fuera_de_cartera`, que borra la sección de esa ficha (RF-11).
  *
+ * Cerrar sesión con un pedido en camino (E12): [cerrarSesion] cambia la "generación" y un pedido solo toca la copia si
+ * sigue en la generación en que salió, así una respuesta lenta que llega después del `logout` no reescribe lo que
+ * `logout` acaba de borrar (RF-34).
+ *
  * @param api null cuando el entorno no tiene URL de hclinica: se trata como sin conexión, como [ConfigHcRepository].
  * @param nombreHc nombre visible de la HC general, para los motivos.
  * @param scope donde corren los pedidos; tiene que sobrevivir al tiempo de espera.
@@ -82,12 +90,27 @@ sealed interface CargaSeccion {
 class EnfermedadesRepository(
     private val db: Salud360Db,
     private val api: EnfermedadesApi?,
-    private val nombreHc: String,
+    val nombreHc: String,
     private val espera: Duration = ESPERA,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val log = Logger.withTag("EnfermedadesRepository")
     private val q get() = db.hcEnfermedadesQueries
+
+    /** Sube con cada [cerrarSesion]; cada pedido recuerda la de cuando salió. */
+    private val generacion = MutableStateFlow(0L)
+
+    /** Hace de a uno "comprobar la generación y escribir" y [cerrarSesion], así nada se escribe después de ella. */
+    private val guardia = Mutex()
+
+    /**
+     * Se cerró la sesión (E12): lo que está en camino ya no toca la copia. Lo llama `AuthRepository.logout` antes de
+     * borrarla. Espera a que termine la escritura que esté en curso, así el borrado de `logout` va siempre después. No
+     * cancela los pedidos ni inutiliza el repositorio: los que salgan después, con la sesión nueva, guardan normal.
+     */
+    suspend fun cerrarSesion() {
+        guardia.withLock { generacion.update { it + 1 } }
+    }
 
     // ---------- pedidos ----------
 
@@ -139,13 +162,25 @@ class EnfermedadesRepository(
         val motivo = error?.let { motivoDeError(it, nombreHc) }
             ?: MotivoEnfermedades.General(MotivoHc(MotivoHc.Tipo.SIN_CONEXION, AVISO_SIN_CONEXION))
         if (!muestraCopia(motivo)) return CargaSeccion.Motivo(motivo)
-        val sinConexion = motivo is MotivoEnfermedades.General && motivo.motivo.tipo == MotivoHc.Tipo.SIN_CONEXION
         val estado = copia()
         return when {
-            estado != null -> CargaSeccion.SoloLectura(estado, if (sinConexion) AVISO_SIN_CONEXION else motivo.texto)
-            else -> CargaSeccion.SinCopia(if (sinConexion) TEXTO_HACE_FALTA_CONEXION else motivo.texto)
+            estado != null -> CargaSeccion.SoloLectura(estado, if (esSinConexion(motivo)) AVISO_SIN_CONEXION else motivo.texto)
+            else -> cargaSinCopia(motivo)
         }
     }
+
+    /**
+     * El vínculo del paciente con su ficha no se pudo resolver (RF-8 a RF-10): el [motivo] si no muestra enfermedades, o
+     * (sin conexión o error no previsto) RF-31, porque sin ficha no hay copia que mostrar.
+     */
+    fun cargaSinFicha(motivo: MotivoEnfermedades): CargaSeccion =
+        if (muestraCopia(motivo)) cargaSinCopia(motivo) else CargaSeccion.Motivo(motivo)
+
+    private fun cargaSinCopia(motivo: MotivoEnfermedades) =
+        CargaSeccion.SinCopia(if (esSinConexion(motivo)) TEXTO_HACE_FALTA_CONEXION else motivo.texto)
+
+    private fun esSinConexion(motivo: MotivoEnfermedades) =
+        motivo is MotivoEnfermedades.General && motivo.motivo.tipo == MotivoHc.Tipo.SIN_CONEXION
 
     // ---------- copia ----------
 
@@ -192,28 +227,32 @@ class EnfermedadesRepository(
         pedido: suspend (EnfermedadesApi) -> T,
         alFallar: suspend (TobbException) -> Unit = {},
         guardar: suspend (T) -> Unit,
-    ): Deferred<ResultadoPedido<T>> = scope.async {
-        val api = api
-            ?: return@async ResultadoPedido.Error(TobbException(0, "red", "Este entorno no tiene configurada la historia clínica general"))
-        val valor = try {
-            pedido(api)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TobbException) {
-            tocarCopia("actualizar") { alFallar(e) }
-            return@async ResultadoPedido.Error(e)
-        } catch (e: Throwable) {
-            return@async ResultadoPedido.Error(
-                TobbException(0, "respuesta", "No se pudo leer la respuesta de enfermedades: ${e.message ?: "error"}"),
-            )
+    ): Deferred<ResultadoPedido<T>> {
+        val salio = generacion.value
+        return scope.async {
+            val api = api
+                ?: return@async ResultadoPedido.Error(TobbException(0, "red", "Este entorno no tiene configurada la historia clínica general"))
+            val valor = try {
+                pedido(api)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TobbException) {
+                tocarCopia("actualizar", salio) { alFallar(e) }
+                return@async ResultadoPedido.Error(e)
+            } catch (e: Throwable) {
+                return@async ResultadoPedido.Error(
+                    TobbException(0, "respuesta", "No se pudo leer la respuesta de enfermedades: ${e.message ?: "error"}"),
+                )
+            }
+            tocarCopia("guardar", salio) { guardar(valor) }
+            ResultadoPedido.Ok(valor)
         }
-        tocarCopia("guardar") { guardar(valor) }
-        ResultadoPedido.Ok(valor)
     }
 
-    private suspend fun tocarCopia(que: String, bloque: suspend () -> Unit) {
+    /** Escribe en la copia solo si no se cerró la sesión desde que [generacionDelPedido] salió (E12). */
+    private suspend fun tocarCopia(que: String, generacionDelPedido: Long, bloque: suspend () -> Unit) {
         try {
-            bloque()
+            guardia.withLock { if (generacionDelPedido == generacion.value) bloque() }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

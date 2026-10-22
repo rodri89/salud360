@@ -59,6 +59,11 @@ class AuthRepository(
      * la identidad única: esas APIs no tienen login, validan este token contra turnos.
      */
     private val hcClients: Map<String, HcApiClient> = emptyMap(),
+    /**
+     * Se llama al empezar [logout], antes de borrar nada: la copia de enfermedades deja de aceptar las respuestas de los
+     * pedidos que ya salieron (E12, `EnfermedadesRepository.cerrarSesion`).
+     */
+    private val alCerrarSesion: suspend () -> Unit = {},
 ) {
     private val importador = TurnosImportador(db)
     private val _sesion = MutableStateFlow<Sesion?>(null)
@@ -139,6 +144,7 @@ class AuthRepository(
     suspend fun resolverPerfilLocal(usuario: Usuario): Sesion? = resolverPerfil(db, usuario)
 
     suspend fun logout() {
+        alCerrarSesion()
         db.authQueries.borrarSesion()
         // RF-34: la copia de enfermedades es del médico que cerró sesión.
         db.hcEnfermedadesQueries.borrarTodo()

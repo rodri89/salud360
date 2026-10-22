@@ -8,9 +8,10 @@ registros de personas): el repo es público.
 - Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
   pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
-- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.7
+- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.8
   hechas y commiteadas (F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
-  `AuthRepository`; el último commit de código está en `git log`). Pendientes F2.8 a F2.10 y la tanda F3 (pantallas).
+  `AuthRepository`; F2.8 = `EnfermedadesControlador`, `DataModule` y E12, la guardia contra respuestas lentas tras el
+  `logout`; el último commit de código está en `git log`). Pendientes F2.9, F2.10 y la tanda F3 (pantallas).
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -35,9 +36,11 @@ registros de personas): el repo es público.
   `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
-  en hclinica y pediatría) y F2.1 a F2.7 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
+  en hclinica y pediatría) y F2.1 a F2.8 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
   `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; base v8 con
-  `hc_enfermedades` y `repos/EnfermedadesRepository`). Decisiones C1-C4 y E1-E11 en `tasks.md`.
+  `hc_enfermedades` y `repos/EnfermedadesRepository`; `repos/EnfermedadesControlador` con dos `StateFlow`: sección y
+  administrar). Decisiones C1-C5 y E1-E12 en `tasks.md`. El ViewModel de F3 arma el controlador con
+  `EnfermedadesRepository` y `PacientesHcRepository` (de Koin) y su `viewModelScope`.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
@@ -98,6 +101,11 @@ registros de personas): el repo es público.
 - SQLDelight con `generateAsync`: los `INSERT`/`DELETE` generados son `suspend` (los helpers que escriben también). Un
   test que simula una base de versión anterior tiene que borrar todas las tablas que crean las migraciones siguientes
   (si no, `CREATE TABLE` falla con "already exists").
+- Un pedido que sale antes del `logout` y llega después no debe tocar la copia local: `AuthRepository.logout` llama a
+  `alCerrarSesion` (= `EnfermedadesRepository.cerrarSesion`, generación + `Mutex`) antes de borrar (E12). Algo parecido
+  habría que hacer si otra copia local se llena desde pedidos en vuelo.
+- Tests con `espera` corta (~100 ms) del repositorio de enfermedades: solo donde se prueba el tiempo cumplido; el primer
+  pedido de una corrida (carga de clases) puede excederla bajo carga y dejar la sección en solo lectura.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose
   saltea la sección: el bug de Child-Pugh que no se pintaba).
 - Cargas de laboratorio: `ORDER BY fecha DESC, updated_at DESC`; sin el desempate, a igual fecha SQLite devuelve el

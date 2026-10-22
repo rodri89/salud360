@@ -372,7 +372,7 @@ Reglas de la F2, además de las de arriba:
     son `suspend` (`generateAsync`). Para que `ConfigHcRepositoryTest` (base v6) siga migrando, su armado también borra
     `hc_enfermedades` (la `7.sqm` la crea); `7.sqm` no lleva `IF NOT EXISTS` para ser igual al `.sq`.
 
-- [ ] **F2.8. Controlador de la sección y `DataModule`.** RF-8, RF-15, RF-21 a RF-28, RF-40, RF-41, RF-44, RF-45,
+- [x] **F2.8. Controlador de la sección y `DataModule`.** RF-8, RF-15, RF-21 a RF-28, RF-40, RF-41, RF-44, RF-45,
   RF-46, RF-48
   - `repos/EnfermedadesControlador.kt` (nuevo, coroutines sin Compose), como el plan: `StateFlow` con el estado de la
     sección; `abrir()`, `elegirFicha(id)`, `tocar(id, tiene)`, `reintentar()`, `abrirAdministrar()`, `agregar`,
@@ -392,6 +392,23 @@ Reglas de la F2, además de las de arriba:
     (RF-36).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EnfermedadesControladorTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde; `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` compila.
+  - Hecho (2026-10-22). Quedó así: `EnfermedadesControlador(repo, pacientesHc, scope, medicoId, pacienteId, editable: () ->
+    Boolean)` con dos `StateFlow` (`estado: SeccionEnfermedadesUi` y `administrar: AdministrarEnfermedadesUi`, que además
+    lleva lo `buscado`, RF-46) y `puedeAdministrar()`. Las funciones no bloquean (lanzan en el `scope`). Detalles que la
+    tarea no fijaba: (a) la `espera` no es un parámetro del controlador: la única es la del repositorio
+    (`esperar`), así no hay dos tiempos; (b) `pacientesHc` es del controlador, no del repositorio (como dejó F2.7); (c) el
+    repositorio suma `nombreHc` público y `cargaSinFicha(motivo)` (vínculo sin resolver: motivo, o RF-31 si es sin conexión,
+    porque sin ficha no hay copia); (d) una respuesta de un cambio de la lista con `seccion` pasa por `confirmado(secuencia,
+    enfermedadId, estado)` con una secuencia reservada con `pedirEstado()`; (e) un rechazo al pedir el estado que no es de
+    lugar 5 (p. ej. `fuera_de_cartera`) muestra ese motivo en lugar de las casillas, y uno de lugar 5 es "sin respuesta"
+    (RF-28); (f) una respuesta tardía del estado se aplica pero sigue en solo lectura. Rojo previo: el test no compilaba
+    (`Unresolved reference 'EnfermedadesControlador'`, y `alCerrarSesion`/`cerrarSesion` de E12); E12 además se probó con una
+    sonda temporal sobre el código de F2.7 (esperaba 0 filas en `hc_enfermedades`, había 1) y, ya implementado, anulando
+    la guardia a propósito (el test de E12 falla con "esperaba 0, había 2"); la sonda y la anulación no quedaron.
+    Límite conocido: una confirmación de un cambio de la lista que llega descartada (más vieja que lo aplicado) deja la
+    casilla de esa enfermedad con lo que dijo esa respuesta (misma regla que `confirmado` para los toques), que solo
+    discreparía de la web si se tocó esa misma casilla en medio; no debería darse con la ventana de administrar abierta (es
+    modal). Si se quisiera cerrar del todo, haría falta una transición propia en `MarcadoEnfermedades` (no se agregó).
 
 - [ ] **F2.9. "Enfermedades" en el catálogo de la app.** RF-1, RF-2, RF-3, RF-56, RF-57
   - `especialidades/clinica/HcGeneral.kt`: `SeccionCatalogo(SeccionDef("enfermedades", "Enfermedades",
@@ -438,5 +455,19 @@ Decidido (2026-10-21, coordinador):
 - E10 (decisión de F2.5, aceptada) Crear con una enfermedad ya en la lista y sin marcar al paciente: «X» ya estaba en
   tu lista. No se marcó al paciente porque …
 - E11 (decisión de F2.5, aceptada) Crear una enfermedad nueva y marcada al paciente: sin aviso.
+- E12 (2026-10-22, incluida por el usuario en F2.8; hueco que dejó F2.7) Una respuesta lenta que llega después del `logout`
+  no reescribe la copia. Solución: `EnfermedadesRepository` tiene una "generación" (`MutableStateFlow<Long>`) que cada
+  pedido recuerda al salir y un `Mutex`; un pedido solo toca la copia si sigue en su generación, comprobándolo y
+  escribiendo dentro del `Mutex`; `cerrarSesion()` toma el `Mutex` y sube la generación, y `AuthRepository.logout` la llama
+  antes de borrar (parámetro nuevo `alCerrarSesion`, con valor por defecto; `DataModule` le pasa
+  `EnfermedadesRepository::cerrarSesion`). Por qué esto y no cancelar el scope: el repositorio es un singleton y su scope
+  tiene que servir a la sesión siguiente (cancelarlo lo inutilizaría; `cancelChildren` no frena una escritura ya empezada
+  ni a un pedido de la sesión nueva que salga justo después). Por qué no comprobar la sesión leyendo `sesion` de la base:
+  comprobar y escribir serían dos pasos separados (y con el driver web asíncrono otro `logout` puede colarse en el medio),
+  mientras que con el `Mutex` es "o la escritura terminó antes de `cerrarSesion`, y el borrado de `logout` va después, o
+  ve la generación nueva y no escribe". Los pedidos que ya salieron igual terminan y el controlador los muestra
+  (la pantalla ya no está en pantalla al cerrar sesión); solo se evita tocar el disco. No se cubre el cambio de médico sin
+  `logout` (no hay camino en la app); `guardarSesion` sigue con su `borrarDeOtros`. Test:
+  `EnfermedadesControladorTest.una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia`.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
