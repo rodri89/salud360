@@ -524,3 +524,428 @@ Decidido (2026-10-21, coordinador):
   `EnfermedadesControladorTest.una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia`.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+Tanda F2 validada por el reviewer el 2026-10-23: **APROBADA CON OBSERVACIONES**; las observaciones se cerraron en F2.11
+(commit `35d0529`). Lo que dejó "Para la tanda F3" está incorporado en la tanda de abajo.
+
+## Tanda F3 — Pantallas  ✔ aprobada por el usuario el 2026-10-23
+
+Propuesta redactada el 2026-10-23; las decisiones de diseño quedaron cerradas ese mismo día (sección "Decididas" del
+final) y el usuario aprobó las tareas ese día. Sección "App → Pantallas" del plan. Numeración
+del plan (F3.1 a F3.8); F3.4 se parte en F3.4a/b/c para que cada tarea entre en 20-30 min y la lógica de "qué se ve"
+quede en `core/data` con test (constitución, principio 4). Son 10 tareas.
+
+Reglas de la F3, además de las de arriba y las de la F2:
+- **Pantallas finitas, decisiones en `core/data`**: no hay tests de Compose en el repo (ni `compose.uiTest` ni fuente de
+  test en `features/hc`; agregarlos sería una dependencia nueva: no). Una pantalla se verifica con (1) toda decisión de
+  "qué se ve" movida a una función pura con test en `commonTest` (`.\gradlew :core:data:jvmTest`), (2) compilación
+  (`.\gradlew :features:hc:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev`) y (3) la
+  checklist manual del usuario de F3.7. Un test de pantalla "con Compose" no es un criterio de "Hecho cuando".
+- **Tests primero** para lo puro (se ve en rojo, después en verde), como en F2. Al terminar cada tarea, además del comando
+  de la tarea: `.\gradlew :core:data:jvmTest :core:ui:jvmTest :especialidades:clinica:jvmTest` en verde y
+  `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila.
+- Los **textos de la spec** van como constantes en `core/data` (como `TEXTO_SIN_MARCABLES`), no como literales en la
+  pantalla. Los textos que la spec no fija (rótulos de la ventana, "Elegir", "Cargando…": lista final en "Decididas", P6)
+  van como literales en el composable que los usa, exactamente como están escritos ahí.
+- **Leer siempre con `collectAsState`**: el renderer no usa `ctx.valor` ni `ctx.setValor` (bug de Child-Pugh en MEMORY) y
+  nunca llama al controlador desde el autoguardado.
+- Una tarea por vez, un commit por tarea (`hc: …`, `ui: …`, `datos: …`) con `git commit -F <archivo>` (archivo de mensaje
+  sin BOM), como `rodri89`, sin push. Sin tokens ni datos reales en tests, docs ni mensajes. Todo `devWeb` y toda
+  compilación web contra el entorno dev (`-Pentorno=dev`); no matar el `devWeb` del usuario.
+- Cualquier camino que la tarea encuentre y que contradiga la spec o el plan: parar y preguntar (principio 1).
+
+- [ ] **F3.1. `CasillaElegible` (core/ui).** RF-20, RF-21 (marca "Guardando…"), RF-22
+  - `core/ui/src/commonMain/kotlin/com/salud360/core/ui/components/CasillaElegible.kt` (nuevo), al lado de
+    `OpcionElegible.kt`: `CasillaElegible(nombre: String, marcada: Boolean, onCambio: (Boolean) -> Unit, modifier:
+    Modifier = Modifier, habilitada: Boolean = true, marca: String? = null, colores: ColoresSiNo =
+    coloresSiNo(LocalIsDarkTheme.current))`. `toggleable(value = marcada, enabled = habilitada, role = Role.Checkbox,
+    interactionSource, indication = null, onValueChange = onCambio)` (el lector anuncia el nombre y "marcada"/"sin
+    marcar"; tabulador y espacio la tocan). Alto y ancho mínimos de 48 dp. Mismo aspecto y **mismos `ColoresSiNo`** que
+    `OpcionElegible` (marcada = relleno + tilde, no solo color; foco de 2 dp por fuera): no se agregan colores. El nombre
+    se ve completo (sin `maxLines`), en las líneas que haga falta. `marca` ("Guardando…") va debajo del nombre y es parte
+    del mismo nodo semántico. `habilitada = false` no atenúa los colores (el estado elegido tiene que seguir leyéndose
+    mientras el pedido está en camino); solo ignora toques. Filas parejas: quien la usa le da `weight(1f)` y
+    `fillMaxHeight()` dentro de un `Row` con `IntrinsicSize.Min`, como la tabla de `ChildPughSeccion`.
+  - Sin tests nuevos: no tiene lógica y no suma colores, así que `ColoresSiNoTest` (contraste) sigue siendo el que vale.
+    El texto "Guardando…" llega por parámetro (core/ui no depende de core/data). El tamaño táctil, el foco y el lector se
+    verifican en F3.7 (tanda M5).
+  - Hecho cuando: `.\gradlew :core:ui:jvmTest` en verde; `.\gradlew :core:ui:compileKotlinJvm` y
+    `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` compilan; `git diff --stat` muestra solo el archivo nuevo;
+    buscar `Role.RadioButton`, `selectable(` y `Color(0x` en el archivo no da resultados; `OpcionElegible.kt` sin cambios.
+
+- [ ] **F3.2. "Elegí la ficha del paciente" (`ElegirFichaPaciente`).** RF-9
+  - `core/data/.../hcgeneral/FichaCandidata.kt` (nuevo, puro): `lineaDeCandidata(c: HcPacienteCandidato)` →
+    `LineaCandidata(nombre, documento, nacimiento: String?)`: nombre = `"<nombre> <apellido>"` recortado, documento = `dni`,
+    nacimiento = `dd/MM/aaaa` desde el `yyyy-MM-dd` de la web; sin fecha o ilegible → `null` (no se inventa texto; la tarjeta no muestra esa línea).
+    No se muestra `cantidad_consultas` (la spec pide nombre, apellido, documento y fecha de nacimiento).
+  - `FichaCandidataTest` (nuevo, commonTest): formato de fecha, sin fecha, fecha ilegible, nombre o apellido vacío.
+  - `features/hc/src/commonMain/.../secciones/ElegirFichaPaciente.kt` (nuevo, reutilizable por la 002, sin nada de
+    enfermedades): `ElegirFichaPaciente(titulo: String, candidatas: List<HcPacienteCandidato>, habilitado: Boolean,
+    onElegir: (Long) -> Unit)`. El título es `MotivoEnfermedades.ElegirFicha.texto` ("Elegí la ficha del paciente"), pasado
+    por parámetro. Una tarjeta por candidata (con `lineaDeCandidata`) y un botón **"Elegir"** de al menos 48 dp,
+    deshabilitado con `habilitado = false` (la sección lo apaga mientras `cargando`).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*FichaCandidataTest*'` en verde (rojo antes);
+    `:core:data:jvmTest` completo en verde; `.\gradlew :features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan; buscar `Enfermedad` en `ElegirFichaPaciente.kt` no da
+    resultados (reutilizable).
+
+- [ ] **F3.3. Acceso por sesión, `EnfermedadesViewModel` y `HcModule`.** RF-4, RF-8, RF-15, RF-35
+  - **Corrige al plan** (ver "Discrepancias"): el `medicoId` de la sección es `PerfilMedico.medicoId` **de la sesión**, no
+    el que le llega a `ConsultaScreen` (en `MainShell.kt:281` es el médico que eligió la secretaria, o `usuario.id` del
+    administrador); por eso `ConsultaViewModel.medicoId` **no** pasa a `val` pública.
+  - `core/data/.../hcgeneral/AccesoEnfermedades.kt` (nuevo, puro): `medicoParaEnfermedades(s: Sesion): Id?` (solo si
+    `usuario.rol == MEDICO` y `medico != null` → `medico.medicoId`; administrador y secretaria → `null`, aunque tengan un
+    médico elegido, RF-4); `consultaEditable(soloLectura: Boolean, medicoDeLaConsulta: Id, medicoPropio: Id?): Boolean`
+    (abierta y propia, RF-35); `visibleParaSesion(idSeccion: String, medicoPropio: Id?): Boolean` (`enfermedades` solo con
+    médico propio; el resto, siempre).
+  - `AccesoEnfermedadesTest` (nuevo, commonTest): médico → su `medicoId`; secretaria (con y sin `medico` cargado) y
+    administrador → `null`; editable: abierta propia sí, cerrada no, de otro médico no, sin médico propio no;
+    `visibleParaSesion` con y sin médico y con otra sección.
+  - `features/hc/.../EnfermedadesViewModel.kt` (nuevo): `EnfermedadesViewModel(repo: EnfermedadesRepository, pacientesHc:
+    PacientesHcRepository, auth: AuthRepository, pacienteId: Id)` (de Koin y de `parametersOf(pacienteId)`). `val medicoId:
+    Id? = medicoParaEnfermedades(sesión actual)`; `val controlador: EnfermedadesControlador?` (`null` si `medicoId` es
+    `null`; si no, con `viewModelScope`, `medicoId` y `editable = { editable }`); `@Volatile var editable: Boolean`
+    (no observable: la pantalla lo actualiza con `SideEffect`; el controlador lo lee en cada uso); `var guardadoVisto:
+    Int` (último contador de "Guardado" ya mostrado, para que cambiar de pestaña no lo repita). Nada de lógica propia.
+  - `HcModule.kt`: `viewModel { (pacienteId: Id) -> EnfermedadesViewModel(get(), get(), get(), pacienteId) }`; la pantalla
+    lo pide con `koinViewModel(key = "enfermedades-$consultaId") { parametersOf(pacienteId) }` (así "Datos" y la sección
+    comparten controlador y un solo pedido).
+  - `ConsultaViewModel`: recibe `AuthRepository` (Koin `get()`; ajustar la línea de `HcModule`) y, en `pestanias(ui)`, el
+    predicado de `layoutConsulta` suma `visibleParaSesion(id, medicoPropio)`: una secretaria o un administrador no ven la
+    pestaña ni la sección (RF-4), en lugar de una pestaña vacía.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AccesoEnfermedadesTest*'` en verde (rojo antes); `:core:data:jvmTest`
+    completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan;
+    `ConsultaViewModel.medicoId` sigue `private`; buscar `ctx.valor`, `setValor` y `HcApiSync` en `EnfermedadesViewModel.kt`
+    no da resultados; la app arranca (Koin resuelve el ViewModel nuevo: se mira en la primera apertura de F3.7).
+
+- [ ] **F3.4a. Panel de la sección (lógica pura).** RF-9 a RF-14, RF-18, RF-19, RF-21, RF-24, RF-28 a RF-31, RF-35, RF-37
+  - `core/data/.../repos/PanelEnfermedades.kt` (nuevo, junto a `SeccionEnfermedadesUi`, para no hacer que `hcgeneral`
+    importe `repos`): constantes de la spec `TEXTO_GUARDANDO` ("Guardando…", RF-21), `TEXTO_GUARDADO` ("Guardado",
+    RF-24), `TEXTO_REINTENTAR` ("Reintentar", RF-30) y `TEXTO_ADMINISTRAR` ("Administrar enfermedades", RF-18/RF-37);
+    `sealed interface PanelEnfermedades` y `panelDeSeccion(ui: SeccionEnfermedadesUi, editable: Boolean): PanelEnfermedades`
+    (firma exacta a definir en la tarea) con estos casos, en el orden de RF-14:
+    1. `Cargando`: `ui.cargando` y todavía no hay vista, motivo ni texto sin copia.
+    2. `ElegirFicha(candidatas, habilitado = !ui.cargando)`: el motivo mostrado es `ElegirFicha` (RF-9), con `administrar`.
+    3. `Motivo(texto, reintentar, administrar)`: cualquier otro motivo (RF-10 a RF-13, también el rechazo de un toque con
+       motivo, RF-27); `administrar = puedeAdministrar(editable, true, ui.conConexion, motivo)`, o sea sí con 7 a 9 y no
+       con 1 a 4 (RF-37). Con los motivos 1 a 4 la sección de atrás no cambia aunque la ventana de administrar rechace por
+       uno de ellos (P1-A): el panel solo muestra el motivo cuando lo trae `ui`, como hoy. `reintentar = !ui.cargando`
+       solo con los motivos 7, 8 y 9 (sin ficha, ficha no disponible, fuera de la cartera) y también con el 5 si llegara
+       acá; nunca con el 6 (ya tiene "Elegir") ni con 1 a 4 (P2-B). El texto del botón es `TEXTO_REINTENTAR`.
+    4. `SinCopia(texto, reintentar)`: `textoSinCopia` (RF-31, "Hace falta conexión para ver las enfermedades" o el texto de
+       la web); `reintentar = !ui.cargando` (P2-B); sin "Administrar".
+    5. `Contenido(vista, aviso, avisoSoloLectura, reintentar, administrar, guardado)`: `vista = vistaSeccion(ui.vista,
+       editable)` (grilla con "Otras" o "Estado actual del paciente", RF-18, RF-19, RF-35); `aviso` = el último rechazo
+       (RF-29, solo los `Rechazo`: los `Motivo` ya son el caso 3); `avisoSoloLectura` y `reintentar` (= hay aviso de solo
+       lectura y `!ui.cargando`, RF-30); `administrar` por `puedeAdministrar`; `guardado = ui.marcado.guardado` (RF-24).
+       Con solo lectura por falta de conexión (RF-28, RF-30) y consulta editable se sigue viendo la grilla con el último
+       estado confirmado, con las casillas **no tocables** (`marcado.puedeTocar` ya lo da), el aviso "Sin conexión: las
+       enfermedades se pueden ver pero no cambiar" y "Reintentar"; no pasa a la vista "Estado actual" (P8-A).
+  - `PanelEnfermedadesTest` (nuevo, commonTest; arma `SeccionEnfermedadesUi` a mano, sin coroutines): cada caso de arriba;
+    prioridad (un aviso con motivo 2 y un motivo 6 muestran el 2); editable con y sin conexión; cerrada con copia y aviso
+    → "Estado actual" + "Reintentar" + sin "Administrar"; consulta editable sin conexión con copia → `Contenido` con la
+    grilla, `puedeTocar` falso en todas, el aviso de sin conexión y `reintentar` (P8-A); `reintentar` por motivo (sí con
+    7, 8 y 9 y en `SinCopia`; no con 1 a 4 ni con 6, P2-B); `reintentar` apagado mientras `cargando`; `administrar` por
+    motivo (1 a 9), cerrada y sin conexión (RF-37); lista de marcables vacía → `sinMarcables` con "Otras" y "Administrar".
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PanelEnfermedadesTest*'` en verde (rojo antes);
+    `:core:data:jvmTest` completo en verde; el archivo no importa nada de `androidx` ni de Compose.
+
+- [ ] **F3.4b. Pantalla de la sección (`EnfermedadesSeccion`).** RF-5, RF-9, RF-14 a RF-24, RF-28 a RF-31, RF-35
+  - `features/hc/.../secciones/EnfermedadesSeccion.kt` (nuevo): `@Composable fun EnfermedadesSeccion(s: SeccionDef, ctx:
+    SeccionContext)`. (1) `koinViewModel<EnfermedadesViewModel>(key = "enfermedades-${ctx.consultaId}") {
+    parametersOf(ctx.pacienteId) }`; si `controlador == null` no dibuja nada (RF-4). (2) `editable =
+    consultaEditable(ctx.soloLectura, consulta.medicoId, vm.medicoId)` con la consulta de `ctx.vm.ui.collectAsState()`, y
+    `SideEffect { vm.editable = editable }`. (3) `LaunchedEffect(Unit) { controlador.abrir() }` (idempotente). (4)
+    `val ui by controlador.estado.collectAsState()` y `when (val p = panelDeSeccion(ui, editable))`: solo dibuja y delega
+    (`tocar`, `elegirFicha`, `reintentar`); `puedeAdministrar` se calcula acá, en la misma composición que `ui` y
+    `editable`, nunca con `controlador.puedeAdministrar()` leído fuera de ella (`editable` no es observable).
+  - Dibujo: `SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "enfermedades"), initiallyExpanded =
+    s.inicialmenteExpandida, trailing = …)` con **"Guardado"** junto al título 3 s: `LaunchedEffect(p.guardado) { if
+    (p.guardado > vm.guardadoVisto) { vm.guardadoVisto = p.guardado; visible = true; delay(DURACION_GUARDADO); visible =
+    false } }` (una nueva confirmación reinicia los 3 s; cambiar de pestaña no lo repite). Grilla con `BoxWithConstraints`
+    y `columnasPara(maxWidth.value)`, `chunked(columnas)`, `Row(IntrinsicSize.Min)` y la última fila completada con
+    `Spacer(weight(1f))` (mismo ancho, RF-17); cada casilla con `CasillaElegible(m.nombre, m.tiene, { controlador.tocar(m.id,
+    it) }, habilitada = ui.marcado.puedeTocar(m.id), marca = TEXTO_GUARDANDO.takeIf { ui.marcado.guardando(m.id) })`. Aviso
+    único (RF-29) en color de error con `liveRegion = Polite`. "Otras" (RF-19) y "Estado actual del paciente" (RF-35) como
+    texto, sin casillas. Motivos, sin copia y solo lectura con sus textos; el botón **"Reintentar"**
+    (`controlador.reintentar()`) se dibuja cuando `p.reintentar` (solo lectura con copia, "Hace falta conexión…" y motivos
+    7, 8 y 9; no con el 6 ni con 1 a 4). `Cargando` muestra el texto **"Cargando…"**.
+    `ElegirFichaPaciente` (F3.2) para RF-9. Botón "Administrar enfermedades" (RF-37) con una lambda `onAdministrar` que
+    cablea F3.5; hasta F3.5 no hace nada (sin push, aceptado como E7).
+  - Sin tests nuevos: toda la decisión está en `panelDeSeccion` (F3.4a). Se verifica compilando y en F3.7 (tandas M2 a M7).
+  - Hecho cuando: `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan;
+    `:core:data:jvmTest` completo en verde; buscar `ctx.valor`, `setValor`, `LazyColumn` y literales de los textos de la
+    spec (p. ej. `"Guardando"`, `"Sin conexión"`, `"Estado actual"`) en el archivo no da resultados.
+
+- [ ] **F3.4c. Registro del renderer, ícono propio y catálogo.** RF-1, RF-2, RF-5, RF-56, RF-57
+  - `especialidades/clinica/.../HcGeneral.kt`: `hcGeneralContribution.renderers` pasa de `{child_pugh}` a `{child_pugh,
+    enfermedades}` (`"enfermedades" to { s, ctx -> EnfermedadesSeccion(s, ctx) }`); la sección del catálogo pasa a
+    `icono = "enfermedades"`; se actualiza el comentario "sin renderer" de las líneas 63-64.
+  - `features/hc/.../Iconos.kt` (no está en `core/ui`): clave nueva `"enfermedades" -> Icons.Default.<ícono Material>`
+    distinta de `"diagnostico"` (el ojo de la sección legada) y de las demás. El ícono es `Icons.Default.HealthAndSafety`
+    (decidido, P4-A; ya compila en `MainShell`, así que está en el classpath de wasm). Sin dependencias nuevas.
+  - `CatalogoHcGeneralTest`: `hcGeneralContribution.renderers.keys == setOf("child_pugh", "enfermedades")` (hoy l. 341) y
+    `hepatologiaContribution` sigue `{child_pugh}` (l. 333); caso nuevo: `iconoSeccion(def.icono)` de `enfermedades` es
+    distinto de `iconoSeccion("diagnostico")` y distinto del ícono de reserva (`iconoSeccion("clave_inexistente")`). El test
+    del ícono va acá porque `features/hc` no tiene fuente de test y agregarla es una dependencia de build.
+  - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest` en verde (rojo antes por los renderers y el ícono);
+    `:core:data:jvmTest` y `:core:ui:jvmTest` en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; buscar
+    `icono = "diagnostico"` en `HcGeneral.kt` no da resultados; `clinica_medica_sigue_igual` y `hepatologia_sigue_igual`
+    siguen en verde sin tocarlos (RF-57).
+
+- [ ] **F3.5. Ventana "Administrar enfermedades".** RF-37 a RF-47, RF-58 (avisos), RF-43
+  - `core/data/.../repos/PanelAdministrar.kt` (nuevo, puro): `panelDeAdministrar(ui: AdministrarEnfermedadesUi):
+    PanelAdministrar` con `Cargando` (`ui.cargando` y sin estado), `SoloAviso(texto)` (sin estado y con `aviso`: falló al
+    abrir, con el texto que ya arma el controlador, también con los motivos 1 a 5: solo la ventana muestra el motivo,
+    RF-46, y la sección de atrás queda como estaba; el controlador no cambia, P1-A) y `Contenido(lista, catalogo,
+    textoCatalogo, crear: CrearVisible?, aviso, accionesHabilitadas = !ui.enCamino)`; `CrearVisible(nombre, error?)`
+    sale de `ui.oferta` (RF-42): con `error` (RF-43) no hay botón, el texto del error se ve en rojo apenas se escribe
+    (P5-A); sin `error`, "Crear «nombre»" habilitado si `!enCamino` (RF-45). `PanelAdministrarTest` (nuevo, commonTest):
+    cargando, aviso sin estado, buscador vacío con "Escribí para buscar en el catálogo" y lista entera, duplicados del catálogo visibles, oferta con y
+    sin error (vacío, 256 caracteres, invisible), todo deshabilitado con un cambio en camino, y que no hay ningún caso de
+    renombrar, dar de baja ni eliminar (RF-47).
+  - `features/hc/.../secciones/AdministrarEnfermedadesDialog.kt` (nuevo): `AdministrarEnfermedadesDialog(controlador:
+    EnfermedadesControlador, onCerrar: () -> Unit)`, **modal** (F2, hallazgo 6): `AlertDialog` como `VerTodoDialog` de
+    `CampoConHistorial.kt` (`DialogProperties(usePlatformDefaultWidth = false)`, 90 % del alto y del ancho); al mostrarse,
+    `LaunchedEffect(Unit) { controlador.abrirAdministrar() }` (un pedido); `onDismissRequest` y "Cerrar" llaman a
+    `controlador.cerrarAdministrar()` y a `onCerrar()`. Textos (P6): título de la ventana **"Administrar enfermedades"**;
+    etiqueta del buscador **"Buscar o crear una enfermedad"** (`controlador.buscar`, sin pedidos, RF-39); lista **"Tu lista"**
+    con **"Quitar"** y **"Del catálogo"** con **"Agregar"** (deshabilitados con `enCamino`, RF-45); **"Crear «…»"** o el
+    error de RF-43 (P5-A); botón **"Cerrar"**; mientras carga, **"Cargando…"**; una lista que no coincide con lo escrito
+    no dice nada. El aviso (RF-25 a RF-28, RF-44, RF-46, RF-58) con `liveRegion = Polite`. Lo escrito se conserva ante un
+    rechazo (lo hace el controlador) y tras crear: el buscador no se limpia (P3-A). La ventana no tiene "Reintentar".
+    Desplazamiento propio en la ventana y en cada lista (RF-38), sin paginar: el alto de cada lista va **acotado** (`LazyColumn(Modifier.heightIn(max = …))`); una lista con alto infinito dentro de un
+    contenedor con scroll vertical hace caer la composición.
+  - `EnfermedadesSeccion.kt` (F3.4b): `onAdministrar` abre la ventana (`var abierta by rememberSaveable`) y se dibuja
+    `if (abierta) AdministrarEnfermedadesDialog(…)`. Hay que revisar que ningún camino cambie `puedeAdministrar` con la
+    ventana abierta (es modal, no se tocan casillas): si aparece uno, parar y preguntar.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PanelAdministrarTest*'` en verde (rojo antes);
+    `:core:data:jvmTest` completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` compilan; buscar `Renombrar`, `Eliminar`, `Dar de baja` y `delete` en el diálogo no da resultados
+    (RF-47); el botón de F3.4b ya abre la ventana.
+
+- [ ] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
+  - **Trampa del plan** (ver "Discrepancias"): `enfermedadesEnDatos(def, ocultas)` da `true` para **cualquier**
+    especialidad cuyo perfil no tenga la sección (pediatría incluida); hay que limitarla a la HC general y al médico.
+  - `core/data/.../hcgeneral/AccesoEnfermedades.kt`: `enfermedadesEnDatosDeConsulta(def, ocultas, porPerfil: Boolean,
+    medicoPropio: Id?): Boolean = porPerfil && medicoPropio != null && enfermedadesEnDatos(def, ocultas)`, más la
+    constante del título `TITULO_ENFERMEDADES_EN_DATOS = "Enfermedades"` (el nombre por defecto, spec 001 RF-34).
+    `AccesoEnfermedadesTest`: pediatría (`porPerfil = false`) no aunque su definición no tenga la sección; secretaria o
+    administrador no; sin perfil sí; sección fuera del perfil para todos los tipos sí; oculta sí; solo en "Consulta"
+    (telemedicina) no (RF-6); en el perfil y visible no (nunca a la vez que la sección, RF-7).
+  - `ConsultaViewModel`: `fun enfermedadesEnDatos(ui: ConsultaUi): Boolean` (usa `ui.resuelta?.porPerfil`, su `ocultas(ui)`
+    privada y el médico de la sesión de F3.3).
+  - `features/hc/.../secciones/EnfermedadesEnDatos.kt` (nuevo): bloque de solo lectura con el mismo ViewModel
+    (`key = "enfermedades-$consultaId"`): `abrir()` (idempotente) y `enfermedadesDelPaciente(ui.vista)` en un `SectionCard`
+    titulado `TITULO_ENFERMEDADES_EN_DATOS`, **una sola vez**, en orden alfabético; sin motivos ni "Elegí la ficha" (PD6): con
+    cualquier motivo, sin copia, cargando o sin enfermedades no dibuja nada. Funciona con la consulta cerrada.
+    Como dice la spec (RF-7, RF-8; decidido, P7-A): `abrir()` resuelve el vínculo y **puede crear la ficha** del paciente
+    en la web de clínica, también para médicos que nunca usaron "Enfermedades"; no hay modo "solo con vínculo guardado" ni
+    cambio sobre RF-8.
+  - `ConsultaScreen.kt`: el bloque va debajo de `DatosPacienteSeccion` en **los dos** lugares donde se dibuja "Datos":
+    l. 196-198 (pestañas agrupadas) y l. 216-219 (la pestaña "Datos" sola, que es lo único que ve el médico **sin perfil**,
+    RF-6), antes de `SoloLecturaFueraDelPerfil`, solo si `vm.enfermedadesEnDatos(ui)`.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AccesoEnfermedadesTest*'` en verde (rojo antes);
+    `:core:data:jvmTest` completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` compilan; buscar `EnfermedadesEnDatos` en `ConsultaScreen.kt` da exactamente dos usos; pediatría y las
+    demás especialidades no pasan por el bloque (lo confirma el test de `porPerfil` y F3.7, tanda M7).
+
+- [ ] **F3.7. Prueba manual completa en `devWeb` y de punta a punta app ↔ web (la hace el usuario, en tandas cortas).**
+  RF-1 a RF-7, RF-9 a RF-12, RF-15 a RF-24, RF-28, RF-30, RF-31, RF-35, RF-37 a RF-47, RF-56, RF-57, RF-58, RF-59
+  - **El agente prepara, el usuario mira.** Preparación (agente): (a) compilar con `.\gradlew
+    :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` y confirmar que el `devWeb` del usuario sirve el
+    build nuevo (no se mata; el usuario recarga); (b) datos de prueba por SQL puntual en las copias locales, con el
+    prefijo "Prueba Salud360 …" (2-3 enfermedades) y pacientes "PRUEBA SALUD360 A/B/C/D/E" con documentos desde 99000091
+    verificados libres con `SELECT COUNT(*)`: A (una ficha, en la cartera del médico de prueba), B (dos fichas con el mismo
+    documento), C (ficha de otro médico, fuera de la cartera), D (ficha dada de baja, `activo = 0`), E (documento no válido
+    para la historia clínica); (c) un perfil de prueba nuevo (copia del del médico de prueba, nunca los perfiles 1 y 2 de la
+    carga inicial) al que el usuario agrega "Enfermedades"; (d) los ids creados anotados en un archivo fuera del repo para
+    la limpieza; (e) las contraseñas se las pide al usuario en el momento y no se guardan. No se muestran filas de
+    pacientes ni de enfermedades reales.
+  - **Checklist para el usuario** (cada punto: qué hacer → qué debería verse → RF). Se hace una tanda, se contesta "ok" o
+    qué falló, y se sigue con la siguiente; lo que falle se arregla antes de seguir.
+    - **M1. Administrador (5 min).** (1) Administración → Perfiles HC → perfil de prueba → agregar sección: aparece
+      "Enfermedades" (descripción "Casillas con las enfermedades del paciente, de la lista de cada médico.") como segunda del
+      catálogo; ponerle un nombre propio, una pestaña y tipo Consulta; guardar → queda en el perfil (RF-1, RF-2). (2) Como
+      administrador, abrir un paciente y su historia: no hay sección ni pestaña de enfermedades (RF-4). (3) Si hay una
+      secretaria de prueba: elegir al médico, abrir una consulta suya: no aparece la sección (RF-4; si no hay secretaria,
+      queda cubierto solo por `AccesoEnfermedadesTest` y se anota).
+    - **M2. La sección en la consulta (5 min).** (1) Como médico, paciente A → HC → nueva consulta "Consulta": en la pestaña
+      del perfil está la tarjeta con el nombre propio; con la lista vacía dice "No tenés enfermedades en tu listado.
+      Podés agregarlas con «Administrar enfermedades»." y muestra el botón (RF-5, RF-15, RF-18). (2) Nueva consulta
+      "Telemedicina" (si la sección no está marcada para ese tipo): no aparece (RF-5). (3) Ícono de la sección: es el
+      nuevo (cruz con escudo, `HealthAndSafety`), no el ojo de "Diagnósticos" (RF-56).
+    - **M3. Administrar la lista (8 min).** (1) "Administrar enfermedades": se abre una ventana que no deja tocar lo de atrás,
+      con buscador, la lista y "Del catálogo" que dice "Escribí para buscar en el catálogo" (RF-38, RF-39). (2) Escribir
+      parte de "Prueba Salud360 1": aparece en "Del catálogo" con "Agregar"; Agregar → pasa a la lista; cerrar → la grilla
+      tiene su casilla, desmarcada (RF-40). (3) Escribir un nombre nuevo → ofrece "Crear «…»" con espacios juntados;
+      Crear → se suma a la lista y queda **marcada** en la grilla; el buscador conserva lo escrito (RF-42, RF-44, P3-A).
+      (4) Escribir solo espacios → no ofrece crear y muestra "El nombre está vacío" en rojo, sin botón "Crear" (P5-A,
+      RF-43). (5) "Quitar" una marcada → desaparece de la lista; al cerrar está en "Otras enfermedades del paciente" y no
+      se desmarcó (RF-41). (6) No hay renombrar, dar de baja ni eliminar
+      (RF-47). (7) Con DevTools → Network → "Slow 3G": mientras un cambio está en camino, "Agregar", "Quitar" y "Crear"
+      están deshabilitados (RF-45).
+    - **M4. Marcar y desmarcar (8 min).** (1) Tocar una casilla: queda marcada, un instante "Guardando…" y "Guardado" junto
+      al título unos 3 s (RF-21, RF-24). Cambiar de pestaña y volver no repite "Guardado". (2) Recargar la página (F5) y
+      reabrir la consulta: sigue marcada (RF-15, copia). (3) Abrir la web de clínica local en el mismo paciente: la tiene
+      marcada; marcar otra en la web, volver a la app, reabrir la sección: aparece (RF-21, RF-48; D4). (4) Con "Slow 3G",
+      tocar dos casillas seguidas: las dos dicen "Guardando…", la tocada no se puede volver a tocar y la otra sí (RF-22,
+      RF-23).
+    - **M5. Aspecto, teclado y lector (8 min).** (1) Angostar la ventana (modo dispositivo de DevTools): menos de 600 de
+      ancho de la sección → 2 casillas por fila; más → 4; nombres largos completos y casillas de la fila del mismo ancho
+      (RF-17). (2) Tabulador recorre las casillas con el foco visible y la barra espaciadora marca y desmarca (RF-20).
+      (3) Lector de pantalla (Narrador/NVDA) sobre una casilla: dice el nombre y si está marcada. **Riesgo**: puede que
+      Compose para web no exponga ese árbol; si no se oye nada, se anota "no verificable en web" y queda para probarlo en
+      Android con TalkBack (RF-20). (4) El área táctil de 48 × 48 se mira en Android/emulador o por tamaño relativo.
+    - **M6. Motivos y sin conexión (10 min).** (1) Paciente B: "Elegí la ficha del paciente" con nombre, apellido,
+      documento y fecha de nacimiento de cada una, sin casillas, y "Administrar enfermedades" disponible; elegir una →
+      carga la sección (RF-9, RF-37); aquí **no** hay "Reintentar" (P2-B). (2) Paciente E: el texto de la 002 que dice qué
+      hacer, sin casillas y con "Reintentar" (RF-10, P2-B). (3) Paciente C: "Este paciente no está en tu cartera", sin
+      enfermedades, con "Administrar enfermedades" y "Reintentar" (RF-11, RF-37, P2-B). (4) Paciente D: "La ficha de este
+      paciente no está disponible en la web", con "Reintentar" (RF-12, P2-B). (5) Con los motivos 1 a 4 (si se pueden
+      provocar, p. ej. sesión vencida) no hay "Reintentar" ni "Administrar" (P2-B, RF-37); si la ventana de administrar
+      rechaza por uno de ellos, solo la ventana muestra el motivo y la sección de atrás queda igual (P1-A, RF-46). (6) Abrir
+      A con conexión; DevTools → Network → Offline; salir y volver a entrar: la grilla con lo último confirmado, las
+      casillas deshabilitadas (no se pueden tocar), el aviso "Sin conexión: las enfermedades se pueden ver pero no
+      cambiar", sin "Administrar enfermedades" y con "Reintentar" (RF-30, P8-A); volver a Online y "Reintentar" → vuelve a
+      editarse. (7) Un paciente que nunca se abrió, ya en Offline: "Hace falta conexión para ver las enfermedades" con
+      "Reintentar" (RF-31, P2-B); volver a Online y "Reintentar" → carga la sección.
+      (8) En Online, abrir A, poner Offline y tocar una casilla: pide el estado, falla y muestra "No se pudo confirmar el cambio en «…»: puede haberse guardado. Volvé a abrir la sección con
+      conexión." y queda en solo lectura (RF-28).
+    - **M7. Cerrada, "Datos" y lo que no debe cambiar (8 min).** (1) Cerrar la consulta de A y volver a abrirla en lectura:
+      "Estado actual del paciente" con las marcadas y las "Otras" en orden, sin casillas ni "Administrar"; con un paciente
+      sin ninguna: "Sin enfermedades registradas" (RF-35). (2) Quitar "Enfermedades" del perfil de prueba (o ocultarla en
+      Configuración): en "Datos" aparece el bloque "Enfermedades" con las del paciente, una sola vez, y no hay sección;
+      un paciente sin enfermedades: no aparece nada (RF-6, RF-7). (3) Con la sección solo en "Consulta": en Telemedicina ni
+      sección ni "Datos" (RF-6). (4) La sección legada "Diagnósticos / enfermedades" se ve y funciona igual (RF-56). (5)
+      Abrir una consulta de pediatría: "Datos" no muestra enfermedades y el agente confirma en el log de Apache (solo
+      conteo de líneas) que no hubo pedidos a `/enfermedades` desde ahí (RF-57). (6) Abrir "Datos" de un paciente nuevo en
+      un perfil sin la sección crea su ficha en la web de clínica (efecto conocido y aceptado, RF-8, P7-A): el agente lo
+      mira y lo anota.
+    - **M8. Cerrar sesión (5 min).** (1) El agente anota antes los conteos de `salud360_token_cache` (hc_clinica, y
+      hc_pediatrica si el entorno la usa) y de `salud360_tokens` (turnos). (2) El usuario entra como médico, abre una
+      consulta con la sección y cierra sesión: la app vuelve al ingreso al instante. (3) El agente vuelve a contar: cada
+      tabla bajó en una fila (solo conteos) (RF-59). (4) Repetir con DevTools en Offline al cerrar: la sesión se cierra
+      igual (RF-59).
+  - Limpieza (agente, al terminar o si se corta): el SQL del KDoc de `HcClinicaEnfermedadesE2ETest` más los ids anotados
+    (pacientes de prueba, `medico_pacientes`, enfermedades "Prueba Salud360%" y sus filas en `medico_enfermedades` y
+    `paciente_enfermedades`, el perfil de prueba y las marcas restauradas por `UPDATE` puntual); `salud360_token_cache`
+    vaciada; nunca `DROP TABLE`.
+  - Hecho cuando: el usuario contestó "ok" (o dejó anotado lo que no se pudo verificar) en cada una de M1 a M8; las fallas
+    quedaron arregladas y re-probadas; después de la limpieza, `SELECT COUNT(*)` de `enfermedades` con el prefijo, de sus
+    filas en `medico_enfermedades` y `paciente_enfermedades`, de `pacientes`/`medico_pacientes` de los documentos de
+    prueba y del perfil de prueba da 0, y los conteos por `activo` de las tres tablas son los de antes de empezar;
+    `git status` sin cambios en datos (esta tarea no cambia código salvo los arreglos que salgan, cada uno en su commit).
+
+- [ ] **F3.8. `AuthRepository.logout` revoca el token en turnos y en cada HC con API.** RF-59 (C3, C4, PD7)
+  - **C4 manda sobre el texto del plan** ("antes de olvidar el token, a lo sumo 3 s"): la revocación corre **en segundo
+    plano** y no demora el cierre; la sesión local se cierra siempre y primero.
+  - `core/data/.../repos/` (o `network/`): `fun interface RevocaSesion { suspend fun revocar(token: String) }` (C3: interfaz
+    propia e inyectable, sin `ktor-client-mock` ni dependencias nuevas). Implementaciones: `TurnosOnlineClient.cerrarSesion(
+    token)` (`POST auth/logout`) y `HcApiClient.salir(token)` (`POST auth/salir`, ya existe en hclinica y pediatría desde
+    F1.7). Reciben el token **por parámetro**: cuando corren, `logout()` ya borró el de los clientes. Sin cambiar la firma de
+    los métodos existentes. Un 404 de una API vieja y cualquier otro error se ignoran.
+  - `AuthRepository`: parámetros nuevos `revocar: List<RevocaSesion> = emptyList()` (**por defecto vacío**: el
+    `TurnosOnlineClient()` por defecto apunta a producción y un test no puede pegarle), `scopeRevocacion: CoroutineScope`
+    (`SupervisorJob() + Dispatchers.Default`, como el del repositorio de enfermedades) y `limite: Duration = 3.seconds`.
+    `logout()`: toma el token (`_sesion.value?.token ?: turnos.token`) **antes** de limpiar; hace lo de siempre
+    (`alCerrarSesion()`, sesión local, tokens de los clientes); y recién entonces lanza en `scopeRevocacion` un
+    `withTimeoutOrNull(limite)` que llama a todos en paralelo (`async` + `runCatching`, sin tragarse `CancellationException`
+    del propio ámbito) y **no lo espera**. Sin token no hace nada. Los `logout()` internos (licencia vencida en `login`,
+    `restaurar`, `refrescarPerfil`) también revocan; en `login` el token recién emitido todavía no está en los clientes, así
+    que `logout` recibe el token a revocar de forma explícita (`logout(tokenARevocar)`).
+  - `DataModule`: arma la lista con el cliente de turnos y cada `HcApiClient` de `HcApiClients` (hclinica y pediatría).
+  - `AuthRepositoryLogoutTest` (nuevo, jvmTest, mismo armado de base y de `AuthRepository` que
+    `CopiaEnfermedadesTest.logout_borra_toda_la_copia`, con revocadores falsos): todos reciben el token que tenía la sesión
+    aunque los clientes ya lo hayan olvidado; uno que lanza no impide a los otros; uno que no contesta (compuerta que el
+    test no abre) no demora a `logout()` y la sesión local ya está borrada cuando vuelve; pasado un `limite` corto
+    inyectado se cancela (se observa con una compuerta que se completa en `finally`, sin dormir a ciegas); sin token no se
+    llama a nadie; `logout(tokenARevocar)` revoca ese token; un `AuthRepository` armado sin revocadores sigue cerrando como
+    antes (los tests existentes no cambian).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AuthRepositoryLogoutTest*'` en verde (rojo antes);
+    `:core:data:jvmTest --rerun` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `git diff` de
+    los `*.kts` y de `libs.versions.toml` vacío (sin dependencias nuevas); buscar `ktor-client-mock` no da resultados; el
+    cierre real contra la copia local se mira en F3.7, tanda M8.
+
+Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+### Decididas (2026-10-23, usuario)
+Las contestó el usuario (P1, P2, P4, P7, P8) o quedaron por defecto con la recomendación, sin objeción del usuario (P3, P5,
+P6, P9, marcadas): esas cuatro se pueden corregir al aprobar las tareas. Las tareas de arriba ya tienen el comportamiento
+definitivo; si cambia una, se ajustan las tareas citadas.
+
+- **P1 = A. Motivos 1 a 4 (sesión vencida, HC no habilitada, médico no vinculado, licencia vencida) con la ventana de
+  administrar abierta** (F3.5, F3.4a). Solo la ventana muestra el motivo (RF-46); la sección de atrás queda como estaba y,
+  al cerrar, el próximo toque en una casilla trae el mismo motivo (RF-27). El controlador no cambia.
+- **P2 = B. Botón "Reintentar" ampliado** (F3.4a, F3.4b, F3.7-M6). Además del caso con copia en solo lectura (RF-30), en
+  "Hace falta conexión…" (RF-31) y con los motivos 7, 8 y 9 (sin ficha, ficha no disponible, fuera de la cartera). No con
+  el 6 (ya tiene "Elegir") ni con 1 a 4 (no se arreglan reintentando). Cambio respecto de la spec: RF-30 solo lo pide con
+  copia; queda como ampliación de pantalla, sin cambio de RF.
+- **P3 = A (decidida por defecto, sin objeción del usuario). El buscador se conserva después de crear** (F3.5): la creada
+  aparece en "Tu lista" (coincide con lo escrito) y el aviso la nombra; "Crear" desaparece solo porque ya hay una con ese
+  nombre. No toca el controlador.
+- **P4 = A. Ícono propio**: clave nueva `"enfermedades"` en `Iconos.kt` con `Icons.Default.HealthAndSafety`, sin
+  dependencias (F3.4c).
+- **P5 = A (decidida por defecto, sin objeción del usuario). El error de nombre se muestra al escribir** (en rojo, sin
+  botón "Crear"), porque la app no lo enviaría igual (F3.5, RF-43).
+- **P6 (decidida por defecto, sin objeción del usuario). Textos que la spec no fija**, tal cual están en la lista de
+  abajo (F3.2, F3.4b, F3.5).
+- **P7 = A. "Datos" como la spec** (RF-7, RF-8; D3/PD2): resuelve el vínculo y puede crear la ficha en la web de clínica,
+  también para médicos que nunca usaron "Enfermedades"; gasta pedidos del `throttle` por IP. Sin `/sdd-change` sobre RF-8;
+  F3.7-M7 lo mira (F3.6).
+- **P8 = A. Solo lectura por falta de conexión con la consulta abierta** (RF-28, RF-30): la grilla con el último estado
+  confirmado, las casillas deshabilitadas y el aviso de sin conexión (F3.4a). No pasa a "Estado actual del paciente".
+- **P9 = A (decidida por defecto, sin objeción del usuario). Candidatas con los cuatro datos de la spec** (nombre,
+  apellido, documento y fecha de nacimiento); no se muestra la cantidad de consultas (F3.2).
+
+**Textos de interfaz nuevos (para aprobar de un vistazo)** — los que la spec no fija (P6) y los de "Reintentar" (P2):
+- Ventana: título "Administrar enfermedades"; etiqueta del buscador "Buscar o crear una enfermedad"; listas "Tu lista" y
+  "Del catálogo"; botones "Quitar", "Agregar", "Crear «nombre»" y "Cerrar"; mientras carga, "Cargando…".
+- Sección: botón "Elegir" en cada ficha candidata (F3.2); "Cargando…" mientras carga; botón "Reintentar" (texto de
+  `TEXTO_REINTENTAR`, que ya fija RF-30) en solo lectura con copia, en "Hace falta conexión para ver las enfermedades" y
+  con los motivos 7, 8 y 9.
+- Sin texto nuevo: la lista que no coincide con lo escrito no dice nada; sin fecha de nacimiento no se muestra esa línea;
+  el aviso de sin conexión ("Sin conexión: las enfermedades se pueden ver pero no cambiar") y "Hace falta conexión para ver
+  las enfermedades" ya existen en `core/data`.
+
+### Discrepancias y huecos detectados (plan/spec contra el código real)
+1. **RF-4 no se cumple "solo" y el plan lo da por hecho.** El plan dice "administrador y secretaria no abren consultas como
+   médico". Pero `MainShell.kt:241` deja a la secretaria abrir las HC del médico que eligió, y `MainShell.kt:281` le pasa a
+   `ConsultaScreen` el `medicoId` de **ese médico** (el administrador cae en `usuario.id`). Con el `medicoId` de la pantalla,
+   la secretaria vería las casillas (y la consulta le resultaría "propia"); la API le contestaría `403 sin_permiso`. Se
+   resuelve en F3.3 con `medicoParaEnfermedades(sesión)` y se filtra la pestaña en `ConsultaViewModel.pestanias`.
+2. **`ConsultaViewModel.medicoId` pública (plan) no hace falta y sería el id equivocado** (punto 1); el reviewer de F2 pidió
+   el de `PerfilMedico.medicoId`. F3.3 no la expone.
+3. **`enfermedadesEnDatos` es `true` para pediatría** y cualquier definición sin la sección (`def.tiposConsulta.none {…}`):
+   sin un filtro por HC general (`ui.resuelta.porPerfil`) la pestaña "Datos" de pediatría pediría enfermedades a hclinica y
+   rompería RF-57. F3.6 lo filtra y lo prueba.
+4. **"Datos" se dibuja en dos lugares** de `ConsultaScreen` (l. 196-198 y l. 216-219); el segundo es el del médico **sin
+   perfil** (RF-6). El plan no lo dice; F3.6 cubre los dos.
+5. **Logout: plan (bloqueante, "antes de olvidar el token, a lo sumo 3 s") contra C4 (segundo plano)**. Manda C4 (F3.8). Y
+   los clientes ya no tienen el token cuando la revocación corre: hay que pasarlo por parámetro. Además el default de
+   `TurnosOnlineClient()` es producción: los revocadores por defecto de `AuthRepository` tienen que ser una lista vacía.
+6. **RF-31 no menciona "Reintentar"** (sí RF-30): sin él, "Hace falta conexión…" no tiene salida (se agrega por P2-B, ver "Decididas").
+7. **RF-5 vs. `seccionEnfermedadesVisible`**: esa función pura y su test existen, pero la visibilidad real la da
+   `layoutConsulta` (perfil + ocultas); no hace falta cablearla. Solo importa que F3.6 use `enfermedadesEnDatos`.
+8. **Ubicación de archivos**: `iconoSeccion` está en `features/hc/Iconos.kt` (no en `core/ui`) y `features/hc` no tiene
+   fuente de test; el AGENTS dice "solo hay tests en core:data, core:crecimiento y core:ui" pero `especialidades/clinica`
+   también los tiene (`CatalogoHcGeneralTest`, `ChildPughTest`): ahí va el test del ícono.
+9. **Sin RF de pantalla huérfano**: RF-1 a RF-3 (F2.9 + F3.7-M1), RF-4 (F3.3/F3.6, hueco del punto 1), RF-5 a RF-7 (F3.4b,
+   F3.6), RF-9 a RF-31 y RF-35 (F3.4a/b), RF-37 a RF-47 y RF-58 (F3.5), RF-56 y RF-57 (F3.4c, F3.7), RF-59 (F3.8). RF-26
+   (429) no se prueba a mano (harían falta 60 pedidos por minuto): queda cubierto por `MarcadoEnfermedadesTest` y
+   `EnfermedadesDtoTest`.
+
+### Riesgos de la F3
+- **Sin tests de Compose**: lo que no está en una función pura (disposición, foco, desplazamiento, "Guardado" de 3 s) solo
+  se comprueba compilando y a mano en F3.7.
+- **Lector de pantalla en web (RF-20)**: Compose para web puede no exponer el árbol de accesibilidad al navegador; puede
+  quedar "no verificable en web" hasta probar en Android.
+- **Lista con alto infinito** dentro de la ventana con scroll (F3.5): hace caer la composición; por eso el alto acotado.
+- **"Guardado"** reiniciado al cambiar de pestaña (la sección sale de la composición): se evita con `guardadoVisto` en el
+  ViewModel (F3.3, F3.4b).
+- **`editable` no observable**: el estado de "puede administrar" se calcula dentro de la composición (F3.4b); si alguien lo
+  llama fuera, queda una recomposición atrasado.
+- **Throttle `60,1` por IP** compartido por todos los pedidos del consultorio (abrir, tocar, administrar, "Datos"): el 429 es
+  esperable (RF-26) y no se prueba a mano.
+- **Revocación en segundo plano** (F3.8): si la pestaña se cierra justo después de cerrar sesión, el navegador puede cortar
+  el pedido; queda la ventana de `cache_minutos` (10) ya aceptada.

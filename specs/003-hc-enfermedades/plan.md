@@ -408,3 +408,25 @@ Aprobado por el usuario junto con el plan.
 - **PD8.** Id de enfermedad inexistente: marcar → `422 no_en_tu_lista`; agregar → `422 enfermedad_dada_de_baja`; sin
   códigos nuevos (la app re-pide el estado).
 - **PD9.** `enfermedades` va segunda en el catálogo, después de `antecedentes_familiares`.
+
+## Notas para la tanda F3 — decisiones cerradas; aprobadas por el usuario (2026-10-23)
+Surgen de leer el código real al redactar la tanda F3 de `tasks.md`. No cambian el texto aprobado de arriba hasta que el
+usuario apruebe las tareas; el detalle y las decisiones (P1 a P9) están en `tasks.md`, sección "Decididas".
+- **F3.4 se parte en F3.4a/b/c** (lógica pura del panel, pantalla, registro e ícono). Archivos nuevos de lógica en
+  `core/data`: `repos/PanelEnfermedades.kt`, `repos/PanelAdministrar.kt`, `hcgeneral/AccesoEnfermedades.kt`,
+  `hcgeneral/FichaCandidata.kt`, cada uno con su test; así las pantallas solo dibujan (constitución 4) y no hace falta
+  ningún test de Compose (no hay y no se agrega la dependencia).
+- **Cambia "Pantallas → `EnfermedadesViewModel`" y "`ConsultaViewModel`"**: el `medicoId` sale de la sesión
+  (`PerfilMedico.medicoId` si el rol es médico), no del que recibe `ConsultaScreen` (que para la secretaria es el médico
+  elegido: `MainShell.kt:281`). `ConsultaViewModel.medicoId` **no** pasa a pública; `ConsultaViewModel` recibe
+  `AuthRepository` para sacar la pestaña de enfermedades a la secretaria y al administrador (RF-4). El plan decía que no
+  abren consultas como médico: la secretaria sí abre las HC del médico elegido.
+- **Cambia "ConsultaScreen ('Datos')"**: `enfermedadesEnDatos` hay que limitarla a la HC general (`resuelta.porPerfil`) y al
+  médico (da `true` para pediatría), y el bloque va en los dos lugares donde se dibuja "Datos" (con perfil y sin perfil).
+- **Cambia "`AuthRepository`" (RF-59)**: C4 (segundo plano, no demora) reemplaza el "antes de olvidar el token, a lo sumo 3
+  s" de arriba; interfaz `RevocaSesion` inyectable (C3), el token se pasa por parámetro y los revocadores por defecto son
+  una lista vacía (el cliente de turnos por defecto apunta a producción).
+- **Ícono**: `iconoSeccion` está en `features/hc/Iconos.kt`; el ícono propio es una clave nueva `"enfermedades"` con `HealthAndSafety` (P4-A), y su
+  test va en `especialidades/clinica` (`features/hc` no tiene fuente de test).
+- **Riesgo nuevo**: "Datos" resuelve el vínculo y puede crear la ficha en la web de clínica aun para médicos que nunca
+  usaron "Enfermedades" (RF-7 + RF-8, P7-A: aceptado, como la spec).
