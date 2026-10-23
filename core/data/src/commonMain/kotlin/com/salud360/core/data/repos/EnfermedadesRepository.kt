@@ -79,9 +79,9 @@ sealed interface CargaSeccion {
  * La copia se reemplaza por parte solo con una respuesta correcta (también una lista vacía, RF-33); un error nunca la
  * toca, salvo `403 fuera_de_cartera`, que borra la sección de esa ficha (RF-11).
  *
- * Cerrar sesión con un pedido en camino (E12): [cerrarSesion] cambia la "generación" y un pedido solo toca la copia si
- * sigue en la generación en que salió, así una respuesta lenta que llega después del `logout` no reescribe lo que
- * `logout` acaba de borrar (RF-34).
+ * Cerrar sesión con un pedido en camino (E12): [cerrarSesion] borra la copia y cambia la "generación" en un solo paso, y
+ * un pedido solo toca la copia si sigue en la generación en que salió, así una respuesta lenta que llega después del
+ * `logout` no reescribe lo que se acaba de borrar (RF-34).
  *
  * @param api null cuando el entorno no tiene URL de hclinica: se trata como sin conexión, como [ConfigHcRepository].
  * @param nombreHc nombre visible de la HC general, para los motivos.
@@ -104,12 +104,21 @@ class EnfermedadesRepository(
     private val guardia = Mutex()
 
     /**
-     * Se cerró la sesión (E12): lo que está en camino ya no toca la copia. Lo llama `AuthRepository.logout` antes de
-     * borrarla. Espera a que termine la escritura que esté en curso, así el borrado de `logout` va siempre después. No
-     * cancela los pedidos ni inutiliza el repositorio: los que salgan después, con la sesión nueva, guardan normal.
+     * Se cerró la sesión (E12, RF-34): borra toda la copia y lo que está en camino ya no la toca. Lo llama
+     * `AuthRepository.logout`. El borrado y el cambio de generación van **dentro de la misma guardia**: espera a que
+     * termine la escritura que esté en curso, y una que esté esperando la guardia (por haber salido antes) la encuentra
+     * con la generación nueva y no escribe. Primero se borra y después se sube la generación, así no hay un momento con
+     * la generación nueva y la copia sin borrar. No cancela los pedidos ni inutiliza el repositorio: los que salgan
+     * después, con la sesión nueva, guardan normal.
      */
     suspend fun cerrarSesion() {
-        guardia.withLock { generacion.update { it + 1 } }
+        guardia.withLock {
+            try {
+                q.borrarTodo()
+            } finally {
+                generacion.update { it + 1 }
+            }
+        }
     }
 
     // ---------- pedidos ----------

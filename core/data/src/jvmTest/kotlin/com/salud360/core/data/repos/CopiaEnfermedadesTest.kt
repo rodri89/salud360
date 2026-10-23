@@ -22,7 +22,7 @@ import com.salud360.core.model.auth.PerfilSecretaria
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Sesion
 import com.salud360.core.model.auth.Usuario
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
@@ -53,17 +53,17 @@ class CopiaEnfermedadesTest {
     private val administrarA = EstadoAdministrar(listOf(Enfermedad(1, "Asma")), listOf(Enfermedad(2, "Diabetes")))
     private val administrarVacio = EstadoAdministrar(emptyList(), emptyList())
 
-    /** API falsa: contesta lo que tenga cargado, tras [demora], o lanza [fallo]. */
+    /** API falsa: contesta lo que tenga cargado, cuando se abra la [compuerta] (si hay una), o lanza [fallo]. */
     private inner class ApiFalsa : EnfermedadesApi {
         var laSeccion = seccionA
         var laLista = administrarA
         var fallo: TobbException? = null
-        var demora: Duration = Duration.ZERO
+        var compuerta: CompletableDeferred<Unit>? = null
         var llamadas = 0
 
         private suspend fun <T> responder(valor: T): T {
             llamadas++
-            if (demora > Duration.ZERO) delay(demora)
+            compuerta?.await()
             fallo?.let { throw it }
             return valor
         }
@@ -295,11 +295,13 @@ class CopiaEnfermedadesTest {
     @Test
     fun una_respuesta_lenta_es_sin_conexion_pero_igual_actualiza_la_copia() = conBase { db, _ ->
         val api = ApiFalsa()
+        // La copia inicial va con la espera larga; la corta (100 ms) solo para el pedido retenido, que no contesta hasta
+        // que el test abre la compuerta: no depende de cuánto tarde la máquina.
+        repo(db, api).abrirSeccion(medico, 10)
         val repo = repo(db, api, espera = 100.milliseconds)
-        repo.abrirSeccion(medico, 10)
 
         api.laSeccion = seccionB
-        api.demora = 300.milliseconds
+        val compuerta = CompletableDeferred<Unit>().also { api.compuerta = it }
         val pedido = repo.pedirSeccion(medico, 10)
         assertEquals(ResultadoPedido.SinRespuesta, repo.esperar(pedido))
         // El pedido sigue en camino: la copia todavía es la vieja.
@@ -310,6 +312,7 @@ class CopiaEnfermedadesTest {
         )
 
         // La respuesta tardía llega (quien la pidió puede esperarla) y actualiza la copia.
+        compuerta.complete(Unit)
         assertEquals(ResultadoPedido.Ok(seccionB), pedido.await())
         assertEquals(seccionB, repo.copiaSeccion(medico, 10))
     }
@@ -350,7 +353,42 @@ class CopiaEnfermedadesTest {
     fun logout_borra_toda_la_copia() = conBase { db, driver ->
         conCopiaDeDos(db)
         assertEquals(4L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
-        AuthRepository(db, ApiClient("http://localhost")).logout()
+        // Como en `DataModule`: el borrado lo hace `cerrarSesion`, dentro de la guardia (E12), no `logout` por su cuenta.
+        AuthRepository(db, ApiClient("http://localhost"), alCerrarSesion = repo(db, ApiFalsa())::cerrarSesion).logout()
+        assertEquals(0L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
+    }
+
+    @Test
+    fun cerrar_sesion_borra_toda_la_copia_y_lo_que_estaba_en_camino_no_la_reescribe() = conBase { db, driver ->
+        conCopiaDeDos(db)
+        val api = ApiFalsa()
+        val repo = repo(db, api)
+        val compuerta = CompletableDeferred<Unit>().also { api.compuerta = it }
+        val enCamino = repo.pedirAdministrar(medico) // salió antes de cerrar sesión y contesta después
+
+        repo.cerrarSesion()
+        assertEquals(0L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
+
+        compuerta.complete(Unit)
+        assertEquals(ResultadoPedido.Ok(administrarA), enCamino.await()) // el pedido igual termina
+        assertEquals(0L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
+
+        // Lo que sale con la sesión nueva sí se guarda: cerrar sesión no inutiliza al repositorio.
+        repo.esperar(repo.pedirAdministrar(medico))
+        assertEquals(administrarA, repo.copiaAdministrar(medico))
+        assertEquals(1L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
+    }
+
+    @Test
+    fun guardar_la_sesion_borra_la_copia_de_los_demas_medicos() = conBase { db, driver ->
+        // Es la línea de `guardarSesion` que `login`, `restaurar` y `refrescarPerfil` comparten (RF-34): sin ella, un
+        // médico que entra vería la copia del anterior.
+        conCopiaDeDos(db)
+        AuthRepository(db, ApiClient("http://localhost")).guardarSesion(unaSesionDeMedico(medico))
+        assertEquals(2L, consultar(driver, "SELECT count(*) FROM hc_enfermedades WHERE medico_id = '$medico'"))
+        assertEquals(0L, consultar(driver, "SELECT count(*) FROM hc_enfermedades WHERE medico_id <> '$medico'"))
+
+        AuthRepository(db, ApiClient("http://localhost")).guardarSesion(Sesion(Usuario("u-a", "a@prueba.test", "Prueba", "Admin", Rol.ADMIN), ""))
         assertEquals(0L, consultar(driver, "SELECT count(*) FROM hc_enfermedades"))
     }
 
@@ -395,9 +433,13 @@ class CopiaEnfermedadesTest {
         try {
             runBlocking {
                 val driver = DriverFactory(archivo.absolutePath).createDriver()
+                val fresca = definicion(driver)
+                assertEquals(listOf("medico_id", "parte", "ficha_id"), fresca.filter { it.clave > 0 }.sortedBy { it.clave }.map { it.nombre })
                 driver.execute(null, "DROP TABLE hc_enfermedades", 0)
                 Salud360Db.Schema.synchronous().migrate(driver, 7, 8)
                 assertEquals(listOf("medico_id", "parte", "ficha_id", "datos_json", "recibida_en"), columnas(driver))
+                // `7.sqm` y `HcEnfermedades.sq` dan la misma tabla: nombres, tipos, obligatoriedad, defecto y clave primaria.
+                assertEquals(fresca, definicion(driver))
                 val repo = repo(Salud360Db(driver), ApiFalsa())
                 repo.abrirSeccion(medico, 10)
                 assertEquals(seccionA, repo.copiaSeccion(medico, 10))
@@ -428,6 +470,7 @@ class CopiaEnfermedadesTest {
                 assertEquals(1L, consultar(driver, "SELECT count(*) FROM hc_config WHERE medico_id = '$medico' AND recibida_en = 5"))
                 assertEquals(3L, consultar(driver, "SELECT ultima_version FROM sync_estado WHERE tabla = 'paciente'"))
                 assertEquals(listOf("medico_id", "parte", "ficha_id", "datos_json", "recibida_en"), columnas(driver))
+                assertEquals(definicionDeUnaBaseNueva(), definicion(driver))
                 val repo = repo(db, ApiFalsa())
                 repo.abrirSeccion(medico, 10)
                 assertEquals(seccionA, repo.copiaSeccion(medico, 10))
@@ -438,10 +481,33 @@ class CopiaEnfermedadesTest {
         }
     }
 
-    private fun columnas(driver: SqlDriver): List<String> =
+    private fun columnas(driver: SqlDriver): List<String> = definicion(driver).map { it.nombre }
+
+    /** Una columna de `PRAGMA table_info`: para comparar la tabla migrada con la creada de cero. */
+    private data class Columna(val nombre: String, val tipo: String, val obligatoria: Boolean, val porDefecto: String?, val clave: Int)
+
+    private fun definicion(driver: SqlDriver): List<Columna> =
         driver.executeQuery(null, "PRAGMA table_info(hc_enfermedades)", { c ->
-            QueryResult.Value(buildList { while (c.next().value) add(c.getString(1)!!) })
+            QueryResult.Value(
+                buildList {
+                    while (c.next().value) add(Columna(c.getString(1)!!, c.getString(2)!!, c.getLong(3) == 1L, c.getString(4), c.getLong(5)!!.toInt()))
+                },
+            )
         }, 0).value
+
+    private suspend fun definicionDeUnaBaseNueva(): List<Columna> {
+        val archivo = File.createTempFile("salud360-fresca", ".db").also { it.delete() }
+        try {
+            val driver = DriverFactory(archivo.absolutePath).createDriver()
+            try {
+                return definicion(driver)
+            } finally {
+                driver.close()
+            }
+        } finally {
+            archivo.delete()
+        }
+    }
 
     private fun consultar(driver: SqlDriver, sql: String): Long =
         driver.executeQuery(null, sql, { c -> QueryResult.Value(if (c.next().value) c.getLong(0) ?: 0L else 0L) }, 0).value

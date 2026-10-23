@@ -651,20 +651,150 @@ class EnfermedadesControladorTest {
         assertEquals("El nombre está vacío", aviso)
     }
 
+    // ---------- cuándo se puede administrar y cerrar la ventana (RF-30, RF-37, RF-45) ----------
+
+    /** Ni abrir, ni agregar, ni quitar, ni crear: no sale ningún pedido y la ventana queda como estaba. */
+    private suspend fun Contexto.comprobarQueNoSePuedeAdministrar() {
+        assertFalse(c.puedeAdministrar())
+        c.abrirAdministrar()
+        c.agregar(4)
+        c.quitar(1)
+        c.crear("Prueba Nueva")
+        unRato()
+        assertEquals(0, api.de("administrar").size)
+        assertEquals(0, api.de("enLista").size)
+        assertEquals(0, api.de("crear").size)
+        assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+    }
+
+    @Test
+    fun en_solo_lectura_por_falta_de_conexion_no_se_administra_nada() = conControlador {
+        abierta()
+        api.fallo = sinRed
+        c.reintentar()
+        hasta("solo lectura") { c.estado.value.takeIf { !it.cargando && it.marcado.soloLectura } }
+        api.fallo = null
+        comprobarQueNoSePuedeAdministrar()
+    }
+
+    @Test
+    fun con_un_motivo_general_no_se_administra_nada() = conControlador {
+        abierta()
+        api.fallo = TobbException(403, "licencia_vencida", "Licencia vencida")
+        c.reintentar()
+        hasta("el motivo") { c.estado.value.motivo }
+        api.fallo = null
+        comprobarQueNoSePuedeAdministrar()
+    }
+
+    @Test
+    fun con_la_consulta_no_editable_no_se_abre_administrar() = conControlador {
+        abierta()
+        editable = false
+        c.abrirAdministrar()
+        unRato()
+        assertEquals(0, api.de("administrar").size)
+        assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+    }
+
+    @Test
+    fun cerrar_administrar_limpia_lo_escrito_el_aviso_y_el_estado_viejo() = conControlador {
+        abierta()
+        conAdministrar()
+        c.buscar("Artro")
+        c.crear("   ")
+        assertEquals("El nombre está vacío", c.administrar.value.aviso)
+
+        c.cerrarAdministrar()
+        assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+
+        // Al volver a abrir no se ve lo de antes mientras llega lo nuevo.
+        api.retenidos += "administrar"
+        c.abrirAdministrar()
+        llamada("administrar", 2)
+        assertNull(c.administrar.value.estado)
+        assertTrue(c.administrar.value.cargando)
+    }
+
+    @Test
+    fun una_respuesta_que_llega_despues_de_cerrar_administrar_no_vuelve_a_escribir_la_ventana() = conControlador {
+        abierta()
+        conAdministrar()
+        api.retenidos += listOf("enLista", "administrar")
+
+        // Un cambio de la lista en camino al cerrar: sigue en camino (nada de otro por encima), pero su respuesta no
+        // reescribe la ventana; sí actualiza la sección del paciente.
+        c.agregar(4)
+        val cambio = llamada("enLista")
+        c.cerrarAdministrar()
+        assertTrue(c.administrar.value.enCamino)
+        cambio.responder(RespuestaLista(EstadoAdministrar(administrarA.lista + Enfermedad(4, "Artrosis"), emptyList()), inicial))
+        hasta("el cambio terminado") { c.administrar.value.takeIf { !it.enCamino } }
+        assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+        assertEquals(1, c.estado.value.marcado.guardado)
+
+        // Lo mismo con el pedido de abrir.
+        c.abrirAdministrar()
+        val abrir = llamada("administrar", 2)
+        c.cerrarAdministrar()
+        abrir.responder(administrarA)
+        unRato()
+        assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+    }
+
+    @Test
+    fun abrir_administrar_dos_veces_con_un_pedido_en_vuelo_hace_uno_solo() = conControlador {
+        abierta()
+        api.retenidos += "administrar"
+        c.abrirAdministrar()
+        val pedido = llamada("administrar")
+        c.abrirAdministrar()
+        unRato()
+        assertEquals(1, api.de("administrar").size)
+
+        pedido.responder(administrarA)
+        hasta("administrar") { c.administrar.value.estado }
+        assertFalse(c.administrar.value.cargando)
+    }
+
+    @Test
+    fun elegir_ficha_dos_veces_seguidas_resuelve_y_carga_una_sola_vez() = conControlador(vinculado = false) {
+        val candidatas = listOf(HcPacienteCandidato(20, "A", "B", "30111222"), HcPacienteCandidato(21, "A", "B", "30111222"))
+        pacientes.respuestas += TobbException(409, "paciente_ambiguo", "Varias fichas", candidatos = candidatas)
+        abierta()
+        pacientes.respuestas += ficha(21)
+        api.retenidos += "seccion" // la carga queda en vuelo mientras se toca otra vez
+
+        c.elegirFicha(21)
+        val carga = llamada("seccion")
+        c.elegirFicha(21)
+        unRato()
+        assertEquals(2, pacientes.resueltos.size) // la apertura y una sola elección
+        assertEquals(1, api.de("seccion").size)
+
+        carga.responder(inicial)
+        assertEquals(inicial, hasta("la sección cargada") { c.estado.value.vista })
+    }
+
     // ---------- cerrar sesión con un pedido en camino (E12) ----------
 
     @Test
     fun una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia() = conControlador(espera = 5.seconds) {
+        // Como en `DataModule`: el borrado de la copia lo hace `cerrarSesion`, que `logout` llama.
+        // F2.11: administrar solo se abre con la sección ya cargada (RF-37), así que primero se la abre (queda su copia) y
+        // después se dejan en camino el pedido de administrar y uno nuevo de la sección.
+        abierta()
         api.retenidos += listOf("seccion", "administrar", "marcar")
-        c.abrir()
         c.abrirAdministrar()
-        llamada("seccion")
+        c.reintentar()
+        llamada("seccion", 2)
         llamada("administrar")
-        assertEquals(0L, contar("SELECT count(*) FROM hc_enfermedades"))
+        assertEquals(1L, contar("SELECT count(*) FROM hc_enfermedades"))
 
         // Cierra la sesión con los dos pedidos en camino; la web contesta después.
         AuthRepository(db, ApiClient("http://localhost"), alCerrarSesion = repo::cerrarSesion).logout()
-        llamada("seccion").responder(inicial)
+        assertEquals(0L, contar("SELECT count(*) FROM hc_enfermedades"))
+        llamada("seccion", 2).responder(inicial)
         llamada("administrar").responder(administrarA)
         hasta("los dos pedidos terminados") { c.estado.value.takeIf { !it.cargando && !c.administrar.value.cargando } }
 

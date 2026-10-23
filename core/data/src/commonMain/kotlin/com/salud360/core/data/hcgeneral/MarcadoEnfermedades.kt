@@ -4,9 +4,6 @@ import com.salud360.core.data.network.TobbException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** RF-28: lo que se espera la respuesta de un toque (y la del estado que se pide después) antes de darla por perdida. */
-val ESPERA_MARCADO: Duration = 10.seconds
-
 /** RF-24: lo que se ve "Guardado" desde la última vez que cambió [EstadoMarcado.guardado]. */
 val DURACION_GUARDADO: Duration = 3.seconds
 
@@ -145,7 +142,7 @@ fun EstadoMarcado.rechazado(secuencia: Long, id: Long, error: TobbException, nom
 }
 
 /**
- * El toque [secuencia] sobre [id] no contestó en [ESPERA_MARCADO] (RF-28): no se revierte a ciegas, se pide el estado.
+ * El toque [secuencia] sobre [id] no contestó en la espera de `EnfermedadesRepository.ESPERA` (RF-28): no se revierte a ciegas, se pide el estado.
  * En solo lectura ya no se pide nada: vuelve al último confirmado con el aviso de RF-28.
  */
 fun EstadoMarcado.sinRespuesta(secuencia: Long, id: Long): PasoMarcado {

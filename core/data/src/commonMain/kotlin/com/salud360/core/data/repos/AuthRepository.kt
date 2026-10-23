@@ -60,8 +60,8 @@ class AuthRepository(
      */
     private val hcClients: Map<String, HcApiClient> = emptyMap(),
     /**
-     * Se llama al empezar [logout], antes de borrar nada: la copia de enfermedades deja de aceptar las respuestas de los
-     * pedidos que ya salieron (E12, `EnfermedadesRepository.cerrarSesion`).
+     * Se llama al empezar [logout], antes de borrar nada: borra la copia de enfermedades (RF-34) y deja de aceptar las
+     * respuestas de los pedidos que ya salieron, todo en un paso (E12, `EnfermedadesRepository.cerrarSesion`).
      */
     private val alCerrarSesion: suspend () -> Unit = {},
 ) {
@@ -144,10 +144,9 @@ class AuthRepository(
     suspend fun resolverPerfilLocal(usuario: Usuario): Sesion? = resolverPerfil(db, usuario)
 
     suspend fun logout() {
+        // RF-34: la copia de enfermedades es del médico que cerró sesión; la borra `alCerrarSesion`, dentro de su guardia.
         alCerrarSesion()
         db.authQueries.borrarSesion()
-        // RF-34: la copia de enfermedades es del médico que cerró sesión.
-        db.hcEnfermedadesQueries.borrarTodo()
         settings?.remove(CLAVE_SESION)
         api.token = null
         turnos.token = null
@@ -176,7 +175,8 @@ class AuthRepository(
         if (medicoId == null) db.hcEnfermedadesQueries.borrarTodo() else db.hcEnfermedadesQueries.borrarDeOtros(medicoId)
     }
 
-    private suspend fun guardarSesion(s: Sesion) {
+    /** `internal` para probar el cableado de [borrarCopiaEnfermedadesAlEntrar] sin pasar por `login` ni `restaurar`. */
+    internal suspend fun guardarSesion(s: Sesion) {
         borrarCopiaEnfermedadesAlEntrar(s)
         api.token = s.token
         turnos.token = s.token

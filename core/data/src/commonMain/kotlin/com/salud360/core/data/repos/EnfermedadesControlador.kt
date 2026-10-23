@@ -126,6 +126,9 @@ class EnfermedadesControlador(
 
     private var abierto = false
 
+    /** Sube con cada [cerrarAdministrar]: un pedido de la ventana recuerda la de cuando salió. */
+    private val ventana = MutableStateFlow(0)
+
     // ---------- abrir (RF-8, RF-9, RF-15, RF-30, RF-31) ----------
 
     /** Resuelve el vínculo si hace falta y pide la sección: un solo pedido. Abrir otra vez no repite nada. */
@@ -144,7 +147,10 @@ class EnfermedadesControlador(
 
     /** RF-9: el médico eligió una de las candidatas: se guarda el vínculo y se carga la sección. */
     fun elegirFicha(fichaId: Long) {
-        _estado.update { it.copy(cargando = true) }
+        // Dos toques seguidos: el segundo no repite la resolución ni la carga mientras el primero sigue en vuelo.
+        var tomado = false
+        _estado.update { tomado = !it.cargando; if (tomado) it.copy(cargando = true) else it }
+        if (!tomado) return
         scope.launch {
             val ficha = vincular { pacientesHc.elegirFicha(pacienteId, CodigosHc.GENERAL, fichaId) } ?: return@launch
             cargarSeccion(ficha)
@@ -273,41 +279,77 @@ class EnfermedadesControlador(
         return puedeAdministrar(editable(), propia = true, conConexion = e.conConexion, motivo = e.motivoMostrado)
     }
 
-    /** RF-38: pide la lista del médico y el catálogo (un solo pedido). */
+    /**
+     * Los cambios de la lista (agregar, quitar, crear) no miran [editable]: RF-58 pide que "Crear" siga funcionando (sin
+     * marcar) con la consulta que se cerró con la ventana abierta. Sí miran la conexión y los motivos 1 a 5 (RF-30, RF-37).
+     */
+    private fun puedeCambiarLista(): Boolean {
+        val e = _estado.value
+        return puedeAdministrar(editable = true, propia = true, conConexion = e.conConexion, motivo = e.motivoMostrado)
+    }
+
+    /**
+     * RF-38: pide la lista del médico y el catálogo (un solo pedido). No hace nada si no se puede administrar (RF-37) ni
+     * si ya hay un pedido de estos en vuelo.
+     */
     fun abrirAdministrar() {
+        if (!puedeAdministrar()) return
+        val deEstaVentana = ventana.value
+        var tomado = false
+        _administrar.update { tomado = !it.cargando; if (tomado) it.copy(cargando = true, aviso = null) else it }
+        if (!tomado) return
         scope.launch {
-            _administrar.update { it.copy(cargando = true, aviso = null) }
-            when (val r = repo.esperar(repo.pedirAdministrar(medicoId))) {
-                is ResultadoPedido.Ok -> _administrar.update { it.copy(estado = r.valor, cargando = false) }
-                is ResultadoPedido.Error -> _administrar.update { it.copy(cargando = false, aviso = textoDe(r.error)) }
-                ResultadoPedido.SinRespuesta -> _administrar.update { it.copy(cargando = false, aviso = textoDe(errorSinRespuesta())) }
+            val r = repo.esperar(repo.pedirAdministrar(medicoId))
+            // Si se cerró la ventana mientras tanto, la respuesta no vuelve a escribirla.
+            _administrar.update {
+                if (deEstaVentana != ventana.value) return@update it
+                when (r) {
+                    is ResultadoPedido.Ok -> it.copy(estado = r.valor, cargando = false)
+                    is ResultadoPedido.Error -> it.copy(cargando = false, aviso = textoDe(r.error))
+                    ResultadoPedido.SinRespuesta -> it.copy(cargando = false, aviso = textoDe(errorSinRespuesta()))
+                }
             }
         }
+    }
+
+    /**
+     * Se cerró la ventana: la próxima vez que se abra no se ve lo de esta (lo escrito, el aviso ni la lista vieja) y lo
+     * que todavía esté en camino no la reescribe. Un cambio de la lista en camino sigue contando hasta que conteste (RF-45).
+     */
+    fun cerrarAdministrar() {
+        ventana.update { it + 1 }
+        _administrar.update { AdministrarEnfermedadesUi(enCamino = it.enCamino) }
     }
 
     /** RF-39: lo escrito en el buscador (el filtro es de la pantalla, sin pedidos). */
     fun buscar(texto: String) = _administrar.update { it.copy(buscado = texto) }
 
     /** RF-40: suma la enfermedad a la lista del médico. */
-    fun agregar(enfermedadId: Long) = cambiarLista(
-        nombre = nombreDe(enfermedadId),
-        pedir = { ficha -> repo.pedirEnLista(medicoId, enfermedadId, true, ficha) },
-        leer = { r, _ -> CambioListo(r.administrar, r.seccion, enfermedadId, aviso = null) },
-    )
+    fun agregar(enfermedadId: Long) {
+        if (!puedeCambiarLista()) return
+        cambiarLista(
+            nombre = nombreDe(enfermedadId),
+            pedir = { ficha -> repo.pedirEnLista(medicoId, enfermedadId, true, ficha) },
+            leer = { r, _ -> CambioListo(r.administrar, r.seccion, enfermedadId, aviso = null) },
+        )
+    }
 
     /** RF-41: la saca de la lista del médico, sin desmarcarla de ningún paciente. */
-    fun quitar(enfermedadId: Long) = cambiarLista(
-        nombre = nombreDe(enfermedadId),
-        pedir = { ficha -> repo.pedirEnLista(medicoId, enfermedadId, false, ficha) },
-        leer = { r, _ -> CambioListo(r.administrar, r.seccion, enfermedadId, aviso = null) },
-    )
+    fun quitar(enfermedadId: Long) {
+        if (!puedeCambiarLista()) return
+        cambiarLista(
+            nombre = nombreDe(enfermedadId),
+            pedir = { ficha -> repo.pedirEnLista(medicoId, enfermedadId, false, ficha) },
+            leer = { r, _ -> CambioListo(r.administrar, r.seccion, enfermedadId, aviso = null) },
+        )
+    }
 
     /**
      * RF-44: crea (o reutiliza) la enfermedad con el nombre normalizado y la suma a la lista; con el paciente de la
      * consulta, la marca. Un nombre que no sirve (RF-43) no se envía y se muestra su texto.
      */
     fun crear(nombre: String) {
-        if (_administrar.value.enCamino) return
+        if (!puedeCambiarLista() || _administrar.value.enCamino) return
         val normalizado = nombreNormalizado(nombre)
         errorDeNombreEnfermedad(normalizado)?.let { error ->
             _administrar.update { it.copy(aviso = error) }
@@ -338,6 +380,7 @@ class EnfermedadesControlador(
         pedir: (fichaId: Long?) -> Deferred<ResultadoPedido<T>>,
         leer: (T, MotivoSinMarcar?) -> CambioListo,
     ) {
+        val deEstaVentana = ventana.value
         var tomado = false
         _administrar.update { tomado = !it.enCamino; if (tomado) it.copy(enCamino = true, aviso = null) else it }
         if (!tomado) return
@@ -350,20 +393,29 @@ class EnfermedadesControlador(
             when (val r = repo.esperar(pedir(ficha))) {
                 is ResultadoPedido.Ok -> {
                     val cambio = leer(r.valor, motivoLocal)
-                    _administrar.update { it.copy(estado = cambio.administrar, enCamino = false, aviso = cambio.aviso) }
+                    // Si se cerró la ventana mientras tanto, la respuesta no la reescribe (la sección sí se actualiza).
+                    _administrar.update {
+                        if (deEstaVentana != ventana.value) it.copy(enCamino = false)
+                        else it.copy(estado = cambio.administrar, enCamino = false, aviso = cambio.aviso)
+                    }
                     if (cambio.seccion != null && secuencia != null) marcar { it.confirmado(secuencia, cambio.enfermedadId, cambio.seccion) }
                 }
-                is ResultadoPedido.Error -> cambioRechazado(nombre, r.error)
-                ResultadoPedido.SinRespuesta -> cambioRechazado(nombre, errorSinRespuesta())
+                is ResultadoPedido.Error -> cambioRechazado(nombre, r.error, deEstaVentana)
+                ResultadoPedido.SinRespuesta -> cambioRechazado(nombre, errorSinRespuesta(), deEstaVentana)
             }
         }
     }
 
     /**
      * RF-46: no se muestra como hecho; el motivo (los de RF-25 a RF-28) y lo escrito se conserva. Sin conexión vuelve a
-     * pedir administrar y muestra ese, con el aviso de que no se pudo confirmar.
+     * pedir administrar y muestra ese, con el aviso de que no se pudo confirmar. Con la ventana ya cerrada solo libera
+     * el "en camino".
      */
-    private suspend fun cambioRechazado(nombre: String, error: TobbException) {
+    private suspend fun cambioRechazado(nombre: String, error: TobbException, deEstaVentana: Int) {
+        if (deEstaVentana != ventana.value) {
+            _administrar.update { it.copy(enCamino = false) }
+            return
+        }
         val sinConexion = esSinConexion(error)
         val aviso = when {
             sinConexion -> textoSinConfirmar(nombre)
@@ -377,7 +429,7 @@ class EnfermedadesControlador(
         _administrar.update { it.copy(aviso = aviso, enCamino = sinConexion) }
         if (!sinConexion) return
         val nueva = (repo.esperar(repo.pedirAdministrar(medicoId)) as? ResultadoPedido.Ok)?.valor
-        _administrar.update { it.copy(estado = nueva ?: it.estado, enCamino = false) }
+        _administrar.update { if (deEstaVentana != ventana.value) it.copy(enCamino = false) else it.copy(estado = nueva ?: it.estado, enCamino = false) }
     }
 
     private fun nombreDe(enfermedadId: Long): String =

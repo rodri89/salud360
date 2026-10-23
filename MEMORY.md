@@ -12,8 +12,10 @@ registros de personas): el repo es público.
   (F2.1 a F2.10 hechas y commiteadas; F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
   `AuthRepository`; F2.8 = `EnfermedadesControlador`, `DataModule` y E12, la guardia contra respuestas lentas tras el
   `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; F2.10 = E2E
-  `HcClinicaEnfermedadesE2ETest` contra la copia local; el último commit de código está en `git log`). Pendientes:
-  la validación del reviewer de la tanda F2 y la tanda F3 (pantallas).
+  `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; el último
+  commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
+  están cerradas. Pendiente: generar y aprobar la tanda F3 (pantallas); ahí se deciden "motivos 1 a 4 detrás del
+  diálogo" y "Reintentar con motivos 6 a 9".
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -108,8 +110,15 @@ registros de personas): el repo es público.
   test que simula una base de versión anterior tiene que borrar todas las tablas que crean las migraciones siguientes
   (si no, `CREATE TABLE` falla con "already exists").
 - Un pedido que sale antes del `logout` y llega después no debe tocar la copia local: `AuthRepository.logout` llama a
-  `alCerrarSesion` (= `EnfermedadesRepository.cerrarSesion`, generación + `Mutex`) antes de borrar (E12). Algo parecido
-  habría que hacer si otra copia local se llena desde pedidos en vuelo.
+  `alCerrarSesion` (= `EnfermedadesRepository.cerrarSesion`), que borra `hc_enfermedades` y sube la generación dentro del
+  mismo `Mutex` (primero borra, después sube) (E12); `logout` ya no borra esa tabla por su cuenta: un `AuthRepository`
+  armado sin ese parámetro no la borra. Algo parecido habría que hacer si otra copia local se llena desde pedidos en
+  vuelo.
+- `EnfermedadesControlador`: administrar y los cambios de la lista salen sin hacer nada si no se puede administrar
+  (RF-37); solo `abrirAdministrar` mira `editable` (RF-58 deja crear con la consulta ya cerrada). Un test que abra
+  administrar tiene que esperar antes a que la sección cargue.
+- Tests que prueban "no contesta a tiempo": retener la respuesta con una compuerta que el test abre (`CompletableDeferred`),
+  no con `delay` contra una `espera` corta.
 - Tests con `espera` corta (~100 ms) del repositorio de enfermedades: solo donde se prueba el tiempo cumplido; el primer
   pedido de una corrida (carga de clases) puede excederla bajo carga y dejar la sección en solo lectura.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose

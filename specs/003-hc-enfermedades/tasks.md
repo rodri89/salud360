@@ -450,6 +450,47 @@ Reglas de la F2, además de las de arriba:
     Limpieza con el SQL del KDoc tras cada corrida: conteos por `activo` de las tres tablas, `pacientes` y
     `medico_pacientes` iguales a los de antes, prefijo y DNI de prueba en 0, `salud360_token_cache` vacía.
 
+- [x] **F2.11. Ajustes tras la validación del reviewer de la tanda F2.** RF-28, RF-34, RF-37, RF-45, RF-58
+  - La tanda F2 quedó **aprobada con observaciones** (2026-10-23); el usuario aprobó cerrar estos puntos antes de la F3.
+    No hay pantallas, ni ícono, ni renderer; la decisión de "motivos 1 a 4 detrás del diálogo" y la de "Reintentar con
+    motivos 6 a 9" se toman en las tareas de F3.
+  1. `CopiaEnfermedadesTest.una_respuesta_lenta_es_sin_conexion_pero_igual_actualiza_la_copia`: sin márgenes de reloj
+     (antes `espera` 100 ms y demora 300 ms). La API falsa retiene la respuesta en una compuerta que el test abre a mano;
+     la carga inicial de la copia va con la `espera` larga. Sigue probando que a la `espera` es sin conexión y que la
+     respuesta tardía igual actualiza la copia.
+  2. `EnfermedadesRepository.cerrarSesion()` borra toda la copia **y** sube la generación dentro del mismo `withLock` (el
+     borrado primero, la generación después, para que un pedido que leyó la generación vieja y espera el candado no
+     escriba tras el borrado); `AuthRepository.logout` ya no borra `hc_enfermedades` por su cuenta (lo hace
+     `alCerrarSesion`; lo demás sigue igual). Test: el contrato de `cerrarSesion` (rojo antes: no borraba) y que un
+     pedido que salió antes y contesta después no escribe. `logout_borra_toda_la_copia` pasa a armar el `AuthRepository`
+     con `alCerrarSesion` (como `DataModule`), porque el borrado ya no vive en `logout`.
+  3. `EnfermedadesControlador`: `abrirAdministrar`, `agregar`, `quitar` y `crear` salen sin hacer nada si no se puede
+     administrar (RF-30, RF-37: sin conexión, solo lectura o motivos 1 a 5; `abrirAdministrar` también con la consulta no
+     editable). Los tres cambios de la lista no miran `editable`: RF-58 pide que "Crear" funcione con la consulta que se
+     cerró con la ventana abierta (y `crear_con_la_consulta_no_editable_no_manda_la_ficha` lo prueba). Nuevo
+     `cerrarAdministrar()` (limpia `buscado`, `aviso` y el `estado` viejo; una respuesta que llega después de cerrar no
+     los vuelve a escribir). Doble `abrirAdministrar` con un pedido en vuelo y doble `elegirFicha` seguidos: el segundo no
+     hace nada. Tests nuevos en `EnfermedadesControladorTest`.
+  4. `MarcadoEnfermedades.kt`: se borra `ESPERA_MARCADO` (duplicaba a `EnfermedadesRepository.ESPERA` y no se usaba).
+  5. `spec.md`: se reflejan las dos desviaciones aceptadas, con fecha y "ajuste tras validación F2": RF-58 / E10 (el aviso
+     de «ya en la lista» con el motivo) y RF-28 (un rechazo al pedir el estado es "sin respuesta" si es de lugar 5 y un
+     motivo en cualquier otro caso). Sin tocar otros RF.
+  6. Tests: (a) `guardarSesion` → `borrarCopiaEnfermedadesAlEntrar` (`guardarSesion` pasa a `internal`, sin pasar por
+     `login` ni `restaurar`); (b) el test de migración compara también tipo, `notnull`, valor por defecto y clave
+     primaria de `hc_enfermedades` (`PRAGMA table_info`) entre la base migrada 7 → 8 y la fresca.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --rerun` en verde tres veces seguidas; `:core:ui:jvmTest` y
+    `:especialidades:clinica:jvmTest` en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila. Sin E2E.
+  - Hecho (2026-10-23). Rojo previo (8 tests): la copia no se borraba en `cerrarSesion`, los cuatro métodos de administrar
+    pedían igual sin conexión / con motivo / con la consulta no editable, el segundo `abrirAdministrar` y el segundo
+    `elegirFicha` repetían el pedido y `cerrarAdministrar` (vacío) no limpiaba; `guardarSesion` se probó por mutación
+    (sin su línea, el test falla). `:core:data:jvmTest --rerun` tres veces en verde (456 tests), `:core:ui:jvmTest`,
+    `:especialidades:clinica:jvmTest` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde. Dos tests existentes
+    se ajustaron: `logout_borra_toda_la_copia` (arma el `AuthRepository` con `alCerrarSesion`) y
+    `una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia` (abre administrar con la sección ya cargada, que es lo
+    que exige RF-37; sigue probando lo mismo). Sobre el punto 2: con el borrado y la generación en un solo paso no queda
+    un "medio" dentro del repositorio; no se pudo reproducir una intercalación concreta de forma determinista (la guardia
+    es privada), por eso se cubre el contrato (`cerrarSesion` borra y lo que estaba en camino no reescribe).
+
 Decidido (2026-10-21, coordinador):
 - E1 `claveDeNombre` se alinea con el servidor (solo `[ \t\n\r\x0B\x0C]`) aunque cambie algún caso raro de perfiles con
   espacios Unicode al borde: es lo deseado. Si algún test de perfiles cambia, se anota y se ajusta el test con un
