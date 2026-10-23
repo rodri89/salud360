@@ -597,7 +597,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     textos nuevos); el botón "Elegir" es un `OutlinedButton` con el estilo de `AcceptButton` pero de 48 dp. El lector de
     pantalla dirá solo "Elegir" en cada botón (sin la ficha); si en F3.7-M5 molesta, se le agrega una descripción.
 
-- [ ] **F3.3. Acceso por sesión, `EnfermedadesViewModel` y `HcModule`.** RF-4, RF-8, RF-15, RF-35
+- [x] **F3.3. Acceso por sesión, `EnfermedadesViewModel` y `HcModule`.** RF-4, RF-8, RF-15, RF-35
   - **Corrige al plan** (ver "Discrepancias"): el `medicoId` de la sección es `PerfilMedico.medicoId` **de la sesión**, no
     el que le llega a `ConsultaScreen` (en `MainShell.kt:281` es el médico que eligió la secretaria, o `usuario.id` del
     administrador); por eso `ConsultaViewModel.medicoId` **no** pasa a `val` pública.
@@ -625,6 +625,15 @@ Reglas de la F3, además de las de arriba y las de la F2:
     completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan;
     `ConsultaViewModel.medicoId` sigue `private`; buscar `ctx.valor`, `setValor` y `HcApiSync` en `EnfermedadesViewModel.kt`
     no da resultados; la app arranca (Koin resuelve el ViewModel nuevo: se mira en la primera apertura de F3.7).
+  - Hecho (2026-10-23). Rojo previo: `AccesoEnfermedadesTest` no compilaba solo por `Unresolved reference` de las tres
+    funciones nuevas; luego sus 11 casos y `:core:data:jvmTest --rerun` (474 tests), `:core:ui:jvmTest`,
+    `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` OK.
+    El código real coincide con el texto de la tarea (`MainShell.kt:241/281`). Detalles que la tarea no fijaba: (a)
+    `EnfermedadesViewModel.editable` arranca en `false` (solo lectura hasta que la pantalla lo diga con `SideEffect`); (b) el
+    filtro de `visibleParaSesion` va solo en `pestanias(ui)` (solo la HC general tiene `grupos`) y no en la rama sin grupos de
+    `seccionesVisibles`: `DesarrolloInfantil` tiene una sección propia con id `enfermedades` que no es esta; (c) `ConsultaViewModel`
+    recibe `AuthRepository` y no lo usa para otra cosa; (d) el `medicoId` del controlador sale de `auth.sesion.value` al crear el
+    ViewModel (una sesión no cambia con la consulta abierta); el scope es `viewModelScope`, sin scope propio.
 
 - [ ] **F3.4a. Panel de la sección (lógica pura).** RF-9 a RF-14, RF-18, RF-19, RF-21, RF-24, RF-28 a RF-31, RF-35, RF-37
   - `core/data/.../repos/PanelEnfermedades.kt` (nuevo, junto a `SeccionEnfermedadesUi`, para no hacer que `hcgeneral`

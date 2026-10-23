@@ -15,7 +15,10 @@ import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.layoutConsulta
+import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
+import com.salud360.core.data.hcgeneral.visibleParaSesion
+import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.hoy
@@ -98,6 +101,8 @@ class ConsultaViewModel(
     private val definiciones: DefinicionesHc,
     /** Envío diferido a la API de la especialidad, cuando la tiene (hoy pediatría). */
     private val hcApi: HcApiSync,
+    /** Solo para saber si la sesión es de un médico y filtrar "Enfermedades" (RF-4); el `medicoId` de abajo no cambia. */
+    private val auth: AuthRepository,
     val consultaId: Id,
     private val medicoId: Id,
 ) : ViewModel() {
@@ -424,7 +429,9 @@ class ConsultaViewModel(
         val vacio = LayoutConsulta(emptyList(), emptyList())
         val def = ui.definicion ?: return vacio
         val tipo = ui.tipo ?: return vacio
-        return layoutConsulta(tipo, ocultas(ui)) { id -> def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
+        // RF-4: la secretaria y el administrador no ven la pestaña ni la sección de enfermedades, aunque el perfil la tenga.
+        val medicoPropio = auth.sesion.value?.let(::medicoParaEnfermedades)
+        return layoutConsulta(tipo, ocultas(ui)) { id -> visibleParaSesion(id, medicoPropio) && def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
     }
 
     private fun ocultas(ui: ConsultaUi): Set<String> = ui.definicion?.let { ocultasDe(it, ui.preferencias) } ?: emptySet()

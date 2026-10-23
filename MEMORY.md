@@ -16,8 +16,10 @@ registros de personas): el repo es público.
   commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
   están cerradas. Tanda F3 (pantallas, 10 tareas, decisiones P1 a P9 en `tasks.md`) aprobada el 2026-10-23;
   F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`); F3.2 hecha
-  (`lineaDeCandidata` en `core/data/hcgeneral/FichaCandidata.kt` y `ElegirFichaPaciente` en `features/hc/secciones`).
-  Sigue F3.3.
+  (`lineaDeCandidata` en `core/data/hcgeneral/FichaCandidata.kt` y `ElegirFichaPaciente` en `features/hc/secciones`);
+  F3.3 hecha (`hcgeneral/AccesoEnfermedades.kt`: `medicoParaEnfermedades(sesión)`, `consultaEditable`, `visibleParaSesion`;
+  `EnfermedadesViewModel` en `features/hc`; `ConsultaViewModel` recibe `AuthRepository` y filtra la pestaña en `pestanias`;
+  su `medicoId` sigue privado). Sigue F3.4a.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -123,6 +125,9 @@ registros de personas): el repo es público.
   no con `delay` contra una `espera` corta.
 - Tests con `espera` corta (~100 ms) del repositorio de enfermedades: solo donde se prueba el tiempo cumplido; el primer
   pedido de una corrida (carga de clases) puede excederla bajo carga y dejar la sección en solo lectura.
+- RF-4: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
+  Enfermedades sale de la sesión (`medicoParaEnfermedades`), nunca de la pantalla. `EnfermedadesViewModel.editable` no es
+  observable: la pantalla calcula `puedeAdministrar` en la misma composición que el estado del controlador.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose
   saltea la sección: el bug de Child-Pugh que no se pintaba).
 - Cargas de laboratorio: `ORDER BY fecha DESC, updated_at DESC`; sin el desempate, a igual fecha SQLite devuelve el
