@@ -554,7 +554,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
   compilación web contra el entorno dev (`-Pentorno=dev`); no matar el `devWeb` del usuario.
 - Cualquier camino que la tarea encuentre y que contradiga la spec o el plan: parar y preguntar (principio 1).
 
-- [ ] **F3.1. `CasillaElegible` (core/ui).** RF-20, RF-21 (marca "Guardando…"), RF-22
+- [x] **F3.1. `CasillaElegible` (core/ui).** RF-20, RF-21 (marca "Guardando…"), RF-22
   - `core/ui/src/commonMain/kotlin/com/salud360/core/ui/components/CasillaElegible.kt` (nuevo), al lado de
     `OpcionElegible.kt`: `CasillaElegible(nombre: String, marcada: Boolean, onCambio: (Boolean) -> Unit, modifier:
     Modifier = Modifier, habilitada: Boolean = true, marca: String? = null, colores: ColoresSiNo =

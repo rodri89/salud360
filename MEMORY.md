@@ -14,8 +14,9 @@ registros de personas): el repo es público.
   `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; F2.10 = E2E
   `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; el último
   commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
-  están cerradas. Pendiente: generar y aprobar la tanda F3 (pantallas); ahí se deciden "motivos 1 a 4 detrás del
-  diálogo" y "Reintentar con motivos 6 a 9".
+  están cerradas. Tanda F3 (pantallas, 10 tareas, decisiones P1 a P9 en `tasks.md`) aprobada el 2026-10-23;
+  F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`).
+  Sigue F3.2.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
