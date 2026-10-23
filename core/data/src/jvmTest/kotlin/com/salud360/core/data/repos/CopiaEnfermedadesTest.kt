@@ -31,6 +31,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Copia de las enfermedades en el dispositivo (RF-11, RF-30 a RF-34) sobre una base SQLite de verdad en un archivo
@@ -96,7 +97,8 @@ class CopiaEnfermedadesTest {
         }
     }
 
-    private fun repo(db: Salud360Db, api: EnfermedadesApi?, espera: Duration = 10_000.milliseconds) =
+    /** La `espera` por defecto es larga a propósito: con la máquina cargada un pedido puede tardar segundos y no debe darse por sin conexión. */
+    private fun repo(db: Salud360Db, api: EnfermedadesApi?, espera: Duration = 30.seconds) =
         EnfermedadesRepository(db, api, nombreHc, espera)
 
     // ---------- qué se guarda (RF-32, RF-33) ----------

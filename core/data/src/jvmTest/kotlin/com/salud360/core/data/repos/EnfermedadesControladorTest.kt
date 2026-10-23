@@ -54,10 +54,20 @@ import kotlin.time.Duration.Companion.seconds
  * Controlador de la sección "Enfermedades" (spec 003, RF-8, RF-15, RF-21 a RF-28, RF-40, RF-41, RF-44 a RF-46, RF-48,
  * RF-58) sobre una base SQLite de verdad en un archivo temporal, con las APIs falsas de enfermedades y de pacientes:
  * sin red ni servidor. Los pedidos de la API falsa que se "retienen" se quedan esperando hasta que el test los libera
- * (así se prueban respuestas desordenadas, tardías y rechazos); la `espera` del repositorio es de ~100 ms. Los nombres
- * de enfermedades son de prueba, nunca de la base real.
+ * (así se prueban respuestas desordenadas, tardías y rechazos). Nada depende del reloj salvo el único test que prueba
+ * justamente "a la espera es sin conexión": los demás usan una `espera` larga ([ESPERA_LARGA]) y un `hasta` con tope
+ * holgado, así que una máquina cargada hace más lento el test pero no lo rompe. Los nombres de enfermedades son de
+ * prueba, nunca de la base real.
  */
 class EnfermedadesControladorTest {
+
+    private companion object {
+        /** La `espera` del repositorio en los tests que no prueban el tiempo: que nunca venza con la máquina cargada. */
+        val ESPERA_LARGA = 30.seconds
+
+        /** Cuánto espera `hasta` antes de dar el test por colgado. */
+        val TOPE_HASTA = 30.seconds
+    }
 
     private val medico = "tobb-m1"
     private val paciente = "tobb-p55"
@@ -92,7 +102,9 @@ class EnfermedadesControladorTest {
      * API de enfermedades falsa: anota cada pedido; los de un tipo en [retenidos] esperan a que se los libere, el resto
      * contesta enseguida con lo cargado (o con [fallo]).
      */
-    private class ApiFalsa(var seccion: EstadoSeccionEnfermedades, var lista: EstadoAdministrar) : EnfermedadesApi {
+    private class ApiFalsa(seccion: EstadoSeccionEnfermedades, lista: EstadoAdministrar) : EnfermedadesApi {
+        @Volatile var seccion = seccion
+        @Volatile var lista = lista
         val llamadas = CopyOnWriteArrayList<Llamada>()
         val retenidos: MutableSet<String> = ConcurrentHashMap.newKeySet()
         @Volatile var fallo: TobbException? = null
@@ -148,13 +160,18 @@ class EnfermedadesControladorTest {
         val pacientesHc: PacientesHcRepository,
         val c: EnfermedadesControlador,
     ) {
-        /** Espera (hasta 5 s) a que [condicion] dé algo distinto de null y lo devuelve. */
+        /**
+         * Espera (hasta [TOPE_HASTA]) a que [condicion] dé algo distinto de null y lo devuelve. El tope es de reloj de
+         * pared y solo corta un test colgado de verdad; sondea seguido y mira una última vez al vencer, porque si el
+         * proceso se frena justo ahí, lo que ya se cumplió no tiene que contar como no cumplido.
+         */
         suspend fun <T : Any> hasta(que: String, condicion: () -> T?): T {
-            val limite = System.nanoTime() + 5_000_000_000L
+            val limite = System.nanoTime() + TOPE_HASTA.inWholeNanoseconds
             while (System.nanoTime() < limite) {
                 condicion()?.let { return it }
-                delay(10)
+                delay(5)
             }
+            condicion()?.let { return it }
             fail("No se cumplió a tiempo: $que\n  sección: ${c.estado.value}\n  administrar: ${c.administrar.value}\n  llamadas: ${api.llamadas.map { it.tipo }}")
         }
 
@@ -168,6 +185,20 @@ class EnfermedadesControladorTest {
         suspend fun abierta() {
             c.abrir()
             hasta("la sección abierta") { c.estado.value.takeIf { !it.cargando } }
+        }
+
+        /**
+         * Como [abierta], pero con una `espera` corta el pedido de la apertura puede no llegar a tiempo con la máquina
+         * cargada y la sección queda en solo lectura: en ese caso reintenta, así lo que sigue parte siempre de "con conexión".
+         */
+        suspend fun abiertaConConexion() {
+            abierta()
+            for (intento in 1..100) {
+                if (!c.estado.value.marcado.soloLectura) return
+                c.reintentar()
+                hasta("el reintento $intento") { c.estado.value.takeIf { !it.cargando } }
+            }
+            fail("La sección no abrió con conexión en 100 intentos\n  sección: ${c.estado.value}")
         }
 
         suspend fun conAdministrar() {
@@ -185,7 +216,7 @@ class EnfermedadesControladorTest {
 
     private fun conControlador(
         vinculado: Boolean = true,
-        espera: Duration = 5.seconds,
+        espera: Duration = ESPERA_LARGA,
         bloque: suspend Contexto.() -> Unit,
     ) {
         editable = true
@@ -352,11 +383,12 @@ class EnfermedadesControladorTest {
 
     @Test
     fun sin_respuesta_y_el_estado_tambien_sin_respuesta_queda_solo_lectura_con_la_copia() = conControlador(espera = 100.milliseconds) {
-        // Solo acá la espera es corta. Un primer pedido (con la carga de clases) puede excederla bajo carga: se lo hace
-        // antes, para que la copia exista y la apertura del controlador no dependa del reloj.
-        repo.abrirSeccion(medico, 10)
+        // Solo acá la espera es corta (el único tiempo que se prueba es "a los 100 ms sin respuesta"). Lo de antes no
+        // puede depender del reloj: la copia se crea esperando el pedido sin `esperar` (que cortaría a los 100 ms) y la
+        // apertura reintenta si con la máquina cargada no llegó a tiempo.
+        repo.pedirSeccion(medico, 10).await()
+        abiertaConConexion()
         api.llamadas.clear()
-        abierta()
         api.retenidos += listOf("marcar", "seccion")
 
         c.tocar(1, true)
@@ -366,7 +398,7 @@ class EnfermedadesControladorTest {
         val estado = c.estado.value
         assertEquals(AvisoEnfermedades.Rechazo(textoSinConfirmar("Asma")), estado.marcado.aviso)
         assertEquals("Sin conexión: las enfermedades se pueden ver pero no cambiar", estado.avisoSoloLectura)
-        assertEquals(2, api.de("seccion").size)
+        assertEquals(1, api.de("seccion").size) // el que se pidió tras el toque sin respuesta (el de la apertura ya se borró)
         assertFalse(tiene(1)) // el último estado confirmado por la web: lo que dice la copia
         assertEquals(inicial, repo.copiaSeccion(medico, 10))
         assertFalse(estado.marcado.puedeTocar(1))
@@ -374,7 +406,7 @@ class EnfermedadesControladorTest {
         assertFalse(c.puedeAdministrar())
 
         // Las respuestas tardías se aplican (RF-23) pero la sección sigue en solo lectura hasta "Reintentar".
-        llamada("seccion", 2).responder(seccion(1))
+        llamada("seccion").responder(seccion(1))
         llamada("marcar").responder(seccion(1))
         hasta("lo tardío") { c.estado.value.takeIf { tiene(1) } }
         assertTrue(c.estado.value.marcado.soloLectura)
@@ -489,6 +521,8 @@ class EnfermedadesControladorTest {
         api.respuestaLista = RespuestaLista(conArtrosis, inicial.copy(marcables = inicial.marcables + Marcable(4, "Artrosis", false)))
         c.agregar(4)
         hasta("agregada") { c.administrar.value.takeIf { it.estado == conArtrosis && !it.enCamino } }
+        // La ventana se actualiza un paso antes que la sección (mismo pedido, dos StateFlow): se espera a las dos.
+        hasta("la sección de la respuesta") { c.estado.value.takeIf { it.marcado.guardado == 1 } }
         assertEquals(listOf<Any?>(4L, true, 10L), api.de("enLista")[0].args)
         assertEquals(Marcable(4, "Artrosis", false), c.estado.value.vista!!.marcables.last())
 
@@ -500,6 +534,7 @@ class EnfermedadesControladorTest {
         )
         c.quitar(1)
         hasta("quitada") { c.administrar.value.takeIf { it.estado == sinAsma && !it.enCamino } }
+        hasta("la sección de la respuesta") { c.estado.value.takeIf { it.marcado.guardado == 2 } }
         assertEquals(listOf<Any?>(1L, false, 10L), api.de("enLista")[1].args)
         assertTrue(Enfermedad(1, "Asma") in c.estado.value.vista!!.otras)
         assertTrue(c.estado.value.vista!!.marcables.none { it.id == 1L })
@@ -520,6 +555,7 @@ class EnfermedadesControladorTest {
         c.crear("Prueba   Nueva ")
 
         hasta("creada") { c.administrar.value.takeIf { it.estado?.lista?.contains(nueva) == true && !it.enCamino } }
+        hasta("la sección de la respuesta") { c.estado.value.takeIf { it.marcado.guardado == 1 } }
         assertEquals(listOf<Any?>("Prueba Nueva", 10L), api.de("crear").single().args)
         assertEquals(Marcable(9, "Prueba Nueva", true), c.estado.value.vista!!.marcables.last())
         assertNull(c.administrar.value.aviso) // nueva y marcada: la grilla ya la muestra (E11)
@@ -580,7 +616,7 @@ class EnfermedadesControladorTest {
     }
 
     @Test
-    fun un_cambio_de_la_lista_por_vez() = conControlador(espera = 5.seconds) { // sin que se cumpla la espera durante el rato
+    fun un_cambio_de_la_lista_por_vez() = conControlador {
         abierta()
         conAdministrar()
         api.retenidos += "enLista"
@@ -731,6 +767,7 @@ class EnfermedadesControladorTest {
         cambio.responder(RespuestaLista(EstadoAdministrar(administrarA.lista + Enfermedad(4, "Artrosis"), emptyList()), inicial))
         hasta("el cambio terminado") { c.administrar.value.takeIf { !it.enCamino } }
         assertEquals(AdministrarEnfermedadesUi(), c.administrar.value)
+        hasta("la sección de la respuesta") { c.estado.value.takeIf { it.marcado.guardado == 1 } } // un paso después de la ventana
         assertEquals(1, c.estado.value.marcado.guardado)
 
         // Lo mismo con el pedido de abrir.
@@ -779,7 +816,7 @@ class EnfermedadesControladorTest {
     // ---------- cerrar sesión con un pedido en camino (E12) ----------
 
     @Test
-    fun una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia() = conControlador(espera = 5.seconds) {
+    fun una_respuesta_lenta_despues_del_logout_no_reescribe_la_copia() = conControlador {
         // Como en `DataModule`: el borrado de la copia lo hace `cerrarSesion`, que `logout` llama.
         // F2.11: administrar solo se abre con la sección ya cargada (RF-37), así que primero se la abre (queda su copia) y
         // después se dejan en camino el pedido de administrar y uno nuevo de la sección.

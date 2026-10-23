@@ -12,7 +12,7 @@ registros de personas): el repo es público.
   (F2.1 a F2.10 hechas y commiteadas; F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
   `AuthRepository`; F2.8 = `EnfermedadesControlador`, `DataModule` y E12, la guardia contra respuestas lentas tras el
   `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; F2.10 = E2E
-  `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; el último
+  `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; F2.12 = tests de enfermedades estables bajo carga; el último
   commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
   están cerradas. Tanda F3 (pantallas, 10 tareas, decisiones P1 a P9 en `tasks.md`) aprobada el 2026-10-23;
   F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`); F3.2 hecha
@@ -125,8 +125,12 @@ registros de personas): el repo es público.
   administrar tiene que esperar antes a que la sección cargue.
 - Tests que prueban "no contesta a tiempo": retener la respuesta con una compuerta que el test abre (`CompletableDeferred`),
   no con `delay` contra una `espera` corta.
-- Tests con `espera` corta (~100 ms) del repositorio de enfermedades: solo donde se prueba el tiempo cumplido; el primer
-  pedido de una corrida (carga de clases) puede excederla bajo carga y dejar la sección en solo lectura.
+- Tests de enfermedades (F2.12): `espera` del repositorio y tope de `hasta` de 30 s; la `espera` corta (100 ms) solo en el
+  test que prueba "a la espera es sin conexión", y ahí la copia de partida va con `pedirSeccion(...).await()` y la apertura
+  con `abiertaConConexion()`. Esta máquina tiene frenones de varios segundos (tests de base 5-14 s en vez de ~1 s) sin
+  tocarla: no poner topes de reloj de 5 s. Un cambio de la lista actualiza la ventana y un paso después la sección: un test
+  que espere una también espera la otra (`marcado.guardado`). Las intermitencias (1) y (3) nunca se reprodujeron: la causa
+  más probable es ese frenón, no demostrada.
 - RF-4: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
   Enfermedades sale de la sesión (`medicoParaEnfermedades`), nunca de la pantalla. `EnfermedadesViewModel.editable` no es
   observable: la pantalla calcula `puedeAdministrar` en la misma composición que el estado del controlador.

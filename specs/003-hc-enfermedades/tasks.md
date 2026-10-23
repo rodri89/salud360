@@ -491,6 +491,66 @@ Reglas de la F2, además de las de arriba:
     un "medio" dentro del repositorio; no se pudo reproducir una intercalación concreta de forma determinista (la guardia
     es privada), por eso se cubre el contrato (`cerrarSesion` borra y lo que estaba en camino no reescribe).
 
+- [x] **F2.12. Estabilizar los tests intermitentes de enfermedades.** (sin RF: solo tests)
+  - Tres fallas intermitentes, siempre con la máquina cargada (Gradle compilando en paralelo): (1)
+    `EnfermedadesControladorTest.un_cambio_de_la_lista_por_vez` ("No se cumplió a tiempo: terminado", nunca reproducida);
+    (2) `CopiaEnfermedadesTest.una_respuesta_lenta_es_sin_conexion_pero_igual_actualiza_la_copia` (arreglada en F2.11); (3)
+    `EnfermedadesControladorTest.abrir_hace_un_solo_pedido_y_reemplaza_la_copia` (falló una vez en `hasta("la sección
+    abierta")` con la sección todavía `cargando`, `ultimaEnviada=1` y `llamadas: [seccion]`: la API falsa recibió el pedido
+    y la sección no llegó a cargar).
+  - Se busca la causa raíz de (1) y (3) y se hacen deterministas los tests de enfermedades que dependen del reloj
+    (`EnfermedadesControladorTest`, `CopiaEnfermedadesTest`; `MarcadoEnfermedadesTest`, `PanelEnfermedadesTest` y el resto
+    se revisan): la `espera` del repositorio es larga salvo en los tests que prueban justamente "a la espera es sin
+    conexión", y esos retienen y liberan la respuesta con compuertas, no con `delay`; los `hasta` con tope holgado
+    y sondeo corto. Sin tocar lo que prueba cada test ni el código de producción (si la causa fuera un bug real, se
+    para y se avisa antes de cambiarlo).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*EnfermedadesControladorTest*' --tests '*CopiaEnfermedadesTest*'
+    --rerun` en verde 10 veces seguidas, al menos 3 con carga de CPU simultánea (procesos propios, que se matan al
+    terminar); `.\gradlew :core:data:jvmTest --rerun` completo en verde tres veces seguidas; `:core:ui:jvmTest` y
+    `:especialidades:clinica:jvmTest` en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila. Sin E2E.
+  - Hecho (2026-10-23). Solo tests (`EnfermedadesControladorTest`, `CopiaEnfermedadesTest`); producción sin tocar.
+    **Diagnóstico.**
+    - (3) y (1): no eran por una `espera` corta. En ambos tests la `espera` del repositorio era la de `conControlador`
+      (5 s, no ~100 ms) y el tope de `hasta` también 5 s de reloj de pared. Para fallar, la API falsa tenía que haber
+      recibido el pedido y la respuesta (que contesta sola, sin retener) no completarse en 5 s: la sección
+      `cargando=true` con `llamadas: [seccion]` es esa firma. No hay carrera entre el `launch` del controlador y la
+      compuerta (en (3) no hay compuertas); **no se reprodujeron** (19 corridas del código original con 4 giros de CPU,
+      con CPU + escritura a disco con `flush`, y sin carga mía). Medido: un hilo vigía con 4 giros de CPU vio pausas de
+      proceso de 114 ms como máximo, y la carga de disco no cambió los tiempos (los tests más lentos, ~2 s); o sea, la CPU
+      y el disco "normales" no alcanzan. Lo que sí apareció, sin que yo cargara nada, fueron frenones de la máquina de
+      varios segundos en tests de base sin ninguna espera: `guarda_administrar_y_seccion_...` 11,2 s (normal 1,4 s),
+      `cerrar_sesion_borra_...` 7,8 s, `un_rechazo_conserva_...` 8,7 s (normal 0,4 s) y, con carga,
+      `una_respuesta_lenta_despues_del_logout_...` 14,6 s (normal 0,8 s). Con un frenón así, 5 s (la `espera` y el `hasta`)
+      se pasan con el código bien: es la causa más probable de (1) y (3), **pero no está demostrada** (nunca vi fallar
+      esos dos). Además `hasta` tenía un defecto propio: si el proceso se frenaba justo al vencer el tope, salía sin
+      mirar la condición una última vez.
+    - Carreras reales **de los tests** (esas sí reproducidas): `agregar_y_quitar_...`,
+      `crear_manda_el_nombre_...` y `una_respuesta_que_llega_despues_de_cerrar_administrar_...` esperaban el `StateFlow`
+      de la ventana y asertaban sobre el de la sección, que `cambiarLista` actualiza un paso después (la ventana primero,
+      `marcar { confirmado }` después). Una vez cayó sola `agregar_y_quitar_...` con carga (1 de 10 corridas; el mensaje no
+      se guardó). Rojo determinista: un `delay(400)` temporal entre los dos pasos de `cambiarLista` hace fallar los tres
+      ("expected Marcable(id=4 ...) but was Marcable(id=3 ...)", "expected 1 but was 0"); con los tests arreglados y el
+      mismo retraso pasan 30/30; el retraso ya está revertido.
+    - `sin_respuesta_y_el_estado_tambien_sin_respuesta_...` (la única `espera` de 100 ms): la copia de partida y la
+      apertura del controlador también corrían con 100 ms, así que una apertura lenta lo dejaba en solo lectura desde el
+      principio. Rojo con un retraso de 300 ms inyectado en los dos primeros pedidos de la API falsa ("No se cumplió a
+      tiempo: solo lectura", `textoSinCopia=Hace falta conexión…`); con el test nuevo y el mismo retraso, verde.
+    **Arreglo.** `ESPERA_LARGA` y `TOPE_HASTA` de 30 s en `EnfermedadesControladorTest` (y 30 s por defecto en
+    `repo()` de `CopiaEnfermedadesTest`, antes 10 s); `hasta` sondea cada 5 ms y mira una última vez al vencer; se
+    sacó el `espera = 5.seconds` de `un_cambio_de_la_lista_por_vez` y del test del logout; los tres tests con carrera
+    esperan también a la sección (`marcado.guardado`); el de 100 ms crea su copia con `pedirSeccion(...).await()` (sin
+    `esperar`) y abre con `abiertaConConexion()` (reintenta hasta abrir con conexión, tope 100); `seccion` y `lista` de la API
+    falsa pasan a `@Volatile`. Lo que prueba cada test no cambió. `unRato()` (`delay(200)`) se deja: solo comprueba que
+    algo NO pasó (el retraso solo puede dar un falso verde, nunca un falso rojo) y no hay forma determinista de probar una
+    ausencia. `MarcadoEnfermedadesTest`, `PanelEnfermedadesTest` y el resto no usan reloj. Los dos tests que prueban "a la
+    espera es sin conexión" (`CopiaEnfermedadesTest.una_respuesta_lenta_...` y el de 100 ms) retienen con compuerta.
+    **Verificación.** Las dos clases con `--rerun`: 10 corridas seguidas en verde con el código final (5 sin carga mía y 5
+    con 4 giros de CPU + 2 de escritura a disco, procesos propios, matados al terminar), más 5 en verde antes del último
+    ajuste de `CopiaEnfermedadesTest`; `:core:data:jvmTest --rerun` completo 3 veces en verde (509 tests); `:core:ui:jvmTest`
+    (17) y `:especialidades:clinica:jvmTest` (23) en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila.
+    Quedan sin demostrar la causa exacta de (1) y (3); si vuelven a fallar con 30 s, el mensaje de `hasta` ya trae las
+    dos secciones y las llamadas, y entonces sí sería un bug real a investigar.
+
 Decidido (2026-10-21, coordinador):
 - E1 `claveDeNombre` se alinea con el servidor (solo `[ \t\n\r\x0B\x0C]`) aunque cambie algún caso raro de perfiles con
   espacios Unicode al borde: es lo deseado. Si algún test de perfiles cambia, se anota y se ajusta el test con un
