@@ -635,7 +635,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     recibe `AuthRepository` y no lo usa para otra cosa; (d) el `medicoId` del controlador sale de `auth.sesion.value` al crear el
     ViewModel (una sesión no cambia con la consulta abierta); el scope es `viewModelScope`, sin scope propio.
 
-- [ ] **F3.4a. Panel de la sección (lógica pura).** RF-9 a RF-14, RF-18, RF-19, RF-21, RF-24, RF-28 a RF-31, RF-35, RF-37
+- [x] **F3.4a. Panel de la sección (lógica pura).** RF-9 a RF-14, RF-18, RF-19, RF-21, RF-24, RF-28 a RF-31, RF-35, RF-37
   - `core/data/.../repos/PanelEnfermedades.kt` (nuevo, junto a `SeccionEnfermedadesUi`, para no hacer que `hcgeneral`
     importe `repos`): constantes de la spec `TEXTO_GUARDANDO` ("Guardando…", RF-21), `TEXTO_GUARDADO` ("Guardado",
     RF-24), `TEXTO_REINTENTAR` ("Reintentar", RF-30) y `TEXTO_ADMINISTRAR` ("Administrar enfermedades", RF-18/RF-37);
@@ -666,6 +666,20 @@ Reglas de la F3, además de las de arriba y las de la F2:
     motivo (1 a 9), cerrada y sin conexión (RF-37); lista de marcables vacía → `sinMarcables` con "Otras" y "Administrar".
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*PanelEnfermedadesTest*'` en verde (rojo antes);
     `:core:data:jvmTest` completo en verde; el archivo no importa nada de `androidx` ni de Compose.
+  - Hecho (2026-10-23). Rojo previo: el test no compilaba solo por `Unresolved reference` de `panelDeSeccion`,
+    `PanelEnfermedades` y las cuatro constantes; luego `PanelEnfermedadesTest` (35 casos) y `:core:data:jvmTest --rerun`
+    (509 tests), `:core:ui:jvmTest` (17), `:especialidades:clinica:jvmTest` (23) y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` en verde. Mutación puntual (reintentar con 1 y 6, grilla que pasa a "Estado actual" en solo lectura,
+    "Reintentar" que ignora `cargando`) falla en 4 tests; ya revertida. `AVISO_SIN_CONEXION` y `TEXTO_HACE_FALTA_CONEXION`
+    ya existían en `EnfermedadesRepository.kt` (mismo paquete `repos`); no se movieron. Detalles que la tarea no fijaba:
+    (a) `ElegirFicha(candidatas, habilitado, administrar)` y `Motivo(texto, reintentar, administrar)`; `Contenido` y
+    `SinCopia` como en el texto; (b) "Administrar" usa `ui.conConexion` (la misma regla del controlador), así que se apaga
+    también mientras `cargando`; un test compara el panel contra `puedeAdministrar` con todas las combinaciones; (c) un
+    estado sin vista, motivo ni texto y sin `cargando` (no debería darse) cae en `Cargando`; (d) las casillas no tocables
+    en solo lectura las da `ui.marcado.puedeTocar` (el panel no las repite; el test lo comprueba). Una corrida de
+    `EnfermedadesControladorTest.abrir_hace_un_solo_pedido_y_reemplaza_la_copia` falló una vez ("No se cumplió a tiempo: la
+    sección abierta", `cargando=true`, llamadas `[seccion]`, bajo la carga de la compilación) y pasó en la corrida
+    siguiente: es el flake de la `espera` corta ya anotado en `MEMORY.md`, sin relación con esta tarea.
 
 - [ ] **F3.4b. Pantalla de la sección (`EnfermedadesSeccion`).** RF-5, RF-9, RF-14 a RF-24, RF-28 a RF-31, RF-35
   - `features/hc/.../secciones/EnfermedadesSeccion.kt` (nuevo): `@Composable fun EnfermedadesSeccion(s: SeccionDef, ctx:
