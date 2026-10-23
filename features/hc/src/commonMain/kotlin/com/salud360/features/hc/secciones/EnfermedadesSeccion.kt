@@ -84,8 +84,9 @@ fun EnfermedadesSeccion(s: SeccionDef, ctx: SeccionContext) {
         }
     }
 
-    // La ventana (modal) se abre con "Administrar enfermedades" y se cierra por su "Cerrar". Sigue abierta aunque `puedeAdministrar`
-    // cambie con ella abierta (p. ej. la consulta se cierra): RF-58 pide que "Crear" siga funcionando.
+    // La ventana (modal) se abre con "Administrar enfermedades" y se cierra por su "Cerrar", o sola si se pierde la conexión o
+    // aparece un motivo de los lugares 1 a 5 (`debeCerrarAdministrar`). Sigue abierta si solo se cierra la consulta: RF-58
+    // pide que "Crear" siga funcionando.
     var administrarAbierto by rememberSaveable { mutableStateOf(false) }
     val onAdministrar: () -> Unit = { administrarAbierto = true }
     SectionCard(

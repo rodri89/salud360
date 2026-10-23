@@ -26,7 +26,10 @@ registros de personas): el repo es público.
   no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5); F3.4c hecha (renderer `enfermedades`
   registrado en `hcGeneralContribution`, ícono propio `HealthAndSafety` en `Iconos.kt`; el cartel "Sección no disponible" ya no
   sale para esa sección); F3.5 hecha (`repos/PanelAdministrar.kt`: `panelDeAdministrar(ui)` con `Cargando`/`SoloAviso`/`Contenido`;
-  `AdministrarEnfermedadesDialog` modal en `features/hc/secciones`, abierto por "Administrar enfermedades"). Sigue F3.6.
+  `AdministrarEnfermedadesDialog` modal en `features/hc/secciones`, abierto por "Administrar enfermedades"); ajuste de F3.5
+  (2026-10-23, decisión del usuario): la ventana se cierra sola si la sección deja de poder administrar por conexión o por un
+  motivo 1 a 5 (`debeCerrarAdministrar` en `PanelAdministrar.kt`; con la sección cargando o solo `editable` falso no cierra, RF-58).
+  Sigue F3.6.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -130,7 +133,8 @@ registros de personas): el repo es público.
   administrar tiene que esperar antes a que la sección cargue.
 - `ofrecerCrear` devuelve `null` con el nombre vacío: el error "El nombre está vacío" (solo espacios) lo arma `panelDeAdministrar`.
   Con la ventana de administrar abierta, un toque anterior sin respuesta puede pasar la sección a solo lectura y los cambios de
-  la lista salen sin hacer nada (anotado en F3.5-g; pendiente de decidir).
+  la lista salen sin hacer nada (F3.5-g): resuelto cerrando la ventana sola. Un cambio de la lista que falla sin conexión NO
+  cambia el estado de la sección (solo el aviso de la ventana), así que ahí la ventana no se cierra.
 - Tests que prueban "no contesta a tiempo": retener la respuesta con una compuerta que el test abre (`CompletableDeferred`),
   no con `delay` contra una `espera` corta.
 - Tests de enfermedades (F2.12): `espera` del repositorio y tope de `hasta` de 30 s; la `espera` corta (100 ms) solo en el

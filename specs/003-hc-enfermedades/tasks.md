@@ -858,10 +858,35 @@ Reglas de la F3, además de las de arriba y las de la F2:
     así que sigue abierta si la consulta se cierra (RF-58). **Camino que cambia `puedeAdministrar` con la ventana abierta**
     (la tarea pedía parar y preguntar): una casilla tocada justo antes de abrir la ventana puede quedar sin respuesta y pasar la
     sección a solo lectura (RF-28) con la ventana abierta; entonces `agregar`/`quitar`/`crear` del controlador salen sin hacer
-    nada (`puedeCambiarLista`) y los botones siguen habilitados. No rompe nada ni es nuevo (el controlador es de F2.11); lo
-    decide el coordinador: cerrar la ventana en ese caso, o mostrar un aviso. (h) No hay foco inicial en el buscador ni
+    nada (`puedeCambiarLista`) y los botones siguen habilitados. No rompe nada ni es nuevo (el controlador es de F2.11). **Decidido
+    el 2026-10-23: la ventana se cierra sola en ese caso** (ver "Ajuste 2026-10-23" abajo). (h) No hay foco inicial en el buscador ni
     `onDispose` que llame a `cerrarAdministrar()` si la pantalla sale con la ventana abierta (el estado viejo se refresca al
     reabrir).
+  - **Ajuste 2026-10-23 (decisión del usuario).** Sin tarea nueva. (1) Si con la ventana abierta la sección deja de poder
+    administrar por falta de conexión o por un motivo de los lugares 1 a 5 de RF-14 (`puedeAdministrar` pasa a falso por
+    conexión o motivo), la ventana **se cierra sola**, por el mismo camino que "Cerrar" (`controlador.cerrarAdministrar()` y
+    `onCerrar()`). No hay texto nuevo: la sección de atrás ya muestra su aviso ("Sin conexión: las enfermedades se pueden ver
+    pero no cambiar" o el motivo). Cerrar la consulta con la ventana abierta (cambia solo `editable`) **no** la cierra: es el
+    caso RF-58 y "Crear" sigue funcionando, sin mandar la ficha. (2) El "vacío" de RF-43 queda como está (error armado en
+    `panelDeAdministrar`; `ofrecerCrear` y el controlador no cambian). Implementación: `debeCerrarAdministrar(ui:
+    SeccionEnfermedadesUi): Boolean` en `repos/PanelAdministrar.kt` (pura) = `!puedeAdministrar(editable = true, propia =
+    true, conConexion = ui.cargando || ui.conConexion, motivo = ui.motivoMostrado)`, la misma pregunta que hace
+    `puedeCambiarLista` del controlador; el diálogo la observa con `controlador.estado` y un `LaunchedEffect(hayQueCerrar)`
+    que llama a `cerrar` (el mismo lambda de "Cerrar"). **Mientras la sección carga no cierra:** `conConexion` es falso por
+    definición con `cargando`, pero cargando todavía no es "sin conexión" (no se sabe), así que se supone con conexión; un
+    motivo 1 a 5 ya conocido sí cierra aunque cargue. Hoy no se da con la ventana recién abierta (el botón solo existe con la
+    sección cargada y la ventana es modal), así que no se cierra al abrir; el "Cargando…" de la ventana es el de su propio
+    pedido (`PanelAdministrar.Cargando`) y no entra en la regla. Tests: `DebeCerrarAdministrarTest` (nuevo, 11 casos: sin
+    conexión, sin copia, cada motivo 1 a 5 cierra y por rechazo de un toque, 6 a 9 no, consulta cerrada no, todo normal no,
+    cargando no, y equivalencia con `puedeAdministrar`). Rojo previo: no compilaba por `Unresolved reference:
+    debeCerrarAdministrar`. Verde: `:core:data:jvmTest --rerun` (547 tests), `:core:ui:jvmTest`,
+    `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`.
+    Alcance real: el estado de la sección solo cambia con la ventana abierta por el camino de (g) (un toque sin respuesta
+    que pasa a solo lectura); un cambio de la lista que falla sin conexión no toca ese estado (`cambioRechazado` solo escribe
+    el aviso de la ventana), así que ahí la ventana sigue abierta con su aviso. Tocados: `PanelAdministrar.kt`, `AdministrarEnfermedadesDialog.kt`, comentario de `EnfermedadesSeccion.kt`, el test nuevo,
+    este archivo y `MEMORY.md`. Queda como duda abierta (solo Android): si el sistema recrea el proceso con la ventana abierta
+    (`administrarAbierto` es `rememberSaveable`), la sección nueva arranca cargando, la ventana no cierra y su
+    `abrirAdministrar()` no hace nada (aún no puede administrar); se queda en "Cargando…" hasta tocar "Cerrar".
 
 - [ ] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
   - **Trampa del plan** (ver "Discrepancias"): `enfermedadesEnDatos(def, ocultas)` da `true` para **cualquier**
@@ -923,7 +948,11 @@ Reglas de la F3, además de las de arriba y las de la F2:
       RF-43). (5) "Quitar" una marcada → desaparece de la lista; al cerrar está en "Otras enfermedades del paciente" y no
       se desmarcó (RF-41). (6) No hay renombrar, dar de baja ni eliminar
       (RF-47). (7) Con DevTools → Network → "Slow 3G": mientras un cambio está en camino, "Agregar", "Quitar" y "Crear"
-      están deshabilitados (RF-45).
+      están deshabilitados (RF-45). (8) Sin conexión con el diálogo abierto → se cierra solo (ajuste de F3.5, 2026-10-23): con
+      "Slow 3G" o Offline, tocar una casilla y enseguida "Administrar enfermedades"; cuando el toque no se confirma
+      (RF-28) la sección pasa a "Sin conexión" y la ventana se cierra sola, con el aviso "Sin conexión: las enfermedades se
+      pueden ver pero no cambiar" atrás. Ojo: poner Offline con la ventana ya abierta y tocar "Quitar" o "Agregar" **no** la
+      cierra (el controlador solo muestra "No se pudo confirmar…" dentro de la ventana y no toca el estado de la sección).
     - **M4. Marcar y desmarcar (8 min).** (1) Tocar una casilla: queda marcada, un instante "Guardando…" y "Guardado" junto
       al título unos 3 s (RF-21, RF-24). Cambiar de pestaña y volver no repite "Guardado". (2) Recargar la página (F5) y
       reabrir la consulta: sigue marcada (RF-15, copia). (3) Abrir la web de clínica local en el mismo paciente: la tiene
@@ -950,7 +979,8 @@ Reglas de la F3, además de las de arriba y las de la F2:
       editarse. (7) Un paciente que nunca se abrió, ya en Offline: "Hace falta conexión para ver las enfermedades" con
       "Reintentar" (RF-31, P2-B); volver a Online y "Reintentar" → carga la sección.
       (8) En Online, abrir A, poner Offline y tocar una casilla: pide el estado, falla y muestra "No se pudo confirmar el cambio en «…»: puede haberse guardado. Volvé a abrir la sección con
-      conexión." y queda en solo lectura (RF-28).
+      conexión." y queda en solo lectura (RF-28). (9) Sin conexión con el diálogo abierto → se cierra solo: lo de M3 (8); con
+      la ventana cerrada por esa vía, la sección muestra el aviso de solo lectura y no ofrece "Administrar enfermedades".
     - **M7. Cerrada, "Datos" y lo que no debe cambiar (8 min).** (1) Cerrar la consulta de A y volver a abrirla en lectura:
       "Estado actual del paciente" con las marcadas y las "Otras" en orden, sin casillas ni "Administrar"; con un paciente
       sin ninguna: "Sin enfermedades registradas" (RF-35). (2) Quitar "Enfermedades" del perfil de prueba (o ocultarla en

@@ -37,6 +37,7 @@ import com.salud360.core.data.hcgeneral.Enfermedad
 import com.salud360.core.data.repos.CrearVisible
 import com.salud360.core.data.repos.EnfermedadesControlador
 import com.salud360.core.data.repos.PanelAdministrar
+import com.salud360.core.data.repos.debeCerrarAdministrar
 import com.salud360.core.data.repos.panelDeAdministrar
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.theme.Salud360Colors
@@ -48,7 +49,8 @@ private val ALTO_MAXIMO_LISTA = 240.dp
  * Ventana "Administrar enfermedades" (spec 003, RF-37 a RF-47, RF-58): el buscador, la lista del médico con "Quitar" y
  * "Del catálogo" con "Agregar". **Modal**, como `VerTodoDialog`: con ella abierta no se toca nada de lo de atrás. Solo
  * dibuja y delega: qué se ve lo decide [panelDeAdministrar] y lo que pasa al tocar, el [controlador]. Al mostrarse pide
- * el estado de administrar (un solo pedido); "Cerrar" y cerrarla por fuera llaman a `cerrarAdministrar()` y a [onCerrar].
+ * el estado de administrar (un solo pedido); "Cerrar" y cerrarla por fuera llaman a `cerrarAdministrar()` y a [onCerrar]. Se
+ * cierra sola por el mismo camino si la sección deja de poder administrar ([debeCerrarAdministrar]).
  *
  * Solo quitar, agregar y crear (RF-47: nada más sobre el catálogo). Sin botón para volver a pedir: si falló al abrir, se
  * cierra y se vuelve a abrir.
@@ -61,6 +63,11 @@ fun AdministrarEnfermedadesDialog(controlador: EnfermedadesControlador, onCerrar
         controlador.cerrarAdministrar()
         onCerrar()
     }
+    // Sin conexión o con un motivo de los lugares 1 a 5 se cierra sola, por el mismo camino que "Cerrar"; el aviso ya está
+    // en la sección de atrás. Una consulta que se cierra no la cierra (RF-58). Qué cuenta lo decide la regla pura.
+    val seccion by controlador.estado.collectAsState()
+    val hayQueCerrar = debeCerrarAdministrar(seccion)
+    LaunchedEffect(hayQueCerrar) { if (hayQueCerrar) cerrar() }
     AlertDialog(
         onDismissRequest = cerrar,
         properties = DialogProperties(usePlatformDefaultWidth = false),

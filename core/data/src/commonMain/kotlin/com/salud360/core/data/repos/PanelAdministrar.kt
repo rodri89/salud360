@@ -3,6 +3,7 @@ package com.salud360.core.data.repos
 import com.salud360.core.data.hcgeneral.Enfermedad
 import com.salud360.core.data.hcgeneral.errorDeNombreEnfermedad
 import com.salud360.core.data.hcgeneral.nombreNormalizado
+import com.salud360.core.data.hcgeneral.puedeAdministrar
 
 /**
  * Qué dibuja la ventana "Administrar enfermedades" para un [AdministrarEnfermedadesUi] (spec 003, RF-37 a RF-47, RF-58).
@@ -41,6 +42,18 @@ sealed interface PanelAdministrar {
  * se escribe (P5-A), porque la app no lo enviaría igual.
  */
 data class CrearVisible(val nombre: String, val error: String?)
+
+/**
+ * ¿Hay que cerrar sola la ventana abierta? Sí cuando la sección deja de poder administrar por la conexión (solo lectura o
+ * sin copia, RF-28, RF-30) o por un motivo de los lugares 1 a 5 de RF-14 (RF-37); la sección de atrás ya muestra su aviso.
+ *
+ * - No mira `editable`: con la consulta cerrada y la ventana abierta sigue "Crear" (RF-58); es la misma pregunta que
+ *   hace el controlador para los cambios de la lista (`editable = true`).
+ * - Mientras la sección carga no se sabe si hay conexión ([SeccionEnfermedadesUi.conConexion] es falso por definición):
+ *   cargando no es "sin conexión" y no cierra. Un motivo 1 a 5 ya conocido sí cierra, cargue o no.
+ */
+fun debeCerrarAdministrar(ui: SeccionEnfermedadesUi): Boolean =
+    !puedeAdministrar(editable = true, propia = true, conConexion = ui.cargando || ui.conConexion, motivo = ui.motivoMostrado)
 
 /**
  * Qué mostrar según [ui], con el filtro y la oferta de `AdministrarEnfermedades.kt` (RF-39, RF-42).
