@@ -741,7 +741,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     sección abierta", `cargando=true`, llamadas `[seccion]`, bajo la carga de la compilación) y pasó en la corrida
     siguiente: es el flake de la `espera` corta ya anotado en `MEMORY.md`, sin relación con esta tarea.
 
-- [ ] **F3.4b. Pantalla de la sección (`EnfermedadesSeccion`).** RF-5, RF-9, RF-14 a RF-24, RF-28 a RF-31, RF-35
+- [x] **F3.4b. Pantalla de la sección (`EnfermedadesSeccion`).** RF-5, RF-9, RF-14 a RF-24, RF-28 a RF-31, RF-35
   - `features/hc/.../secciones/EnfermedadesSeccion.kt` (nuevo): `@Composable fun EnfermedadesSeccion(s: SeccionDef, ctx:
     SeccionContext)`. (1) `koinViewModel<EnfermedadesViewModel>(key = "enfermedades-${ctx.consultaId}") {
     parametersOf(ctx.pacienteId) }`; si `controlador == null` no dibuja nada (RF-4). (2) `editable =
@@ -767,6 +767,18 @@ Reglas de la F3, además de las de arriba y las de la F2:
   - Hecho cuando: `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan;
     `:core:data:jvmTest` completo en verde; buscar `ctx.valor`, `setValor`, `LazyColumn` y literales de los textos de la
     spec (p. ej. `"Guardando"`, `"Sin conexión"`, `"Estado actual"`) en el archivo no da resultados.
+  - Hecho (2026-10-23). `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev` y
+    `:core:data:jvmTest --rerun` (509 tests), `:core:ui:jvmTest` y `:especialidades:clinica:jvmTest` en verde; las búsquedas
+    del "Hecho cuando" no dan resultados; sin lógica nueva (no hay rojo previo) y sin tocar core ni el registro:
+    `hcGeneralContribution.renderers` sigue `{child_pugh}` (F3.4c). Detalles que la tarea no fijaba: (a) `onAdministrar` es
+    una lambda vacía local, que F3.5 reemplaza; (b) "Reintentar" y "Administrar enfermedades" son `AcceptButton` (40 dp, como
+    el resto de la app; "Elegir" de F3.2 es de 48 dp) en un `ActionRow`; (c) "Guardado" va en `trailing` de `SectionCard`, con
+    la clave `panel.guardado` (0 si el panel no es `Contenido`) y un `finally` que lo oculta solo si ninguna confirmación más
+    nueva tomó el relevo; (d) el aviso de solo lectura (`avisoSoloLectura`) también es `liveRegion = Polite`, en color de
+    texto normal (el de rechazo va en color de error); (e) el título de "Elegí la ficha del paciente" sale de
+    `MotivoEnfermedades.ElegirFicha(candidatas).texto`, que no tiene constante; (f) si `ui.consulta` fuera null, `editable`
+    es falso; (g) "Otras" y "Estado actual del paciente" son líneas de texto con un título con semántica de encabezado. El
+    ícono es el de reserva (`Description`) hasta F3.4c, porque la clave `"enfermedades"` aún no existe en `iconoSeccion`.
 
 - [ ] **F3.4c. Registro del renderer, ícono propio y catálogo.** RF-1, RF-2, RF-5, RF-56, RF-57
   - `especialidades/clinica/.../HcGeneral.kt`: `hcGeneralContribution.renderers` pasa de `{child_pugh}` a `{child_pugh,

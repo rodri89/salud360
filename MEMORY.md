@@ -21,7 +21,9 @@ registros de personas): el repo es público.
   `EnfermedadesViewModel` en `features/hc`; `ConsultaViewModel` recibe `AuthRepository` y filtra la pestaña en `pestanias`;
   su `medicoId` sigue privado); F3.4a hecha (`repos/PanelEnfermedades.kt`: `panelDeSeccion(ui, editable)` con
   `Cargando`/`ElegirFicha`/`Motivo`/`SinCopia`/`Contenido` y los `TEXTO_*`; "Reintentar" con motivos 5, 7, 8 y 9, en sin
-  copia y en solo lectura; las casillas no tocables salen de `ui.marcado.puedeTocar`). Sigue F3.4b.
+  copia y en solo lectura; las casillas no tocables salen de `ui.marcado.puedeTocar`); F3.4b hecha
+  (`features/hc/secciones/EnfermedadesSeccion.kt`, sin registrar todavía: el perfil con la sección sigue mostrando "Sección
+  no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5). Sigue F3.4c.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
