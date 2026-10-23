@@ -158,7 +158,10 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
   la casilla al estado anterior: vuelve a pedir el estado de la sección y muestra ese; SI ese pedido también queda
   sin conexión, ENTONCES EL SISTEMA muestra la casilla con el último estado confirmado por la web, el aviso "No se
   pudo confirmar el cambio en «<nombre>»: puede haberse guardado. Volvé a abrir la sección con conexión." y pasa a
-  solo lectura (RF-30).
+  solo lectura (RF-30). *(Ajuste tras validación F2, 2026-10-23.)* SI la web **rechaza** ese pedido del estado, ENTONCES
+  se mira su motivo: si es del lugar 5 de RF-14 (error de red, `tobb_caido`, 429 o un error no previsto) cuenta como
+  "sin respuesta" y lleva a solo lectura con el aviso de sin conexión (RF-30); con cualquier otro motivo (RF-11 a
+  RF-13) se muestra ese motivo en lugar de las casillas.
 - RF-29: EL SISTEMA muestra un solo motivo de rechazo por vez en la sección (el último), hasta la siguiente
   confirmación o hasta cerrar la consulta.
 
@@ -284,7 +287,10 @@ sección es solo de lectura (excepción a la constitución, ver abajo).
   agregó a tu lista; no se marcó al paciente porque <motivo>", con el motivo "el paciente no está vinculado a una
   ficha de la web", "el paciente no está en tu cartera" o "la consulta no se puede editar". SI se reutilizó una
   existente, ENTONCES el aviso empieza por "Ya existía en el catálogo como «<nombre>»." (o "«<nombre>» ya estaba en
-  tu lista." si ya lo estaba). Si el paciente ya la tenía marcada, sigue marcada.
+  tu lista." si ya lo estaba). Si el paciente ya la tenía marcada, sigue marcada. *(Ajuste tras validación F2,
+  2026-10-23.)* Cuando ya estaba en la lista y no se marcó, el aviso no dice "Se agregó a tu lista" (no se agregó) sino
+  "«<nombre>» ya estaba en tu lista. No se marcó al paciente porque <motivo>"; si la web no da un motivo conocido, el aviso
+  termina en "No se marcó al paciente." (sin "porque").
 
 ### Cierre de sesión (cambio del 2026-10-20)
 - RF-59: CUANDO el usuario cierra sesión, EL SISTEMA revoca su token en turnos y le pide a cada HC con API que lo
@@ -459,3 +465,7 @@ texto de la 002 que dice qué hacer, en lugar de un texto fijo (el `resolver` de
 ninguna, así que el caso original no ocurre); los errores no previstos al abrir se tratan como sin conexión, con el
 texto de la web (RF-14, RF-30, RF-31); nuevo RF-59 (cierre de sesión revoca el token en turnos y en cada HC con API,
 porque las HC guardan el token aceptado unos minutos y un token revocado seguía entrando), con RF-57 ajustado.
+
+Ajuste tras validación F2 (2026-10-23, tarea F2.11): se reflejan dos desviaciones ya aceptadas y implementadas, sin
+cambiar nada más: el aviso de «ya estaba en tu lista» cuando no se marcó al paciente, con su motivo (RF-58, E10 de
+`tasks.md`), y qué pasa cuando la web rechaza el pedido del estado que sigue a un toque sin respuesta (RF-28).
