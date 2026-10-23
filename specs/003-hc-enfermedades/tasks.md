@@ -780,7 +780,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     es falso; (g) "Otras" y "Estado actual del paciente" son líneas de texto con un título con semántica de encabezado. El
     ícono es el de reserva (`Description`) hasta F3.4c, porque la clave `"enfermedades"` aún no existe en `iconoSeccion`.
 
-- [ ] **F3.4c. Registro del renderer, ícono propio y catálogo.** RF-1, RF-2, RF-5, RF-56, RF-57
+- [x] **F3.4c. Registro del renderer, ícono propio y catálogo.** RF-1, RF-2, RF-5, RF-56, RF-57
   - `especialidades/clinica/.../HcGeneral.kt`: `hcGeneralContribution.renderers` pasa de `{child_pugh}` a `{child_pugh,
     enfermedades}` (`"enfermedades" to { s, ctx -> EnfermedadesSeccion(s, ctx) }`); la sección del catálogo pasa a
     `icono = "enfermedades"`; se actualiza el comentario "sin renderer" de las líneas 63-64.
@@ -795,6 +795,18 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest` y `:core:ui:jvmTest` en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; buscar
     `icono = "diagnostico"` en `HcGeneral.kt` no da resultados; `clinica_medica_sigue_igual` y `hepatologia_sigue_igual`
     siguen en verde sin tocarlos (RF-57).
+  - Hecho (2026-10-23). Rojo previo: `:especialidades:clinica:jvmTest` con 3 fallos (renderers `{child_pugh}` en vez de
+    `{child_pugh, enfermedades}`, `enfermedades` sin renderer registrado e ícono `"diagnostico"` en vez del propio); luego
+    `:especialidades:clinica:jvmTest` (25 tests: `CatalogoHcGeneralTest` 19, `ChildPughTest` 6), `:core:data:jvmTest --rerun`
+    (509), `:core:ui:jvmTest` (17), `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde.
+    `HealthAndSafety` ya estaba en el classpath (sin dependencias nuevas, `*.kts` y `libs.versions.toml` intactos);
+    `clinica_medica_sigue_igual`, `hepatologia_sigue_igual` y los perfiles iniciales sin tocar. El único camino al cartel
+    "Sección no disponible" es `ConsultaScreen.kt:337` (renderer ausente en el registro): ya no se da para `enfermedades`
+    porque `hcGeneralContribution` está en `AppDi`. Detalles que la tarea no fijaba: (a) se agregó un caso
+    `cada_renderKey_del_catalogo_tiene_su_renderer_registrado` (toda `renderKey` del catálogo tiene su renderer: protege el
+    cartel para cualquier sección CUSTOM); (b) el test del ícono compara además con el de `"form"` y con todas las demás
+    claves conocidas de `iconoSeccion`; (c) el caso `la_contribucion_registra_la_hc_general_…` cambió de nombre al sumar
+    `enfermedades`; (d) "Administrar enfermedades" sigue sin abrir nada (F3.5).
 
 - [ ] **F3.5. Ventana "Administrar enfermedades".** RF-37 a RF-47, RF-58 (avisos), RF-43
   - `core/data/.../repos/PanelAdministrar.kt` (nuevo, puro): `panelDeAdministrar(ui: AdministrarEnfermedadesUi):

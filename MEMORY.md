@@ -23,7 +23,9 @@ registros de personas): el repo es público.
   `Cargando`/`ElegirFicha`/`Motivo`/`SinCopia`/`Contenido` y los `TEXTO_*`; "Reintentar" con motivos 5, 7, 8 y 9, en sin
   copia y en solo lectura; las casillas no tocables salen de `ui.marcado.puedeTocar`); F3.4b hecha
   (`features/hc/secciones/EnfermedadesSeccion.kt`, sin registrar todavía: el perfil con la sección sigue mostrando "Sección
-  no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5). Sigue F3.4c.
+  no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5); F3.4c hecha (renderer `enfermedades`
+  registrado en `hcGeneralContribution`, ícono propio `HealthAndSafety` en `Iconos.kt`; el cartel "Sección no disponible" ya no
+  sale para esa sección; "Administrar" sigue sin abrir nada). Sigue F3.5.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama

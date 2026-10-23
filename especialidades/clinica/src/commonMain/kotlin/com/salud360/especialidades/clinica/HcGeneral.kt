@@ -12,6 +12,7 @@ import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.TipoSeccion
 import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas as G
+import com.salud360.features.hc.secciones.EnfermedadesSeccion
 
 // ---- HC general (spec 001) ----
 // Reemplaza a `clinicaMedica` en la app; reutiliza sus secciones, laboratorios y registros, y los de `hepatologia`
@@ -60,9 +61,9 @@ val catalogoHcGeneral = CatalogoHc(
             G.seccionFamiliares.comoCatalogo("Antecedentes familiares"),
             antecedentes = clinicaMedica.antecedentes.filter { it.categoria == "familiares" },
         ),
-        // Segunda, como en el catálogo de hclinica. Su renderer se registra con la pantalla (spec 003, F3.4): hasta
-        // entonces un perfil que la tenga muestra "Sección no disponible". No es la legada de diagnósticos (RF-56).
-        SeccionCatalogo(SeccionDef("enfermedades", "Enfermedades", TipoSeccion.CUSTOM, renderKey = "enfermedades", icono = "diagnostico")),
+        // Segunda, como en el catálogo de hclinica. Su renderer es `EnfermedadesSeccion` (en `hcGeneralContribution`) y
+        // tiene ícono propio: no es la legada de diagnósticos (RF-56).
+        SeccionCatalogo(SeccionDef("enfermedades", "Enfermedades", TipoSeccion.CUSTOM, renderKey = "enfermedades", icono = "enfermedades")),
         SeccionCatalogo(G.motivo.copy(conHistorial = true)),
         SeccionCatalogo(G.documentos.comoCatalogo("Adjuntos (PDF)")),
         SeccionCatalogo(hepatologia.seccion("laboratorio_general")!!, laboratorios = listOf(labGeneralClinica)),
@@ -103,6 +104,9 @@ val catalogoHcGeneral = CatalogoHc(
  */
 val hcGeneralContribution = EspecialidadContribution(
     armarDefinicion(catalogoHcGeneral, null).definicion,
-    mapOf("child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) }),
+    mapOf(
+        "child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) },
+        "enfermedades" to { s, ctx -> EnfermedadesSeccion(s, ctx) },
+    ),
     catalogo = catalogoHcGeneral,
 )

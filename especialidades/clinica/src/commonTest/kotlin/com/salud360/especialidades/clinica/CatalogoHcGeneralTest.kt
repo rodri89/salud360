@@ -16,9 +16,11 @@ import com.salud360.core.model.especialidad.TipoConsultaHc.CONSULTA
 import com.salud360.core.model.especialidad.TipoConsultaHc.TELEMEDICINA
 import com.salud360.core.model.especialidad.TipoSeccion
 import com.salud360.features.hc.SeccionesGenericas as G
+import com.salud360.features.hc.iconoSeccion
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -334,16 +336,44 @@ class CatalogoHcGeneralTest {
     }
 
     @Test
-    fun la_contribucion_registra_la_hc_general_con_su_catalogo_y_child_pugh() {
+    fun la_contribucion_registra_la_hc_general_con_su_catalogo_child_pugh_y_enfermedades() {
         assertEquals("clinica", hcGeneralContribution.definicion.codigo)
         assertEquals("Clínica", hcGeneralContribution.definicion.nombre)
         assertEquals(catalogoHcGeneral, hcGeneralContribution.catalogo)
-        assertEquals(setOf("child_pugh"), hcGeneralContribution.renderers.keys)
+        assertEquals(setOf("child_pugh", "enfermedades"), hcGeneralContribution.renderers.keys)
         assertEquals("child_pugh", catalogoHcGeneral.seccion("child_pugh")?.def?.renderKey)
         assertEquals(null, hepatologiaContribution.catalogo)
     }
 
-    // RF-56: "Enfermedades" es una sección propia (CUSTOM), distinta de la legada de diagnósticos; su renderer llega en F3.4.
+    // RF-5: toda sección CUSTOM del catálogo tiene su renderer (si no, la pantalla dice "Sección no disponible").
+    @Test
+    fun cada_renderKey_del_catalogo_tiene_su_renderer_registrado() {
+        val claves = catalogoHcGeneral.secciones.mapNotNull { it.def.renderKey }.toSet()
+        assertTrue(claves.isNotEmpty())
+        assertEquals(emptySet(), claves - hcGeneralContribution.renderers.keys)
+    }
+
+    // RF-56: el ícono de "Enfermedades" no es el ojo de la legada de diagnósticos ni el de reserva (decisión P4-A).
+    @Test
+    fun enfermedades_tiene_icono_propio() {
+        val icono = iconoSeccion(catalogoHcGeneral.seccion("enfermedades")!!.def.icono)
+        assertNotNull(icono)
+        assertEquals("enfermedades", catalogoHcGeneral.seccion("enfermedades")!!.def.icono)
+        assertNotEquals(iconoSeccion("diagnostico"), icono)
+        assertNotEquals(iconoSeccion("clave_inexistente"), icono)
+        assertNotEquals(iconoSeccion("form"), icono)
+        // Ninguna otra clave conocida comparte su ícono.
+        val otras = listOf(
+            "motivo", "antecedentes", "familia", "examen", "laboratorio", "estudios", "registros", "medicacion", "vacunas",
+            "alimentacion", "escolaridad", "desarrollo", "cardio", "corazon", "embarazo", "psico", "diagnostico", "archivos",
+            "texto", "form", "diuresis", "sueno", "actividades", "pantallas", "habitos", "menarca", "conductas", "observaciones",
+            "nota", "subjetivo", "objetivo", "internacion", "screening", "interconsulta", "curvas", "lactancia", "dibujo",
+            "plan", "resumen",
+        )
+        assertTrue(otras.none { iconoSeccion(it) == icono })
+    }
+
+    // RF-56: "Enfermedades" es una sección propia (CUSTOM), distinta de la legada de diagnósticos.
     @Test
     fun enfermedades_es_custom_segunda_y_no_es_diagnostico_ni_legada() {
         val seccion = catalogoHcGeneral.seccion("enfermedades")!!
