@@ -888,7 +888,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     (`administrarAbierto` es `rememberSaveable`), la sección nueva arranca cargando, la ventana no cierra y su
     `abrirAdministrar()` no hace nada (aún no puede administrar); se queda en "Cargando…" hasta tocar "Cerrar".
 
-- [ ] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
+- [x] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
   - **Trampa del plan** (ver "Discrepancias"): `enfermedadesEnDatos(def, ocultas)` da `true` para **cualquier**
     especialidad cuyo perfil no tenga la sección (pediatría incluida); hay que limitarla a la HC general y al médico.
   - `core/data/.../hcgeneral/AccesoEnfermedades.kt`: `enfermedadesEnDatosDeConsulta(def, ocultas, porPerfil: Boolean,
@@ -913,6 +913,27 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest` completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
     -Pentorno=dev` compilan; buscar `EnfermedadesEnDatos` en `ConsultaScreen.kt` da exactamente dos usos; pediatría y las
     demás especialidades no pasan por el bloque (lo confirma el test de `porPerfil` y F3.7, tanda M7).
+  - Hecho (2026-10-23). Rojo previo: `AccesoEnfermedadesTest` no compilaba solo por `Unresolved reference` de
+    `enfermedadesEnDatosDeConsulta` y `TITULO_ENFERMEDADES_EN_DATOS`; luego sus 20 casos (9 nuevos) y `:core:data:jvmTest
+    --rerun` (556 tests), `:core:ui:jvmTest` (17), `:especialidades:clinica:jvmTest` (25), `:features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde. Mutación puntual (quitar `porPerfil` y `medicoPropio` de la
+    función) falla en `pediatria_y_las_hc_sin_perfil_...` y `la_secretaria_y_el_administrador_...`; ya revertida. Buscar
+    `EnfermedadesEnDatos` en `ConsultaScreen.kt` da dos usos (más el `import`); buscar `ctx.valor`, `setValor`, `HcApiSync`,
+    `seccion_valor` y `paciente_extra` en `EnfermedadesEnDatos.kt` no da resultados; `*.kts` y `libs.versions.toml` intactos.
+    El código real coincide con el texto de la tarea (`ConsultaScreen.kt` l. 196-198 y 216-219; `enfermedadesEnDatos` da `true`
+    para una definición sin grupos con la sección, como dice la trampa). Cómo se cubren los **dos lugares**: (1) pestañas
+    agrupadas (médico con perfil, pestaña "Datos"): el bloque va entre `DatosPacienteSeccion` y `SoloLecturaFueraDelPerfil`;
+    (2) pestaña "Datos" sola (médico **sin perfil**, sin configuración la primera vez, o un tipo sin pestañas como "HC
+    digitalizada"): el `if` que solo tenía `SoloLecturaFueraDelPerfil` pasa a un bloque con el mismo `if
+    (vm.enfermedadesEnDatos(ui)) EnfermedadesEnDatos(ctx)` antes de él. Los dos son excluyentes (`agrupadas.isNotEmpty()` o no), así
+    que el bloque sale una sola vez (RF-7); y la sección y "Datos" no coinciden nunca (`enfermedadesEnDatos` es falso si la sección
+    está en el perfil para algún tipo y no está oculta). Detalles que la tarea no fijaba: (a) la decisión de "qué se ve" que no
+    estaba en `core/data` es solo "con `vista` null (motivo, sin copia o cargando sin copia) o sin enfermedades no dibuja": sale
+    de `ui.vista` y `enfermedadesDelPaciente`, que ya tenían test, y no se agregó otra función; (b) con una copia en solo
+    lectura (sin conexión) el bloque sí se ve: es la copia de RF-7/RF-32; (c) `SectionCard(collapsible = false)` con el ícono
+    de la sección (`iconoSeccion("enfermedades")`) y un `Text` por enfermedad, sin casillas ni botones; (d) la secretaria y el
+    administrador no tienen `controlador` (`vm.controlador == null`), así que aunque se llamara no pediría nada; el filtro por
+    `medicoPropio` ya los saca antes. Sin `/sdd-change` ni texto nuevo (el título es el nombre por defecto de la spec 001 RF-34).
 
 - [ ] **F3.7. Prueba manual completa en `devWeb` y de punta a punta app ↔ web (la hace el usuario, en tandas cortas).**
   RF-1 a RF-7, RF-9 a RF-12, RF-15 a RF-24, RF-28, RF-30, RF-31, RF-35, RF-37 a RF-47, RF-56, RF-57, RF-58, RF-59

@@ -60,6 +60,7 @@ import com.salud360.features.hc.secciones.ArchivosSeccion
 import com.salud360.features.hc.secciones.AudioSeccion
 import com.salud360.features.hc.secciones.DatosPacienteSeccion
 import com.salud360.features.hc.secciones.DiagnosticosSeccion
+import com.salud360.features.hc.secciones.EnfermedadesEnDatos
 import com.salud360.features.hc.secciones.ExamenFisicoSeccion
 import com.salud360.features.hc.secciones.FormSeccion
 import com.salud360.features.hc.secciones.LaboratorioSeccion
@@ -195,6 +196,8 @@ fun ConsultaScreen(
             val actual = agrupadas[i]
             if (actual.id == SeccionesComunes.DATOS_PACIENTE) {
                 CompositionLocalProvider(LocalSeccionEnPestania provides true) { DatosPacienteSeccion(ui.paciente!!, def, ctx) }
+                // Spec 003 (RF-6, RF-7): las enfermedades del paciente cuando la sección no se muestra, solo HC general y médico.
+                if (vm.enfermedadesEnDatos(ui)) EnfermedadesEnDatos(ctx)
                 SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
             } else {
                 actual.secciones.mapNotNull { def.seccion(it) }.forEach { s -> RenderSeccion(s, ctx, registry, valores) }
@@ -215,8 +218,12 @@ fun ConsultaScreen(
             CompositionLocalProvider(LocalSeccionEnPestania provides true) {
                 if (actual.id == SeccionesComunes.DATOS_PACIENTE) DatosPacienteSeccion(ui.paciente!!, def, ctx) else RenderSeccion(actual, ctx, registry, valores)
             }
-            // HC general sin perfil o "HC digitalizada": la única pestaña es "Datos".
-            if (actual.id == SeccionesComunes.DATOS_PACIENTE) SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
+            // HC general sin perfil o "HC digitalizada": la única pestaña es "Datos". Ahí también van las enfermedades del
+            // paciente (RF-6: el médico sin perfil no tiene la sección), antes de lo de fuera del perfil.
+            if (actual.id == SeccionesComunes.DATOS_PACIENTE) {
+                if (vm.enfermedadesEnDatos(ui)) EnfermedadesEnDatos(ctx)
+                SoloLecturaFueraDelPerfil(ui.fueraDelPerfil.enDatos, ctxLectura, registry, valores)
+            }
         }
 
         // ---- secciones (agrupada: ya están en sus pestañas o en el cuerpo, no queda nada suelto) ----

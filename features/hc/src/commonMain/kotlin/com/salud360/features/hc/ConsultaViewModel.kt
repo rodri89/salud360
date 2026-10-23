@@ -13,6 +13,7 @@ import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
 import com.salud360.core.data.hcgeneral.cambioEstudio
 import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
+import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
@@ -432,6 +433,16 @@ class ConsultaViewModel(
         // RF-4: la secretaria y el administrador no ven la pestaña ni la sección de enfermedades, aunque el perfil la tenga.
         val medicoPropio = auth.sesion.value?.let(::medicoParaEnfermedades)
         return layoutConsulta(tipo, ocultas(ui)) { id -> visibleParaSesion(id, medicoPropio) && def.seccion(id)?.let { cumpleCondicion(it, ui) } == true }
+    }
+
+    /**
+     * Si "Datos" muestra las enfermedades del paciente (RF-4, RF-6, RF-7, RF-57): solo la HC general y solo el médico de la
+     * sesión; pediatría y las demás HC no pasan por ahí.
+     */
+    fun enfermedadesEnDatos(ui: ConsultaUi): Boolean {
+        val def = ui.definicion ?: return false
+        val medicoPropio = auth.sesion.value?.let(::medicoParaEnfermedades)
+        return enfermedadesEnDatosDeConsulta(def, ocultas(ui), ui.resuelta?.porPerfil == true, medicoPropio)
     }
 
     private fun ocultas(ui: ConsultaUi): Set<String> = ui.definicion?.let { ocultasDe(it, ui.preferencias) } ?: emptySet()

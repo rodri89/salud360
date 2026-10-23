@@ -29,7 +29,10 @@ registros de personas): el repo es público.
   `AdministrarEnfermedadesDialog` modal en `features/hc/secciones`, abierto por "Administrar enfermedades"); ajuste de F3.5
   (2026-10-23, decisión del usuario): la ventana se cierra sola si la sección deja de poder administrar por conexión o por un
   motivo 1 a 5 (`debeCerrarAdministrar` en `PanelAdministrar.kt`; con la sección cargando o solo `editable` falso no cierra, RF-58).
-  Sigue F3.6.
+  F3.6 hecha ("Datos" en `ConsultaScreen`: `enfermedadesEnDatosDeConsulta` en `AccesoEnfermedades.kt` limita a HC general
+  (`porPerfil`) y al médico propio, pediatría no cambia; `ConsultaViewModel.enfermedadesEnDatos(ui)` y
+  `secciones/EnfermedadesEnDatos.kt`, dibujado en los dos lugares de "Datos"; solo lectura, comparte el controlador con la
+  sección y su `abrir()` puede crear la ficha en la web, P7-A). Sigue F3.7 (prueba manual del usuario) y F3.8.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
