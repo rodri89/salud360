@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -83,8 +84,10 @@ fun EnfermedadesSeccion(s: SeccionDef, ctx: SeccionContext) {
         }
     }
 
-    // F3.5 cablea acá la ventana "Administrar enfermedades"; hasta entonces el botón no hace nada.
-    val onAdministrar: () -> Unit = {}
+    // La ventana (modal) se abre con "Administrar enfermedades" y se cierra por su "Cerrar". Sigue abierta aunque `puedeAdministrar`
+    // cambie con ella abierta (p. ej. la consulta se cierra): RF-58 pide que "Crear" siga funcionando.
+    var administrarAbierto by rememberSaveable { mutableStateOf(false) }
+    val onAdministrar: () -> Unit = { administrarAbierto = true }
     SectionCard(
         s.titulo,
         icon = iconoSeccion(s.icono ?: "enfermedades"),
@@ -126,6 +129,7 @@ fun EnfermedadesSeccion(s: SeccionDef, ctx: SeccionContext) {
             }
         }
     }
+    if (administrarAbierto) AdministrarEnfermedadesDialog(controlador, onCerrar = { administrarAbierto = false })
 }
 
 /** El único aviso de la sección (RF-29), que el lector de pantalla anuncia cuando aparece o cambia. */

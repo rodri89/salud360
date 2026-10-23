@@ -25,7 +25,8 @@ registros de personas): el repo es público.
   (`features/hc/secciones/EnfermedadesSeccion.kt`, sin registrar todavía: el perfil con la sección sigue mostrando "Sección
   no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5); F3.4c hecha (renderer `enfermedades`
   registrado en `hcGeneralContribution`, ícono propio `HealthAndSafety` en `Iconos.kt`; el cartel "Sección no disponible" ya no
-  sale para esa sección; "Administrar" sigue sin abrir nada). Sigue F3.5.
+  sale para esa sección); F3.5 hecha (`repos/PanelAdministrar.kt`: `panelDeAdministrar(ui)` con `Cargando`/`SoloAviso`/`Contenido`;
+  `AdministrarEnfermedadesDialog` modal en `features/hc/secciones`, abierto por "Administrar enfermedades"). Sigue F3.6.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -127,6 +128,9 @@ registros de personas): el repo es público.
 - `EnfermedadesControlador`: administrar y los cambios de la lista salen sin hacer nada si no se puede administrar
   (RF-37); solo `abrirAdministrar` mira `editable` (RF-58 deja crear con la consulta ya cerrada). Un test que abra
   administrar tiene que esperar antes a que la sección cargue.
+- `ofrecerCrear` devuelve `null` con el nombre vacío: el error "El nombre está vacío" (solo espacios) lo arma `panelDeAdministrar`.
+  Con la ventana de administrar abierta, un toque anterior sin respuesta puede pasar la sección a solo lectura y los cambios de
+  la lista salen sin hacer nada (anotado en F3.5-g; pendiente de decidir).
 - Tests que prueban "no contesta a tiempo": retener la respuesta con una compuerta que el test abre (`CompletableDeferred`),
   no con `delay` contra una `espera` corta.
 - Tests de enfermedades (F2.12): `espera` del repositorio y tope de `hasta` de 30 s; la `espera` corta (100 ms) solo en el

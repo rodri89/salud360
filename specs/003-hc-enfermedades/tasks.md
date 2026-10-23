@@ -808,7 +808,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     claves conocidas de `iconoSeccion`; (c) el caso `la_contribucion_registra_la_hc_general_…` cambió de nombre al sumar
     `enfermedades`; (d) "Administrar enfermedades" sigue sin abrir nada (F3.5).
 
-- [ ] **F3.5. Ventana "Administrar enfermedades".** RF-37 a RF-47, RF-58 (avisos), RF-43
+- [x] **F3.5. Ventana "Administrar enfermedades".** RF-37 a RF-47, RF-58 (avisos), RF-43
   - `core/data/.../repos/PanelAdministrar.kt` (nuevo, puro): `panelDeAdministrar(ui: AdministrarEnfermedadesUi):
     PanelAdministrar` con `Cargando` (`ui.cargando` y sin estado), `SoloAviso(texto)` (sin estado y con `aviso`: falló al
     abrir, con el texto que ya arma el controlador, también con los motivos 1 a 5: solo la ventana muestra el motivo,
@@ -838,6 +838,30 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest` completo en verde; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
     -Pentorno=dev` compilan; buscar `Renombrar`, `Eliminar`, `Dar de baja` y `delete` en el diálogo no da resultados
     (RF-47); el botón de F3.4b ya abre la ventana.
+  - Hecho (2026-10-23). Rojo previo: `PanelAdministrarTest` no compilaba solo por `Unresolved reference` de
+    `PanelAdministrar` y `panelDeAdministrar`; luego sus 27 casos y `:core:data:jvmTest --rerun` (536 tests),
+    `:core:ui:jvmTest`, `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` en verde; las búsquedas del "Hecho cuando" no dan resultados; sin dependencias nuevas. Mutación puntual
+    (`accionesHabilitadas` siempre `true`, sin el error de "vacío") falla en 2 tests; ya revertida. Detalles que la tarea no
+    fijaba: (a) **"vacío" de RF-43**: `ofrecerCrear` devuelve `null` con el nombre normalizado vacío (RF-42, F2.5), así que
+    por ahí nunca sale "El nombre está vacío"; para cumplir P5-A y F3.7-M3(4) el panel arma `CrearVisible("", error)` cuando
+    lo escrito no está vacío pero el nombre normalizado sí (solo espacios); con el buscador sin tocar no hay error;
+    `ofrecerCrear` y el controlador no cambian. (b) Sin estado, sin pedido y sin aviso (el instante antes de que el
+    controlador marque el pedido, o si no pudo pedir) el panel es `Cargando`, nunca una ventana vacía; con `cargando` y un
+    aviso viejo sin estado, también `Cargando`. (c) El aviso de `Contenido` va en color normal (el controlador no distingue
+    un rechazo de un "ya existía…"); el de `SoloAviso` y el error de nombre, en rojo; todos `liveRegion = Polite`. (d) Las
+    listas son `LazyColumn(heightIn(max = 240.dp))` (el catálogo puede traer miles con una letra escrita) dentro de la
+    `Column` con scroll de la ventana: el alto está acotado, no hay alto infinito. (e) Cada fila lleva
+    `semantics(mergeDescendants = true)` para que el lector diga "Asma, Quitar" y no un "Quitar" suelto; el teclado no
+    cambia. (f) Botones de 48 dp como "Elegir" (F3.2); el de "Crear «…»" ocupa el ancho y crece si el nombre es largo (hasta
+    255 caracteres). (g) La ventana se controla solo con `administrarAbierto` (`rememberSaveable`) y no con `puedeAdministrar`,
+    así que sigue abierta si la consulta se cierra (RF-58). **Camino que cambia `puedeAdministrar` con la ventana abierta**
+    (la tarea pedía parar y preguntar): una casilla tocada justo antes de abrir la ventana puede quedar sin respuesta y pasar la
+    sección a solo lectura (RF-28) con la ventana abierta; entonces `agregar`/`quitar`/`crear` del controlador salen sin hacer
+    nada (`puedeCambiarLista`) y los botones siguen habilitados. No rompe nada ni es nuevo (el controlador es de F2.11); lo
+    decide el coordinador: cerrar la ventana en ese caso, o mostrar un aviso. (h) No hay foco inicial en el buscador ni
+    `onDispose` que llame a `cerrarAdministrar()` si la pantalla sale con la ventana abierta (el estado viejo se refresca al
+    reabrir).
 
 - [ ] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
   - **Trampa del plan** (ver "Discrepancias"): `enfermedadesEnDatos(def, ocultas)` da `true` para **cualquier**
