@@ -8,11 +8,12 @@ registros de personas): el repo es público.
 - Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
   pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
-- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2: F2.1 a F2.9
-  hechas y commiteadas (F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
+- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2 completa
+  (F2.1 a F2.10 hechas y commiteadas; F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
   `AuthRepository`; F2.8 = `EnfermedadesControlador`, `DataModule` y E12, la guardia contra respuestas lentas tras el
-  `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; el último commit de código está
-  en `git log`). Pendientes F2.10 y la tanda F3 (pantallas).
+  `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; F2.10 = E2E
+  `HcClinicaEnfermedadesE2ETest` contra la copia local; el último commit de código está en `git log`). Pendientes:
+  la validación del reviewer de la tanda F2 y la tanda F3 (pantallas).
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -37,7 +38,7 @@ registros de personas): el repo es público.
   `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
-  en hclinica y pediatría) y F2.1 a F2.8 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
+  en hclinica y pediatría) y F2.1 a F2.10 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
   `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; base v8 con
   `hc_enfermedades` y `repos/EnfermedadesRepository`; `repos/EnfermedadesControlador` con dos `StateFlow`: sección y
   administrar). Decisiones C1-C5 y E1-E12 en `tasks.md`. El ViewModel de F3 arma el controlador con
@@ -45,6 +46,10 @@ registros de personas): el repo es público.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
+- `HcClinicaEnfermedadesE2ETest` deja en `hc_clinica` dos enfermedades "Prueba Salud360 <n>", sus filas en
+  `medico_enfermedades`/`paciente_enfermedades`, la ficha del DNI de prueba (desde 99000090) y su `medico_pacientes`:
+  limpiar con el SQL del KDoc del test (`DELETE` puntuales en ese orden; verificar antes que el DNI esté libre) y vaciar
+  `salud360_token_cache`. Una corrida con datos viejos sin limpiar falla a propósito.
 - Los tokens de prueba de pediatría se sacaron del repo (`1c7ad61`, placeholders) pero siguen en el historial (ya en
   `origin/main`). Rotados el 2026-10-20 (solo local).
 - El E2E de pediatría deja en `hc_pediatrica` una consulta de baja (y sus filas) y dos imágenes en

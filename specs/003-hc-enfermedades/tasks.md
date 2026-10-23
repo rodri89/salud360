@@ -426,7 +426,7 @@ Reglas de la F2, además de las de arriba:
     con `--rerun`, porque `core:data` no depende de `clinica`). Ícono `"diagnostico"` (el de la sección que reemplaza; no hay
     ícono de enfermedades en `Iconos.kt` y no se agregó uno). Ningún test de otro módulo cambió de resultado.
 
-- [ ] **F2.10. E2E contra la copia local de hclinica.** RF-15, RF-41, RF-44, RF-51, RF-53, RF-54
+- [x] **F2.10. E2E contra la copia local de hclinica.** RF-15, RF-41, RF-44, RF-51, RF-53, RF-54
   - `core/data/src/jvmTest/.../repos/HcClinicaEnfermedadesE2ETest.kt` (nuevo): se saltea solo sin
     `salud360.test.hc.clinica`, `.clinica.token` y `.dni`/`.nombre`/`.apellido` (ya declaradas en
     `core/data/build.gradle.kts`). Con `EnfermedadesApiRemota` y el `pacientes/resolver` de la 002 sobre un paciente
@@ -441,6 +441,14 @@ Reglas de la F2, además de las de arriba:
     `enfermedades` con `nombre LIKE 'Prueba Salud360%'`, de sus filas en `medico_enfermedades` y
     `paciente_enfermedades`, y de `pacientes`/`medico_pacientes` del DNI de prueba da 0; los conteos por `activo` de
     las tres tablas son los de antes de empezar; `salud360_token_cache` vaciada; ni el test ni el commit tienen tokens.
+  - Hecho (2026-10-23). Sin propiedades se saltea (imprime que no se corre) y `:core:data:jvmTest` completo queda en
+    verde; con las `-P` de la copia local (DNI 99000090, libre antes) corre de verdad (~8 s) y pasa. El 201 y el 200 de
+    `POST enfermedades` se prueban con un `HttpClient` de la JVM (`HcApiClient` trata los dos como éxito y no devuelve el
+    estado) y el cuerpo se lee con `EnfermedadesApiRemota.crearDe`; el resto va por `EnfermedadesApiRemota` y
+    `PacientesHcApiRemota.resolver`. Los asserts sobre listas son `assertTrue` con mensaje fijo, para que una falla no
+    imprima enfermedades de la base. Mutación puntual (201 → 200) falla con "expected 200 but was 201"; ya revertida.
+    Limpieza con el SQL del KDoc tras cada corrida: conteos por `activo` de las tres tablas, `pacientes` y
+    `medico_pacientes` iguales a los de antes, prefijo y DNI de prueba en 0, `salud360_token_cache` vacía.
 
 Decidido (2026-10-21, coordinador):
 - E1 `claveDeNombre` se alinea con el servidor (solo `[ \t\n\r\x0B\x0C]`) aunque cambie algún caso raro de perfiles con
