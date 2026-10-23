@@ -573,7 +573,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` compilan; `git diff --stat` muestra solo el archivo nuevo;
     buscar `Role.RadioButton`, `selectable(` y `Color(0x` en el archivo no da resultados; `OpcionElegible.kt` sin cambios.
 
-- [ ] **F3.2. "Elegí la ficha del paciente" (`ElegirFichaPaciente`).** RF-9
+- [x] **F3.2. "Elegí la ficha del paciente" (`ElegirFichaPaciente`).** RF-9
   - `core/data/.../hcgeneral/FichaCandidata.kt` (nuevo, puro): `lineaDeCandidata(c: HcPacienteCandidato)` →
     `LineaCandidata(nombre, documento, nacimiento: String?)`: nombre = `"<nombre> <apellido>"` recortado, documento = `dni`,
     nacimiento = `dd/MM/aaaa` desde el `yyyy-MM-dd` de la web; sin fecha o ilegible → `null` (no se inventa texto; la tarjeta no muestra esa línea).
@@ -588,6 +588,14 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest` completo en verde; `.\gradlew :features:hc:compileKotlinJvm` y
     `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan; buscar `Enfermedad` en `ElegirFichaPaciente.kt` no da
     resultados (reutilizable).
+  - Hecho (2026-10-23). Rojo previo: el test no compilaba solo por `Unresolved reference 'lineaDeCandidata'`; luego
+    `FichaCandidataTest` (7 casos) y `:core:data:jvmTest` (463 tests) en verde, `:core:ui:jvmTest`,
+    `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` OK.
+    Detalles que la tarea no fijaba: el nombre pasa por `nombreNormalizado` (recorta y junta espacios; con nombre o
+    apellido vacío queda solo el otro); la fecha solo vale como `yyyy-MM-dd` de fecha real (`1990-1-2`, `1990-02-30` o
+    con hora → sin línea); la tarjeta rotula con "DNI" y "Fecha de nacimiento" (los de `DatosPacienteSeccion`, no son
+    textos nuevos); el botón "Elegir" es un `OutlinedButton` con el estilo de `AcceptButton` pero de 48 dp. El lector de
+    pantalla dirá solo "Elegir" en cada botón (sin la ficha); si en F3.7-M5 molesta, se le agrega una descripción.
 
 - [ ] **F3.3. Acceso por sesión, `EnfermedadesViewModel` y `HcModule`.** RF-4, RF-8, RF-15, RF-35
   - **Corrige al plan** (ver "Discrepancias"): el `medicoId` de la sección es `PerfilMedico.medicoId` **de la sesión**, no

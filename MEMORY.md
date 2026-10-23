@@ -15,8 +15,9 @@ registros de personas): el repo es público.
   `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; el último
   commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
   están cerradas. Tanda F3 (pantallas, 10 tareas, decisiones P1 a P9 en `tasks.md`) aprobada el 2026-10-23;
-  F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`).
-  Sigue F3.2.
+  F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`); F3.2 hecha
+  (`lineaDeCandidata` en `core/data/hcgeneral/FichaCandidata.kt` y `ElegirFichaPaciente` en `features/hc/secciones`).
+  Sigue F3.3.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
