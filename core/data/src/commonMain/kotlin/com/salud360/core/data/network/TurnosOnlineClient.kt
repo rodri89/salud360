@@ -171,6 +171,20 @@ class TurnosOnlineClient(baseUrl: String = "https://turnosonlinebb.com", engine:
         ResultadoLogin.Error(e.message ?: "sin conexión con turnosonlinebb")
     }
 
+    /**
+     * POST auth/logout: revoca [token] en turnosonlinebb (RF-59). El token va por parámetro y no es el de [token]: cuando
+     * `AuthRepository.logout` revoca en segundo plano, el cliente ya lo olvidó. Contesta lo que contesten (un 401 por
+     * token ya vencido o un 404 da igual): no mira el estado. Un fallo de red se propaga y lo ignora quien llama.
+     */
+    suspend fun cerrarSesion(token: String) {
+        http.request(base + "auth/logout") {
+            method = HttpMethod.Post
+            accept(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer $token")
+            header("X-Salud360-Token", token)
+        }
+    }
+
     /** Error de la API (`ok`/`mensaje`/`codigo`) o de Laravel (`message`). */
     @Serializable
     private data class ErrorResponse(

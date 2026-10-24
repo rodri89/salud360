@@ -198,6 +198,19 @@ class HcApiClient(
     suspend fun put(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Put, ruta, emptyMap(), cuerpo)
     suspend fun delete(ruta: String): JsonObject = pedir(HttpMethod.Delete, ruta)
 
+    /**
+     * POST auth/salir: le pide a la HC que olvide [token] (RF-59). Va por parámetro y no es el de [token]: cuando
+     * `AuthRepository.logout` revoca en segundo plano, el cliente ya lo olvidó. No mira el estado de la respuesta (una
+     * API vieja contesta 404 y da igual). Un fallo de red se propaga y lo ignora quien llama.
+     */
+    suspend fun salir(token: String) {
+        http.post(base + "auth/salir") {
+            accept(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer $token")
+            header("X-Salud360-Token", token)
+        }
+    }
+
     /** Serializa el cuerpo de un pedido. */
     fun <T> cuerpo(serializer: KSerializer<T>, valor: T): String = json.encodeToString(serializer, valor)
 

@@ -1027,7 +1027,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     prueba y del perfil de prueba da 0, y los conteos por `activo` de las tres tablas son los de antes de empezar;
     `git status` sin cambios en datos (esta tarea no cambia código salvo los arreglos que salgan, cada uno en su commit).
 
-- [ ] **F3.8. `AuthRepository.logout` revoca el token en turnos y en cada HC con API.** RF-59 (C3, C4, PD7)
+- [x] **F3.8. `AuthRepository.logout` revoca el token en turnos y en cada HC con API.** RF-59 (C3, C4, PD7)
   - **C4 manda sobre el texto del plan** ("antes de olvidar el token, a lo sumo 3 s"): la revocación corre **en segundo
     plano** y no demora el cierre; la sesión local se cierra siempre y primero.
   - `core/data/.../repos/` (o `network/`): `fun interface RevocaSesion { suspend fun revocar(token: String) }` (C3: interfaz
@@ -1056,6 +1056,22 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest --rerun` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `git diff` de
     los `*.kts` y de `libs.versions.toml` vacío (sin dependencias nuevas); buscar `ktor-client-mock` no da resultados; el
     cierre real contra la copia local se mira en F3.7, tanda M8.
+  - Hecho (2026-10-24). `repos/RevocaSesion.kt` (`fun interface`), `TurnosOnlineClient.cerrarSesion(token)` y
+    `HcApiClient.salir(token)` (no existían: se crearon; mandan Bearer y `X-Salud360-Token` con el token del parámetro, no
+    miran el estado de la respuesta y dejan propagar el fallo de red); `AuthRepository` con `revocar` (vacío por defecto),
+    `scopeRevocacion` y `limite`; `logout(tokenARevocar)`; `DataModule` arma turnos + cada `HcApiClient`. El token se toma
+    antes de `alCerrarSesion()` y la revocación se lanza al final, después de limpiar sesión y clientes: el camino de E12 y
+    F2.11 no cambió (si `alCerrarSesion` falla, `logout` se corta antes de `borrarSesion` y no revoca). Token vacío = sin
+    token. `login` (licencia vencida, en línea y sin conexión) pasa el token explícito; `restaurar` y `refrescarPerfil` usan
+    el de la sesión o el del cliente de turnos. El `catch (Throwable)` de cada revocador solo corta si cancelaron el propio
+    ámbito (`ensureActive`). Rojo previo (con el esqueleto de la interfaz y los parámetros sin lógica, para que compile): 8 de
+    10 tests de `AuthRepositoryLogoutTest` fallan por lo que falta (los dos que pasan prueban lo que ya existía: cierre sin
+    revocadores y sin token no llama a nadie). Mutación (hacer que `logout` espere la revocación): falla el de «no demora».
+    Verdes: `AuthRepositoryLogoutTest` (10) y `RevocarSesionClientesTest` (3, servidor local de la JVM en `127.0.0.1`, sin
+    dependencias: comprueba método, ruta y encabezados de los dos pedidos y que 401/404/500 no son error),
+    `:core:data:jvmTest --rerun` (569 tests), `:core:ui:jvmTest`, `:especialidades:clinica:jvmTest`,
+    `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`. Sin cambios en `*.kts` ni en
+    `libs.versions.toml`; `ktor-client-mock` no aparece en el código.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 

@@ -19,6 +19,7 @@ import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.PerfilesHcRepository
+import com.salud360.core.data.repos.RevocaSesion
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
@@ -100,9 +101,15 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
+    // `revocar` (RF-59): al cerrar sesión, en segundo plano, turnos y cada HC con API (hclinica y pediatría) olvidan el token.
     single {
         val enfermedades = get<EnfermedadesRepository>()
-        AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad, enfermedades::cerrarSesion)
+        val turnos = get<TurnosOnlineClient>()
+        val clientes = get<HcApiClients>().porEspecialidad
+        AuthRepository(
+            get(), get(), turnos, get(), clientes, enfermedades::cerrarSesion,
+            revocar = listOf(RevocaSesion(turnos::cerrarSesion)) + clientes.values.map { RevocaSesion(it::salir) },
+        )
     }
     single { PacientesRepository(get()) }
     single { HcRepository(get(), get<HcBackends>().porEspecialidad) }

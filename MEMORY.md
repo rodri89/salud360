@@ -32,7 +32,11 @@ registros de personas): el repo es público.
   F3.6 hecha ("Datos" en `ConsultaScreen`: `enfermedadesEnDatosDeConsulta` en `AccesoEnfermedades.kt` limita a HC general
   (`porPerfil`) y al médico propio, pediatría no cambia; `ConsultaViewModel.enfermedadesEnDatos(ui)` y
   `secciones/EnfermedadesEnDatos.kt`, dibujado en los dos lugares de "Datos"; solo lectura, comparte el controlador con la
-  sección y su `abrir()` puede crear la ficha en la web, P7-A). Sigue F3.7 (prueba manual del usuario) y F3.8.
+  sección y su `abrir()` puede crear la ficha en la web, P7-A). F3.8 hecha (RF-59: `RevocaSesion` en `repos/`,
+  `TurnosOnlineClient.cerrarSesion(token)`, `HcApiClient.salir(token)`, `AuthRepository.logout(tokenARevocar)` revoca en
+  segundo plano con `limite` de 3 s y sin demorar el cierre; `DataModule` cablea turnos + cada HC). Con esto el código de la
+  tanda F3 está completo: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia
+  local) y la validación del reviewer.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -138,6 +142,10 @@ registros de personas): el repo es público.
   Con la ventana de administrar abierta, un toque anterior sin respuesta puede pasar la sección a solo lectura y los cambios de
   la lista salen sin hacer nada (F3.5-g): resuelto cerrando la ventana sola. Un cambio de la lista que falla sin conexión NO
   cambia el estado de la sección (solo el aviso de la ventana), así que ahí la ventana no se cierra.
+- `AuthRepository` se arma con `revocar` vacío por defecto: el `TurnosOnlineClient()` por defecto apunta a producción, así
+  que un test nunca debe armarlo con revocadores reales (los de verdad van en `DataModule`). La revocación recibe el token por
+  parámetro (los clientes ya lo olvidaron) y `logout(token)` es para `login`, donde el token nuevo no está en ningún lado.
+  Tests de red sin dependencias: `com.sun.net.httpserver.HttpServer` en `127.0.0.1` (`RevocarSesionClientesTest`).
 - Tests que prueban "no contesta a tiempo": retener la respuesta con una compuerta que el test abre (`CompletableDeferred`),
   no con `delay` contra una `espera` corta.
 - Tests de enfermedades (F2.12): `espera` del repositorio y tope de `hasta` de 30 s; la `espera` corta (100 ms) solo en el
