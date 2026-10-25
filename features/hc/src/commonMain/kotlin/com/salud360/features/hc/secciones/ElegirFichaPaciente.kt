@@ -42,7 +42,8 @@ fun ElegirFichaPaciente(titulo: String, candidatas: List<HcPacienteCandidato>, h
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth(),
+                // Una sola parada para el lector: nombre, DNI y "Elegir" juntos, y no un "Elegir" suelto por cada ficha.
+                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {

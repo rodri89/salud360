@@ -13,7 +13,7 @@ class FichaCandidataTest {
     private fun candidata(
         nombre: String = "ANA",
         apellido: String = "PRUEBA",
-        dni: String = "30111222",
+        dni: String = "99000002",
         fecha: String? = "1990-01-02",
         consultas: Int = 4,
     ) = HcPacienteCandidato(7, nombre, apellido, dni, fecha, consultas)
@@ -22,7 +22,7 @@ class FichaCandidataTest {
     fun nombre_y_apellido_juntos_y_el_documento_tal_cual() {
         val l = lineaDeCandidata(candidata())
         assertEquals("ANA PRUEBA", l.nombre)
-        assertEquals("30111222", l.documento)
+        assertEquals("99000002", l.documento)
     }
 
     @Test

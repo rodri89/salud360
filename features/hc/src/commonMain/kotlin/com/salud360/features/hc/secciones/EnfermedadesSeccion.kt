@@ -1,15 +1,22 @@
 package com.salud360.features.hc.secciones
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,8 +25,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -40,11 +47,10 @@ import com.salud360.core.data.repos.TEXTO_GUARDANDO
 import com.salud360.core.data.repos.TEXTO_REINTENTAR
 import com.salud360.core.data.repos.panelDeSeccion
 import com.salud360.core.model.especialidad.SeccionDef
-import com.salud360.core.ui.components.AcceptButton
-import com.salud360.core.ui.components.ActionRow
 import com.salud360.core.ui.components.CasillaElegible
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.columnasPara
+import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.hc.EnfermedadesViewModel
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
@@ -86,8 +92,9 @@ fun EnfermedadesSeccion(s: SeccionDef, ctx: SeccionContext) {
 
     // La ventana (modal) se abre con "Administrar enfermedades" y se cierra por su "Cerrar", o sola si se pierde la conexión o
     // aparece un motivo de los lugares 1 a 5 (`debeCerrarAdministrar`). Sigue abierta si solo se cierra la consulta: RF-58
-    // pide que "Crear" siga funcionando.
-    var administrarAbierto by rememberSaveable { mutableStateOf(false) }
+    // pide que "Crear" siga funcionando. `remember` y no el estado guardado: la rotación o la recreación del proceso (Android) la
+    // cierran en vez de repetir el pedido de `abrirAdministrar()` o dejarla "Cargando…" sobre una sección que recién carga.
+    var administrarAbierto by remember { mutableStateOf(false) }
     val onAdministrar: () -> Unit = { administrarAbierto = true }
     SectionCard(
         s.titulo,
@@ -139,14 +146,33 @@ private fun Aviso(texto: String, color: Color) {
     Text(texto, color = color, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
 }
 
-/** "Reintentar" y "Administrar enfermedades", solo los que el panel pide. */
+/**
+ * "Reintentar" y "Administrar enfermedades", solo los que el panel pide, a la derecha. En una pantalla angosta pasan a dos
+ * renglones en vez de apretarse.
+ */
 @Composable
 private fun Acciones(reintentar: Boolean, administrar: Boolean, onReintentar: () -> Unit, onAdministrar: () -> Unit) {
     if (!reintentar && !administrar) return
-    ActionRow {
-        if (reintentar) AcceptButton(TEXTO_REINTENTAR, onClick = onReintentar)
-        if (administrar) AcceptButton(TEXTO_ADMINISTRAR, onClick = onAdministrar)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (reintentar) Accion(TEXTO_REINTENTAR, onReintentar)
+        if (administrar) Accion(TEXTO_ADMINISTRAR, onAdministrar)
     }
+}
+
+/** Del estilo de `AcceptButton`, pero de 40 dp como mínimo: si el texto ocupa dos líneas el botón crece y no lo recorta. */
+@Composable
+private fun Accion(texto: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 40.dp),
+        shape = CircleShape,
+        border = BorderStroke(1.5.dp, Salud360Colors.Success),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Salud360Colors.SuccessDark),
+    ) { Text(texto) }
 }
 
 @Composable

@@ -34,9 +34,12 @@ registros de personas): el repo es público.
   `secciones/EnfermedadesEnDatos.kt`, dibujado en los dos lugares de "Datos"; solo lectura, comparte el controlador con la
   sección y su `abrir()` puede crear la ficha en la web, P7-A). F3.8 hecha (RF-59: `RevocaSesion` en `repos/`,
   `TurnosOnlineClient.cerrarSesion(token)`, `HcApiClient.salir(token)`, `AuthRepository.logout(tokenARevocar)` revoca en
-  segundo plano con `limite` de 3 s y sin demorar el cierre; `DataModule` cablea turnos + cada HC). Con esto el código de la
-  tanda F3 está completo: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia
-  local) y la validación del reviewer.
+  segundo plano con `limite` de 3 s y sin demorar el cierre; `DataModule` cablea turnos + cada HC). El reviewer validó la
+  tanda F3 (aprobada con observaciones, 2026-10-24) y F3.9 cerró los cuatro puntos que el usuario aprobó (ventana de administrar
+  con `remember` y `cerrarAdministrar()` al salir de la composición, tarjeta de `ElegirFichaPaciente` fusionada para el lector,
+  `FlowRow` en "Reintentar"/"Administrar", DNI de `FichaCandidataTest` en `99000xxx`). El código de la tanda F3 está completo y
+  validado: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia local; M3 (9), M5 (5, 6)
+  son pasos nuevos de F3.9). Quedan los otros menores del reviewer, sin tarea.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama

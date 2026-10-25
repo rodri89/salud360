@@ -886,7 +886,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     el aviso de la ventana), así que ahí la ventana sigue abierta con su aviso. Tocados: `PanelAdministrar.kt`, `AdministrarEnfermedadesDialog.kt`, comentario de `EnfermedadesSeccion.kt`, el test nuevo,
     este archivo y `MEMORY.md`. Queda como duda abierta (solo Android): si el sistema recrea el proceso con la ventana abierta
     (`administrarAbierto` es `rememberSaveable`), la sección nueva arranca cargando, la ventana no cierra y su
-    `abrirAdministrar()` no hace nada (aún no puede administrar); se queda en "Cargando…" hasta tocar "Cerrar".
+    `abrirAdministrar()` no hace nada (aún no puede administrar); se queda en "Cargando…" hasta tocar "Cerrar". (Resuelta en F3.9: la ventana usa `remember`.)
 
 - [x] **F3.6. "Datos": enfermedades del paciente cuando la sección no se muestra.** RF-4, RF-6, RF-7, RF-57
   - **Trampa del plan** (ver "Discrepancias"): `enfermedadesEnDatos(def, ocultas)` da `true` para **cualquier**
@@ -974,6 +974,10 @@ Reglas de la F3, además de las de arriba y las de la F2:
       (RF-28) la sección pasa a "Sin conexión" y la ventana se cierra sola, con el aviso "Sin conexión: las enfermedades se
       pueden ver pero no cambiar" atrás. Ojo: poner Offline con la ventana ya abierta y tocar "Quitar" o "Agregar" **no** la
       cierra (el controlador solo muestra "No se pudo confirmar…" dentro de la ventana y no toca el estado de la sección).
+      (9) Solo Android (F3.9): con la ventana abierta, rotar el teléfono → la ventana se cierra sola, la sección sigue como
+      estaba (sin quedarse en "Cargando…"); "Administrar enfermedades" de nuevo → abre con la lista actual, sin lo escrito antes y
+      con un solo pedido (en el log de Apache, una sola línea de `/enfermedades` de administrar por apertura). Si no hay
+      Android a mano se anota "no verificado".
     - **M4. Marcar y desmarcar (8 min).** (1) Tocar una casilla: queda marcada, un instante "Guardando…" y "Guardado" junto
       al título unos 3 s (RF-21, RF-24). Cambiar de pestaña y volver no repite "Guardado". (2) Recargar la página (F5) y
       reabrir la consulta: sigue marcada (RF-15, copia). (3) Abrir la web de clínica local en el mismo paciente: la tiene
@@ -986,6 +990,11 @@ Reglas de la F3, además de las de arriba y las de la F2:
       (3) Lector de pantalla (Narrador/NVDA) sobre una casilla: dice el nombre y si está marcada. **Riesgo**: puede que
       Compose para web no exponga ese árbol; si no se oye nada, se anota "no verificable en web" y queda para probarlo en
       Android con TalkBack (RF-20). (4) El área táctil de 48 × 48 se mira en Android/emulador o por tamaño relativo.
+      (5) Ventana angosta con los dos botones (F3.9): con el paciente C de M6 (muestra "Reintentar" y "Administrar enfermedades"),
+      angostar a menos de 400 de ancho → los botones pasan a dos renglones, o crecen en alto, y el texto se lee completo, sin
+      recortarse; en ancho normal quedan juntos a la derecha como antes. (6) Lector sobre "Elegir" (F3.9): con el paciente B de M6,
+      el lector dice el nombre y el DNI de la ficha junto con "Elegir" en una sola parada, y el botón sigue activándose con teclado
+      (Tab y Enter) y con toque; si en web no se oye nada, "no verificable en web" y se prueba con TalkBack.
     - **M6. Motivos y sin conexión (10 min).** (1) Paciente B: "Elegí la ficha del paciente" con nombre, apellido,
       documento y fecha de nacimiento de cada una, sin casillas, y "Administrar enfermedades" disponible; elegir una →
       carga la sección (RF-9, RF-37); aquí **no** hay "Reintentar" (P2-B). (2) Paciente E: el texto de la 002 que dice qué
@@ -1072,6 +1081,47 @@ Reglas de la F3, además de las de arriba y las de la F2:
     `:core:data:jvmTest --rerun` (569 tests), `:core:ui:jvmTest`, `:especialidades:clinica:jvmTest`,
     `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`. Sin cambios en `*.kts` ni en
     `libs.versions.toml`; `ktor-client-mock` no aparece en el código.
+
+- [x] **F3.9. Ajustes tras la validación del reviewer de F3.** RF-9, RF-20, RF-37, RF-38 (sin spec nueva)
+  - La tanda F3 se validó el 2026-10-24: **APROBADA CON OBSERVACIONES**. El usuario aprobó cerrar estos cuatro puntos antes
+    de su prueba manual (F3.7). Los otros menores del reviewer quedan fuera de esta tarea. Sin cambios de spec, de texto, de
+    pantallas ni de dependencias.
+  - (1) **Android, rotación y recreación** (`EnfermedadesSeccion.kt`, `AdministrarEnfermedadesDialog.kt`): `administrarAbierto`
+    pasa de `rememberSaveable` a `remember`. La ventana no sobrevive a la rotación ni a la recreación del proceso: no repite
+    `abrirAdministrar()` (un pedido de más contra RF-38) ni reaparece con la sección cargando y "Cargando…" para siempre. Como el
+    `ViewModel` sí sobrevive, la ventana llama a `cerrarAdministrar()` al salir de la composición (`DisposableEffect`), así que
+    la próxima apertura no ve la lista ni lo escrito de la anterior. "¿Hay que pedir al abrir?" ya es una regla pura con test
+    (`puedeAdministrar` dentro de `abrirAdministrar()`, F2.11); el efecto de la ventana corre una vez por apertura, así que no se
+    agrega otra función.
+  - (2) **Lector de pantalla en `ElegirFichaPaciente.kt`**: la tarjeta de cada candidata lleva `semantics(mergeDescendants = true)`
+    (como las filas de la ventana de administrar) para que el lector diga nombre y DNI junto con "Elegir". Sin textos ni
+    `contentDescription` nuevos (P6); el botón sigue siendo tocable y de 48 dp.
+  - (3) **Pantalla angosta** (`EnfermedadesSeccion.kt`): "Reintentar" y "Administrar enfermedades" van en un `FlowRow` (pasan a
+    dos renglones si no entran) y cada botón crece en alto si su texto ocupa dos líneas, en vez de recortarlo (`AcceptButton`
+    fija 40 dp). Misma apariencia que antes en pantallas anchas. Sin cambios en `core/ui` ni en los textos.
+  - (4) **DNI de prueba**: `FichaCandidataTest` pasa al rango `99000xxx`; la búsqueda con `grep` de DNIs de 8 dígitos en los tests
+    de la tanda F3 no deja ninguno fuera de ese rango.
+  - Tests: lo de pantalla no tiene lógica pura nueva (se verifica compilando y en F3.7). `FichaCandidataTest` se mantiene en verde
+    con el DNI nuevo.
+  - Hecho cuando: los puntos 1 a 4 hechos; `.\gradlew :core:data:jvmTest --rerun`, `:core:ui:jvmTest --rerun` y
+    `:especialidades:clinica:jvmTest --rerun` en verde; `.\gradlew :features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan; buscar `rememberSaveable` en `EnfermedadesSeccion.kt` no da
+    resultados; F3.7 (M3, M5, M6) con los pasos manuales nuevos.
+  - Hecho (2026-10-25). Sin rojo previo: no hay lógica pura nueva (el único test tocado, `FichaCandidataTest`, solo cambia de DNI).
+    Verdes: `:core:data:jvmTest --rerun` (569 tests, `FichaCandidataTest` 7), `:core:ui:jvmTest --rerun` (17),
+    `:especialidades:clinica:jvmTest --rerun` (25), `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev`. `*.kts` y `libs.versions.toml` intactos. Decisiones: (1) `remember` en vez de `rememberSaveable` y no un
+    arreglo del efecto: es lo más simple (la rotación cierra la ventana y no hay nada que repetir) y no depende de que el efecto
+    "sepa" si hay un pedido; además `DisposableEffect { onDispose { controlador.cerrarAdministrar() } }` en la ventana, porque el
+    `ViewModel` sobrevive a la rotación y sin eso la ventana siguiente mostraría la lista vieja mientras recarga. Cerrar por
+    "Cerrar" llama dos veces a `cerrarAdministrar()`; es idempotente (conserva `enCamino`). Un cambio de la lista en camino al
+    rotar sigue contando hasta que conteste (RF-45) y su respuesta no reescribe la ventana. (2) La tarjeta de `ElegirFichaPaciente`
+    fusiona sus hijos (el `LabelValue` de la tarjeta no tiene clic ni "Copiar"); el foco y el 48 dp del botón no cambian. (3)
+    `AcceptButton` fija 40 dp y es de `core/ui` (usado en toda la app): no se tocó; en la sección hay un botón local `Accion`
+    con el mismo estilo y `heightIn(min = 40.dp)` (como `Elegir` y el `Boton` de la ventana, que ya repiten el estilo), dentro de
+    un `FlowRow` con `Alignment.End` (mismo aspecto que `ActionRow` en pantallas anchas). (4) Los otros tests de la tanda F3 ya
+    usaban `99000xxx`; `30111222` queda en tests de F2 y de la 002 (`MotivosEnfermedadesTest`, `EnfermedadesControladorTest`,
+    `VinculoPacientesTest` y otros, también anteriores a la spec 003): no se tocaron por estar fuera de esta tarea.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 

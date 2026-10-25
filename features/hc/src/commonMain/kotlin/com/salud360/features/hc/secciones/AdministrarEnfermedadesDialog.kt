@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,6 +60,9 @@ private val ALTO_MAXIMO_LISTA = 240.dp
 fun AdministrarEnfermedadesDialog(controlador: EnfermedadesControlador, onCerrar: () -> Unit) {
     val ui by controlador.administrar.collectAsState()
     LaunchedEffect(Unit) { controlador.abrirAdministrar() }
+    // Si la ventana sale de la composición sin pasar por "Cerrar" (rotación o recreación en Android), el controlador vive en el
+    // ViewModel: se limpia su estado de administrar para que la próxima apertura no vea la lista ni lo escrito de ésta.
+    DisposableEffect(Unit) { onDispose { controlador.cerrarAdministrar() } }
     val cerrar = {
         controlador.cerrarAdministrar()
         onCerrar()
