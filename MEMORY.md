@@ -40,6 +40,7 @@ registros de personas): el repo es público.
   `FlowRow` en "Reintentar"/"Administrar", DNI de `FichaCandidataTest` en `99000xxx`). El código de la tanda F3 está completo y
   validado: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia local; M3 (9), M5 (5, 6)
   son pasos nuevos de F3.9). Quedan los otros menores del reviewer, sin tarea.
+- F3.7 preparada (2026-10-25); estado en `%TEMP%\opencode\f37` (fuera del repo). El `devWeb` no estaba levantado: arrancarlo.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
