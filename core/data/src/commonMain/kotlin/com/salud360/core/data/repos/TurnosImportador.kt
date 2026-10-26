@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.codigoHcPorNombre
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.uno
@@ -124,22 +125,6 @@ class TurnosImportador(private val db: Salud360Db) {
         if (m.historiasClinicas.isNotEmpty()) return m.historiasClinicas.map { it.trim().lowercase() }.distinct()
         previo?.especialidadesHc?.takeIf { it.isNotEmpty() }?.let { return it }
         return if (FALLBACK_HC_POR_ESPECIALIDAD) listOfNotNull(codigoHcPorNombre(m.especialidad)) else emptyList()
-    }
-
-    /** Sugerencia inicial del código de HC según el nombre de la especialidad de turnos; el admin puede cambiarlo. */
-    internal fun codigoHcPorNombre(nombre: String?): String? {
-        val n = nombre?.lowercase() ?: return null
-        return when {
-            "pediatr" in n -> "pediatria"
-            "ginec" in n || "obstet" in n -> "gineco"
-            "cardio" in n -> "cardiologia"
-            "endocrin" in n -> "endocrinologia"
-            "hemato" in n -> "hematologia"
-            "hepato" in n -> "hepatologia"
-            "clínic" in n || "clinic" in n -> "clinica"
-            "desarrollo" in n || "neurodesarrollo" in n -> "desarrollo_infantil"
-            else -> null
-        }
     }
 
     companion object {

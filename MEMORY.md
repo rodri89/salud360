@@ -41,6 +41,12 @@ registros de personas): el repo es público.
   validado: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia local; M3 (9), M5 (5, 6)
   son pasos nuevos de F3.9). Quedan los otros menores del reviewer, sin tarea.
 - F3.7 preparada (2026-10-25); estado en `%TEMP%\opencode\f37` (fuera del repo). El `devWeb` no estaba levantado: arrancarlo.
+  La prueba de enfermedades (F3.7) sigue en curso por el usuario; Mónica Falcone (paciente de prueba) hay que pasarla a la HC
+  general desde la app.
+- Spec 001, tanda D (hepatología deja de ser una HC aparte, T47 a T53): aprobada por el usuario el 2026-10-26, incluida la migración
+  `8.sqm` (T49-T50) y D1 a D7 como las recomendó el planificador (normalizar solo en la app; no se tocan los Laravel). T47 hecha
+  (`hcgeneral/HistoriasClinicas.kt`: `normalizarHistoriasClinicas`, `normalizarCodigoHc`, `codigoHcPorNombre`). Siguen T48 a T53
+  en orden, una por vez. No refrescar el `devWeb` con `8.sqm` entre T49 y T50 ni sin T50.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama

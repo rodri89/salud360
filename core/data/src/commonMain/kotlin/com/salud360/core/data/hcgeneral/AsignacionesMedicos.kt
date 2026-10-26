@@ -19,19 +19,16 @@ data class MedicoAsignable(
 )
 
 /**
- * Médicos con la HC general (o hepatología, que sigue como casilla aparte hasta la tanda D, C8) cruzados con
- * [asignaciones] por número de turnos, como la solapa de licencias. En el orden de [medicos]. Sin fila en
- * `config/asignaciones` = sin perfil y no vinculado. Los que no vienen de turnos no tienen número y no se listan.
+ * Médicos con la HC general cruzados con [asignaciones] por número de turnos, como la solapa de licencias. En el orden
+ * de [medicos]. Sin fila en `config/asignaciones` = sin perfil y no vinculado. Los que no vienen de turnos no tienen
+ * número y no se listan. Turnos puede seguir informando "hepatologia" (es la HC general: [normalizarHistoriasClinicas]).
  */
 fun medicosParaAsignar(medicos: List<Medico>, asignaciones: List<AsignacionPerfil>): List<MedicoAsignable> {
     val porNumero = asignaciones.associateBy { it.medicoIdTobb }
     return medicos.mapNotNull { m ->
-        if (m.especialidadesHc.none { it in CODIGOS_CON_PERFIL }) return@mapNotNull null
+        if (CodigosHc.GENERAL !in normalizarHistoriasClinicas(m.especialidadesHc)) return@mapNotNull null
         val numero = TobbIds.numero(m.id) ?: return@mapNotNull null
         val a = porNumero[numero]
         MedicoAsignable(m.id, numero, m.nombreCompleto, a?.perfilId, a?.vinculado ?: false)
     }
 }
-
-// "hepatologia" sale en la tanda D, cuando hepatología pasa a ser solo un perfil de la HC general.
-private val CODIGOS_CON_PERFIL = setOf(CodigosHc.GENERAL, "hepatologia")

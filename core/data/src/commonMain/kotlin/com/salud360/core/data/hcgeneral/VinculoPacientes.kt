@@ -6,7 +6,6 @@ import com.salud360.core.data.network.hc.HcPacienteFicha
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
-import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.pacientes.Paciente
 
 // Vínculo de un paciente de la app con su ficha en la web de cada historia clínica (spec 002, parte 1), sin red:
@@ -100,11 +99,12 @@ fun resultadoDe(e: TobbException): ResultadoVinculo = when (e.codigo) {
 }
 
 /**
- * Historias clínicas de las que se trae la cartera del médico (RF-8): las habilitadas que tienen API, con
- * "hepatologia" como la HC general (spec 001 RF-29), sin repetir y en el orden de [especialidadesHc].
+ * Historias clínicas de las que se trae la cartera del médico (RF-8): las habilitadas que tienen API, normalizadas
+ * ([normalizarHistoriasClinicas]: turnos puede seguir diciendo "hepatologia", que es la HC general, spec 001 RF-29), sin
+ * repetir y en el orden de [especialidadesHc].
  */
 fun historiasConCartera(especialidadesHc: List<String>, conApi: Set<String>): Set<String> =
-    especialidadesHc.map { if (it == "hepatologia") CodigosHc.GENERAL else it }.filter { it in conApi }.toSet()
+    normalizarHistoriasClinicas(especialidadesHc).filter { it in conApi }.toSet()
 
 /**
  * Con qué id vive en el dispositivo un paciente que llega en la cartera (RF-37). Si la web ya sabe cuál es en turnos,

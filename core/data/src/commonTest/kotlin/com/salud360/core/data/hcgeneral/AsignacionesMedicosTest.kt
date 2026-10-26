@@ -12,7 +12,7 @@ class AsignacionesMedicosTest {
         Medico(TobbIds.medico(n), TobbIds.usuario(n), "Prueba", apellido, especialidadesHc = hc.toList())
 
     @Test
-    fun solo_los_que_tienen_clinica_o_hepatologia_en_el_orden_de_la_lista() {
+    fun solo_los_que_tienen_la_hc_general_aunque_turnos_diga_hepatologia() {
         val medicos = listOf(
             medico(1, "Uno", "pediatria"),
             medico(2, "Dos", "hepatologia"),

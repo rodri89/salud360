@@ -1310,7 +1310,7 @@ preguntas queda como registro de las alternativas descartadas.
 - **D7. `HcPerfilesE2ETest`** (fase 7 del plan original, nunca escrito; el plan lo menciona en las secciones 9 y 11). A) Fuera
   de esta tanda, en una tanda D2 aparte. **Recomendada** (no arregla este problema). B) Dentro de esta.
 
-- [ ] **T47. Normalización de los códigos de HC (lógica pura).** RF-29
+- [x] **T47. Normalización de los códigos de HC (lógica pura).** RF-29
   - `core/data/src/commonMain/kotlin/com/salud360/core/data/hcgeneral/HistoriasClinicas.kt` (nuevo, sin red ni base):
     `normalizarHistoriasClinicas(codigos: List<String>): List<String>` (cada código con `trim` y minúsculas; vacíos fuera;
     `"hepatologia"` → `CodigosHc.GENERAL`; sin repetidos, en el orden de la primera aparición),
@@ -1331,6 +1331,12 @@ preguntas queda como registro de las alternativas descartadas.
     `solo_los_que_tienen_la_hc_general_aunque_turnos_diga_hepatologia`).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HistoriasClinicasTest*' --tests '*VinculoPacientesTest*' --tests '*AsignacionesMedicosTest*'`
     en verde (`HistoriasClinicasTest` visto fallar antes del código) y `.\gradlew :core:data:jvmTest` completo en verde.
+  - **Hecho (2026-10-26).** `HistoriasClinicasTest` visto fallar con un esqueleto que no hacía nada (7 de sus 10 tests, por aserción); después, los
+    tres filtros en verde y `:core:data:jvmTest --rerun` completo en verde (579 tests, 0 fallas). Una desviación de "mover la tabla tal cual":
+    `codigoHcPorNombre` busca `"hepat"` y no `"hepato"`, porque "Hepatólogo" (tilde en la ó) no contiene `"hepato"` y el test de la tarea lo pide.
+    `TurnosImportador` ya no tiene su método `internal`: llama a la función suelta (un nombre "Hepatología" sugiere ahora `clinica`, no
+    `hepatologia`). Las dos funciones de cartera y asignación pasan por `normalizarHistoriasClinicas`; `AsignacionesMedicos` ya no tiene
+    `CODIGOS_CON_PERFIL`. La copia de `:server` no se toca.
 
 - [ ] **T48. Aplicar la normalización donde la app lee y guarda las HC habilitadas.** RF-29
   - Lectura (obligatoria, un solo punto): `core/data/.../mappers/Mappers.kt` l. 110, `MedicoRow.toModel`:
