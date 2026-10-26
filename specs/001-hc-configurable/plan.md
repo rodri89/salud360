@@ -966,3 +966,30 @@ C7-2. **Opt-in por sección con `SeccionDef.conHistorial`, activada solo en moti
    mirar cómo las muestra la web. Descartado: condicionar por id (`motivo_consulta` y
    `CodigosHc.GENERAL`) dentro de `TextoSeccion` (no se reutiliza sin tocar código de pantalla) y activarlo en todas
    las de texto de la HC general (no lo pidió el usuario y cambia la carga de conductas y nota).
+
+## Notas de la tanda D (2026-10-26) — APROBADAS POR EL USUARIO EL 2026-10-26
+Detalle, tareas T47 a T53 y decisiones D1 a D7 (todas las recomendadas) en `tasks.md` ("Tanda D"). Lo que cambia respecto del plan de arriba
+(el texto de arriba no se edita hasta T53):
+1. **Numeración de la migración:** `7.sqm` (sección 4 `core/database`, sección 9 `MigracionHepatologiaTest` "de 7 a 8", sección 8
+   "Hepatología se migra con `7.sqm`") ya la usó la spec 003 (`hc_enfermedades`, esquema v8). La migración de hepatología es
+   **`8.sqm` (v8 → v9)**, solo datos: no cambia ningún `.sq` ni agrega columnas.
+2. **`medico.especialidades_hc` y `especialidad.codigo_hc` salen de la migración** (la sección 4 los incluía con `REPLACE`): son datos de
+   turnos (dueño remoto) y se normalizan al leer (`MedicoRow.toModel`, `EspecialidadRow.toModel`) y al guardar (`TurnosImportador`,
+   `AgendaTurnosOnline`). Menos SQL en la migración, que en el navegador, si falla, recrea la base vacía.
+3. **`paciente_extra` faltaba en el inventario:** tiene `PRIMARY KEY (paciente_id, especialidad, clave)`, así que mover `hepatologia` →
+   `clinica` puede chocar y hacer fallar toda la migración. Pasa solo la fila que no choca (`NOT EXISTS`).
+4. **Choques (riesgo de la sección 10, "el test de migración tiene que fijar cuál se muestra"):** antecedente repetido → queda activa la
+   modificada más reciente y la otra `activo = 0`; consultas abiertas en las dos HC → las dos abiertas; secciones ocultas → unión y la
+   clave vieja con `deleted = 1`. Preguntas D2 a D4.
+5. **`normalizarHistoriasClinicas` y `codigoHcPorNombre`** (sección 5 y sección 4 `core/data`): archivo `hcgeneral/HistoriasClinicas.kt`; la
+   lectura se normaliza en `MedicoRow.toModel`, el único punto por el que la base alimenta la sesión y el panel. `codigoHcPorNombre`
+   pasa a función suelta para probarla sin base.
+6. **`hepatologiaContribution` se borra pero `val hepatologia` queda** (`internal`): `HcGeneral.kt` copia de ahí secciones, laboratorios y
+   registros. El test `hepatologia_sigue_igual` se reemplaza por uno que fija que todo lo que la hepatología guardaba se lee desde la HC
+   general (RF-29, RF-30); lo cita `specs/003-hc-enfermedades/plan.md` (RF-57, tabla de pruebas).
+7. **El servidor no se toca** (sección 6, punto 2 y "Decidido" 3 de 2026-10-09: "la app normaliza"): turnos sigue ofreciendo y devolviendo
+   `hepatologia` y hclinica acepta las dos (`hc_codigos`). Cambiarlo es la pregunta D1 (opciones B y C, "preguntar antes").
+8. **Fase 7 / `HcPerfilesE2ETest`:** nunca se escribió. Queda fuera de la tanda D (pregunta D7); la tanda D de la sección 11 ("D = 6 y 7") se reduce
+   a la fase 6 más el cierre de documentación.
+9. **Riesgo nuevo, de la sección 10:** el driver web (`DriverFactory.wasmJs.kt`) descarta todas las tablas si una migración falla o si la base
+   es de una versión más nueva: ni la migración ni una app vieja sobre una base migrada tienen vuelta atrás en la web (pregunta D5).

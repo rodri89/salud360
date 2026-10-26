@@ -1143,3 +1143,391 @@ Reglas de la tanda (las mismas de la tanda C6):
        queda a mano) y el de pediatría se ven como antes, con su lista de previas arriba del campo (RF-90, RF-33).
 
 Al terminar la tanda: validación del reviewer y prueba manual del usuario.
+
+## Tanda D — Hepatología deja de ser una historia clínica aparte (redactada el 2026-10-26)
+
+**Estado: APROBADA POR EL USUARIO EL 2026-10-26**, incluida expresamente la migración `8.sqm` (T49 y T50; AGENTS.md:
+"migraciones de esquema: preguntá antes"; constitución #3) y las decisiones D1 a D7 como las recomendó el planificador
+(ver "Decididas" más abajo).
+
+Origen: prueba manual del usuario (2026-10-26). En Administración, la tarjeta del médico ofrece la casilla
+"Hepatología" como historia clínica aparte (código `hepatologia`, la HC vieja de lista fija). Al habilitársela, la app
+muestra esa HC y no el perfil "Hepatología" de la HC general (`clinica`) que el administrador configuró. La spec ya lo
+prohíbe (RF-29) y el plan lo dejó para esta tanda (C5 y C8: "Hepatología sigue hasta la D"); la tanda nunca se redactó.
+
+Qué pasa hoy, verificado en el código (2026-10-26):
+- `composeApp/.../AppDi.kt` registra `hepatologiaContribution` en `especialidades`. De ahí salen la casilla del alta y
+  de la ficha (`AdminViewModel.especialidadesHc` = código y nombre de cada contribución, `AdminScreens.kt` l. 142 y 215),
+  el chip de la tarjeta y la HC que abre el médico (`MainShell` filtra con `registry.existe`).
+- Turnos guarda y devuelve `hepatologia` tal cual (`HistoriaClinicaService::CATALOGO`, `salud360_medico_hc.hc_codigo`;
+  `auth/perfil` y `catalogos` lo informan en `historias_clinicas`). La app lo guarda sin tocar en `medico.especialidades_hc`
+  (`TurnosImportador.historiasClinicasDe`, `AgendaTurnosOnline` l. 434 y 468, `Mappers.kt` l. 110).
+- `hepatologia` es también la fuente de las secciones del catálogo: `HcGeneral.kt` copia de `hepatologia` serologías,
+  Child-Pugh, estudios, laboratorio reducido, peso y laboratorio general. **El `val hepatologia` no se puede borrar.**
+- Ya resuelto por la 002 y la 001 (no se rehace): `historiasConCartera` (`VinculoPacientes.kt`) y `medicosParaAsignar`
+  (`AsignacionesMedicos.kt`, C8) ya cuentan `hepatologia` como la HC general. hclinica acepta `clinica` **o**
+  `hepatologia` en `salud360.hc_codigos` (T4, T5): no hay que tocarlo.
+
+Reglas de la tanda (las de la C7 y estas):
+- Un commit local por tarea como `rodri89`, **sin push** (push a `main` publica la web). Nada contra producción,
+  `-Pentorno=dev`. Ningún dato real, contraseña ni token en el repo: pacientes, médicos y claves de prueba inventados.
+- Tests primero (rojo, después el código). Si Gradle pide `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- **No se tocan**: `spec.md` (los cambios de redacción que conviene hacer están en T53, para aprobar), las APIs
+  Laravel de turnos y de hclinica (si el usuario elige tocarlas, es una tarea aparte y "preguntar antes"), `:server`
+  (Ktor; la app no lo usa; sus copias de `codigoHcPorNombre` y del catálogo quedan como están), `HcApiSync`/`SyncEngine`,
+  ni se registra un `HcBackend` para "clinica".
+- **T51 no se publica sin T49 y T50.** Sin la migración, el médico que tenía datos en Hepatología los dejaría de ver
+  (siguen en la base del dispositivo, ocultos, no perdidos); es aceptable en el `devWeb` del usuario, nunca en una
+  versión publicada. Hasta que T50 esté hecha, no refrescar el `devWeb` en un navegador con datos que importen
+  (T49 y T50 forman una sola migración: `8.sqm` no se publica ni se carga en un navegador entre una y otra).
+- Compilación de interfaz: `.\gradlew :features:hc:compileKotlinJvm`, `.\gradlew :especialidades:clinica:compileKotlinJvm`,
+  `.\gradlew :features:admin:compileKotlinJvm` y
+  `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.clinica=http://localhost/HClinica-salud360/public/index.php"`.
+  Para que el `devWeb` en uso tome el cambio:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` con las mismas dos `-P`, y recargar.
+  **No** correr `--stop` ni matar el `devWeb`.
+
+### Dónde guarda el dispositivo el código de la HC (inventario de `core/database`, verificado)
+| Tabla / clave | Qué es | Qué hace la tanda |
+|---|---|---|
+| `consulta.especialidad` | HC de cada consulta | `8.sqm`: pasa a `clinica`. No hay clave única con `especialidad`: no choca; el paciente puede quedar con dos consultas ABIERTAS (se conservan las dos) |
+| `registro_clinico.especialidad`, `laboratorio.especialidad` | estudios, exámenes, interconsultas, laboratorios, peso | `8.sqm`: pasan. Solo la clave primaria `id`: no chocan |
+| `antecedente.especialidad` | antecedentes por paciente | `8.sqm`: pasan, **resolviendo antes los choques** (misma clave en las dos HC): ver T49 |
+| `paciente_extra.especialidad` | `PRIMARY KEY (paciente_id, especialidad, clave)`: un `UPDATE` ingenuo puede fallar | `8.sqm`: pasa solo la fila que no choca (ver T49) |
+| `medico_preferencia` clave `secciones_ocultas_hepatologia` | secciones que el médico oculta; `PRIMARY KEY (medico_id, clave)` | `8.sqm`: se une a `secciones_ocultas_clinica` y la vieja queda con `deleted = 1` |
+| `seccion_valor`, `examen_fisico`, `consulta_diagnostico`, `archivo` | cuelgan de `consulta_id` | siguen a su consulta, sin tocarlos |
+| `medico.especialidades_hc`, `especialidad.codigo_hc` | códigos que informa turnos (dueño remoto) | **no van en `8.sqm`**: se normalizan al leer (T48) y se reescriben limpios en el próximo ingreso. Menos SQL = menos riesgo en el driver web (ver "Riesgos") |
+| `hc_config.hc_codigo` | solo se escribe con `clinica` (`ConfigHcRepository`) | nada; un test lo comprueba |
+| `interconsultor.especialidad`, `turno.especialidad` | texto libre (especialidad del interconsultor / de turnos), **no** es un código de HC | **no se tocan**; un test lo fija para que nadie lo "arregle" |
+| `filas_ocultas_*` | solo existen con `clinica` (`puedeElegirFilas`) | nada |
+
+### Decisiones (aprobadas por el usuario el 2026-10-26)
+1. **Se normaliza en la app, no en los servidores** (pregunta D1): `hepatologia` en turnos cuenta como `clinica`; turnos y
+   hclinica no cambian. Una app vieja y una nueva conviven sin coordinar el despliegue.
+2. **Se normaliza al leer y al escribir**: `MedicoRow.toModel` (único punto por el que la base alimenta la sesión, el admin,
+   las carteras y las licencias) más las escrituras de `TurnosImportador` y `AgendaTurnosOnline`.
+3. **`8.sqm` solo mueve datos**: ninguna tabla ni columna nueva, así que **ningún `.sq` cambia** (la regla "columnas
+   nuevas al final" no aplica) y `Salud360Db.Schema.version` pasa de 8 a 9. Solo `UPDATE`, `INSERT OR REPLACE ... SELECT` y
+   `EXISTS` simples, que corren igual en SQLite (JVM, Android, iOS) y en sql.js (web).
+4. **No se tocan `updated_at` ni `dirty`** de las filas que se mueven (no es una edición del médico y no reordena
+   `consultasDePaciente`, que ordena por `fecha DESC, updated_at DESC`). El conteo de filas y la suma de `dirty` antes y
+   después tienen que ser iguales (T50).
+5. **Choques** (preguntas D2 a D4): antecedente repetido → queda activa la modificada más reciente y la otra pasa a
+   `activo = 0` (no se borra); consultas abiertas en las dos HC → se conservan las dos abiertas; `paciente_extra` repetido →
+   gana la de `clinica` y la de `hepatologia` queda donde estaba; secciones ocultas → unión de las dos listas.
+6. **`val hepatologia` pasa a `internal`** (con KDoc: "ya no es una HC; fuente de secciones del catálogo") y se borra
+   `hepatologiaContribution`. `clinicaMedica` no cambia: sigue de fuente (`HcGeneral.kt` l. 62, 69 y 81: antecedentes familiares, `labGeneralClinica` y `alimentacionClinica`).
+
+### Mientras tanto: solución inmediata sin código
+En Administración → Médicos → tarjeta del médico: **destildar "Hepatología", tildar "Clínica"** (la app manda la lista
+completa a turnos con `PUT medicos/{id}/historias-clinicas`: hace falta conexión; turnos deja `hepatologia` con
+`activo = 0` —no borra la fila— y `clinica` con `activo = 1`). Debajo aparece "Perfil de la historia clínica general":
+elegir **"Hepatología"** (la asignación es por número de médico de turnos y se conserva si ya existía: el médico ya
+figura en "Perfiles HC → Médicos" por C8). Después, el médico cierra sesión y vuelve a entrar (o recarga) para tomar la lista nueva.
+- **Qué pasa con lo ya cargado como `hepatologia` en el dispositivo:** no se pierde nada y queda oculto. Cambiar las HC
+  habilitadas solo modifica la lista del médico (`medico.especialidades_hc`); nadie borra `consulta`, `antecedente`,
+  `registro_clinico`, `laboratorio` ni `seccion_valor` (ni `logout`, que solo borra la sesión y `hc_enfermedades`). La HC
+  "Hepatología" no se ofrece sin la casilla y la de "Clínica" lista solo `especialidad = 'clinica'`: las consultas viejas
+  no se ven en ninguna. Se vuelven a ver (a) re-tildando "Hepatología" (reversible) o (b) cuando exista T49/T50, que las
+  pasa a "Clínica".
+- **Cuidado:** esos datos **solo están en ese navegador/dispositivo** (hepatología nunca tuvo API ni servidor). No borrar
+  los datos del sitio, ni probar en otro navegador esperando verlos. Si mientras tanto el médico carga cosas en
+  "Clínica" del mismo paciente, cuando llegue la migración habrá datos en las dos HC: es el caso de choque de T49/T50, ya
+  resuelto sin pérdida.
+- Médicos con `hepatologia` y **sin perfil asignado** no pueden crear consultas nuevas en la HC general (RF-19: "Falta que el
+  administrador te asigne un perfil"); antes de cambiarles la casilla, mirar en "Perfiles HC → Médicos" que tengan perfil.
+
+### Orden de despliegue y convivencia de versiones
+Ningún cambio de servidor es necesario (pregunta D1, opción A). Orden: (1) esta tanda entera (T47 a T53) en `hc-general`,
+(2) prueba manual (T52), (3) recién ahí publicar la rama junto con la 002 (push a `main` publica la web; requiere pedido
+explícito). Los servidores quedan como están.
+- App vieja + turnos con `hepatologia` (hoy): sigue el problema (HC vieja). App nueva + turnos con `hepatologia`, `clinica`
+  o las dos: una sola HC "Clínica", sin coordinar nada.
+- El administrador que usa la app nueva y toca las casillas de un médico manda la lista normalizada (`clinica` en vez de
+  `hepatologia`): turnos desactiva `hepatologia` y activa `clinica`. Un médico con app vieja que recibe eso abre la HC general
+  y deja sus datos de `hepatologia` ocultos hasta actualizar (no perdidos).
+- La web de turnos (`alta_medico`, `MedicoController@estadoPara`) sigue mostrando "Hepatología"; si alguien la tilda ahí, la
+  app nueva la lee como `clinica`. Inofensivo.
+- **No hay vuelta atrás en un dispositivo ya migrado:** la base queda en versión 9. En la web, un bundle viejo (versión 8)
+  ve una base "de otra versión" y **descarta todas las tablas** (`DriverFactory.wasmJs.kt`, l. 43 a 46). En Android/iOS no se
+  verificó; el SQLite estándar no permite bajar de versión. Si algo sale mal, se corrige hacia adelante.
+- Si quedara una pestaña vieja abierta durante el despliegue y volviera a guardar la imagen de la base de la versión 8
+  (no se verificó cómo lo trata el worker persistente), la migración es idempotente a propósito: la próxima carga la rehace.
+
+### Riesgos
+1. **Los datos de `hepatologia` solo existen en el dispositivo.** Un error de migración o borrar los datos del sitio los pierde.
+   Mitigación: pruebas con choques e idempotencia (T50), conteos antes y después, y la prueba manual con datos de prueba.
+2. **El driver web recrea la base vacía si una migración falla** (`DriverFactory.wasmJs.kt` l. 29 a 46): cualquier error en
+   `8.sqm` en el navegador borra todo lo del navegador. Por eso `8.sqm` es chica, sin `DROP`, sin recrear tablas, sin
+   cláusulas que dependan de la versión de SQLite, y `paciente_extra` se mueve con `NOT EXISTS` (una clave repetida
+   haría fallar el `UPDATE`). Endurecer ese driver (no descartar nunca) es un cambio aparte: pregunta D5.
+3. **Antecedentes repetidos:** `AntecedentesSeccion` indexa por clave (`associateBy`, gana la última) pero
+   `HcRepository.guardarAntecedente` actualiza la primera: con dos filas por clave, editar parecería no hacer nada. Por eso
+   T49 deja una sola activa por clave.
+4. **Dos consultas abiertas** del mismo paciente y médico en `clinica`: `consultaAbierta` (`LIMIT 1`, la más reciente) abre
+   una y la otra queda abierta en la lista; se pueden abrir las dos desde la lista y nada se pierde. Cerrar una sola es una
+   edición clínica y no la hace una migración.
+5. **Médicos con `hepatologia` sin perfil** (ver arriba): dejan de poder crear consultas hasta que el administrador les asigne
+   uno. Revisar "Perfiles HC → Médicos" antes de publicar.
+6. **002 (envío de consultas):** las consultas ex-hepatología quedan en `clinica` con `remoto_id = ''`, así que serán candidatas a
+   `consultasSinEnviar("clinica")` cuando se registre el `HcBackend`: sale un envío en bloque de historial viejo. Es lo
+   esperado, pero la 002 tiene que contemplarlo antes de enviar.
+7. **`updated_at`/`dirty` intactos:** si algún día se activa `SyncEngine` contra `:server`, las filas movidas con `dirty = 1` se
+   reenviarían con la HC nueva. Hoy la app no lo usa.
+8. **Mantenimiento:** quien lea `ClinicaMedica.kt` puede creer que `hepatologia` es código muerto y borrarlo: el catálogo se
+   rompería. El KDoc y el test de T51 lo fijan.
+9. **Diferencia sql.js vs SQLite de la JVM** (los tests corren en la JVM): la prueba manual (T52, paso 1) es la que confirma la
+   migración en el motor real de la web.
+
+### Decididas (2026-10-26, usuario)
+D1 a D7 = la opción recomendada de cada una: **D1-A** (normalizar solo en la app), **D2-A** (gana la modificada más reciente; la otra
+queda `activo = 0`), **D3-A** (se conservan las dos consultas abiertas), **D4-A** (unión de las dos listas de secciones ocultas),
+**D5-A** (no se toca el driver web), **D6-A** (toda la tanda, en orden T47 → T53), **D7-A** (`HcPerfilesE2ETest` afuera). El texto de las
+preguntas queda como registro de las alternativas descartadas.
+- **D1. Una habilitación de `hepatologia` que ya existe en turnos, ¿dónde se normaliza?**
+  A) Solo en la app (T47, T48). Turnos y hclinica no cambian; no hay orden de despliegue. **Recomendada.**
+  B) Además en turnos (Laravel, "preguntar antes"): `HistoriaClinicaService::habilitadas` devolvería `clinica` en vez de
+     `hepatologia` y `CATALOGO` la sacaría de la web de turnos y del `PUT`. Limpia, pero las apps viejas con `hepatologia`
+     en el `PUT` recibirían 422 y hay que desplegar turnos en coordinación.
+  C) Además migrar las filas de `salud360_medico_hc` (`hepatologia` → `clinica`) en la base de turnos (producción). Dato
+     real: solo con pedido y respaldo explícitos.
+- **D2. Antecedente repetido (mismo paciente, categoría y clave en `clinica` y en `hepatologia`).**
+  A) Gana la modificada más reciente (a igual fecha, la de `clinica`); la otra queda `activo = 0`, sin borrar. **Recomendada**
+     (misma regla "lo último guardado manda" del resto de la app; deja una sola fila que se ve y se edita).
+  B) Gana la que está tildada (`flag`), y a igual `flag` la más reciente: no esconde un antecedente positivo, pero
+     una tilde vieja puede tapar una destilda nueva.
+  C) Dejar las dos activas y corregir la pantalla para que lea y escriba la misma: toca `features/hc` y no es una migración.
+- **D3. Paciente con consulta abierta en las dos HC.** A) Se conservan las dos abiertas, el médico cierra la que quiera.
+  **Recomendada** (no se decide por él). B) La migración cierra la más vieja: es una edición clínica, no recomendada.
+- **D4. Secciones ocultas.** A) Unión de lo oculto en las dos HC. **Recomendada** (RF-28: lo oculto se mantiene; lo que no
+  está en el perfil se ignora igual). B) Gana la de `clinica`. C) Gana la de `hepatologia`.
+- **D5. Driver web que recrea la base si la migración falla.** A) No tocarlo en esta tanda y mitigar con las pruebas y la
+  prueba manual con datos de prueba. **Recomendada para D.** B) Cambio aparte, antes de publicar: que ante un fallo no
+  descarte las tablas (por ejemplo, las deje y muestre un error). Toca `core/database` (`wasmJsMain`); requiere su
+  aprobación y su propia tarea. C) Las dos cosas.
+- **D6. Alcance y orden.** A) Toda la tanda, en orden (T47 → T53). **Recomendada.** B) Dividir: primero T47, T48 y T51 (arreglan
+  lo que se ve; los datos viejos quedan ocultos, ver la regla de la tanda) y T49, T50 después, con su aprobación.
+- **D7. `HcPerfilesE2ETest`** (fase 7 del plan original, nunca escrito; el plan lo menciona en las secciones 9 y 11). A) Fuera
+  de esta tanda, en una tanda D2 aparte. **Recomendada** (no arregla este problema). B) Dentro de esta.
+
+- [ ] **T47. Normalización de los códigos de HC (lógica pura).** RF-29
+  - `core/data/src/commonMain/kotlin/com/salud360/core/data/hcgeneral/HistoriasClinicas.kt` (nuevo, sin red ni base):
+    `normalizarHistoriasClinicas(codigos: List<String>): List<String>` (cada código con `trim` y minúsculas; vacíos fuera;
+    `"hepatologia"` → `CodigosHc.GENERAL`; sin repetidos, en el orden de la primera aparición),
+    `normalizarCodigoHc(codigo: String?): String?` (lo mismo para uno solo) y `codigoHcPorNombre(nombre: String?): String?`
+    (la tabla de `TurnosImportador.codigoHcPorNombre`, que hoy es un método `internal` de la clase y no se puede probar sin
+    base, movida acá como función suelta; `"hepato"` → `CodigosHc.GENERAL`). `TurnosImportador` la llama.
+  - `VinculoPacientes.kt` (`historiasConCartera`) y `AsignacionesMedicos.kt` (`medicosParaAsignar`, `CODIGOS_CON_PERFIL`)
+    pasan por `normalizarHistoriasClinicas` en vez de su mapeo propio; el comentario de C8 ("sale en la tanda D") se
+    reemplaza por la razón nueva. Su comportamiento no cambia.
+  - Tests: `core/data/src/commonTest/.../hcgeneral/HistoriasClinicasTest.kt` (nuevo): `[]` → `[]`; `["hepatologia"]` →
+    `["clinica"]`; `["clinica","hepatologia"]` y `["hepatologia","clinica"]` → `["clinica"]`; `["pediatria","hepatologia","hematologia"]`
+    → `["pediatria","clinica","hematologia"]`; `[" Hepatologia ","HEPATOLOGIA"]` → `["clinica"]`; `["","  "]` → `[]`; códigos que
+    no son hepatología intactos y en su orden; idempotente (`f(f(x)) == f(x)`); `normalizarCodigoHc` con `null`, `""`,
+    `"hepatologia"`, `"pediatria"`; `codigoHcPorNombre`: "Hepatología" y "Hepatólogo" → `clinica`, "Clínica médica" →
+    `clinica`, "Pediatría" → `pediatria`, "Ginecología y Obstetricia" → `gineco`, "Cardiología", "Endocrinología",
+    "Hematología", "Desarrollo infantil", "Otra" → `null`, `null` → `null`. Se mantienen en verde
+    `VinculoPacientesTest.hepatologia_cuenta_como_la_hc_general` y la primera de `AsignacionesMedicosTest` (renombrarla a
+    `solo_los_que_tienen_la_hc_general_aunque_turnos_diga_hepatologia`).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HistoriasClinicasTest*' --tests '*VinculoPacientesTest*' --tests '*AsignacionesMedicosTest*'`
+    en verde (`HistoriasClinicasTest` visto fallar antes del código) y `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **T48. Aplicar la normalización donde la app lee y guarda las HC habilitadas.** RF-29
+  - Lectura (obligatoria, un solo punto): `core/data/.../mappers/Mappers.kt` l. 110, `MedicoRow.toModel`:
+    `especialidades_hc.splitCsv()` → `normalizarHistoriasClinicas(...)`. Con eso la ven normalizada `resolverPerfil`
+    (`MainShell` filtra con `registry.existe`), el administrador (casillas y chips), `PacientesHcRepository`,
+    `AdminRepository.guardarLicencia` y `medicosParaAsignar`. También `EspecialidadRow.toModel` (l. 121): `codigoHc`
+    por `normalizarCodigoHc` (la tabla "Especialidades" muestra "—" para un código que ya no está en el registro).
+  - Escritura (para que la base quede limpia): `TurnosImportador.historiasClinicasDe` (`normalizarHistoriasClinicas` en
+    sus tres salidas) e `importarEspecialidad` (`previa?.codigoHc` por `normalizarCodigoHc`);
+    `AgendaTurnosOnline.guardarHistoriasClinicas` (l. 434 a 436: guarda y devuelve la lista normalizada) y
+    `sincronizarAdministracion` (l. 468). `AdminViewModel.setEspecialidadHc` no cambia: parte de `m.especialidadesHc`, ya
+    normalizada, así que el administrador manda `clinica` en vez de `hepatologia` (turnos desactiva la fila, no la borra).
+  - Tests: `core/data/src/jvmTest/.../repos/HistoriasHabilitadasTest.kt` (nuevo, SQLite en archivo temporal, como
+    `PacientesHcRepositoryTest`; datos inventados): un `medico` con `especialidades_hc = 'hepatologia'` →
+    `medicoPorId(...).toModel().especialidadesHc == ["clinica"]` y `resolverPerfil(...).medico.especialidades == ["clinica"]`; con
+    `'pediatria,hepatologia,clinica'` → `["pediatria","clinica"]`; `TurnosImportador.importar` de un `TobbPerfil` (armado como
+    en `TobbPerfilTest`) con `historiasClinicas = ["hepatologia","pediatria"]` deja `["clinica","pediatria"]` en la base;
+    el mismo perfil sin `historias_clinicas` y con la especialidad de turnos "Hepatología" deja `["clinica"]` (fallback);
+    una `especialidad` previa con `codigo_hc = 'hepatologia'` sale como `clinica`. Las dos escrituras de `AgendaTurnosOnline`
+    necesitan red: se verifican por compilación y en T52 (paso 8).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HistoriasHabilitadasTest*'` en verde (visto fallar antes) y
+    `.\gradlew :core:data:jvmTest` completo en verde; `.\gradlew :composeApp:compileKotlinWasmJs` (con las `-P` de arriba) compila.
+
+- [ ] **T49. Migración `8.sqm` (v8 → v9): lo guardado como `hepatologia` pasa a `clinica`.** RF-29, RF-30
+  **Aprobada expresamente por el usuario el 2026-10-26** (migración de la base del dispositivo con datos
+  clínicos que solo existen ahí; constitución #3, AGENTS.md "migraciones de esquema"). La numeración de la 001 (`7.sqm`) ya
+  la usó la 003 (`hc_enfermedades`); esta es la siguiente libre.
+  - `core/database/src/commonMain/sqldelight/com/salud360/core/database/migrations/8.sqm` (nuevo; ningún `.sq` cambia, no
+    hay columnas ni tablas nuevas; `verifyMigrations` está apagado, el test es el único control). Borrador a validar con los
+    tests; si un test lo contradice, manda el test:
+    ```sql
+    -- 1) Antecedentes repetidos (misma clave del mismo paciente en las dos HC): queda activa la modificada más reciente
+    --    (a igual fecha, la de clinica) y la otra pasa a activo = 0. No se borra nada.
+    UPDATE antecedente SET activo = 0
+    WHERE especialidad = 'hepatologia' AND activo = 1 AND deleted = 0 AND EXISTS (
+        SELECT 1 FROM antecedente c WHERE c.especialidad = 'clinica' AND c.paciente_id = antecedente.paciente_id
+          AND c.categoria = antecedente.categoria AND c.clave = antecedente.clave
+          AND c.activo = 1 AND c.deleted = 0 AND c.updated_at >= antecedente.updated_at);
+    UPDATE antecedente SET activo = 0
+    WHERE especialidad = 'clinica' AND activo = 1 AND deleted = 0 AND EXISTS (
+        SELECT 1 FROM antecedente h WHERE h.especialidad = 'hepatologia' AND h.paciente_id = antecedente.paciente_id
+          AND h.categoria = antecedente.categoria AND h.clave = antecedente.clave
+          AND h.activo = 1 AND h.deleted = 0 AND h.updated_at > antecedente.updated_at);
+    -- 2) Lo que no tiene clave única con la HC: pasa tal cual (sin tocar updated_at ni dirty).
+    UPDATE consulta SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+    UPDATE antecedente SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+    UPDATE registro_clinico SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+    UPDATE laboratorio SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+    -- 3) paciente_extra tiene PRIMARY KEY (paciente_id, especialidad, clave): solo pasa la que no choca; la repetida
+    --    queda donde estaba (no se pierde, y la migración no falla).
+    UPDATE paciente_extra SET especialidad = 'clinica'
+    WHERE especialidad = 'hepatologia' AND NOT EXISTS (
+        SELECT 1 FROM paciente_extra c WHERE c.paciente_id = paciente_extra.paciente_id
+          AND c.especialidad = 'clinica' AND c.clave = paciente_extra.clave);
+    -- 4) Secciones ocultas: unión de las dos listas; la clave vieja queda con deleted = 1 (no se borra).
+    INSERT OR REPLACE INTO medico_preferencia (medico_id, clave, valor, updated_at, deleted, dirty)
+    SELECT h.medico_id, 'secciones_ocultas_clinica',
+           CASE WHEN c.valor IS NULL OR c.valor = '' THEN h.valor
+                WHEN h.valor = '' THEN c.valor
+                ELSE c.valor || ',' || h.valor END,
+           MAX(h.updated_at, COALESCE(c.updated_at, 0)), 0, COALESCE(c.dirty, h.dirty)
+    FROM medico_preferencia h
+    LEFT JOIN medico_preferencia c ON c.medico_id = h.medico_id AND c.clave = 'secciones_ocultas_clinica' AND c.deleted = 0
+    WHERE h.clave = 'secciones_ocultas_hepatologia' AND h.deleted = 0;
+    UPDATE medico_preferencia SET deleted = 1 WHERE clave = 'secciones_ocultas_hepatologia' AND deleted = 0;
+    ```
+    Idempotente: la segunda corrida no encuentra nada que mover (todo `hepatologia` ya pasó o quedó `deleted = 1`). No toca
+    `medico`, `especialidad`, `hc_config`, `interconsultor` ni `turno`. Si SQLDelight no compila alguna forma, se reescribe
+    equivalente (nunca con `DROP`, ni recreando tablas, ni `INSERT OR REPLACE` sobre las tablas clínicas).
+  - Primer test, antes de escribir el `.sqm`: `core/data/src/jvmTest/.../repos/MigracionHepatologiaTest.kt` (nuevo; SQLite
+    en archivo temporal como `ConfigHcRepositoryTest`; base creada con el esquema actual, sembrada con `INSERT` de columnas
+    nombradas y datos inventados —ids `p-prueba-1`, `m-prueba-1`, nada real—, y migrada con
+    `Salud360Db.Schema.synchronous().migrate(driver, 8, 9)`):
+    1. `consulta`: tres de `hepatologia` (ABIERTA con `dirty = 1`, CERRADA con `remoto_id = ''`, ANULADA), una de `clinica` y una de
+       `pediatria` → ninguna de `hepatologia`; mismos ids; cada fila igual a la de antes salvo `especialidad` (`estado`, `fecha`,
+       `tipo`, `updated_at`, `dirty`, `deleted`, `remoto_id`); la de pediatría intacta.
+    2. `seccion_valor`, `examen_fisico`, `consulta_diagnostico` y `archivo` de esas consultas siguen ahí y se leen por
+       `valoresDeConsulta(consultaId)` y `examenFisicoDeConsulta(consultaId)`.
+    3. `registro_clinico` (con `campos_json`), `laboratorio` (con `valores_json`) y `antecedente` sin choque pasan a `clinica`,
+       con el contenido intacto.
+    4. `interconsultor.especialidad = 'hepatologia'` (texto libre) y un `turno` con `especialidad` de texto **no cambian**.
+    5. `hc_config`: sin filas `hepatologia` antes ni después.
+    6. El driver: una base con `PRAGMA user_version = 8`, sembrada, se abre con `DriverFactory(ruta).createDriver()` (como
+       `al_abrir_una_base_de_la_version_6_el_driver_la_migra`), queda en versión 9 y migrada, y conserva lo que ya tenía
+       (`sync_estado`).
+    7. `Salud360Db.Schema.version == 9`.
+  - Versión del esquema en los tests que la fijan: `ConfigHcRepositoryTest` (l. 207 y 242: `8L` → `9L`) y `CopiaEnfermedadesTest`
+    (l. 433 y 470: `8L` → `9L`); las llamadas `migrate(driver, 6, 7)` y `migrate(driver, 7, 8)` quedan igual. Es el único cambio a
+    tests existentes de esta tarea.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MigracionHepatologiaTest*' --tests '*ConfigHcRepositoryTest*' --tests '*CopiaEnfermedadesTest*'`
+    en verde (`MigracionHepatologiaTest` visto fallar antes del `.sqm`); `.\gradlew :core:data:jvmTest` completo en verde;
+    `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` (con las `-P`) compila (driver web con `generateAsync`);
+    `git diff --stat` muestra `8.sqm` nuevo y ningún `.sq` cambiado. **No se refresca el `devWeb` hasta cerrar T50.**
+
+- [ ] **T50. La migración con choques, idempotencia y sin pérdida.** RF-29, RF-30
+  **Misma aprobación explícita que T49, del 2026-10-26** (es la otra mitad de `8.sqm`). Mismo archivo de test; si algún caso falla, se
+  corrige `8.sqm` (todavía sin publicar ni cargar en ningún navegador).
+  - Tests en `MigracionHepatologiaTest` (cada uno visto fallar o, si ya pasa por T49, mutando a propósito el `.sqm` para comprobar
+    que el test lo detecta):
+    1. Consultas: el mismo paciente y médico con una ABIERTA en `clinica` y otra en `hepatologia` → quedan las dos ABIERTA en
+       `clinica`, con su `dirty`; `consultasDePaciente(paciente, 'clinica')` trae las dos; `consultaAbierta` devuelve la más reciente
+       y ninguna se borra.
+    2. Antecedentes: (a) `hepatologia` más nueva → gana (la de `clinica` queda `activo = 0`); (b) `clinica` más nueva → gana; (c) misma
+       `updated_at` → gana `clinica`; (d) misma clave en otra categoría o en otro paciente → no chocan; (e) la fila perdedora conserva
+       `flag` y `detalle` (no se borró); (f) `antecedentesDeCategoria(paciente, 'clinica', categoria)` trae una sola fila por clave; (g) una
+       fila `deleted = 1` o `activo = 0` de antes no cuenta como choque.
+    3. `paciente_extra`: una fila que choca (misma clave en `clinica`) → la migración **no falla**, `clinica` conserva su valor y la de
+       `hepatologia` queda en `hepatologia`; una que no choca se mueve.
+    4. Preferencias: (a) solo `secciones_ocultas_hepatologia` = `"a,b"` → `secciones_ocultas_clinica` = `"a,b"` y la vieja `deleted = 1`;
+       (b) las dos (`"x"` y `"a,b"`) → `"x,a,b"` (leída como conjunto, sin pisar `x`); (c) la de `clinica` vacía; (d) la de `hepatologia`
+       vacía; (e) la de `clinica` con `deleted = 1` más la de `hepatologia` → una `clinica` viva; (f) otro médico y otras claves
+       (`filas_ocultas_clinica_laboratorio_general`) intactos; (g) `ConsultaViewModel` y `ConfigSeccionesHcScreen` leen con
+       `split(',')...toSet()`: un test lo fija leyendo el resultado de (b) con esa misma regla.
+    5. Idempotencia: `migrate(8, 9)` dos veces seguidas deja todas las tablas de (1) a (4) idénticas a la primera corrida (comparación de
+       un volcado de `consulta`, `antecedente`, `registro_clinico`, `laboratorio`, `paciente_extra`, `medico_preferencia`).
+    6. Sin pérdida: para `consulta`, `seccion_valor`, `registro_clinico`, `laboratorio`, `antecedente`, `paciente_extra` y
+       `medico_preferencia`, `count(*)` y `sum(dirty)` antes y después son iguales (solo `antecedente.activo` y
+       `medico_preferencia.deleted` cambian, y se comprueba cuántas).
+    7. De punta a punta con los repositorios (como `DatosConsultaTest` y `ValoresDeCampoDePacienteTest`): después de migrar,
+       `HcRepository.observarConsultas`, `observarRegistros`, `observarLaboratorios`, `observarAntecedentes` y
+       `observarValoresDeCampo(paciente, "clinica", "motivo_consulta", "texto")` traen lo que estaba en `hepatologia` (caso límite de
+       la spec: los motivos de la hepatología aparte salen en las consultas previas de la HC general).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MigracionHepatologiaTest*'` en verde y `.\gradlew :core:data:jvmTest` completo
+    en verde. Recién ahí `8.sqm` queda lista para cargarse en un navegador.
+
+- [ ] **T51. Hepatología fuera del registro y de lo que ofrece el administrador.** RF-29 (retira C5 y C8)
+  - `composeApp/.../AppDi.kt`: se quita el import y `hepatologiaContribution` de `especialidades`. Con eso desaparecen solos la
+    casilla "Hepatología" del alta y de la ficha (`AdminScreens.kt` l. 142 y 215 leen del registro) y el chip; el médico con
+    `hepatologia` en turnos ve una sola HC "Clínica" (T48).
+  - `especialidades/clinica/.../ClinicaMedica.kt`: se borra `hepatologiaContribution`; `val hepatologia` pasa a `internal` con KDoc
+    ("ya no es una historia clínica: fuente de las secciones, laboratorios y registros de `catalogoHcGeneral`; no borrar"). Los comentarios
+    de `HcGeneral.kt` (l. 18, 40 y 46: "hasta la tanda D") y de `AsignacionesMedicos.kt` quedan actualizados.
+  - `CatalogoHcGeneralTest` (los tests que fijan `hepatologia`; decidido con la spec en la mano: RF-29/RF-30 piden que lo que la
+    hepatología guardaba se siga leyendo desde la HC general, no que su definición siga igual):
+    - `hepatologia_sigue_igual` → `las_secciones_de_hepatologia_se_leen_desde_la_hc_general`: para cada sección de `hepatologia.secciones`
+      su id está en `catalogoHcGeneral` (o en `legadas`) con los mismos `campos` (clave y tipo), `registroTipo`, `laboratorioTipo` y
+      `categoriaAntecedentes`; cada laboratorio de `hepatologia` (`laboratorio_general`, `laboratorio_reducido`, `peso`) y cada registro
+      que usa una sección está en el catálogo con las mismas claves de analito o de campo; las categorías de antecedentes de
+      `hepatologia` existen en el catálogo o en las legadas (RF-30: lo guardado se sigue leyendo). Se van las aserciones de código,
+      nombre, `tiposConsulta`, `hepatologiaContribution.renderers` y `hepatologiaContribution.catalogo` (l. 302 a 313, 335 y 345).
+    - Se **mantienen**: `clinica_medica_sigue_igual`; en `los_estudios_con_historial...` (l. 137), `ninguna_otra_seccion...` (l. 168) y
+      `solo_el_motivo...` (l. 182) las aserciones sobre `hepatologia` siguen valiendo (la copia del catálogo no cambia lo compartido), con el
+      comentario "hepatología, que se va en la tanda D" (l. 134) reescrito; `la_contribucion_registra_la_hc_general...` pierde solo la
+      línea de `hepatologiaContribution.catalogo`; `copia_de_diagnosticos_con_el_catalogo_real` pierde `copiaDiagnosticos(hepatologia)`
+      (l. 395: ya no es una HC). El fixture `hepatologiaInicial` (el **perfil** "Hepatología") queda: es lo que se arma con `armarDefinicion`.
+  - Hecho cuando: `.\gradlew :especialidades:clinica:jvmTest` en verde (el test nuevo visto fallar antes de ajustar los otros);
+    `git grep -n hepatologiaContribution -- '*.kt'` no da resultados; `.\gradlew :core:data:jvmTest` completo en verde;
+    `.\gradlew :features:admin:compileKotlinJvm`, `.\gradlew :features:hc:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs`
+    (con las `-P`) compilan.
+
+- [ ] **T52. Prueba manual del usuario (`devWeb` contra la copia local) y limpieza.** RF-29, RF-30, RF-33
+  Hecha por el usuario; la tarea no se marca hasta que confirme. Solo con datos de prueba y solo local (nunca producción).
+  - Antes de refrescar (con el build viejo todavía cargado), en el navegador que ya tiene datos de Hepatología:
+    **P1.** Entrar como el médico de prueba con "Hepatología". Elegir dos pacientes de prueba con consultas en Hepatología y anotar de
+    cada uno: cuántas consultas (abiertas y cerradas), un motivo de consulta, una carga de laboratorio, serologías o Child-Pugh si hay, un
+    antecedente familiar tildado, y qué secciones tiene ocultas en Configuración. **P2.** Si alguno ya tiene consultas en "Clínica", anotar
+    cuántas (es el caso de choque). **P3.** Esos datos solo están en ese navegador: confirmar que son de prueba antes de seguir (si no lo
+    son, parar y avisar; no borrar los datos del sitio).
+  - Pasos (con `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` y las dos `-P`, y recargando la página):
+    1. La consola del navegador **no** muestra "no se pudo migrar la base del navegador". Si lo muestra: parar, la base se recreó vacía.
+    2. Administración → Médicos → tarjeta del médico: las casillas de HC son Clínica, Pediatría, etc., **sin Hepatología**, y los chips dicen
+       "Clínica". En "Nuevo usuario" con rol Médico tampoco hay casilla Hepatología.
+    3. Como el médico (con turnos todavía diciendo `hepatologia`, como hoy): una sola HC "Clínica", con el perfil "Hepatología" (pestañas, serologías
+       en grilla, Child-Pugh en tabla, estudios con consultas previas), no la HC vieja.
+    4. Los dos pacientes de P1: "Clínica" muestra las consultas anotadas (más las de P2), con las mismas abiertas y cerradas. Una consulta cerrada
+       muestra motivo, laboratorio, serologías, Child-Pugh y antecedente iguales a lo anotado; en una consulta nueva, el motivo viejo sale en
+       "Consultas previas".
+    5. Choque: el paciente de P2 muestra todas sus consultas (ninguna perdida); un antecedente que estaba en las dos HC se ve una sola vez
+       y al tildar/destildar el cambio se ve.
+    6. Configuración → Clínica: las secciones que ocultabas en Hepatología siguen ocultas.
+    7. Cerrar sesión, volver a entrar y recargar la página: los mismos números, sin duplicados ni faltantes.
+    8. Administración: destildar y volver a tildar "Clínica" en el médico de prueba. En la base local de turnos
+       (`SELECT hc_codigo, activo FROM salud360_medico_hc WHERE medico_id = <n>;`): `hepatologia` con `activo = 0` y `clinica` con `activo = 1`;
+       el selector de perfil sigue mostrando el perfil.
+    9. Un médico con pediatría (si hay) ve Pediatría igual que antes (RF-33).
+    10. "Perfiles HC → Médicos": todo médico que tenía `hepatologia` tiene un perfil (o "Sin perfil" a propósito).
+  - Limpieza: dejar las HC habilitadas del médico de prueba como estaban antes de la prueba (con la app o con un `UPDATE` puntual en la base
+    local de turnos); borrar solo lo que la prueba creó con nombre "Prueba D" (pacientes o consultas); **no** borrar lo migrado; restaurar la
+    licencia del médico de prueba como dice `MEMORY.md` si se extendió; no vaciar la base local de hclinica. Nada que commitear.
+  - Hecho cuando: el usuario confirma los pasos 1 a 10 y la limpieza.
+
+- [ ] **T53. Cierre de la tanda: documentación.** RF-29
+  - `AGENTS.md` (decisión 7 de la tanda B): la línea de "Tests" pasa a `:core:data:jvmTest`, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest` y
+    `:especialidades:clinica:jvmTest`, y se quita "(solo hay tests ahí)" (hoy hay `CatalogoHcGeneralTest` y `ChildPughTest` en
+    `especialidades/clinica`; no hay tests en `features/*` ni en `composeApp`).
+  - `MEMORY.md`: tanda D hecha (qué hace `8.sqm`, que la base está en v9 y **no hay vuelta atrás en un dispositivo migrado**, el aprendizaje de
+    `hepatologia` como `internal val` fuente del catálogo, y los pendientes: 002 y el envío de lo ex-hepatología, `HcPerfilesE2ETest` si no se
+    hizo). Sin datos sensibles.
+  - `plan.md`: las "Notas de la tanda D" del final pasan a "Decidido"; la línea 385 de `specs/003-hc-enfermedades/plan.md`
+    (`hepatologia_sigue_igual`) apunta al test nuevo.
+  - `spec.md` (**para que el usuario apruebe, no se edita acá**): quitar "hasta la tanda D" y "hepatología aparte" de RF-73 (l. 288), RF-82
+    (l. 322), RF-33 (l. 348) y del caso límite de motivos (l. 450); el sentido no cambia, la HC aparte ya no existe.
+  - Hecho cuando: la validación del reviewer (RF por RF: RF-29 con `HistoriasClinicasTest`, `HistoriasHabilitadasTest` y T52; RF-30 con
+    `MigracionHepatologiaTest` y `CatalogoHcGeneralTest`), `.\gradlew :core:data:jvmTest :core:ui:jvmTest :especialidades:clinica:jvmTest`
+    en verde, `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` (con las `-P`) compila, y `git status` solo muestra archivos de la tanda.
+
+Fuera de esta tanda: `HcPerfilesE2ETest` y los criterios de finalización "contra la copia local" del plan original (pregunta D7); la edición de la
+web de turnos y de su `HistoriaClinicaService` (pregunta D1, opciones B y C); endurecer el driver web (pregunta D5, opción B).
+
+Al terminar la tanda: validación del reviewer y prueba manual del usuario.
