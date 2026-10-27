@@ -2,6 +2,7 @@ package com.salud360.core.data.repos
 
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.normalizarCodigoHc
 import com.salud360.core.data.hcgeneral.normalizarHistoriasClinicas
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
@@ -16,6 +17,7 @@ import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.network.tobb.TobbAltaUsuarioResponse
 import com.salud360.core.data.network.tobb.TobbCatalogosResponse
 import com.salud360.core.data.network.tobb.TobbDiasAtencion
+import com.salud360.core.data.network.tobb.TobbEspecialidad
 import com.salud360.core.data.network.tobb.TobbHistoriasClinicas
 import com.salud360.core.data.network.tobb.TobbHistoriasClinicasMedico
 import com.salud360.core.data.network.tobb.TobbObrasSocialesMedicoResponse
@@ -104,6 +106,18 @@ internal fun TobbUsuarioCreado.toUsuarioCreado() = UsuarioCreado(
         rol = runCatching { Rol.valueOf(rol.uppercase()) }.getOrNull() ?: Rol.MEDICO,
     ),
     medicoIdTobb = medicoId,
+)
+
+/**
+ * La especialidad del catálogo de turnos, lista para guardar. Turnos manda `id`, `nombre` y `color`, pero no el código de la
+ * historia clínica: ese lo arma la app (`TurnosImportador`) o lo elige el administrador, así que se conserva el de [previa] y
+ * nunca se lo pisa (con el color, como pasaba, ni con vacío). El color que turnos no manda tampoco borra el guardado.
+ */
+internal fun TobbEspecialidad.toEspecialidadTurnos(previa: EspecialidadTurnos?) = EspecialidadTurnos(
+    id = TobbIds.especialidad(id),
+    nombre = nombre,
+    codigoHc = normalizarCodigoHc(previa?.codigoHc),
+    color = color ?: previa?.color,
 )
 
 /**
@@ -459,7 +473,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                 q.upsertConsultorio(Consultorio(TobbIds.consultorio(it.id), it.nombre, it.direccion, it.telefono).toRow(ahora, dirty = false))
             }
             catalogo.especialidades.forEach {
-                aq.upsertEspecialidad(EspecialidadTurnos(TobbIds.especialidad(it.id), it.nombre, it.color).toRow(ahora, dirty = false))
+                val previa = aq.especialidadPorId(TobbIds.especialidad(it.id)).uno { fila -> fila.toModel() }
+                aq.upsertEspecialidad(it.toEspecialidadTurnos(previa).toRow(ahora, dirty = false))
             }
             catalogo.medicos.forEach { m ->
                 aq.upsertMedico(
