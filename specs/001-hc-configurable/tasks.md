@@ -1617,6 +1617,31 @@ preguntas queda como registro de las alternativas descartadas.
     2026-10-15 (2) ("Vale para la HC general y para la hepatología aparte", l. 513): es historia de un cambio aprobado. `MEMORY.md`: traspaso al
     día. No se tocan las menciones históricas a `hepatologia_sigue_igual` en `specs/003-hc-enfermedades/tasks.md` (notas de tareas ya hechas).
 
+- [ ] **T54. Cierre de la validación del reviewer (hallazgos H1 a H8 de la tanda D).** RF-29, RF-30
+  Aprobada por el usuario el 2026-10-27 tras el "APROBADO CON OBSERVACIONES" del reviewer. El usuario **no** aprobó reescribir historia
+  ahora: se anota para resolverlo justo antes del push. No se toca `8.sqm`, ni pantallas, ni la spec 003, ni las APIs Laravel.
+  1. **Historia (decisión del usuario):** `MEMORY.md` anota que antes de pushear la rama hay que sacar de la historia un nombre de persona real
+     que entró en los commits `a26d676` y `dc94dc4` (rebase interactivo con `edit` o squash-merge al publicar); los hashes pueden cambiar.
+  2. **H3, tests de la migración** (`MigracionHepatologiaTest`): casos que matan las cuatro mutaciones que sobrevivían: (a) sin `c.categoria`
+     en el primer `UPDATE` de antecedentes, (b) sin `h.categoria` en el segundo, (c) sin `c.paciente_id` en el primero, (d) sin
+     `h.especialidad = 'hepatologia'` en el segundo (una fila de pediatría no desactiva una de `clinica`). Datos donde la fila de `clinica`
+     no pierde por otra razón; cada test visto fallar mutando el `.sqm` (y restaurado). Más el test genérico: toda tabla que la migración no
+     mueve queda idéntica (con un `medico` con `hepatologia` en `especialidades_hc`, una `especialidad` con `codigo_hc`, una fila de
+     `hc_enfermedades` y una de `sesion_local`: la migración no los normaliza, se normalizan al leer).
+  3. **Bug de `codigoHc`** (`AgendaTurnosOnline.sincronizarAdministracion`): `EspecialidadTurnos(id, nombre, it.color)` pasa el color en la
+     posición de `codigoHc`. Se corrige con parámetros nombrados, sin pisar nunca un `codigo_hc` guardado; el armado del modelo sale a una
+     función `internal` pura y se prueba. Si el DTO no trae el dato y la solución exigiera tocar la API Laravel: parar y preguntar.
+  4. **H4, H5, H6, documentación** (cada afirmación verificada contra el código): (H4) `SyncEngine` no está "sin uso": arranca tras cada
+     login y apunta a `.../api/salud360/sync/push`, que no existe en turnos (404 que se ignora); si alguien crea esa ruta saldrían las filas
+     `dirty` (`AGENTS.md` y el riesgo 7 de la tanda D). (H5) la web descarta las tablas si la versión guardada es más nueva o si la
+     migración falla; si es más vieja, migra (`AGENTS.md`). (H6) `README.md`: la HC general con perfiles (hepatología es un perfil).
+     `specs/README.md`: la fila de la 001.
+  5. **H2 (solo anotar):** `MEMORY.md` y `specs/002-hc-clinica/tasks.md`: al registrar el backend de `clinica` en `HcApiSync` hay que filtrar los
+     antecedentes `activo = 0`, y las consultas migradas de hepatología traen `dirty` de antes (riesgo de envío en bloque). Pendiente de la 002.
+  - Hecho cuando: los cinco puntos hechos; `:core:data:jvmTest --rerun`, `:especialidades:clinica:jvmTest --rerun`, `:core:ui:jvmTest` en
+    verde; compilan `:features:admin:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (klib); `git diff` de `8.sqm`
+    vacío; sin tokens, contraseñas ni nombres reales en el diff.
+
 Fuera de esta tanda: `HcPerfilesE2ETest` y los criterios de finalización "contra la copia local" del plan original (pregunta D7); la edición de la
 web de turnos y de su `HistoriaClinicaService` (pregunta D1, opciones B y C); endurecer el driver web (pregunta D5, opción B).
 
