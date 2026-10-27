@@ -430,7 +430,8 @@ class CopiaEnfermedadesTest {
 
     @Test
     fun el_esquema_es_de_la_version_8_y_migrate_7_a_8_crea_la_tabla() {
-        assertEquals(8L, Salud360Db.Schema.version)
+        // El esquema actual es el de la versión 9 (8.sqm, tanda D de la spec 001, solo mueve datos); acá se prueba la 7.sqm.
+        assertEquals(9L, Salud360Db.Schema.version)
         val archivo = File.createTempFile("salud360-migracion", ".db").also { it.delete() }
         try {
             runBlocking {
@@ -467,7 +468,7 @@ class CopiaEnfermedadesTest {
                 }
                 val driver = DriverFactory(archivo.absolutePath).createDriver()
                 val db = Salud360Db(driver)
-                assertEquals(8L, consultar(driver, "PRAGMA user_version"))
+                assertEquals(9L, consultar(driver, "PRAGMA user_version"))
                 // Lo que ya había en la base sigue ahí.
                 assertEquals(1L, consultar(driver, "SELECT count(*) FROM hc_config WHERE medico_id = '$medico' AND recibida_en = 5"))
                 assertEquals(3L, consultar(driver, "SELECT ultima_version FROM sync_estado WHERE tabla = 'paciente'"))

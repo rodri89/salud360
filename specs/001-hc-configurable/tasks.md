@@ -1379,7 +1379,7 @@ preguntas queda como registro de las alternativas descartadas.
     solo tenía `hepatologia`, pasa lo mismo (se manda `clinica` + la otra). Una app vieja que lo vuelva a leer verá `clinica`.
     La web de turnos sigue mostrando "Hepatología" como casilla (sin cambios).
 
-- [ ] **T49. Migración `8.sqm` (v8 → v9): lo guardado como `hepatologia` pasa a `clinica`.** RF-29, RF-30
+- [x] **T49. Migración `8.sqm` (v8 → v9): lo guardado como `hepatologia` pasa a `clinica`.** RF-29, RF-30
   **Aprobada expresamente por el usuario el 2026-10-26** (migración de la base del dispositivo con datos
   clínicos que solo existen ahí; constitución #3, AGENTS.md "migraciones de esquema"). La numeración de la 001 (`7.sqm`) ya
   la usó la 003 (`hc_enfermedades`); esta es la siguiente libre.
@@ -1449,6 +1449,18 @@ preguntas queda como registro de las alternativas descartadas.
     en verde (`MigracionHepatologiaTest` visto fallar antes del `.sqm`); `.\gradlew :core:data:jvmTest` completo en verde;
     `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` (con las `-P`) compila (driver web con `generateAsync`);
     `git diff --stat` muestra `8.sqm` nuevo y ningún `.sq` cambiado. **No se refresca el `devWeb` hasta cerrar T50.**
+  - **Hecho (2026-10-26).** `8.sqm` es el borrador de la tarea sin cambios (las cuatro partes; ningún `.sq` cambia). `MigracionHepatologiaTest` (7 tests,
+    los de la tarea) visto fallar antes del `.sqm` (4 por aserción: versión 8 en vez de 9 y filas todavía en `hepatologia`); los otros tres afirman
+    "no cambia" y pasaban de entrada, así que se comprobaron mutando el `.sqm` a propósito (agregándole `UPDATE` sobre `interconsultor`, `turno`,
+    `hc_config`, `archivo` y `seccion_valor`): los tres fallaron y se restauró. El esquema sube de versión por la cantidad de migraciones
+    (`Schema.version` = 1 + cantidad de `.sqm`): sin tocar ningún `.sq`, 8 → 9 por el solo hecho de existir `8.sqm`. `ConfigHcRepositoryTest` y
+    `CopiaEnfermedadesTest`: `8L` → `9L` (con comentario), único cambio a tests existentes. `:core:data:jvmTest --rerun` completo en verde
+    (595 tests, 0 fallas) y compila `:composeApp:compileKotlinWasmJs -Pentorno=dev` (solo el klib). `:core:database` no tiene tests propios.
+    **Límite con T50:** T49 prueba el movimiento sin choques (los tests 1 a 7 de arriba); la parte de choques del `.sqm` (antecedente repetido,
+    `paciente_extra` repetido, secciones ocultas) está escrita y se ejecuta (sin errores) pero sus resultados, la idempotencia, el conteo
+    `count(*)`/`sum(dirty)` y la prueba con los repositorios son de T50. Para T50: el caso 4a (solo `secciones_ocultas_hepatologia`) **agrega** una fila
+    a `medico_preferencia` (la `clinica` nueva + la vieja con `deleted = 1`), así que el "mismo `count(*)`" del caso 6 no vale para esa tabla en ese
+    caso; el borrador copia el `dirty` de la fila de `clinica` (o el de la vieja si no hay) y no el máximo de las dos.
 
 - [ ] **T50. La migración con choques, idempotencia y sin pérdida.** RF-29, RF-30
   **Misma aprobación explícita que T49, del 2026-10-26** (es la otra mitad de `8.sqm`). Mismo archivo de test; si algún caso falla, se

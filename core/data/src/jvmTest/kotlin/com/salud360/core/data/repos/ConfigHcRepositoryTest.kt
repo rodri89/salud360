@@ -204,7 +204,8 @@ class ConfigHcRepositoryTest {
 
     @Test
     fun la_migracion_6_crea_la_tabla_en_una_base_de_la_version_anterior() {
-        assertEquals(8L, Salud360Db.Schema.version)
+        // La versión del esquema es 1 + la cantidad de migraciones (8.sqm, tanda D de la spec 001, la subió de 8 a 9).
+        assertEquals(9L, Salud360Db.Schema.version)
         val archivo = File.createTempFile("salud360-migracion", ".db").also { it.delete() }
         try {
             runBlocking {
@@ -239,7 +240,7 @@ class ConfigHcRepositoryTest {
                 }
                 val driver = DriverFactory(archivo.absolutePath).createDriver()
                 val db = Salud360Db(driver)
-                assertEquals(8L, consultar(driver, "PRAGMA user_version"))
+                assertEquals(9L, consultar(driver, "PRAGMA user_version"))
                 // Lo que ya había en la base sigue ahí.
                 assertEquals(3L, consultar(driver, "SELECT ultima_version FROM sync_estado WHERE tabla = 'paciente'"))
                 val repo = ConfigHcRepository(db, ApiFalsa().apply { respuesta = null })
