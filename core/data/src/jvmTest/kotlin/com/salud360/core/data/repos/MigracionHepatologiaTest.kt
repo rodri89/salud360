@@ -7,7 +7,9 @@ import com.salud360.core.data.lista
 import com.salud360.core.data.uno
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.Salud360Db
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.LocalDate
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,13 +17,31 @@ import kotlin.test.assertEquals
 /**
  * Spec 001 RF-29 y RF-30 (tanda D, T49): la migración `8.sqm` (v8 a v9) pasa lo que el dispositivo guardó como
  * `hepatologia` a `clinica`, sin perder filas ni tocar `updated_at` ni `dirty`. Sobre una base SQLite de verdad en un
- * archivo temporal, sembrada con `INSERT` de columnas nombradas y datos inventados. Los choques, la idempotencia y el
- * conteo sin pérdida son de T50 (mismo archivo).
+ * archivo temporal, sembrada con `INSERT` de columnas nombradas y datos inventados.
+ *
+ * T50 (mismo archivo) prueba la parte de la migración con datos que chocan —las dos HC con lo mismo—, que se corra dos veces
+ * sin cambiar nada y que no se pierda ninguna fila, y lee el resultado con `HcRepository` como lo hace la app.
+ *
+ * **Límite conocido de `paciente_extra`** (`el_dato_de_hepatologia_frente_a_una_fila_borrada_de_clinica_queda_en_hepatologia`):
+ * la migración mueve un dato de `hepatologia` solo si `clinica` no tiene esa clave, y mira también las filas con `deleted = 1`.
+ * Si `clinica` tiene la clave borrada, el dato vivo de `hepatologia` NO pasa: queda en `hepatologia`, donde nada lo lee (no se
+ * pierde ni se pisa, pero tampoco se ve en la HC general). Es a propósito: pasarlo exigiría reescribir una fila clínica de
+ * `clinica` (la borrada), y una migración no edita datos clínicos. Si alguna vez hace falta, es una decisión aparte.
  */
 class MigracionHepatologiaTest {
 
     private val paciente = "p-prueba-1"
     private val medico = "m-prueba-1"
+
+    // T50: los pacientes y médicos de los choques (nada real).
+    private val paciente2 = "p-prueba-2"
+    private val paciente3 = "p-prueba-3"
+    private val paciente4 = "p-prueba-4"
+    private val ocultasClinica = "secciones_ocultas_clinica"
+    private val ocultasHepatologia = "secciones_ocultas_hepatologia"
+    private val tablasDeDatos = listOf(
+        "consulta", "seccion_valor", "registro_clinico", "laboratorio", "antecedente", "paciente_extra", "medico_preferencia",
+    )
 
     private fun conBase(bloque: suspend (SqlDriver) -> Unit) {
         val archivo = File.createTempFile("salud360-migracion-hepatologia", ".db").also { it.delete() }
@@ -53,9 +73,9 @@ class MigracionHepatologiaTest {
         }, 0).value
 
     /** Todas las filas de la tabla, columna por columna como texto, en el orden en que se guardaron. */
-    private fun volcado(driver: SqlDriver, tabla: String): List<List<String?>> {
+    private fun volcado(driver: SqlDriver, tabla: String, donde: String = "1 = 1"): List<List<String?>> {
         val n = columnas(driver, tabla).size
-        return driver.executeQuery(null, "SELECT * FROM $tabla ORDER BY rowid", { c ->
+        return driver.executeQuery(null, "SELECT * FROM $tabla WHERE $donde ORDER BY rowid", { c ->
             QueryResult.Value(buildList { while (c.next().value) add(List(n) { i -> c.getString(i) }) })
         }, 0).value
     }
@@ -74,11 +94,11 @@ class MigracionHepatologiaTest {
 
     private fun consulta(
         driver: SqlDriver, id: String, especialidad: String, estado: String = "CERRADA", tipo: String = "consulta",
-        fecha: String = "2026-10-01", actualizada: Long = 1000, dirty: Int = 0, remoto: String = "",
+        fecha: String = "2026-10-01", actualizada: Long = 1000, dirty: Int = 0, remoto: String = "", pacienteId: String = paciente,
     ) = ejecutar(
         driver,
         "INSERT INTO consulta (id, paciente_id, medico_id, especialidad, tipo, fecha, estado, edad_mostrar, updated_at, deleted, dirty, remoto_id) " +
-            "VALUES ('$id', '$paciente', '$medico', '$especialidad', '$tipo', '$fecha', '$estado', '45 años', $actualizada, 0, $dirty, '$remoto')",
+            "VALUES ('$id', '$pacienteId', '$medico', '$especialidad', '$tipo', '$fecha', '$estado', '45 años', $actualizada, 0, $dirty, '$remoto')",
     )
 
     /** Una base como la dejó la versión 8 de la app, con datos de `hepatologia` y de otras HC en cada tabla que la migración toca. */
@@ -244,5 +264,555 @@ class MigracionHepatologiaTest {
     @Test
     fun la_version_del_esquema_es_la_9() {
         assertEquals(9L, Salud360Db.Schema.version)
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // T50: datos que chocan, idempotencia, sin pérdida y lectura con los repositorios
+    // ---------------------------------------------------------------------------------------------------------------
+
+    private fun antecedente(
+        driver: SqlDriver, id: String, hc: String, clave: String, actualizada: Long, categoria: String = "personales",
+        pacienteId: String = paciente2, activo: Int = 1, deleted: Int = 0, dirty: Int = if (hc == "hepatologia") 1 else 0,
+    ) = ejecutar(
+        driver,
+        "INSERT INTO antecedente (id, paciente_id, especialidad, categoria, clave, flag, detalle, consulta_id, activo, updated_at, deleted, dirty) " +
+            "VALUES ('$id', '$pacienteId', '$hc', '$categoria', '$clave', 1, 'Detalle de $id', NULL, $activo, $actualizada, $deleted, $dirty)",
+    )
+
+    private fun extra(
+        driver: SqlDriver, pacienteId: String, hc: String, clave: String, valor: String, actualizada: Long = 100,
+        deleted: Int = 0, dirty: Int = 1,
+    ) = ejecutar(
+        driver,
+        "INSERT INTO paciente_extra (paciente_id, especialidad, clave, valor, updated_at, deleted, dirty) " +
+            "VALUES ('$pacienteId', '$hc', '$clave', '$valor', $actualizada, $deleted, $dirty)",
+    )
+
+    private fun preferencia(
+        driver: SqlDriver, medicoId: String, clave: String, valor: String, actualizada: Long, dirty: Int, deleted: Int = 0,
+    ) = ejecutar(
+        driver,
+        "INSERT OR REPLACE INTO medico_preferencia (medico_id, clave, valor, updated_at, deleted, dirty) " +
+            "VALUES ('$medicoId', '$clave', '$valor', $actualizada, $deleted, $dirty)",
+    )
+
+    /** (medico, clave) → valor, updated_at, deleted, dirty. */
+    private fun preferencias(driver: SqlDriver): Map<Pair<String, String>, List<String?>> =
+        volcado(driver, "medico_preferencia").associate { (it[0]!! to it[1]!!) to it.drop(2) }
+
+    /** (paciente, especialidad, clave) → valor, updated_at, deleted, dirty. */
+    private fun extras(driver: SqlDriver): Map<Triple<String, String, String>, List<String?>> =
+        volcado(driver, "paciente_extra").associate { Triple(it[0]!!, it[1]!!, it[2]!!) to it.drop(3) }
+
+    /** Lo que se espera de `antecedente`: todo igual salvo la HC movida y el `activo` de las perdedoras. */
+    private fun antecedentesEsperados(driver: SqlDriver, antes: List<List<String?>>, perdedoras: Set<String>): List<List<String?>> {
+        val activo = columnas(driver, "antecedente").indexOf("activo")
+        return conLaHcMovida(driver, "antecedente", antes).map { f ->
+            if (f[0] in perdedoras) f.toMutableList().also { it[activo] = "0" } else f
+        }
+    }
+
+    private val perdedoras = setOf("an-a-c", "an-b-h", "an-c-h")
+
+    /**
+     * Datos que chocan entre `hepatologia` y `clinica`, todos de pacientes y médicos propios (no tocan lo de [sembrar], así que
+     * se pueden usar los dos). Las dos HC cargadas para el mismo paciente es lo que pasa si el médico trabajó en "Clínica"
+     * mientras sus datos viejos seguían en "Hepatología".
+     */
+    private fun sembrarChoques(driver: SqlDriver) {
+        // Consultas abiertas del mismo paciente y médico: una en cada HC. p2: la de clinica es la más reciente; p3: la de hepatologia.
+        consulta(driver, "c-p2-clinica", "clinica", estado = "ABIERTA", fecha = "2026-10-10", actualizada = 6000, dirty = 1, pacienteId = paciente2)
+        consulta(driver, "c-p2-hepat", "hepatologia", estado = "ABIERTA", fecha = "2026-10-05", actualizada = 5500, dirty = 1, pacienteId = paciente2)
+        consulta(driver, "c-p2-pediatria", "pediatria", estado = "ABIERTA", fecha = "2026-10-11", actualizada = 6500, pacienteId = paciente2)
+        consulta(driver, "c-p3-clinica", "clinica", estado = "ABIERTA", fecha = "2026-10-02", actualizada = 4000, pacienteId = paciente3)
+        consulta(driver, "c-p3-hepat", "hepatologia", estado = "ABIERTA", fecha = "2026-10-12", actualizada = 7000, dirty = 1, pacienteId = paciente3)
+        ejecutar(driver, "INSERT INTO seccion_valor (consulta_id, seccion, campo, valor, updated_at, deleted, dirty) VALUES ('c-p2-hepat', 'motivo_consulta', 'texto', 'Motivo en hepatología', 5500, 0, 1)")
+
+        // Antecedentes de p2 (categoría "personales" salvo que se diga). Sufijo -h = hepatologia, -c = clinica.
+        antecedente(driver, "an-a-h", "hepatologia", "clave_a", 3000); antecedente(driver, "an-a-c", "clinica", "clave_a", 2000) // (a) hepatologia más nueva
+        antecedente(driver, "an-b-h", "hepatologia", "clave_b", 2000); antecedente(driver, "an-b-c", "clinica", "clave_b", 3000) // (b) clinica más nueva
+        antecedente(driver, "an-c-h", "hepatologia", "clave_c", 2500); antecedente(driver, "an-c-c", "clinica", "clave_c", 2500) // (c) empate
+        antecedente(driver, "an-d-h", "hepatologia", "clave_a", 4000, categoria = "familiares") // (d) otra categoría: no choca con an-a-c
+        antecedente(driver, "an-d2-h", "hepatologia", "clave_b", 9000, pacienteId = paciente3) // (d) otro paciente: no choca con an-b-c
+        antecedente(driver, "an-d3-p", "pediatria", "clave_a", 9000, dirty = 1) // otra HC: no choca con nadie
+        // (g) lo que ya estaba borrado o inactivo no cuenta como choque.
+        antecedente(driver, "an-g1-c", "clinica", "clave_g1", 9000, deleted = 1); antecedente(driver, "an-g1-h", "hepatologia", "clave_g1", 1000)
+        antecedente(driver, "an-g2-c", "clinica", "clave_g2", 9000, activo = 0); antecedente(driver, "an-g2-h", "hepatologia", "clave_g2", 1000)
+        antecedente(driver, "an-g3-h", "hepatologia", "clave_g3", 9000, activo = 0); antecedente(driver, "an-g3-c", "clinica", "clave_g3", 1000)
+        antecedente(driver, "an-g4-h", "hepatologia", "clave_g4", 9000, deleted = 1); antecedente(driver, "an-g4-c", "clinica", "clave_g4", 1000)
+
+        // paciente_extra: la misma clave en las dos HC (p2), una sin choque, la de otro paciente, otras HC con la misma clave.
+        extra(driver, paciente2, "hepatologia", "k_choca", "valor hep", dirty = 1)
+        extra(driver, paciente2, "clinica", "k_choca", "valor clinica", actualizada = 200, dirty = 0)
+        extra(driver, paciente2, "hepatologia", "k_libre", "solo hep", dirty = 1)
+        extra(driver, paciente2, "pediatria", "k_choca", "valor pediatria")
+        extra(driver, paciente2, "turnos", "k_choca", "valor turnos")
+        extra(driver, paciente3, "hepatologia", "k_choca", "otro paciente")
+        // Límite conocido: la de clinica está borrada y la de hepatologia viva.
+        extra(driver, paciente4, "clinica", "k_borrada", "valor borrado de clinica", actualizada = 300, deleted = 1, dirty = 0)
+        extra(driver, paciente4, "hepatologia", "k_borrada", "valor vivo de hepatologia", actualizada = 150)
+
+        // Secciones ocultas: solo hepatologia, ambas, clinica vacía, hepatologia vacía, las dos vacías, clinica borrada, solo clinica,
+        // hepatologia ya borrada, ninguna.
+        preferencia(driver, "m-pref-a", ocultasHepatologia, "a,b", 100, dirty = 1)
+        preferencia(driver, "m-pref-b", ocultasClinica, "x", 300, dirty = 0)
+        preferencia(driver, "m-pref-b", ocultasHepatologia, "a,b", 200, dirty = 1)
+        preferencia(driver, "m-pref-b", "filas_ocultas_clinica_laboratorio_general", "f1,f2", 250, dirty = 1)
+        preferencia(driver, "m-pref-i", ocultasClinica, "k", 100, dirty = 1)
+        preferencia(driver, "m-pref-i", ocultasHepatologia, "l", 400, dirty = 0)
+        preferencia(driver, "m-pref-c", ocultasClinica, "", 100, dirty = 0)
+        preferencia(driver, "m-pref-c", ocultasHepatologia, "a", 150, dirty = 1)
+        preferencia(driver, "m-pref-d", ocultasClinica, "x", 100, dirty = 0)
+        preferencia(driver, "m-pref-d", ocultasHepatologia, "", 150, dirty = 1)
+        preferencia(driver, "m-pref-v", ocultasClinica, "", 100, dirty = 0)
+        preferencia(driver, "m-pref-v", ocultasHepatologia, "", 150, dirty = 0)
+        preferencia(driver, "m-pref-e", ocultasClinica, "z", 500, dirty = 0, deleted = 1)
+        preferencia(driver, "m-pref-e", ocultasHepatologia, "a", 200, dirty = 1)
+        preferencia(driver, "m-pref-f", ocultasClinica, "q", 100, dirty = 0)
+        preferencia(driver, "m-pref-f", "secciones_ocultas_pediatria", "p1", 100, dirty = 1)
+        preferencia(driver, "m-pref-g", ocultasHepatologia, "viejo", 100, dirty = 1, deleted = 1)
+        preferencia(driver, "m-pref-h", "otra_preferencia", "1", 100, dirty = 0)
+    }
+
+    // ---- consultas ----
+
+    @Test
+    fun dos_consultas_abiertas_del_mismo_paciente_en_las_dos_HC_quedan_las_dos_abiertas_en_clinica() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = volcado(driver, "consulta")
+
+        migrar(driver)
+
+        // Mismas filas, mismo estado, `dirty`, `updated_at` y fecha: solo cambia la HC de las que venían de hepatologia.
+        assertEquals(conLaHcMovida(driver, "consulta", antes), volcado(driver, "consulta"))
+        for (id in listOf("c-p2-clinica", "c-p2-hepat", "c-p3-clinica", "c-p3-hepat")) {
+            assertEquals("ABIERTA", texto(driver, "SELECT estado FROM consulta WHERE id = '$id'"), id)
+            assertEquals("clinica", texto(driver, "SELECT especialidad FROM consulta WHERE id = '$id'"), id)
+        }
+        assertEquals(1L, numero(driver, "SELECT dirty FROM consulta WHERE id = 'c-p2-hepat'"))
+        assertEquals(0L, numero(driver, "SELECT dirty FROM consulta WHERE id = 'c-p3-clinica'"))
+        val q = Salud360Db(driver).historiaClinicaQueries
+        // Las dos se listan (la más nueva primero) y la de pediatría no se mezcla.
+        assertEquals(listOf("c-p2-clinica", "c-p2-hepat"), q.consultasDePaciente(paciente2, "clinica").lista { it.id })
+        assertEquals(listOf("c-p3-hepat", "c-p3-clinica"), q.consultasDePaciente(paciente3, "clinica").lista { it.id })
+        // `consultaAbierta` devuelve la modificada más reciente, venga de la HC que venga; la otra sigue abierta, no se borra.
+        assertEquals("c-p2-clinica", q.consultaAbierta(paciente2, medico, "clinica").uno { it.id })
+        assertEquals("c-p3-hepat", q.consultaAbierta(paciente3, medico, "clinica").uno { it.id })
+        assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM consulta WHERE deleted = 1"))
+    }
+
+    // ---- antecedentes ----
+
+    private fun activo(driver: SqlDriver, id: String) = numero(driver, "SELECT activo FROM antecedente WHERE id = '$id'")
+
+    @Test
+    fun antecedente_repetido_gana_el_de_hepatologia_si_es_mas_nuevo() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-a-h"))
+        assertEquals(0L, activo(driver, "an-a-c"))
+    }
+
+    @Test
+    fun antecedente_repetido_gana_el_de_clinica_si_es_mas_nuevo() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-b-c"))
+        assertEquals(0L, activo(driver, "an-b-h"))
+    }
+
+    @Test
+    fun antecedente_repetido_con_la_misma_fecha_gana_el_de_clinica() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-c-c"))
+        assertEquals(0L, activo(driver, "an-c-h"))
+    }
+
+    @Test
+    fun la_misma_clave_en_otra_categoria_o_en_otro_paciente_no_choca() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-d-h"), "otra categoría")
+        assertEquals(1L, activo(driver, "an-a-h"))
+        assertEquals(1L, activo(driver, "an-d2-h"), "otro paciente")
+        assertEquals(1L, activo(driver, "an-b-c"))
+        assertEquals(1L, activo(driver, "an-d3-p"), "otra HC")
+    }
+
+    @Test
+    fun la_perdedora_no_se_borra_conserva_flag_detalle_y_nada_mas_cambia() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = volcado(driver, "antecedente")
+
+        migrar(driver)
+
+        // Mismas filas con el mismo `dirty`, `updated_at`, `flag` y `detalle`: solo la HC movida y el `activo` de las tres perdedoras.
+        assertEquals(antecedentesEsperados(driver, antes, perdedoras), volcado(driver, "antecedente"))
+        for (id in perdedoras) {
+            assertEquals(1L, numero(driver, "SELECT flag FROM antecedente WHERE id = '$id'"), id)
+            assertEquals("Detalle de $id", texto(driver, "SELECT detalle FROM antecedente WHERE id = '$id'"), id)
+            assertEquals(0L, numero(driver, "SELECT deleted FROM antecedente WHERE id = '$id'"), id)
+            assertEquals("clinica", texto(driver, "SELECT especialidad FROM antecedente WHERE id = '$id'"), id)
+        }
+        assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM antecedente WHERE especialidad = 'hepatologia'"))
+    }
+
+    @Test
+    fun el_paciente_queda_con_un_solo_antecedente_activo_por_clave() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        val q = Salud360Db(driver).historiaClinicaQueries
+
+        val personales = q.antecedentesDeCategoria(paciente2, "clinica", "personales").lista { it.clave }
+        assertEquals(personales.size, personales.toSet().size, "claves repetidas: $personales")
+        assertEquals(
+            setOf("clave_a", "clave_b", "clave_c", "clave_g1", "clave_g2", "clave_g3", "clave_g4"),
+            personales.toSet(),
+        )
+        // Mirando todas las categorías, tampoco se repite (categoría, clave).
+        val todas = q.antecedentesDePaciente(paciente2, "clinica").lista { it.categoria to it.clave }
+        assertEquals(todas.size, todas.toSet().size, "repetidas: $todas")
+        assertEquals(personales.size + 1, todas.size, "más el de la categoría 'familiares'")
+    }
+
+    @Test
+    fun lo_borrado_o_inactivo_de_antes_no_cuenta_como_choque() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        // La de clinica borrada o inactiva no le quita lugar a la de hepatologia viva (y no se toca).
+        assertEquals(1L, activo(driver, "an-g1-h"))
+        assertEquals(1L, numero(driver, "SELECT deleted FROM antecedente WHERE id = 'an-g1-c'"))
+        assertEquals(1L, activo(driver, "an-g2-h"))
+        assertEquals(0L, activo(driver, "an-g2-c"))
+        // La de hepatologia inactiva o borrada no le quita lugar a la de clinica viva (aunque sea más nueva).
+        assertEquals(1L, activo(driver, "an-g3-c"))
+        assertEquals(0L, activo(driver, "an-g3-h"))
+        assertEquals(1L, activo(driver, "an-g4-c"))
+        assertEquals(1L, numero(driver, "SELECT deleted FROM antecedente WHERE id = 'an-g4-h'"))
+    }
+
+    // ---- paciente_extra ----
+
+    @Test
+    fun paciente_extra_que_choca_no_hace_fallar_la_migracion_y_cada_uno_conserva_su_valor() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = extras(driver)
+
+        migrar(driver)
+
+        val despues = extras(driver)
+        // clinica conserva su valor; la de hepatologia queda donde estaba, sin tocar.
+        assertEquals(antes.getValue(Triple(paciente2, "clinica", "k_choca")), despues.getValue(Triple(paciente2, "clinica", "k_choca")))
+        assertEquals("valor clinica", despues.getValue(Triple(paciente2, "clinica", "k_choca"))[0])
+        assertEquals(antes.getValue(Triple(paciente2, "hepatologia", "k_choca")), despues.getValue(Triple(paciente2, "hepatologia", "k_choca")))
+        assertEquals("valor hep", despues.getValue(Triple(paciente2, "hepatologia", "k_choca"))[0])
+        // La que no choca se mueve entera (mismo valor, `updated_at` y `dirty`); la de otro paciente también.
+        assertEquals(antes.getValue(Triple(paciente2, "hepatologia", "k_libre")), despues.getValue(Triple(paciente2, "clinica", "k_libre")))
+        assertEquals(antes.getValue(Triple(paciente3, "hepatologia", "k_choca")), despues.getValue(Triple(paciente3, "clinica", "k_choca")))
+        assertEquals(setOf(Triple(paciente2, "hepatologia", "k_libre"), Triple(paciente3, "hepatologia", "k_choca")), antes.keys - despues.keys)
+        // Las de otras HC, intactas.
+        assertEquals(antes.getValue(Triple(paciente2, "pediatria", "k_choca")), despues.getValue(Triple(paciente2, "pediatria", "k_choca")))
+        assertEquals(antes.getValue(Triple(paciente2, "turnos", "k_choca")), despues.getValue(Triple(paciente2, "turnos", "k_choca")))
+        assertEquals(antes.size, despues.size)
+        // Lo que lee la app de la HC general del paciente.
+        assertEquals(
+            mapOf("k_choca" to "valor clinica", "k_libre" to "solo hep"),
+            PacientesRepository(Salud360Db(driver)).observarExtras(paciente2, "clinica").first(),
+        )
+    }
+
+    /**
+     * Límite conocido (ver el KDoc de la clase): la migración mira también las filas `deleted = 1` de `clinica`, así que un dato
+     * vivo de `hepatologia` frente a uno borrado de `clinica` no se mueve. No se pierde y no se toca ninguna fila de `clinica`;
+     * queda en `hepatologia`, donde la app ya no lo lee. Este test FIJA ese comportamiento; no es una promesa de que sea el ideal.
+     */
+    @Test
+    fun el_dato_de_hepatologia_frente_a_una_fila_borrada_de_clinica_queda_en_hepatologia() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = extras(driver)
+
+        migrar(driver)
+
+        val despues = extras(driver)
+        val borrada = Triple(paciente4, "clinica", "k_borrada")
+        val viva = Triple(paciente4, "hepatologia", "k_borrada")
+        // La borrada de clinica sigue igual (no se reescribe) y la viva de hepatologia sigue en hepatologia con su valor.
+        assertEquals(antes.getValue(borrada), despues.getValue(borrada))
+        assertEquals(antes.getValue(viva), despues.getValue(viva))
+        assertEquals("valor vivo de hepatologia", despues.getValue(viva)[0])
+        // La app, que lee solo `deleted = 0` de clinica, no la ve; el dato sigue en la base.
+        assertEquals(emptyMap(), PacientesRepository(Salud360Db(driver)).observarExtras(paciente4, "clinica").first())
+        assertEquals(1L, numero(driver, "SELECT COUNT(*) FROM paciente_extra WHERE paciente_id = '$paciente4' AND especialidad = 'hepatologia' AND deleted = 0"))
+    }
+
+    // ---- secciones ocultas ----
+
+    private fun oculta(driver: SqlDriver, medicoId: String): List<String?>? = preferencias(driver)[medicoId to ocultasClinica]
+
+    /** Como lo lee `ConsultaViewModel` (`split(',')` y `toSet()`). */
+    private fun comoLoLeeLaApp(valor: String?): Set<String>? = valor?.split(',')?.toSet()
+
+    @Test
+    fun solo_hepatologia_las_secciones_pasan_a_clinica_y_la_clave_vieja_queda_borrada() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = preferencias(driver).getValue("m-pref-a" to ocultasHepatologia)
+
+        migrar(driver)
+
+        val clinica = oculta(driver, "m-pref-a")!!
+        assertEquals("a,b", clinica[0])
+        assertEquals("100", clinica[1], "updated_at de la vieja")
+        assertEquals("0", clinica[2], "viva")
+        // La vieja queda, borrada, con lo que tenía (menos `deleted`).
+        val vieja = preferencias(driver).getValue("m-pref-a" to ocultasHepatologia)
+        assertEquals(antes.take(2) + "1" + antes[3], vieja)
+        // Lo que leen las pantallas (solo `deleted = 0`).
+        val hc = HcRepository(Salud360Db(driver))
+        assertEquals(mapOf(ocultasClinica to "a,b"), hc.observarPreferencias("m-pref-a").first())
+    }
+
+    @Test
+    fun las_dos_listas_se_unen_sin_pisar_la_de_clinica() = conBase { driver ->
+        sembrarChoques(driver)
+
+        migrar(driver)
+
+        val valor = oculta(driver, "m-pref-b")!![0]
+        assertEquals("x,a,b", valor)
+        // Leída como la leen `ConsultaViewModel` y `ConfigSeccionesHcScreen`: conjunto, con lo de las dos.
+        assertEquals(setOf("x", "a", "b"), comoLoLeeLaApp(valor))
+        assertEquals("1", preferencias(driver).getValue("m-pref-b" to ocultasHepatologia)[2])
+        // `updated_at` es el mayor de los dos.
+        assertEquals("300", oculta(driver, "m-pref-b")!![1])
+        assertEquals("400", oculta(driver, "m-pref-i")!![1])
+        assertEquals(setOf("k", "l"), comoLoLeeLaApp(oculta(driver, "m-pref-i")!![0]))
+    }
+
+    @Test
+    fun una_lista_vacia_no_deja_comas_de_mas() = conBase { driver ->
+        sembrarChoques(driver)
+
+        migrar(driver)
+
+        assertEquals("a", oculta(driver, "m-pref-c")!![0], "clinica vacía")
+        assertEquals("x", oculta(driver, "m-pref-d")!![0], "hepatologia vacía")
+        assertEquals("", oculta(driver, "m-pref-v")!![0], "las dos vacías")
+        assertEquals(setOf("a"), comoLoLeeLaApp(oculta(driver, "m-pref-c")!![0]))
+        assertEquals(setOf("x"), comoLoLeeLaApp(oculta(driver, "m-pref-d")!![0]))
+    }
+
+    @Test
+    fun la_lista_de_clinica_borrada_se_reemplaza_por_una_viva() = conBase { driver ->
+        sembrarChoques(driver)
+
+        migrar(driver)
+
+        val clinica = oculta(driver, "m-pref-e")!!
+        assertEquals("a", clinica[0])
+        assertEquals("0", clinica[2], "deleted")
+        assertEquals("1", preferencias(driver).getValue("m-pref-e" to ocultasHepatologia)[2])
+        assertEquals(mapOf(ocultasClinica to "a"), HcRepository(Salud360Db(driver)).observarPreferencias("m-pref-e").first())
+    }
+
+    @Test
+    fun otros_medicos_y_otras_claves_quedan_intactos() = conBase { driver ->
+        sembrarChoques(driver)
+        val antes = preferencias(driver)
+        val tocadas = setOf(ocultasClinica, ocultasHepatologia)
+
+        migrar(driver)
+
+        val despues = preferencias(driver)
+        // Ninguna clave que no sea de secciones ocultas de clinica o hepatologia cambia.
+        assertEquals(antes.filterKeys { it.second !in tocadas }, despues.filterKeys { it.second !in tocadas })
+        assertEquals("f1,f2", despues.getValue("m-pref-b" to "filas_ocultas_clinica_laboratorio_general")[0])
+        // Un médico sin hepatologia, o con la vieja ya borrada, o sin ninguna de las dos, no cambia ni gana filas.
+        for (m in listOf("m-pref-f", "m-pref-g", "m-pref-h")) {
+            assertEquals(antes.filterKeys { it.first == m }, despues.filterKeys { it.first == m }, m)
+        }
+        assertEquals(null, oculta(driver, "m-pref-g"), "no se crea una clinica para quien tenía la vieja borrada")
+        assertEquals(null, oculta(driver, "m-pref-h"))
+        assertEquals("q", oculta(driver, "m-pref-f")!![0])
+    }
+
+    /**
+     * Documenta el `dirty` de la unión tal como está hoy (T49, sin cambiar): la fila nueva de `clinica` copia el `dirty` de la
+     * de `clinica` si existía y, si no, el de la vieja. No es el máximo: una unión que agrega secciones a una lista `dirty = 0`
+     * queda con `dirty = 0`. La preferencia es del dispositivo (la app no tiene una API que la reciba), así que no se manda a
+     * ningún lado y la unión no se pierde.
+     */
+    @Test
+    fun el_dirty_de_la_union_es_el_de_la_fila_de_clinica_o_el_de_la_vieja() = conBase { driver ->
+        sembrarChoques(driver)
+
+        migrar(driver)
+
+        assertEquals("1", oculta(driver, "m-pref-a")!![3], "solo hepatologia (dirty 1): el de la vieja")
+        assertEquals("0", oculta(driver, "m-pref-b")!![3], "clinica 0 y hepatologia 1: queda el de clinica")
+        assertEquals("1", oculta(driver, "m-pref-i")!![3], "clinica 1 y hepatologia 0: queda el de clinica")
+        assertEquals("1", oculta(driver, "m-pref-e")!![3], "clinica borrada: no cuenta, el de la vieja")
+        // La vieja conserva su `dirty` al borrarse.
+        assertEquals("1", preferencias(driver).getValue("m-pref-b" to ocultasHepatologia)[3])
+    }
+
+    // ---- las demás HC ----
+
+    @Test
+    fun las_filas_de_otras_especialidades_no_cambian() = conBase { driver ->
+        sembrar(driver)
+        sembrarChoques(driver)
+        val otras = "especialidad NOT IN ('hepatologia', 'clinica')"
+        val tablas = listOf("consulta", "registro_clinico", "laboratorio", "antecedente", "paciente_extra")
+        val antes = tablas.associateWith { volcado(driver, it, otras) }
+        tablas.forEach { assertEquals(true, antes.getValue(it).isNotEmpty(), "sembrada: $it") }
+
+        migrar(driver)
+
+        tablas.forEach { assertEquals(antes.getValue(it), volcado(driver, it, otras), "tabla $it") }
+    }
+
+    // ---- idempotencia y sin pérdida ----
+
+    @Test
+    fun correr_la_migracion_otra_vez_no_cambia_nada_ni_falla() = conBase { driver ->
+        sembrar(driver)
+        sembrarChoques(driver)
+
+        migrar(driver)
+        val primera = tablasDeDatos.associateWith { volcado(driver, it) }
+        assertEquals(true, primera.getValue("medico_preferencia").isNotEmpty())
+
+        migrar(driver)
+        assertEquals(primera, tablasDeDatos.associateWith { volcado(driver, it) }, "segunda corrida")
+        migrar(driver)
+        assertEquals(primera, tablasDeDatos.associateWith { volcado(driver, it) }, "tercera corrida")
+    }
+
+    @Test
+    fun una_edicion_hecha_despues_de_migrar_no_se_deshace_al_volver_a_correrla() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        // El médico cambia sus secciones ocultas y un antecedente en la HC general.
+        preferencia(driver, "m-pref-b", ocultasClinica, "solo", 900, dirty = 1)
+        ejecutar(driver, "UPDATE antecedente SET detalle = 'editado', updated_at = 9999, dirty = 1 WHERE id = 'an-a-h'")
+        val antes = tablasDeDatos.associateWith { volcado(driver, it) }
+
+        migrar(driver)
+
+        assertEquals(antes, tablasDeDatos.associateWith { volcado(driver, it) })
+        assertEquals("solo", oculta(driver, "m-pref-b")!![0])
+    }
+
+    /** Una pestaña vieja (v8) puede volver a guardar `hepatologia` en una base ya migrada: la próxima migración lo mueve sin fallar. */
+    @Test
+    fun lo_que_una_app_vieja_vuelva_a_guardar_como_hepatologia_se_mueve_en_la_proxima_corrida() = conBase { driver ->
+        sembrarChoques(driver)
+        migrar(driver)
+        consulta(driver, "c-vuelve", "hepatologia", estado = "ABIERTA", actualizada = 8000, dirty = 1, pacienteId = paciente2)
+        antecedente(driver, "an-vuelve", "hepatologia", "clave_a", 99999) // más nueva que an-a-h, que ya es de clinica
+        extra(driver, paciente2, "hepatologia", "k_nueva", "valor nuevo")
+        preferencia(driver, "m-pref-b", ocultasHepatologia, "z", 500, dirty = 1) // reemplaza la vieja borrada
+
+        migrar(driver)
+
+        assertEquals("clinica", texto(driver, "SELECT especialidad FROM consulta WHERE id = 'c-vuelve'"))
+        assertEquals("clinica", texto(driver, "SELECT especialidad FROM antecedente WHERE id = 'an-vuelve'"))
+        assertEquals(1L, activo(driver, "an-vuelve"))
+        assertEquals(0L, activo(driver, "an-a-h"), "la que ya estaba en clinica es más vieja: pierde")
+        assertEquals(1L, numero(driver, "SELECT COUNT(*) FROM paciente_extra WHERE paciente_id = '$paciente2' AND especialidad = 'clinica' AND clave = 'k_nueva'"))
+        assertEquals("x,a,b,z", oculta(driver, "m-pref-b")!![0])
+        for (tabla in listOf("consulta", "antecedente", "registro_clinico", "laboratorio")) {
+            assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM $tabla WHERE especialidad = 'hepatologia'"), tabla)
+        }
+        assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM medico_preferencia WHERE clave = '$ocultasHepatologia' AND deleted = 0"))
+    }
+
+    @Test
+    fun ninguna_fila_se_pierde_y_el_dirty_total_no_cambia() = conBase { driver ->
+        sembrar(driver)
+        sembrarChoques(driver)
+        fun cuenta(tabla: String) = numero(driver, "SELECT COUNT(*) FROM $tabla")
+        fun sucias(tabla: String) = numero(driver, "SELECT COALESCE(SUM(dirty), 0) FROM $tabla")
+        val filasAntes = tablasDeDatos.associateWith { cuenta(it) }
+        val suciasAntes = tablasDeDatos.associateWith { sucias(it) }
+        tablasDeDatos.forEach { assertEquals(true, filasAntes.getValue(it) > 0, "sembrada: $it") }
+        val inactivasAntes = numero(driver, "SELECT COUNT(*) FROM antecedente WHERE activo = 0")
+        // La excepción documentada: por cada médico con secciones ocultas de hepatologia vivas y sin ninguna fila de clinica
+        // (ni borrada: esa se reemplaza), `medico_preferencia` gana una fila. El conteo esperado se calcula, no se ignora.
+        val preferenciasNuevas = numero(
+            driver,
+            "SELECT COUNT(*) FROM medico_preferencia h WHERE h.clave = '$ocultasHepatologia' AND h.deleted = 0 AND NOT EXISTS (" +
+                "SELECT 1 FROM medico_preferencia c WHERE c.medico_id = h.medico_id AND c.clave = '$ocultasClinica')",
+        )
+        assertEquals(1L, preferenciasNuevas, "solo m-pref-a")
+        val vivasDeHepatologia = numero(driver, "SELECT COUNT(*) FROM medico_preferencia WHERE clave = '$ocultasHepatologia' AND deleted = 0")
+        assertEquals(true, vivasDeHepatologia > 1, "sembrada")
+
+        migrar(driver)
+
+        for (tabla in tablasDeDatos - "medico_preferencia") {
+            assertEquals(filasAntes.getValue(tabla), cuenta(tabla), "filas de $tabla")
+            assertEquals(suciasAntes.getValue(tabla), sucias(tabla), "dirty de $tabla")
+        }
+        assertEquals(filasAntes.getValue("medico_preferencia") + preferenciasNuevas, cuenta("medico_preferencia"))
+        // Lo único que cambia de `antecedente` es `activo` de las perdedoras, y de las preferencias, `deleted` de las viejas.
+        assertEquals(inactivasAntes + perdedoras.size, numero(driver, "SELECT COUNT(*) FROM antecedente WHERE activo = 0"))
+        assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM medico_preferencia WHERE clave = '$ocultasHepatologia' AND deleted = 0"))
+        // De paciente_extra se mueven dos y dos se quedan en hepatologia (la que choca y la que enfrenta una borrada).
+        assertEquals(2L, numero(driver, "SELECT COUNT(*) FROM paciente_extra WHERE especialidad = 'hepatologia'"))
+    }
+
+    // ---- con los repositorios ----
+
+    @Test
+    fun despues_de_migrar_los_repositorios_leen_lo_de_hepatologia_en_clinica_sin_duplicados() = conBase { driver ->
+        sembrar(driver)
+        sembrarChoques(driver)
+
+        migrar(driver)
+
+        val repo = HcRepository(Salud360Db(driver))
+        // Consultas (la anulada no se lista): las de hepatologia más la de clinica, cada una una vez, la más nueva primero.
+        val consultas = repo.observarConsultas(paciente, "clinica").first()
+        assertEquals(listOf("c-hepat-abierta", "c-hepat-cerrada", "c-clinica"), consultas.map { it.id })
+        assertEquals("ABIERTA", consultas.first().estado.name)
+        assertEquals(listOf("c-p2-clinica", "c-p2-hepat"), repo.observarConsultas(paciente2, "clinica").first().map { it.id })
+        // Y `abrirConsulta` retoma la abierta más reciente en lugar de crear una (la de hepatologia ya es de clinica).
+        val abierta = repo.abrirConsulta(paciente3, medico, "clinica", "consulta", LocalDate(2026, 10, 26), "45 años")
+        assertEquals("c-p3-hepat", abierta.id)
+        assertEquals(2, repo.observarConsultas(paciente3, "clinica").first().size)
+        // Registros y laboratorios, con su contenido.
+        val registros = repo.observarRegistros(paciente, "clinica", "biopsia_hepatica").first()
+        assertEquals(setOf("r-hepatologia", "r-clinica"), registros.map { it.id }.toSet())
+        assertEquals(registros.size, registros.map { it.id }.toSet().size)
+        assertEquals(mapOf("detalle" to "F2 en hepatologia"), registros.first { it.id == "r-hepatologia" }.campos)
+        val laboratorios = repo.observarLaboratorios(paciente, "clinica", "laboratorio_general").first()
+        assertEquals(setOf("l-hepatologia", "l-clinica"), laboratorios.map { it.id }.toSet())
+        assertEquals(mapOf("got" to "40"), laboratorios.first { it.id == "l-hepatologia" }.valores)
+        // Antecedentes: los del paciente 1 sin choque, y los del paciente 2 con una sola fila por categoría y clave.
+        assertEquals(setOf("cirrosis", "alergias"), repo.observarAntecedentes(paciente, "clinica").first().map { it.clave }.toSet())
+        val antecedentes2 = repo.observarAntecedentes(paciente2, "clinica").first()
+        assertEquals(
+            setOf("an-a-h", "an-b-c", "an-c-c", "an-d-h", "an-g1-h", "an-g2-h", "an-g3-c", "an-g4-c"),
+            antecedentes2.map { it.id }.toSet(),
+        )
+        assertEquals(antecedentes2.size, antecedentes2.map { it.categoria to it.clave }.toSet().size)
+        assertEquals(
+            listOf("Detalle de an-a-h"),
+            repo.observarAntecedentes(paciente2, "clinica", "personales").first().filter { it.clave == "clave_a" }.map { it.detalle },
+        )
+        // Los motivos de las consultas de hepatología salen en las "consultas previas" de la HC general.
+        assertEquals(
+            mapOf("c-hepat-abierta" to "Control de rutina", "c-hepat-cerrada" to "Estudios previos"),
+            repo.observarValoresDeCampo(paciente, "clinica", "motivo_consulta", "texto").first(),
+        )
+        assertEquals(
+            mapOf("c-p2-hepat" to "Motivo en hepatología"),
+            repo.observarValoresDeCampo(paciente2, "clinica", "motivo_consulta", "texto").first(),
+        )
+        // En hepatologia ya no queda nada para ver.
+        assertEquals(emptyList(), repo.observarConsultas(paciente, "hepatologia").first())
+        assertEquals(emptyList(), repo.observarRegistros(paciente, "hepatologia", "biopsia_hepatica").first())
     }
 }

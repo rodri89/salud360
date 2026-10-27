@@ -1462,7 +1462,7 @@ preguntas queda como registro de las alternativas descartadas.
     a `medico_preferencia` (la `clinica` nueva + la vieja con `deleted = 1`), así que el "mismo `count(*)`" del caso 6 no vale para esa tabla en ese
     caso; el borrador copia el `dirty` de la fila de `clinica` (o el de la vieja si no hay) y no el máximo de las dos.
 
-- [ ] **T50. La migración con choques, idempotencia y sin pérdida.** RF-29, RF-30
+- [x] **T50. La migración con choques, idempotencia y sin pérdida.** RF-29, RF-30
   **Misma aprobación explícita que T49, del 2026-10-26** (es la otra mitad de `8.sqm`). Mismo archivo de test; si algún caso falla, se
   corrige `8.sqm` (todavía sin publicar ni cargar en ningún navegador).
   - Tests en `MigracionHepatologiaTest` (cada uno visto fallar o, si ya pasa por T49, mutando a propósito el `.sqm` para comprobar
@@ -1492,6 +1492,26 @@ preguntas queda como registro de las alternativas descartadas.
        la spec: los motivos de la hepatología aparte salen en las consultas previas de la HC general).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*MigracionHepatologiaTest*'` en verde y `.\gradlew :core:data:jvmTest` completo
     en verde. Recién ahí `8.sqm` queda lista para cargarse en un navegador.
+  - **Hecho (2026-10-26).** `8.sqm` NO cambió (es la de T49): todos los casos de choque ya pasaban de entrada, así que se comprobó que cada test
+    detecta su parte mutando el `.sqm` a propósito (y restaurándolo): `>=` por `>` en el antecedente (falla "misma fecha"), sin el segundo
+    `UPDATE` de antecedentes (falla "hepatologia más nueva"), sin `activo = 1 AND deleted = 0` del `EXISTS` (falla "borrado o inactivo"),
+    `ELSE h.valor` en la unión (falla "se unen sin pisar") y sin el `UPDATE ... deleted = 1` final (fallan los de preferencias); sin
+    `h.deleted = 0` en la unión (falla idempotencia); un `DELETE` de antecedentes (fallan "la perdedora no se borra" y "ninguna fila se
+    pierde"); `UPDATE OR REPLACE` en `paciente_extra` (fallan los dos de `paciente_extra`); y `paciente_extra` sin `NOT EXISTS` (la migración
+    falla por la clave primaria y falla todo lo que migra con choques). `MigracionHepatologiaTest` pasa de 7 a 29 tests, con datos inventados
+    (`p-prueba-2/3/4`, `m-pref-*`): consultas abiertas en las dos HC (`consultaAbierta` devuelve la más reciente, `consultasDePaciente` las
+    dos); antecedentes (a) a (g) más "nada más cambia" (volcado completo: solo la HC y el `activo` de las tres perdedoras, mismo `dirty` y
+    `updated_at`); `paciente_extra` que choca / límite conocido / otras HC; preferencias solo-hepatologia, ambas, vacías, clinica borrada, otros
+    médicos y claves; idempotencia (2 y 3 corridas, una edición posterior, una app vieja que vuelve a guardar `hepatologia`); conteos y `dirty`
+    antes/después; filas de otras HC intactas; y la lectura con `HcRepository` (`observarConsultas`, `abrirConsulta`, `observarRegistros`,
+    `observarLaboratorios`, `observarAntecedentes`, `observarValoresDeCampo`, `observarPreferencias`) y `PacientesRepository.observarExtras`.
+    `:core:data:jvmTest --rerun` completo en verde (617 tests, 0 fallas). **Los tres puntos que dejó T49:** (1) `medico_preferencia` gana una fila
+    por cada médico con `secciones_ocultas_hepatologia` viva y sin ninguna fila `clinica`, ni borrada (esa se reemplaza); el test lo calcula con SQL
+    antes de migrar (en la siembra, 1) y compara; (2) el `dirty` de la unión es el de la fila de `clinica` si existía y, si no, el de la vieja (no el
+    máximo): un test lo fija sin cambiarlo; la preferencia no la recibe ninguna API que use la app, así que no se pierde; (3) **límite conocido:**
+    `paciente_extra` de `hepatologia` frente a una fila `deleted = 1` de `clinica`: el dato vivo queda en `hepatologia` (no se pierde ni se toca
+    `clinica`), pero la HC general no lo ve; un test lo fija y el KDoc de la clase lo explica; no se reescriben filas clínicas para arreglarlo.
+    `8.sqm` ya se puede cargar en un navegador (el `devWeb` se puede refrescar con la v9). Quedan T51 a T53.
 
 - [ ] **T51. Hepatología fuera del registro y de lo que ofrece el administrador.** RF-29 (retira C5 y C8)
   - `composeApp/.../AppDi.kt`: se quita el import y `hepatologiaContribution` de `especialidades`. Con eso desaparecen solos la

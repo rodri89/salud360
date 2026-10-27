@@ -48,8 +48,10 @@ registros de personas): el repo es público.
   (`hcgeneral/HistoriasClinicas.kt`: `normalizarHistoriasClinicas`, `normalizarCodigoHc`, `codigoHcPorNombre`). T48 hecha (se
   normaliza en `MedicoRow.toModel`/`EspecialidadRow.toModel`, `TurnosImportador` y `AgendaTurnosOnline`, incluido lo que el
   admin manda a turnos; `HistoriasHabilitadasTest`). T49 hecha (`8.sqm`: la base local sube a v9, solo mueve datos de `hepatologia` a `clinica`, ningún `.sq` cambia;
-  `MigracionHepatologiaTest` sin choques). Siguen T50 a T53 en orden, una por vez. No refrescar el `devWeb` con `8.sqm` hasta cerrar T50, y
-  recordar que volver a una app vieja (v8) sobre una base v9 destruye los datos del navegador en la web (el driver descarta las tablas).
+  `MigracionHepatologiaTest` sin choques). T50 hecha: `8.sqm` probada con choques, idempotencia y sin pérdida (29 tests, `8.sqm` sin cambios;
+  límite conocido: `paciente_extra` de hepatología frente a una fila borrada de `clinica` queda en hepatología). Ya se puede refrescar el
+  `devWeb` con v9, recordando que volver a una app vieja (v8) sobre una base v9 destruye los datos del navegador en la web (el driver descarta
+  las tablas). Siguen T51 a T53 en orden, una por vez.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
