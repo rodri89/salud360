@@ -1272,8 +1272,10 @@ explícito). Los servidores quedan como están.
 6. **002 (envío de consultas):** las consultas ex-hepatología quedan en `clinica` con `remoto_id = ''`, así que serán candidatas a
    `consultasSinEnviar("clinica")` cuando se registre el `HcBackend`: sale un envío en bloque de historial viejo. Es lo
    esperado, pero la 002 tiene que contemplarlo antes de enviar.
-7. **`updated_at`/`dirty` intactos:** si algún día se activa `SyncEngine` contra `:server`, las filas movidas con `dirty = 1` se
-   reenviarían con la HC nueva. Hoy la app no lo usa.
+7. **`updated_at`/`dirty` intactos:** `SyncEngine` no está apagado: arranca tras cada login (`App.kt`) y cada minuto empuja las filas
+   `dirty` a `<turnos>/api/salud360/sync/push` (y pide `sync/pull`), rutas que no existen en turnos (404 que se ignora; corregido en T54).
+   Si alguien crea esa ruta en turnos, las filas movidas con `dirty = 1` se reenviarían con la HC nueva, junto con todas las demás
+   filas `dirty` del dispositivo.
 8. **Mantenimiento:** quien lea `ClinicaMedica.kt` puede creer que `hepatologia` es código muerto y borrarlo: el catálogo se
    rompería. El KDoc y el test de T51 lo fijan.
 9. **Diferencia sql.js vs SQLite de la JVM** (los tests corren en la JVM): la prueba manual (T52, paso 1) es la que confirma la
@@ -1617,7 +1619,7 @@ preguntas queda como registro de las alternativas descartadas.
     2026-10-15 (2) ("Vale para la HC general y para la hepatología aparte", l. 513): es historia de un cambio aprobado. `MEMORY.md`: traspaso al
     día. No se tocan las menciones históricas a `hepatologia_sigue_igual` en `specs/003-hc-enfermedades/tasks.md` (notas de tareas ya hechas).
 
-- [ ] **T54. Cierre de la validación del reviewer (hallazgos H1 a H8 de la tanda D).** RF-29, RF-30
+- [x] **T54. Cierre de la validación del reviewer (hallazgos H1 a H8 de la tanda D).** RF-29, RF-30
   Aprobada por el usuario el 2026-10-27 tras el "APROBADO CON OBSERVACIONES" del reviewer. El usuario **no** aprobó reescribir historia
   ahora: se anota para resolverlo justo antes del push. No se toca `8.sqm`, ni pantallas, ni la spec 003, ni las APIs Laravel.
   1. **Historia (decisión del usuario):** `MEMORY.md` anota que antes de pushear la rama hay que sacar de la historia un nombre de persona real
@@ -1641,6 +1643,23 @@ preguntas queda como registro de las alternativas descartadas.
   - Hecho cuando: los cinco puntos hechos; `:core:data:jvmTest --rerun`, `:especialidades:clinica:jvmTest --rerun`, `:core:ui:jvmTest` en
     verde; compilan `:features:admin:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (klib); `git diff` de `8.sqm`
     vacío; sin tokens, contraseñas ni nombres reales en el diff.
+  - **Hecho (2026-10-27).** (1) `MEMORY.md` anota lo de la historia (no se reescribió nada). (2) `MigracionHepatologiaTest` pasa de 29 a 35 tests:
+    cuatro pares de antecedentes que no chocan (`sembrarParecidos`, pacientes `p-prueba-5/6`), un test con las ocho filas juntas y
+    `toda_tabla_que_la_migracion_no_mueve_queda_identica` (volcado de todas las tablas fuera de las seis que mueve, con `medico`,
+    `especialidad`, `hc_enfermedades` y `sesion_local` sembradas). Los tests de "no cambia" pasan de entrada con el `.sqm` real, así que se
+    comprobaron mutando `8.sqm` a propósito (ocho corridas, `8.sqm` restaurado después de cada una y al final, `git diff` vacío): sin
+    `c.categoria` falla el par (a); sin `h.categoria`, el (b); sin `c.paciente_id`, el (c); sin `h.especialidad = 'hepatologia'`, el (d)
+    (más la idempotencia); y un `UPDATE` extra sobre `medico`, `especialidad`, `hc_enfermedades` o `sesion_local` hace fallar el test genérico.
+    (3) El DTO de turnos (`TobbEspecialidad`) trae solo `id`, `nombre` y `color`, y `CatalogoController` de turnos tampoco manda `codigo_hc`:
+    no hizo falta tocar la API. `toEspecialidadTurnos(previa)` (función `internal` pura en `AgendaTurnosOnline.kt`, porque
+    `sincronizarAdministracion` necesita red) conserva el `codigo_hc` ya guardado (normalizado) y nunca lo pisa; el color es el de turnos y, si
+    no manda, el guardado. `EspecialidadDeTurnosTest` (6 tests) visto fallar con el bug (5 por aserción) y en verde. Queda sin cubrir por test la
+    lectura de `previa` (`especialidadPorId`, igual que `TurnosImportador`). Una especialidad nueva, sin `previa`, queda con `codigo_hc` vacío hasta
+    el próximo ingreso (ahí `TurnosImportador` lo deduce por el nombre) o hasta que el administrador la asocie. (4) `AGENTS.md`, riesgo 7
+    de esta tanda, `README.md` y `specs/README.md` corregidos tras verificar contra el código (`App.kt`, `SyncEngine`, `DataModule`,
+    `DriverFactory.wasmJs.kt`; en `turnosonlinebb/routes` no hay ninguna ruta `sync`). (5) Anotado en `MEMORY.md` y `specs/002-hc-clinica/tasks.md`.
+    Verde: `:core:data:jvmTest --rerun` (629 tests, 0 fallas), `:especialidades:clinica:jvmTest --rerun` (25), `:core:ui:jvmTest`
+    (`UP-TO-DATE`, el módulo no cambió), `:features:admin:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (solo el klib).
 
 Fuera de esta tanda: `HcPerfilesE2ETest` y los criterios de finalización "contra la copia local" del plan original (pregunta D7); la edición de la
 web de turnos y de su `HistoriaClinicaService` (pregunta D1, opciones B y C); endurecer el driver web (pregunta D5, opción B).

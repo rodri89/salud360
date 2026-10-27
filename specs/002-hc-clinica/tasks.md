@@ -320,3 +320,14 @@ Al terminar la tanda: validación del reviewer, prueba manual del usuario y MEMO
 Validada por el reviewer el 2026-10-20: APROBADO.
 Nota del reviewer: en RF-10 la prueba manual solo comprueba que no se cree la ficha en hclinica antes de tiempo; el
 vínculo lo cubren el E2E (`HcClinicaPacientesE2ETest`) y los tests del repositorio (`PacientesHcRepositoryTest`).
+
+## Pendientes para el envío de consultas (parte 2, aún sin tareas)
+
+Anotados el 2026-10-27 por el cierre de la tanda D de la 001 (T54, hallazgo H2 del reviewer). **No se implementan en la parte 1.**
+Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC general):
+- **Antecedentes `activo = 0`:** la migración `8.sqm` deja con `activo = 0` al antecedente perdedor cuando la misma clave estaba en
+  `clinica` y en `hepatologia` (no se borra). El envío tiene que filtrar los antecedentes `activo = 0` (o decidir a propósito qué
+  hacer con ellos): si no, el servidor recibiría como vigente lo que el médico ya no ve.
+- **Envío en bloque:** todas las consultas migradas de hepatología traen `dirty` y `remoto_id = ''` de antes (los datos nunca
+  tuvieron API). Al registrar el backend saldrían juntas, como historial viejo. Hay que decidir antes (confirmación del médico, tope por
+  lote o marcarlas como ya resueltas) y probarlo con una base migrada.

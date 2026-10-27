@@ -41,8 +41,8 @@ salud360/
 │   ├── hc/                motor de historia clínica (secciones genéricas, consulta)
 │   ├── turnos/            agenda, horarios, configuración, obras sociales, recetas
 │   └── admin/             panel del administrador
-├── especialidades/        clinica (+ hepatología), pediatria, gineco, cardiologia,
-│                          endocrinologia, hematologia, desarrollo-infantil
+├── especialidades/        clinica (la HC general, con perfiles; hepatología es uno), pediatria,
+│                          gineco, cardiologia, endocrinologia, hematologia, desarrollo-infantil
 ├── composeApp/            módulo compartido de la app (navegación, DI, entradas iOS y Web/Wasm)
 ├── androidApp/            aplicación Android (Activity, manifiesto, íconos)
 ├── iosApp/                proyecto Xcode (XcodeGen)

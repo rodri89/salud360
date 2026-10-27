@@ -9,7 +9,8 @@ registros de personas): el repo es público.
   pruebas manuales del usuario de varias tandas (001: C, C2 a C7 y D/T52; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
 - Spec 001, tanda D (hepatología deja de ser una HC aparte): completa salvo T52 (prueba manual del usuario, pasos en `tasks.md`);
-  T53 (documentación) hecha. `normalizarHistoriasClinicas` lee `hepatologia` de turnos como `clinica` (en `MedicoRow.toModel`,
+  T53 (documentación) y T54 (cierre de las observaciones del reviewer: tests de la migración con mutaciones, bug de `codigoHc` de
+  `sincronizarAdministracion` —turnos no manda ese código, se conserva el guardado—, correcciones de docs) hechas. `normalizarHistoriasClinicas` lee `hepatologia` de turnos como `clinica` (en `MedicoRow.toModel`,
   `TurnosImportador` y `AgendaTurnosOnline`); `8.sqm` (esquema local **v9**) solo mueve datos de `hepatologia` a `clinica`
   (los choques se resuelven sin pérdida: antecedente repetido = gana la más reciente y la otra `activo = 0`; consultas abiertas en las
   dos = quedan las dos; secciones ocultas = unión). **No hay vuelta atrás en un dispositivo migrado:** una app vieja (v8) sobre
@@ -21,15 +22,21 @@ registros de personas): el repo es público.
   (fuera del repo); el `devWeb` hay que arrancarlo o refrescarlo (con v9) antes. Detalle por tarea en
   `specs/003-hc-enfermedades/tasks.md`. Quedan menores del reviewer sin tarea.
 - Pendientes conocidos (sin tarea):
-  - Bug previo: `AgendaTurnosOnline.sincronizarAdministracion` (l. ~462) pasa el color de la especialidad como `codigoHc`
-    (`EspecialidadTurnos(id, nombre, it.color)`, el tercer parámetro posicional es `codigoHc`).
   - Límite conocido de `8.sqm`: un `paciente_extra` de hepatología frente a una fila `deleted = 1` de `clinica` queda en
     hepatología (no se pierde, pero la HC general no lo ve).
   - Test intermitente de F2.12 (enfermedades) nunca explicado; la causa más probable son los frenones de esta máquina.
   - La web de turnos sigue mostrando la casilla Hepatología (inofensivo: la app la lee como `clinica`).
   - `composeApp` no tiene tests: lo que vive ahí se verifica compilando y a mano.
   - Subida a producción pendiente: pediatría y turnos con sus rutas nuevas (ver "Pendiente"). Los repos hermanos siguen sin push.
-  - Al registrar el `HcBackend` de la 002, las consultas ex-hepatología (`remoto_id = ''`) saldrán como envío en bloque.
+  - Al registrar el `HcBackend` de la 002 (`clinica` en `HcApiSync`): hay que filtrar los antecedentes `activo = 0` (los deja así
+    `8.sqm`) y las consultas ex-hepatología (`remoto_id = ''`, `dirty` de antes) saldrán como envío en bloque. Pendiente de la 002,
+    anotado en su `tasks.md`; no se implementó (T54, H2).
+  - `SyncEngine` no está apagado: corre tras cada login y pega a `<turnos>/api/salud360/sync/push|pull`, que no existen (404 ignorado).
+    Si alguien crea esas rutas en turnos saldrían todas las filas `dirty`.
+- **ANTES DE PUSHEAR esta rama hay que limpiar de la historia un nombre de persona real** que entró en los commits `a26d676` y
+  `dc94dc4` (`MEMORY.md`), por ejemplo con rebase interactivo (`edit`) sobre `a26d676` y los commits siguientes, o publicando con
+  squash-merge. Hoy hay ~105 commits locales sin push y ninguno está en `origin`. Decisión del usuario (2026-10-27): no reescribir
+  historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama

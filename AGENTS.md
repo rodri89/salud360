@@ -38,7 +38,10 @@ leer "Cosas que hay que saber antes de tocar" antes de tocar HC/sync/API).
   (no hay tests en `features/*`, `composeApp` ni `:server`). Uno solo: `.\gradlew :core:data:jvmTest --tests '*LicenciaTest*'`.
 - Compilación rápida de un módulo: `.\gradlew :features:hc:compileKotlinJvm` (todos los módulos KMP tienen target `jvm`).
 - No hay linter/formatter configurado; estilo `kotlin.code.style=official`.
-- `:server` (Ktor) existe pero **la app hoy no lo usa**; no asumir que el sync contra él funciona.
+- `:server` (Ktor) existe pero **la app no habla con él**; no asumir que el sync contra él funciona. Ojo: `SyncEngine`
+  igual se inicia tras cada login (`App.kt`) y cada minuto pega a `<turnos>/api/salud360/sync/push` (con filas `dirty`) o
+  `sync/pull`, rutas que no existen en turnos: da 404, se ignora (queda en el log y en `EstadoSync`). Si alguien crea
+  esas rutas en turnos, saldrían de golpe todas las filas `dirty` del dispositivo.
 
 ## Entorno dev/release (generado)
 - `composeApp` genera `Entornos.kt` desde `gradle.properties` (`salud360.entorno.{dev,release}.*`) y los
@@ -77,7 +80,8 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
 ## Base local (SQLDelight, `core/database`)
 - Cambios de esquema = nueva migración `migrations/N.sqm` (siguiente número) **y** actualizar el `.sq`
   (salvo que la migración solo mueva datos, como `8.sqm`). Una base ya migrada no vuelve a una app vieja: en la web
-  el driver descarta las tablas si la versión no coincide. `verifyMigrations` está apagado: nadie lo controla por vos.
+  el driver (`DriverFactory.wasmJs.kt`) descarta las tablas si la versión guardada es más nueva que la de la app o si la
+  migración falla; si es más vieja, migra. `verifyMigrations` está apagado: nadie lo controla por vos.
 - Columnas nuevas **siempre al final** de la tabla: `upsertX` es `INSERT OR REPLACE INTO x VALUES ?` posicional.
 - `generateAsync = true` (driver web en Web Worker); el `.wasm`/worker persistente está en
   `composeApp/src/wasmJsMain/resources/sqljs-persistente.worker.js`.
