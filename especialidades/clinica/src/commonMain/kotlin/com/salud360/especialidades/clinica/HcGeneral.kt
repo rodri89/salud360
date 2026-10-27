@@ -16,7 +16,7 @@ import com.salud360.features.hc.secciones.EnfermedadesSeccion
 
 // ---- HC general (spec 001) ----
 // Reemplaza a `clinicaMedica` en la app; reutiliza sus secciones, laboratorios y registros, y los de `hepatologia`
-// (que sigue registrada aparte hasta la tanda D), sin cambiarlos.
+// (que ya no es una HC registrada: solo la fuente de esas secciones), sin cambiarlos.
 
 /** Base de la HC general: lo que no depende del perfil. Los tipos y las secciones los arma `armarDefinicion`. */
 val hcGeneralBase = EspecialidadDefinition(
@@ -37,13 +37,13 @@ private val estudiosConHistorial = setOf("eco_abdominal", "veda", "biopsia_hepat
 private val formulariosEnGrilla = setOf("serologias")
 
 private fun deHepatologia(id: String, titulo: String): SeccionCatalogo {
-    // Copia: la de `hepatologia` queda en FILAS hasta que se vaya en la tanda D (RF-73); los campos no cambian (RF-68).
+    // Copia: la de `hepatologia` queda en FILAS (ya no se muestra como HC, RF-73); los campos no cambian (RF-68).
     val def = hepatologia.seccion(id)!!.comoCatalogo(titulo)
         .let { if (it.id in formulariosEnGrilla) it.copy(modoForm = ModoForm.GRILLA_SI_NO) else it }
     return SeccionCatalogo(
         def,
         laboratorios = listOfNotNull(def.laboratorioTipo?.let { hepatologia.laboratorio(it) }),
-        // Copia: el de `hepatologia` queda en LISTA hasta que se vaya en la tanda D (RF-33).
+        // Copia: el de `hepatologia` queda en LISTA (ya no se muestra como HC, RF-33).
         registros = listOfNotNull(def.registroTipo?.let { hepatologia.registro(it) })
             .map { if (it.tipo in estudiosConHistorial) it.copy(modo = ModoRegistro.UNO_POR_CONSULTA) else it },
     )

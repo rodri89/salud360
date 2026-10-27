@@ -14,7 +14,6 @@ import com.salud360.core.model.especialidad.SeccionesComunes as C
 import com.salud360.core.model.especialidad.TipoCampo
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.especialidad.TipoSeccion
-import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas
 
 
@@ -66,8 +65,13 @@ val clinicaMedica = EspecialidadDefinition(
 
 private fun siNo(clave: String, etiqueta: String) = CampoDef(clave, etiqueta, TipoCampo.SELECT, listOf("SI", "NO"), grupo = "serologias")
 
-/** Hepatología (perfil 2 de hclinica): serologías, Child-Pugh, tabla de peso, estudios con fecha. */
-val hepatologia = EspecialidadDefinition(
+/**
+ * Hepatología (perfil 2 de hclinica): serologías, Child-Pugh, tabla de peso, estudios con fecha.
+ *
+ * Ya no es una historia clínica: no está registrada en la app (hepatología es un perfil de la HC general, spec 001 RF-29).
+ * Es la fuente de las secciones, laboratorios y registros de [catalogoHcGeneral] (`HcGeneral.kt` los copia de acá): no borrar.
+ */
+internal val hepatologia = EspecialidadDefinition(
     codigo = "hepatologia", nombre = "Hepatología", nombreLegacy = "hclinica (perfil 2)",
     tiposConsulta = listOf(
         TipoConsultaDef(C.TIPO_CONTROL, "Consulta", "control", pestanias = SeccionesGenericas.pestaniasEstandar,
@@ -105,5 +109,3 @@ val hepatologia = EspecialidadDefinition(
         .map { (t, n) -> RegistroDef(t, n, n, listOf(CampoDef("detalle", "Detalle", TipoCampo.TEXTO_LARGO))) },
     examenFisicoCampos = clinicaMedica.examenFisicoCampos,
 )
-
-val hepatologiaContribution = EspecialidadContribution(hepatologia, mapOf("child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) }))

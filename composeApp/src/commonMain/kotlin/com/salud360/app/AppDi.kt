@@ -7,7 +7,6 @@ import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.especialidades.cardiologia.cardiologiaContribution
 import com.salud360.especialidades.clinica.catalogoHcGeneral
 import com.salud360.especialidades.clinica.hcGeneralContribution
-import com.salud360.especialidades.clinica.hepatologiaContribution
 import com.salud360.especialidades.desarrolloinfantil.desarrolloInfantilContribution
 import com.salud360.especialidades.endocrinologia.endocrinologiaContribution
 import com.salud360.especialidades.gineco.ginecoContribution
@@ -26,7 +25,7 @@ import org.koin.dsl.module
 
 /** Todas las historias clínicas compiladas en la app. Para agregar una especialidad, sumarla acá. */
 val especialidades: List<EspecialidadContribution> = listOf(
-    hcGeneralContribution, hepatologiaContribution, pediatriaContribution, ginecoContribution,
+    hcGeneralContribution, pediatriaContribution, ginecoContribution,
     cardiologiaContribution, endocrinologiaContribution, hematologiaContribution, desarrolloInfantilContribution,
 )
 

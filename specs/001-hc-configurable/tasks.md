@@ -1513,7 +1513,7 @@ preguntas queda como registro de las alternativas descartadas.
     `clinica`), pero la HC general no lo ve; un test lo fija y el KDoc de la clase lo explica; no se reescriben filas clínicas para arreglarlo.
     `8.sqm` ya se puede cargar en un navegador (el `devWeb` se puede refrescar con la v9). Quedan T51 a T53.
 
-- [ ] **T51. Hepatología fuera del registro y de lo que ofrece el administrador.** RF-29 (retira C5 y C8)
+- [x] **T51. Hepatología fuera del registro y de lo que ofrece el administrador.** RF-29 (retira C5 y C8)
   - `composeApp/.../AppDi.kt`: se quita el import y `hepatologiaContribution` de `especialidades`. Con eso desaparecen solos la
     casilla "Hepatología" del alta y de la ficha (`AdminScreens.kt` l. 142 y 215 leen del registro) y el chip; el médico con
     `hepatologia` en turnos ve una sola HC "Clínica" (T48).
@@ -1537,6 +1537,24 @@ preguntas queda como registro de las alternativas descartadas.
     `git grep -n hepatologiaContribution -- '*.kt'` no da resultados; `.\gradlew :core:data:jvmTest` completo en verde;
     `.\gradlew :features:admin:compileKotlinJvm`, `.\gradlew :features:hc:compileKotlinJvm` y `.\gradlew :composeApp:compileKotlinWasmJs`
     (con las `-P`) compilan.
+  - **Hecho (2026-10-27).** `hepatologiaContribution` borrada (ningún `.kt` la nombra); `AppDi.kt` ya no la importa ni la registra;
+    `val hepatologia` es `internal` con KDoc (fuente del catálogo, no borrar). `hepatologia_sigue_igual` →
+    `las_secciones_de_hepatologia_se_leen_desde_la_hc_general`, más las tres aserciones que nombraban la contribución (`.catalogo`, `.renderers`
+    y `copiaDiagnosticos(hepatologia)`) y el comentario de la l. 134; los comentarios de `HcGeneral.kt` ya no dicen "hasta la tanda D" (el de
+    `AsignacionesMedicos.kt` lo había cambiado T47). **Sobre el rojo:** no había nada que pudiera fallar antes del código (el test nuevo
+    compara cosas que ya existen y la lista del registro vive en `composeApp`, que no tiene tests), así que el test se comprobó mutando:
+    como `catalogoHcGeneral` copia de `hepatologia`, comparar solo contra ella es tautológico (mutar la clave de una serología no lo hacía
+    fallar), por eso el test también fija a mano los ids de las 21 secciones, los analitos del laboratorio reducido y del peso y el tamaño del
+    general; con "Hemograma" → "Hemograma X" falla y se restauró. Las claves de las serologías ya las fija `serologias_en_grilla...`. Verde:
+    `:especialidades:clinica:jvmTest --rerun` (25 tests), `:core:data:jvmTest --rerun` (617, 0 fallas), `:core:ui:jvmTest`,
+    `:features:admin:compileKotlinJvm`, `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (solo el klib).
+    **Verificado leyendo el código:** `AdminViewModel.especialidadesHc` sale de `nombresHc` de `AppDi` (= el registro), así que el alta
+    (`AdminScreens` l. 142), la ficha (l. 215), la asociación de especialidades de turnos (l. 303) y la tabla ya no ofrecen "Hepatología";
+    el chip de la ficha muestra el código crudo si hubiera uno no registrado (`?: it`), pero `MedicoRow.toModel` ya lo normaliza (T48);
+    `PerfilHcGeneral` depende de `CodigosHc.GENERAL in m.especialidadesHc`, no del registro. Una especialidad desconocida no rompe nada:
+    `MainShell` filtra con `registry.existe`, `HistoriaClinicaScreen` muestra "no está disponible en esta versión", `ConsultaViewModel` tolera
+    `definicion == null`, `registry.nombre` y `nombresHc[...] ?: codigo` caen al código y `Salud360Colors.especialidad` al color por
+    defecto. Ningún otro código del repo (salvo `:server`, que no se toca) mira `hepatologiaContribution` ni el código `hepatologia`.
 
 - [ ] **T52. Prueba manual del usuario (`devWeb` contra la copia local) y limpieza.** RF-29, RF-30, RF-33
   Hecha por el usuario; la tarea no se marca hasta que confirme. Solo con datos de prueba y solo local (nunca producción).

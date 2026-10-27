@@ -131,7 +131,7 @@ class CatalogoHcGeneralTest {
             mapOf("examen_complementario" to ModoRegistro.LISTA, "interconsulta" to ModoRegistro.LISTA),
             modos.filterKeys { it !in estudios },
         )
-        // La definición armada usa los del catálogo; hepatología, que se va en la tanda D, no cambia (RF-33).
+        // La definición armada usa los del catálogo; las de `hepatologia` (fuente de las secciones) no cambian (RF-33).
         val def = armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion
         estudios.forEach { assertEquals(ModoRegistro.UNO_POR_CONSULTA, def.registro(it)?.modo, it) }
         assertTrue(hepatologia.registros.all { it.modo == ModoRegistro.LISTA })
@@ -297,42 +297,58 @@ class CatalogoHcGeneralTest {
         )
     }
 
+    // RF-29, RF-30: la hepatología ya no es una HC (no está registrada), pero lo que guardó se sigue leyendo desde la HC general.
+    // `hepatologia` es solo la fuente de las secciones, laboratorios y registros del catálogo: si alguien la cambia o la borra, esto avisa.
     @Test
-    fun hepatologia_sigue_igual() {
-        assertEquals("hepatologia", hepatologia.codigo)
-        assertEquals("Hepatología", hepatologia.nombre)
+    fun las_secciones_de_hepatologia_se_leen_desde_la_hc_general() {
+        val delCatalogo = catalogoHcGeneral.secciones + catalogoHcGeneral.legadas
+        // El catálogo copia de `hepatologia`, así que comparar solo contra ella no detectaría un cambio en ella: lo guardado se fija a mano.
         assertEquals(
             listOf(
-                "control" to listOf("motivo_consulta", "audio", "examen_fisico", "laboratorio_general", "laboratorio_reducido", "tabla_peso", "serologias", "child_pugh",
-                    "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn", "documentos", "conductas", "nota"),
-                "telemedicina" to listOf("datos_subjetivos", "datos_objetivos", "conductas"),
-                "foto" to listOf("fotos"),
+                "antecedentes_personales", "antecedentes_familiares", "motivo_consulta", "audio", "examen_fisico", "laboratorio_general",
+                "laboratorio_reducido", "tabla_peso", "serologias", "child_pugh", "eco_abdominal", "veda", "biopsia_hepatica",
+                "estudios_cardiologicos", "tc_rmn", "documentos", "conductas", "nota", "datos_subjetivos", "datos_objetivos", "fotos",
             ),
-            hepatologia.tiposConsulta.map { it.codigo to it.secciones },
+            hepatologia.secciones.map { it.id },
         )
-        assertTrue(hepatologia.tiposConsulta.all { it.grupos.isEmpty() })
         assertEquals(
-            listOf(
-                "antecedentes_personales" to "Antec. personales", "antecedentes_familiares" to "Antec. familiares",
-                "motivo_consulta" to "Motivo de consulta", "audio" to "Grabación de audio de la consulta",
-                "examen_fisico" to "Examen físico", "laboratorio_general" to "Laboratorio general",
-                "laboratorio_reducido" to "Laboratorio (reducido)", "tabla_peso" to "Tabla de peso",
-                "serologias" to "Serologías hepatitis", "child_pugh" to "Child-Pugh-Turcotte",
-                "eco_abdominal" to "Ecografía abdominal", "veda" to "Videoendoscopia digestiva alta",
-                "biopsia_hepatica" to "Biopsia hepática", "estudios_cardiologicos" to "Estudios cardiológicos",
-                "tc_rmn" to "TC / RMN / ColangioRMN", "documentos" to "Documentos (PDF e imágenes)",
-                "conductas" to "Conductas", "nota" to "Nota", "datos_subjetivos" to "Datos subjetivos",
-                "datos_objetivos" to "Datos objetivos", "fotos" to "Historia clínica digitalizada (fotos)",
-            ),
-            hepatologia.secciones.map { it.id to it.titulo },
+            listOf("hemograma", "ferritina", "hepatograma", "glucemia", "hba1c", "colesterol_total", "ldl", "tg", "urea", "creatinina", "rac", "cortisol_matutino", "testosterona_total", "cpk", "otros"),
+            hepatologia.laboratorio("laboratorio_reducido")!!.analitos.map { it.clave },
         )
+        assertEquals(listOf("peso"), hepatologia.laboratorio("peso")!!.analitos.map { it.clave })
+        assertEquals(52, hepatologia.laboratorio("laboratorio_general")!!.analitos.size)
+        hepatologia.secciones.forEach { s ->
+            val c = assertNotNull(delCatalogo.firstOrNull { it.id == s.id }, "sección ${s.id} en el catálogo o en las legadas").def
+            assertEquals(s.campos.map { it.clave to it.tipo }, c.campos.map { it.clave to it.tipo }, "campos de ${s.id}")
+            assertEquals(s.registroTipo, c.registroTipo, "registroTipo de ${s.id}")
+            assertEquals(s.laboratorioTipo, c.laboratorioTipo, "laboratorioTipo de ${s.id}")
+            assertEquals(s.categoriaAntecedentes, c.categoriaAntecedentes, "categoriaAntecedentes de ${s.id}")
+        }
+        // Laboratorios: los tres tipos de hepatología, con los mismos analitos.
+        val laboratorios = delCatalogo.flatMap { it.laboratorios }.associateBy { it.tipo }
         assertEquals(listOf("laboratorio_general", "laboratorio_reducido", "peso"), hepatologia.laboratorios.map { it.tipo })
-        assertEquals(
-            listOf("examen_complementario", "interconsulta", "screening", "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn"),
-            hepatologia.registros.map { it.tipo },
-        )
-        assertEquals(clinicaMedica.examenFisicoCampos, hepatologia.examenFisicoCampos)
-        assertEquals(setOf("child_pugh"), hepatologiaContribution.renderers.keys)
+        hepatologia.laboratorios.forEach { l ->
+            val c = assertNotNull(laboratorios[l.tipo], "laboratorio ${l.tipo} en el catálogo")
+            assertEquals(l.analitos.map { it.clave }, c.analitos.map { it.clave }, "analitos de ${l.tipo}")
+        }
+        // Registros que usa alguna sección (los estudios con fecha): mismas claves de campo.
+        val registros = delCatalogo.flatMap { it.registros }.associateBy { it.tipo }
+        val usados = hepatologia.secciones.mapNotNull { it.registroTipo }
+        assertEquals(listOf("eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn"), usados)
+        usados.forEach { tipo ->
+            val c = assertNotNull(registros[tipo], "registro $tipo en el catálogo")
+            assertEquals(hepatologia.registro(tipo)!!.campos.map { it.clave to it.tipo }, c.campos.map { it.clave to it.tipo }, "campos del registro $tipo")
+        }
+        // Antecedentes: las dos categorías que guardaba existen en el catálogo o en las legadas (RF-30), con las mismas casillas.
+        val antecedentes = delCatalogo.flatMap { it.antecedentes }.associateBy { it.categoria }
+        assertEquals(listOf("personales", "familiares"), hepatologia.antecedentes.map { it.categoria })
+        hepatologia.antecedentes.forEach { a ->
+            val c = assertNotNull(antecedentes[a.categoria], "antecedentes ${a.categoria} en el catálogo o en las legadas")
+            assertEquals(a.items.map { it.clave }, c.items.map { it.clave }, "casillas de ${a.categoria}")
+        }
+        // Lo que se dibuja a medida (Child-Pugh) lo registra la HC general.
+        assertTrue("child_pugh" in hcGeneralContribution.renderers.keys)
+        assertEquals(setOf("child_pugh"), hepatologia.secciones.mapNotNull { it.renderKey }.toSet())
     }
 
     @Test
@@ -342,7 +358,6 @@ class CatalogoHcGeneralTest {
         assertEquals(catalogoHcGeneral, hcGeneralContribution.catalogo)
         assertEquals(setOf("child_pugh", "enfermedades"), hcGeneralContribution.renderers.keys)
         assertEquals("child_pugh", catalogoHcGeneral.seccion("child_pugh")?.def?.renderKey)
-        assertEquals(null, hepatologiaContribution.catalogo)
     }
 
     // RF-5: toda sección CUSTOM del catálogo tiene su renderer (si no, la pantalla dice "Sección no disponible").
@@ -392,6 +407,5 @@ class CatalogoHcGeneralTest {
         assertFalse(copiaDiagnosticos(armarDefinicion(catalogoHcGeneral, hepatologiaInicial).definicion))
         assertFalse(copiaDiagnosticos(hcGeneralContribution.definicion))
         assertTrue(copiaDiagnosticos(clinicaMedica))
-        assertFalse(copiaDiagnosticos(hepatologia))
     }
 }
