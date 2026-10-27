@@ -37,10 +37,17 @@ class MigracionHepatologiaTest {
     private val paciente2 = "p-prueba-2"
     private val paciente3 = "p-prueba-3"
     private val paciente4 = "p-prueba-4"
+    private val paciente5 = "p-prueba-5"
+    private val paciente6 = "p-prueba-6"
     private val ocultasClinica = "secciones_ocultas_clinica"
     private val ocultasHepatologia = "secciones_ocultas_hepatologia"
     private val tablasDeDatos = listOf(
         "consulta", "seccion_valor", "registro_clinico", "laboratorio", "antecedente", "paciente_extra", "medico_preferencia",
+    )
+
+    /** Las únicas tablas que `8.sqm` modifica (`seccion_valor` y compañía cuelgan de `consulta_id` y no se tocan). */
+    private val tablasQueMueve = setOf(
+        "consulta", "antecedente", "registro_clinico", "laboratorio", "paciente_extra", "medico_preferencia",
     )
 
     private fun conBase(bloque: suspend (SqlDriver) -> Unit) {
@@ -492,6 +499,76 @@ class MigracionHepatologiaTest {
         assertEquals(1L, numero(driver, "SELECT deleted FROM antecedente WHERE id = 'an-g4-h'"))
     }
 
+    // ---- antecedentes que se parecen a un choque y no lo son (H3 del reviewer) ----
+
+    /**
+     * Cuatro pares con la misma clave que NO chocan, armados para que la fila de `clinica` (y la de `hepatologia`) no pierda por
+     * otra razón: en cada par, la que "ganaría" por fecha si el `EXISTS` mirara de menos es la otra. Cada condición del `EXISTS`
+     * (categoría, paciente, HC) tiene su par, así que sacarla de `8.sqm` desactiva una fila que tenía que seguir activa.
+     * Sufijo -h = hepatologia, -c = clinica, -p = pediatria.
+     */
+    private fun sembrarParecidos(driver: SqlDriver) {
+        // (a) Misma clave del mismo paciente en otra categoría; la de clinica es más nueva (sin `c.categoria` perdería la de hepatologia).
+        antecedente(driver, "an-pa-h", "hepatologia", "clave_pa", 1000, categoria = "familiares", pacienteId = paciente5)
+        antecedente(driver, "an-pa-c", "clinica", "clave_pa", 2000, categoria = "personales", pacienteId = paciente5)
+        // (b) Lo mismo al revés; la de hepatologia es más nueva (sin `h.categoria` perdería la de clinica).
+        antecedente(driver, "an-pb-h", "hepatologia", "clave_pb", 3000, categoria = "personales", pacienteId = paciente5)
+        antecedente(driver, "an-pb-c", "clinica", "clave_pb", 1000, categoria = "familiares", pacienteId = paciente5)
+        // (c) Misma categoría y clave en otro paciente; la de clinica es más nueva (sin `c.paciente_id` perdería la de hepatologia).
+        antecedente(driver, "an-pc-h", "hepatologia", "clave_pc", 1000, pacienteId = paciente5)
+        antecedente(driver, "an-pc-c", "clinica", "clave_pc", 2000, pacienteId = paciente6)
+        // (d) La misma clave, categoría y paciente en pediatría, más nueva (sin `h.especialidad = 'hepatologia'` perdería la de clinica).
+        antecedente(driver, "an-pd-c", "clinica", "clave_pd", 1000, pacienteId = paciente5)
+        antecedente(driver, "an-pd-p", "pediatria", "clave_pd", 5000, pacienteId = paciente5)
+    }
+
+    private val parecidos = listOf("an-pa-h", "an-pa-c", "an-pb-h", "an-pb-c", "an-pc-h", "an-pc-c", "an-pd-c", "an-pd-p")
+
+    @Test
+    fun la_misma_clave_en_otra_categoria_y_clinica_mas_nueva_no_desactiva_la_de_hepatologia() = conBase { driver ->
+        sembrarParecidos(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-pa-h"))
+        assertEquals(1L, activo(driver, "an-pa-c"))
+    }
+
+    @Test
+    fun la_misma_clave_en_otra_categoria_y_hepatologia_mas_nueva_no_desactiva_la_de_clinica() = conBase { driver ->
+        sembrarParecidos(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-pb-h"))
+        assertEquals(1L, activo(driver, "an-pb-c"))
+    }
+
+    @Test
+    fun la_misma_clave_de_otro_paciente_y_clinica_mas_nueva_no_desactiva_la_de_hepatologia() = conBase { driver ->
+        sembrarParecidos(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-pc-h"))
+        assertEquals(1L, activo(driver, "an-pc-c"))
+    }
+
+    @Test
+    fun una_fila_de_pediatria_mas_nueva_no_desactiva_la_de_clinica() = conBase { driver ->
+        sembrarParecidos(driver)
+        migrar(driver)
+        assertEquals(1L, activo(driver, "an-pd-c"))
+        assertEquals(1L, activo(driver, "an-pd-p"))
+    }
+
+    @Test
+    fun los_pares_que_no_chocan_cambian_solo_de_hc() = conBase { driver ->
+        sembrarParecidos(driver)
+        val antes = volcado(driver, "antecedente")
+        assertEquals(parecidos.size, antes.size)
+
+        migrar(driver)
+
+        // Ninguna pierde el `activo`, el `dirty` ni la fecha: solo las de hepatologia pasan a clinica.
+        assertEquals(conLaHcMovida(driver, "antecedente", antes), volcado(driver, "antecedente"))
+        assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM antecedente WHERE activo = 0"))
+    }
+
     // ---- paciente_extra ----
 
     @Test
@@ -670,6 +747,42 @@ class MigracionHepatologiaTest {
         migrar(driver)
 
         tablas.forEach { assertEquals(antes.getValue(it), volcado(driver, it, otras), "tabla $it") }
+    }
+
+    private fun tablas(driver: SqlDriver): List<String> =
+        driver.executeQuery(null, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name", { c ->
+            QueryResult.Value(buildList { while (c.next().value) add(c.getString(0)!!) })
+        }, 0).value
+
+    /**
+     * La migración solo toca las seis tablas de [tablasQueMueve]. Las que guardan los códigos que informa turnos (`medico`,
+     * `especialidad`) no se normalizan acá: se normalizan al leer (T48) y se reescriben limpias en el próximo ingreso. Las demás
+     * (`hc_enfermedades`, `sesion_local`, `hc_config`, `seccion_valor`...) no tienen nada que ver. Un volcado completo antes y
+     * después lo fija para que nadie le agregue a `8.sqm` un `UPDATE` de más.
+     */
+    @Test
+    fun toda_tabla_que_la_migracion_no_mueve_queda_identica() = conBase { driver ->
+        sembrar(driver)
+        sembrarChoques(driver)
+        sembrarParecidos(driver)
+        ejecutar(driver, "INSERT INTO medico (id, usuario_id, nombre, apellido, especialidades_hc, updated_at) VALUES ('m-prueba-hc', 'u-prueba-1', 'Médico', 'De Prueba', 'pediatria,hepatologia', 100)")
+        ejecutar(driver, "INSERT INTO especialidad (id, nombre, codigo_hc, updated_at) VALUES ('tobb-e-prueba', 'Hepatología', 'hepatologia', 100)")
+        ejecutar(driver, "INSERT INTO hc_enfermedades (medico_id, parte, ficha_id, datos_json, recibida_en) VALUES ('m-prueba-hc', 'seccion', 7, '{\"hepatologia\":1}', 1)")
+        ejecutar(driver, "INSERT INTO sesion_local (id, usuario_id, token, sesion_json, guardado_en) VALUES (1, 'u-prueba-1', 'valor-de-prueba', '{\"historias\":[\"hepatologia\"]}', 1)")
+        val sinMover = tablas(driver) - tablasQueMueve
+        // Las que importan están entre las que se comparan (y hay de sobra).
+        listOf("medico", "especialidad", "hc_enfermedades", "sesion_local", "hc_config", "seccion_valor", "interconsultor", "turno")
+            .forEach { assertEquals(true, it in sinMover, "se compara $it") }
+        val antes = sinMover.associateWith { volcado(driver, it) }
+        assertEquals(true, antes.getValue("medico").isNotEmpty() && antes.getValue("especialidad").isNotEmpty())
+        assertEquals(true, antes.getValue("hc_enfermedades").isNotEmpty() && antes.getValue("sesion_local").isNotEmpty())
+
+        migrar(driver)
+
+        sinMover.forEach { assertEquals(antes.getValue(it), volcado(driver, it), "tabla $it") }
+        // Y a propósito: turnos sigue diciendo `hepatologia` en la base; la normalización es de lectura.
+        assertEquals("pediatria,hepatologia", texto(driver, "SELECT especialidades_hc FROM medico WHERE id = 'm-prueba-hc'"))
+        assertEquals("hepatologia", texto(driver, "SELECT codigo_hc FROM especialidad WHERE id = 'tobb-e-prueba'"))
     }
 
     // ---- idempotencia y sin pérdida ----
