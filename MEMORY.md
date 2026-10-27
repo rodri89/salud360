@@ -16,8 +16,8 @@ registros de personas): el repo es público.
   una base v9 destruye los datos del navegador en la web. `hepatologiaContribution` se borró (ya no hay casilla ni chip);
   `internal val hepatologia` queda porque `catalogoHcGeneral` copia de ahí. `HcPerfilesE2ETest` sigue sin escribirse (D7, fuera).
 - Spec 003 (enfermedades): servidor (F1), lógica de la app (F2) y pantallas (F3) completas y validadas por el reviewer; falta
-  F3.7 (prueba manual del usuario, incluida la M8: cierre real contra la copia local). Mónica Falcone (paciente de prueba) hay
-  que pasarla a la HC general desde la app (ya no hay casilla Hepatología). Estado de la prueba en `%TEMP%\opencode\f37`
+  F3.7 (prueba manual del usuario, incluida la M8: cierre real contra la copia local). Hay que pasar a la médica de prueba
+  (turnos médico 38) a la HC general desde Administración (ya no hay casilla Hepatología). Estado de la prueba en `%TEMP%\opencode\f37`
   (fuera del repo); el `devWeb` hay que arrancarlo o refrescarlo (con v9) antes. Detalle por tarea en
   `specs/003-hc-enfermedades/tasks.md`. Quedan menores del reviewer sin tarea.
 - Pendientes conocidos (sin tarea):
