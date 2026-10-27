@@ -45,8 +45,9 @@ registros de personas): el repo es público.
   general desde la app.
 - Spec 001, tanda D (hepatología deja de ser una HC aparte, T47 a T53): aprobada por el usuario el 2026-10-26, incluida la migración
   `8.sqm` (T49-T50) y D1 a D7 como las recomendó el planificador (normalizar solo en la app; no se tocan los Laravel). T47 hecha
-  (`hcgeneral/HistoriasClinicas.kt`: `normalizarHistoriasClinicas`, `normalizarCodigoHc`, `codigoHcPorNombre`). Siguen T48 a T53
-  en orden, una por vez. No refrescar el `devWeb` con `8.sqm` entre T49 y T50 ni sin T50.
+  (`hcgeneral/HistoriasClinicas.kt`: `normalizarHistoriasClinicas`, `normalizarCodigoHc`, `codigoHcPorNombre`). T48 hecha (se
+  normaliza en `MedicoRow.toModel`/`EspecialidadRow.toModel`, `TurnosImportador` y `AgendaTurnosOnline`, incluido lo que el
+  admin manda a turnos; `HistoriasHabilitadasTest`). Siguen T49 a T53 en orden, una por vez. No refrescar el `devWeb` con `8.sqm` entre T49 y T50 ni sin T50.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama

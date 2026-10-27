@@ -2,6 +2,7 @@ package com.salud360.core.data.repos
 
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.normalizarHistoriasClinicas
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -420,6 +421,9 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
      * Deja al médico con exactamente [codigos] habilitadas en turnos, que es el dueño del dato, y guarda en el
      * dispositivo lo que turnos responde, limpio (`dirty = false`): no queda nada para empujar después. Si turnos no
      * lo acepta, lanza y el dispositivo queda como estaba. Devuelve las que quedaron habilitadas.
+     *
+     * `hepatologia` es la HC general (RF-29): ni se manda ni se guarda. Si turnos la tenía activa, al faltar en la lista
+     * la desactiva (no borra la fila) y deja activa `clinica`, así que el médico no pierde la HC general.
      */
     suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> {
         val numero = TobbIds.numero(medicoId)
@@ -427,13 +431,14 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         val r = sinRutaEnLaWeb("cambiar las historias clínicas de un médico") {
             decodificar(
                 TobbHistoriasClinicasMedico.serializer(),
-                turnos.tobbPut("medicos/$numero/historias-clinicas", cuerpo(TobbHistoriasClinicas.serializer(), TobbHistoriasClinicas(codigos))),
+                turnos.tobbPut("medicos/$numero/historias-clinicas", cuerpo(TobbHistoriasClinicas.serializer(), TobbHistoriasClinicas(normalizarHistoriasClinicas(codigos)))),
             )
         }
+        val habilitadas = normalizarHistoriasClinicas(r.historiasClinicas)
         aq.medicoPorId(medicoId).uno { it.toModel() }?.let { m ->
-            aq.upsertMedico(m.copy(especialidadesHc = r.historiasClinicas).toRow(ahoraMillis(), dirty = false))
+            aq.upsertMedico(m.copy(especialidadesHc = habilitadas).toRow(ahoraMillis(), dirty = false))
         }
-        return r.historiasClinicas
+        return habilitadas
     }
 
     suspend fun sincronizarAdministracion() {
@@ -465,7 +470,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                         sexo = m.sexo.orEmpty(), foto = m.foto,
                         consultorioId = TobbIds.consultorio(m.consultorioId),
                         especialidadId = TobbIds.especialidad(m.especialidadId),
-                        especialidadesHc = m.historiasClinicas,
+                        especialidadesHc = normalizarHistoriasClinicas(m.historiasClinicas),
                         // Solo el que tiene horarios cargados: ver la nota en `TurnosImportador`.
                         tieneTurnos = m.tieneHorarios == 1,
                         activo = m.activo == 1,

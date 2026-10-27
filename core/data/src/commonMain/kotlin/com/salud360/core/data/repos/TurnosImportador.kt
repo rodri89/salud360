@@ -2,6 +2,8 @@ package com.salud360.core.data.repos
 
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.hcgeneral.codigoHcPorNombre
+import com.salud360.core.data.hcgeneral.normalizarCodigoHc
+import com.salud360.core.data.hcgeneral.normalizarHistoriasClinicas
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.uno
@@ -111,7 +113,7 @@ class TurnosImportador(private val db: Salud360Db) {
     private suspend fun importarEspecialidad(tobbId: Long, nombre: String?): String {
         val id = "tobb-e$tobbId"
         val previa = db.authQueries.especialidadPorId(id).uno { it.toModel() }
-        val esp = EspecialidadTurnos(id, nombre?.ifBlank { null } ?: previa?.nombre ?: "Especialidad $tobbId", codigoHc = previa?.codigoHc ?: codigoHcPorNombre(nombre), color = previa?.color, activo = true)
+        val esp = EspecialidadTurnos(id, nombre?.ifBlank { null } ?: previa?.nombre ?: "Especialidad $tobbId", codigoHc = normalizarCodigoHc(previa?.codigoHc) ?: codigoHcPorNombre(nombre), color = previa?.color, activo = true)
         db.authQueries.upsertEspecialidad(esp.toRow(ahoraMillis(), dirty = false))
         return id
     }
@@ -122,8 +124,8 @@ class TurnosImportador(private val db: Salud360Db) {
      * y, como último recurso, se deduce de la especialidad de turnos (ver [FALLBACK_HC_POR_ESPECIALIDAD]).
      */
     private fun historiasClinicasDe(m: TobbMedico, previo: Medico?): List<String> {
-        if (m.historiasClinicas.isNotEmpty()) return m.historiasClinicas.map { it.trim().lowercase() }.distinct()
-        previo?.especialidadesHc?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (m.historiasClinicas.isNotEmpty()) return normalizarHistoriasClinicas(m.historiasClinicas)
+        previo?.especialidadesHc?.takeIf { it.isNotEmpty() }?.let { return normalizarHistoriasClinicas(it) }
         return if (FALLBACK_HC_POR_ESPECIALIDAD) listOfNotNull(codigoHcPorNombre(m.especialidad)) else emptyList()
     }
 

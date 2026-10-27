@@ -1338,7 +1338,7 @@ preguntas queda como registro de las alternativas descartadas.
     `hepatologia`). Las dos funciones de cartera y asignación pasan por `normalizarHistoriasClinicas`; `AsignacionesMedicos` ya no tiene
     `CODIGOS_CON_PERFIL`. La copia de `:server` no se toca.
 
-- [ ] **T48. Aplicar la normalización donde la app lee y guarda las HC habilitadas.** RF-29
+- [x] **T48. Aplicar la normalización donde la app lee y guarda las HC habilitadas.** RF-29
   - Lectura (obligatoria, un solo punto): `core/data/.../mappers/Mappers.kt` l. 110, `MedicoRow.toModel`:
     `especialidades_hc.splitCsv()` → `normalizarHistoriasClinicas(...)`. Con eso la ven normalizada `resolverPerfil`
     (`MainShell` filtra con `registry.existe`), el administrador (casillas y chips), `PacientesHcRepository`,
@@ -1359,6 +1359,25 @@ preguntas queda como registro de las alternativas descartadas.
     necesitan red: se verifican por compilación y en T52 (paso 8).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HistoriasHabilitadasTest*'` en verde (visto fallar antes) y
     `.\gradlew :core:data:jvmTest` completo en verde; `.\gradlew :composeApp:compileKotlinWasmJs` (con las `-P` de arriba) compila.
+  - **Hecho (2026-10-26).** `HistoriasHabilitadasTest` (9 tests) visto fallar antes del código (7 por aserción) y en verde después;
+    `:core:data:jvmTest --rerun` completo en verde (588 tests, 0 fallas); compilan `:features:admin:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs` (solo el klib: no se generó el ejecutable web). Verificado con grep que `MedicoRow.toModel` y
+    `EspecialidadRow.toModel` son los únicos lugares que leen `especialidades_hc` / `codigo_hc` (ningún `.sq` filtra por ellos, y
+    `SyncAdapters`, `AdminRepository` y `resolverPerfil` pasan por `toModel`). Lectura: `Mappers.kt` (`MedicoRow.toModel` y
+    `EspecialidadRow.toModel`). Escritura: `TurnosImportador` (`historiasClinicasDe` normaliza sus tres salidas; `importarEspecialidad`
+    con `normalizarCodigoHc(previa?.codigoHc)`), `AgendaTurnosOnline.sincronizarAdministracion` y `guardarHistoriasClinicas`.
+    Leer no reescribe la base: una fila que turnos informó como `hepatologia` queda así hasta el próximo ingreso o guardado (sin
+    `dirty`). Un cambio sobre lo planeado: `guardarHistoriasClinicas` **también normaliza lo que manda** (`hepatologia` nunca
+    sale hacia turnos, aunque alguien la tilde mientras la casilla siga, hasta T51) y devuelve/guarda la lista normalizada de
+    la respuesta.
+    **Cómo queda una fila `hepatologia` activa en turnos tras guardar desde la app nueva** (verificado leyendo
+    `HistoriaClinicaController@actualizar` y `HistoriaClinicaService::guardar`, sin tocarlos): el administrador parte de la
+    lista normalizada (`clinica`, + las demás) y la manda completa; `guardar` pone `activo = 0` a toda fila que no está en la
+    lista (la de `hepatologia`, no se borra) y para `clinica` inserta la fila o la reactiva (`activo = 1`). Resultado: `hepatologia`
+    queda inactiva, `clinica` activa, las demás HC igual; el `PUT` responde las activas (`clinica`, …) y `auth/perfil` también, así
+    que el médico no pierde la HC general ni se le queda `hepatologia` activa. Si el administrador guarda otra HC de un médico que
+    solo tenía `hepatologia`, pasa lo mismo (se manda `clinica` + la otra). Una app vieja que lo vuelva a leer verá `clinica`.
+    La web de turnos sigue mostrando "Hepatología" como casilla (sin cambios).
 
 - [ ] **T49. Migración `8.sqm` (v8 → v9): lo guardado como `hepatologia` pasa a `clinica`.** RF-29, RF-30
   **Aprobada expresamente por el usuario el 2026-10-26** (migración de la base del dispositivo con datos

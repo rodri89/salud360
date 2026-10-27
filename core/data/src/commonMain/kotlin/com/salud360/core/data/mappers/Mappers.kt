@@ -1,5 +1,7 @@
 package com.salud360.core.data.mappers
 
+import com.salud360.core.data.hcgeneral.normalizarCodigoHc
+import com.salud360.core.data.hcgeneral.normalizarHistoriasClinicas
 import com.salud360.core.database.Antecedente as AntecedenteRow
 import com.salud360.core.database.Archivo as ArchivoRow
 import com.salud360.core.database.Config_agenda as ConfigAgendaRow
@@ -107,7 +109,8 @@ fun Usuario.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = tr
 
 fun MedicoRow.toModel() = Medico(
     id, usuario_id, nombre, apellido, telefono, mail, sexo, foto, consultorio_id, especialidad_id,
-    especialidades_hc.splitCsv(), tiene_turnos.b(), visible_en_turnos.b(), activo.b(),
+    // `hepatologia` (turnos todavía la informa) es la HC general: se lee así en toda la app (RF-29).
+    normalizarHistoriasClinicas(especialidades_hc.splitCsv()), tiene_turnos.b(), visible_en_turnos.b(), activo.b(),
 )
 fun Medico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = MedicoRow(
     id, usuarioId, nombre, apellido, telefono, mail, sexo, foto, consultorioId, especialidadId,
@@ -118,7 +121,7 @@ fun SecretariaRow.toModel() = Secretaria(id, usuario_id, nombre, apellido, consu
 fun Secretaria.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     SecretariaRow(id, usuarioId, nombre, apellido, consultorioIds.joinCsv(), medicoIds.joinCsv(), activo.l(), updatedAt, deleted.l(), dirty.l())
 
-fun EspecialidadRow.toModel() = EspecialidadTurnos(id, nombre, codigo_hc, color, activo.b())
+fun EspecialidadRow.toModel() = EspecialidadTurnos(id, nombre, normalizarCodigoHc(codigo_hc), color, activo.b())
 fun EspecialidadTurnos.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     EspecialidadRow(id, nombre, codigoHc, color, activo.l(), updatedAt, deleted.l(), dirty.l())
 
