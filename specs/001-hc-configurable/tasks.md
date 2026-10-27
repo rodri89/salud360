@@ -1146,7 +1146,7 @@ Al terminar la tanda: validación del reviewer y prueba manual del usuario.
 
 ## Tanda D — Hepatología deja de ser una historia clínica aparte (redactada el 2026-10-26)
 
-**Estado: APROBADA POR EL USUARIO EL 2026-10-26**, incluida expresamente la migración `8.sqm` (T49 y T50; AGENTS.md:
+**Estado: completa salvo T52 (prueba manual del usuario).** Aprobada por el usuario el 2026-10-26, incluida expresamente la migración `8.sqm` (T49 y T50; AGENTS.md:
 "migraciones de esquema: preguntá antes"; constitución #3) y las decisiones D1 a D7 como las recomendó el planificador
 (ver "Decididas" más abajo).
 
@@ -1587,7 +1587,7 @@ preguntas queda como registro de las alternativas descartadas.
     licencia del médico de prueba como dice `MEMORY.md` si se extendió; no vaciar la base local de hclinica. Nada que commitear.
   - Hecho cuando: el usuario confirma los pasos 1 a 10 y la limpieza.
 
-- [ ] **T53. Cierre de la tanda: documentación.** RF-29
+- [x] **T53. Cierre de la tanda: documentación.** RF-29
   - `AGENTS.md` (decisión 7 de la tanda B): la línea de "Tests" pasa a `:core:data:jvmTest`, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest` y
     `:especialidades:clinica:jvmTest`, y se quita "(solo hay tests ahí)" (hoy hay `CatalogoHcGeneralTest` y `ChildPughTest` en
     `especialidades/clinica`; no hay tests en `features/*` ni en `composeApp`).
@@ -1601,6 +1601,21 @@ preguntas queda como registro de las alternativas descartadas.
   - Hecho cuando: la validación del reviewer (RF por RF: RF-29 con `HistoriasClinicasTest`, `HistoriasHabilitadasTest` y T52; RF-30 con
     `MigracionHepatologiaTest` y `CatalogoHcGeneralTest`), `.\gradlew :core:data:jvmTest :core:ui:jvmTest :especialidades:clinica:jvmTest`
     en verde, `.\gradlew :composeApp:compileKotlinWasmJs -Pentorno=dev` (con las `-P`) compila, y `git status` solo muestra archivos de la tanda.
+  - **Hecho (2026-10-27).** Solo documentación (no se tocó código ni tests). Se corrieron, uno por vez, `:core:data:jvmTest`, `:core:ui:jvmTest`,
+    `:especialidades:clinica:jvmTest` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (con las `-P`): los cuatro `BUILD SUCCESSFUL`, pero
+    con las tareas `UP-TO-DATE` (nada de código cambió desde la última corrida verde de T51, 617 tests en `:core:data`), así que confirman ese
+    resultado y no volvieron a ejecutar los tests. La validación del reviewer de la tanda queda aparte. `AGENTS.md`: la línea de tests
+    suma `:especialidades:clinica:jvmTest` (verificado: hay `CatalogoHcGeneralTest` y `ChildPughTest` en su `commonTest`; no hay tests en
+    `features/*`, `composeApp` ni `:server`), y se corrigieron afirmaciones que habían quedado viejas: los E2E de la HC general
+    (`HcClinicaPacientesE2ETest` y `HcClinicaEnfermedadesE2ETest`, con sus propiedades `.clinica`), que hepatología es un perfil y no una HC (con
+    la trampa de no borrar `internal val hepatologia`) y que una migración que solo mueve datos (`8.sqm`) no toca el `.sq` y no tiene vuelta
+    atrás en una base ya migrada. `plan.md` de la 001: las "Notas de la tanda D" pasan a "Decidido en la tanda D" (el texto de arriba se conserva
+    como se aprobó y manda la sección nueva donde difieren: `7.sqm` → `8.sqm`); `specs/003-hc-enfermedades/plan.md` (RF-57) apunta a
+    `las_secciones_de_hepatologia_se_leen_desde_la_hc_general`. `spec.md` (el usuario aprobó la tanda el 2026-10-26; solo redacción, sin cambiar
+    ningún RF): se quitó "hasta la tanda D" y la hepatología aparte de RF-73, RF-82 y RF-90 (la tarea decía "RF-33", pero esa línea 348 es RF-90) y se
+    reescribió el caso límite de los motivos ("salen... porque esas consultas pasaron a `clinica`"). No se tocó el registro del cambio del
+    2026-10-15 (2) ("Vale para la HC general y para la hepatología aparte", l. 513): es historia de un cambio aprobado. `MEMORY.md`: traspaso al
+    día. No se tocan las menciones históricas a `hepatologia_sigue_igual` en `specs/003-hc-enfermedades/tasks.md` (notas de tareas ya hechas).
 
 Fuera de esta tanda: `HcPerfilesE2ETest` y los criterios de finalización "contra la copia local" del plan original (pregunta D7); la edición de la
 web de turnos y de su `HistoriaClinicaService` (pregunta D1, opciones B y C); endurecer el driver web (pregunta D5, opción B).

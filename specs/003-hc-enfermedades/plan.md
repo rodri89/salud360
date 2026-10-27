@@ -382,7 +382,7 @@ Producción: con la 001/002 completas, cuando el usuario lo decida; nada se sube
 | RF-54 | `crear` | `EnfermedadesReglasTest`; humo (reutilizada por clave, menor id, reactivada, `nombre_invalido`, `unique`, con/sin paciente, paciente inexistente o fuera de la cartera → 200 sin marcar con el motivo); E2E |
 | RF-55 | `EnfermedadesService` | Revisión (sin `DELETE` ni `medico_infos`; buscar en el diff); humo (conteos sin filas borradas) |
 | RF-56 | Ids distintos; sin copia entre secciones | `CatalogoHcGeneralTest`; manual (diagnósticos legados igual) |
-| RF-57 | Solo `catalogoHcGeneral` | `CatalogoHcGeneralTest` (`clinica_medica_sigue_igual`, `hepatologia_sigue_igual`); manual pediatría |
+| RF-57 | Solo `catalogoHcGeneral` | `CatalogoHcGeneralTest` (`clinica_medica_sigue_igual`, `las_secciones_de_hepatologia_se_leen_desde_la_hc_general`); manual pediatría |
 | RF-58 | `pacienteParaCrear`, `avisoCrear`; `sin_marcar_por` | `AdministrarEnfermedadesTest` (sin vínculo, fuera de la cartera, consulta no editable: no manda o no marca, con el texto); humo |
 | RF-59 | `auth/salir` (hclinica y pediatría); `AuthRepository.logout` | Curl (token revocado en turnos sigue entrando por la caché hasta `auth/salir`, después `401`); test de `AuthRepository` (llama a los tres, una HC que falla o no contesta no impide cerrar; ojo: el proyecto no tiene `ktor-client-mock`, así que hace falta un punto de inyección para el revocado o preguntar por la dependencia, se define en F3.8); manual |
 

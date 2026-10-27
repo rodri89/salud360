@@ -967,9 +967,9 @@ C7-2. **Opt-in por sección con `SeccionDef.conHistorial`, activada solo en moti
    `CodigosHc.GENERAL`) dentro de `TextoSeccion` (no se reutiliza sin tocar código de pantalla) y activarlo en todas
    las de texto de la HC general (no lo pidió el usuario y cambia la carga de conductas y nota).
 
-## Notas de la tanda D (2026-10-26) — APROBADAS POR EL USUARIO EL 2026-10-26
-Detalle, tareas T47 a T53 y decisiones D1 a D7 (todas las recomendadas) en `tasks.md` ("Tanda D"). Lo que cambia respecto del plan de arriba
-(el texto de arriba no se edita hasta T53):
+## Decidido en la tanda D (2026-10-26) — aprobado por el usuario el 2026-10-26
+Detalle, tareas T47 a T53 y decisiones D1 a D7 (todas las recomendadas) en `tasks.md` ("Tanda D"). Lo que cambia respecto del plan de arriba,
+que se conserva como se aprobó (con `7.sqm` y la hepatología "hasta la D"); donde difiere, manda esta sección:
 1. **Numeración de la migración:** `7.sqm` (sección 4 `core/database`, sección 9 `MigracionHepatologiaTest` "de 7 a 8", sección 8
    "Hepatología se migra con `7.sqm`") ya la usó la spec 003 (`hc_enfermedades`, esquema v8). La migración de hepatología es
    **`8.sqm` (v8 → v9)**, solo datos: no cambia ningún `.sq` ni agrega columnas.

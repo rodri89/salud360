@@ -4,62 +4,38 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
-## Traspaso (2026-10-22)
+## Traspaso (2026-10-27)
 - Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
-  pruebas manuales del usuario de varias tandas (001: C, C2 a C7; 002: E2, RF-10 y RF-14) y el resto de la 002
+  pruebas manuales del usuario de varias tandas (001: C, C2 a C7 y D/T52; 002: E2, RF-10 y RF-14) y el resto de la 002
   (envío de consultas).
-- Spec 003 (enfermedades): plan aprobado. Tanda F1 (servidor hclinica) completa y validada. Tanda F2 completa
-  (F2.1 a F2.10 hechas y commiteadas; F2.7 = migración `7.sqm` / `hc_enfermedades`, `EnfermedadesRepository` y borrado en
-  `AuthRepository`; F2.8 = `EnfermedadesControlador`, `DataModule` y E12, la guardia contra respuestas lentas tras el
-  `logout`; F2.9 = "Enfermedades" CUSTOM en `catalogoHcGeneral`, sin renderer hasta F3.4; F2.10 = E2E
-  `HcClinicaEnfermedadesE2ETest` contra la copia local; F2.11 = ajustes de la validación del reviewer; F2.12 = tests de enfermedades estables bajo carga; el último
-  commit de código está en `git log`). La tanda F2 se validó (aprobada con observaciones, 2026-10-23) y las observaciones
-  están cerradas. Tanda F3 (pantallas, 10 tareas, decisiones P1 a P9 en `tasks.md`) aprobada el 2026-10-23;
-  F3.1 hecha (`CasillaElegible` en `core/ui/components`, sin tests nuevos: reutiliza `ColoresSiNo`); F3.2 hecha
-  (`lineaDeCandidata` en `core/data/hcgeneral/FichaCandidata.kt` y `ElegirFichaPaciente` en `features/hc/secciones`);
-  F3.3 hecha (`hcgeneral/AccesoEnfermedades.kt`: `medicoParaEnfermedades(sesión)`, `consultaEditable`, `visibleParaSesion`;
-  `EnfermedadesViewModel` en `features/hc`; `ConsultaViewModel` recibe `AuthRepository` y filtra la pestaña en `pestanias`;
-  su `medicoId` sigue privado); F3.4a hecha (`repos/PanelEnfermedades.kt`: `panelDeSeccion(ui, editable)` con
-  `Cargando`/`ElegirFicha`/`Motivo`/`SinCopia`/`Contenido` y los `TEXTO_*`; "Reintentar" con motivos 5, 7, 8 y 9, en sin
-  copia y en solo lectura; las casillas no tocables salen de `ui.marcado.puedeTocar`); F3.4b hecha
-  (`features/hc/secciones/EnfermedadesSeccion.kt`, sin registrar todavía: el perfil con la sección sigue mostrando "Sección
-  no disponible" hasta F3.4c; "Administrar" es una lambda vacía hasta F3.5); F3.4c hecha (renderer `enfermedades`
-  registrado en `hcGeneralContribution`, ícono propio `HealthAndSafety` en `Iconos.kt`; el cartel "Sección no disponible" ya no
-  sale para esa sección); F3.5 hecha (`repos/PanelAdministrar.kt`: `panelDeAdministrar(ui)` con `Cargando`/`SoloAviso`/`Contenido`;
-  `AdministrarEnfermedadesDialog` modal en `features/hc/secciones`, abierto por "Administrar enfermedades"); ajuste de F3.5
-  (2026-10-23, decisión del usuario): la ventana se cierra sola si la sección deja de poder administrar por conexión o por un
-  motivo 1 a 5 (`debeCerrarAdministrar` en `PanelAdministrar.kt`; con la sección cargando o solo `editable` falso no cierra, RF-58).
-  F3.6 hecha ("Datos" en `ConsultaScreen`: `enfermedadesEnDatosDeConsulta` en `AccesoEnfermedades.kt` limita a HC general
-  (`porPerfil`) y al médico propio, pediatría no cambia; `ConsultaViewModel.enfermedadesEnDatos(ui)` y
-  `secciones/EnfermedadesEnDatos.kt`, dibujado en los dos lugares de "Datos"; solo lectura, comparte el controlador con la
-  sección y su `abrir()` puede crear la ficha en la web, P7-A). F3.8 hecha (RF-59: `RevocaSesion` en `repos/`,
-  `TurnosOnlineClient.cerrarSesion(token)`, `HcApiClient.salir(token)`, `AuthRepository.logout(tokenARevocar)` revoca en
-  segundo plano con `limite` de 3 s y sin demorar el cierre; `DataModule` cablea turnos + cada HC). El reviewer validó la
-  tanda F3 (aprobada con observaciones, 2026-10-24) y F3.9 cerró los cuatro puntos que el usuario aprobó (ventana de administrar
-  con `remember` y `cerrarAdministrar()` al salir de la composición, tarjeta de `ElegirFichaPaciente` fusionada para el lector,
-  `FlowRow` en "Reintentar"/"Administrar", DNI de `FichaCandidataTest` en `99000xxx`). El código de la tanda F3 está completo y
-  validado: solo falta F3.7 (prueba manual del usuario, incluida la tanda M8: cierre real contra la copia local; M3 (9), M5 (5, 6)
-  son pasos nuevos de F3.9). Quedan los otros menores del reviewer, sin tarea.
-- F3.7 preparada (2026-10-25); estado en `%TEMP%\opencode\f37` (fuera del repo). El `devWeb` no estaba levantado: arrancarlo.
-  La prueba de enfermedades (F3.7) sigue en curso por el usuario; Mónica Falcone (paciente de prueba) hay que pasarla a la HC
-  general desde la app.
-- Spec 001, tanda D (hepatología deja de ser una HC aparte, T47 a T53): aprobada por el usuario el 2026-10-26, incluida la migración
-  `8.sqm` (T49-T50) y D1 a D7 como las recomendó el planificador (normalizar solo en la app; no se tocan los Laravel). T47 hecha
-  (`hcgeneral/HistoriasClinicas.kt`: `normalizarHistoriasClinicas`, `normalizarCodigoHc`, `codigoHcPorNombre`). T48 hecha (se
-  normaliza en `MedicoRow.toModel`/`EspecialidadRow.toModel`, `TurnosImportador` y `AgendaTurnosOnline`, incluido lo que el
-  admin manda a turnos; `HistoriasHabilitadasTest`). T49 hecha (`8.sqm`: la base local sube a v9, solo mueve datos de `hepatologia` a `clinica`, ningún `.sq` cambia;
-  `MigracionHepatologiaTest` sin choques). T50 hecha: `8.sqm` probada con choques, idempotencia y sin pérdida (29 tests, `8.sqm` sin cambios;
-  límite conocido: `paciente_extra` de hepatología frente a una fila borrada de `clinica` queda en hepatología). Ya se puede refrescar el
-  `devWeb` con v9, recordando que volver a una app vieja (v8) sobre una base v9 destruye los datos del navegador en la web (el driver descarta
-  las tablas). T51 hecha: `hepatologiaContribution` fuera del registro (`AppDi.kt`), ya no hay casilla ni chip "Hepatología" en el alta y la
-  ficha del médico; `hepatologia` es `internal val` y NO se borra (`HcGeneral.kt` copia de ahí; el catálogo copia de ella, así que
-  `CatalogoHcGeneralTest` fija a mano ids y analitos). Siguen T52 (prueba manual del usuario) y T53, en orden, una por vez.
-- Cómo seguir: leer `AGENTS.md`, esta memoria y `specs/003-hc-enfermedades/tasks.md`; una tarea por vez con el
+- Spec 001, tanda D (hepatología deja de ser una HC aparte): completa salvo T52 (prueba manual del usuario, pasos en `tasks.md`);
+  T53 (documentación) hecha. `normalizarHistoriasClinicas` lee `hepatologia` de turnos como `clinica` (en `MedicoRow.toModel`,
+  `TurnosImportador` y `AgendaTurnosOnline`); `8.sqm` (esquema local **v9**) solo mueve datos de `hepatologia` a `clinica`
+  (los choques se resuelven sin pérdida: antecedente repetido = gana la más reciente y la otra `activo = 0`; consultas abiertas en las
+  dos = quedan las dos; secciones ocultas = unión). **No hay vuelta atrás en un dispositivo migrado:** una app vieja (v8) sobre
+  una base v9 destruye los datos del navegador en la web. `hepatologiaContribution` se borró (ya no hay casilla ni chip);
+  `internal val hepatologia` queda porque `catalogoHcGeneral` copia de ahí. `HcPerfilesE2ETest` sigue sin escribirse (D7, fuera).
+- Spec 003 (enfermedades): servidor (F1), lógica de la app (F2) y pantallas (F3) completas y validadas por el reviewer; falta
+  F3.7 (prueba manual del usuario, incluida la M8: cierre real contra la copia local). Mónica Falcone (paciente de prueba) hay
+  que pasarla a la HC general desde la app (ya no hay casilla Hepatología). Estado de la prueba en `%TEMP%\opencode\f37`
+  (fuera del repo); el `devWeb` hay que arrancarlo o refrescarlo (con v9) antes. Detalle por tarea en
+  `specs/003-hc-enfermedades/tasks.md`. Quedan menores del reviewer sin tarea.
+- Pendientes conocidos (sin tarea):
+  - Bug previo: `AgendaTurnosOnline.sincronizarAdministracion` (l. ~462) pasa el color de la especialidad como `codigoHc`
+    (`EspecialidadTurnos(id, nombre, it.color)`, el tercer parámetro posicional es `codigoHc`).
+  - Límite conocido de `8.sqm`: un `paciente_extra` de hepatología frente a una fila `deleted = 1` de `clinica` queda en
+    hepatología (no se pierde, pero la HC general no lo ve).
+  - Test intermitente de F2.12 (enfermedades) nunca explicado; la causa más probable son los frenones de esta máquina.
+  - La web de turnos sigue mostrando la casilla Hepatología (inofensivo: la app la lee como `clinica`).
+  - `composeApp` no tiene tests: lo que vive ahí se verifica compilando y a mano.
+  - Subida a producción pendiente: pediatría y turnos con sus rutas nuevas (ver "Pendiente"). Los repos hermanos siguen sin push.
+  - Al registrar el `HcBackend` de la 002, las consultas ex-hepatología (`remoto_id = ''`) saldrán como envío en bloque.
+- Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
-- Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Al 2026-10-22 el devWeb de antes sigue
-  vivo (node en :8080, desde el 13/10), Apache y MySQL del XAMPP también (login de turnos da 422 como se espera).
+- Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
+  sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
   Tokens de prueba de pediatría: archivo local fuera del repo (`%TEMP%\opencode\respaldos\tokens-prueba-pediatria-local.txt`).
 - Las contraseñas de prueba locales no están en ningún archivo: la sesión nueva se las pide al usuario.
 - Menores: ofrecer actualizar el plugin `@xtruder/opencode-claude-max-plugin` (hay versión nueva); revisar si
@@ -79,8 +55,8 @@ registros de personas): el repo es público.
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
   en hclinica y pediatría) y F2.1 a F2.10 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
-  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; base v8 con
-  `hc_enfermedades` y `repos/EnfermedadesRepository`; `repos/EnfermedadesControlador` con dos `StateFlow`: sección y
+  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; `7.sqm` con
+  `hc_enfermedades` (v8; hoy la base es v9 por `8.sqm`) y `repos/EnfermedadesRepository`; `repos/EnfermedadesControlador` con dos `StateFlow`: sección y
   administrar). Decisiones C1-C5 y E1-E12 en `tasks.md`. El ViewModel de F3 arma el controlador con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin) y su `viewModelScope`.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API

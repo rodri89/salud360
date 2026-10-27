@@ -284,9 +284,8 @@ sección: se muestran siempre, como en la web.
 - RF-72: MIENTRAS la consulta esté cerrada o la sección se vea solo para leer (RF-22), EL SISTEMA muestra solo los
   marcadores cargados, en la misma grilla y con las mismas columnas (RF-66), cada uno con su nombre y su valor y sin
   botones que se puedan tocar; SI ninguno está cargado, ENTONCES muestra la sección vacía, como hoy.
-- RF-73: EL SISTEMA aplica RF-65 a RF-72 solo a Serologías de hepatitis de la HC general; los demás formularios, la
-  hepatología que todavía existe como historia clínica aparte (hasta la tanda D), pediatría y las demás historias
-  clínicas se ven como hoy (RF-33).
+- RF-73: EL SISTEMA aplica RF-65 a RF-72 solo a Serologías de hepatitis de la HC general; los demás formularios,
+  pediatría y las demás historias clínicas se ven como hoy (RF-33).
 
 ### Child-Pugh
 - RF-74: CUANDO el médico ve la sección Child-Pugh en una consulta que puede editar y el ancho disponible para la
@@ -319,8 +318,7 @@ sección: se muestran siempre, como en la web.
   Clase X", la leyenda y los cinco parámetros, cada uno con su nombre y, si está cargado, sus puntos y su criterio
   ("2 puntos · Moderada (II)"), o "—" si no lo está, como texto y sin nada que se pueda tocar; SI ninguno está
   cargado, ENTONCES muestra la sección vacía, como las demás secciones.
-- RF-82: EL SISTEMA aplica RF-74 a RF-81 a Child-Pugh de la HC general y de la hepatología que todavía existe como
-  historia clínica aparte (hasta la tanda D), que usan el mismo dibujo; las demás secciones e historias clínicas se ven
+- RF-82: EL SISTEMA aplica RF-74 a RF-81 a Child-Pugh de la HC general; las demás secciones e historias clínicas se ven
   como hoy (RF-33).
 
 ### Motivo de consulta con historial
@@ -345,8 +343,7 @@ sección: se muestran siempre, como en la web.
   consulta sin poder editarlo, y las consultas previas y "Ver todo" siguen disponibles; SI esa consulta no tiene
   motivo y no hay consultas previas con motivo, ENTONCES muestra la sección vacía, como las demás.
 - RF-90: EL SISTEMA aplica RF-83 a RF-89 solo a Motivo de consulta de la HC general; las demás secciones de texto de la
-  HC general, la hepatología que todavía existe como historia clínica aparte (hasta la tanda D), pediatría y las demás
-  historias clínicas se ven como hoy (RF-33).
+  HC general, pediatría y las demás historias clínicas se ven como hoy (RF-33).
 
 ### Configuración inicial
 - RF-31: EL SISTEMA trae armados los perfiles "Clínica general" y "Hepatología" exactamente como la tabla del
@@ -447,8 +444,8 @@ sección: se muestran siempre, como en la web.
   recientemente (RF-83).
 - Un motivo con solo espacios o saltos de línea: cuenta como vacío y no sale en las consultas previas (RF-83).
 - El médico escribe el motivo y sale enseguida de la consulta: lo último escrito queda guardado, como hoy (RF-86).
-- Motivos de la hepatología aparte guardados en el dispositivo: salen en las consultas previas de la HC general recién
-  con la tanda D, cuando esas consultas pasan a "clinica" (RF-29).
+- Motivos que la hepatología guardó en el dispositivo antes de ser un perfil: salen en las consultas previas de la HC
+  general, porque esas consultas pasaron a "clinica" (RF-29).
 - Motivo de consulta con datos en una consulta y fuera del perfil del médico que la mira: sale al final, solo lectura,
   con el mismo formato (RF-22, RF-89).
 - Un paciente con muchas consultas con motivo: salen todas en las consultas previas, con desplazamiento, sin límite
