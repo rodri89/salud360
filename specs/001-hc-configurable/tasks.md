@@ -1146,7 +1146,7 @@ Al terminar la tanda: validación del reviewer y prueba manual del usuario.
 
 ## Tanda D — Hepatología deja de ser una historia clínica aparte (redactada el 2026-10-26)
 
-**Estado: completa salvo T52 (prueba manual del usuario).** Aprobada por el usuario el 2026-10-26, incluida expresamente la migración `8.sqm` (T49 y T50; AGENTS.md:
+**Estado: completa; T52 (prueba manual del usuario) cerrada con excepciones aceptadas por el usuario el 2026-10-28 (ver su nota).** Aprobada por el usuario el 2026-10-26, incluida expresamente la migración `8.sqm` (T49 y T50; AGENTS.md:
 "migraciones de esquema: preguntá antes"; constitución #3) y las decisiones D1 a D7 como las recomendó el planificador
 (ver "Decididas" más abajo).
 
@@ -1558,7 +1558,7 @@ preguntas queda como registro de las alternativas descartadas.
     `definicion == null`, `registry.nombre` y `nombresHc[...] ?: codigo` caen al código y `Salud360Colors.especialidad` al color por
     defecto. Ningún otro código del repo (salvo `:server`, que no se toca) mira `hepatologiaContribution` ni el código `hepatologia`.
 
-- [ ] **T52. Prueba manual del usuario (`devWeb` contra la copia local) y limpieza.** RF-29, RF-30, RF-33
+- [x] **T52. Prueba manual del usuario (`devWeb` contra la copia local) y limpieza.** RF-29, RF-30, RF-33 — **cerrada con excepciones aceptadas por el usuario (2026-10-28); no se hicieron todos los pasos, ver la nota al final de la tarea**
   Hecha por el usuario; la tarea no se marca hasta que confirme. Solo con datos de prueba y solo local (nunca producción).
   - Antes de refrescar (con el build viejo todavía cargado), en el navegador que ya tiene datos de Hepatología:
     **P1.** Entrar como el médico de prueba con "Hepatología". Elegir dos pacientes de prueba con consultas en Hepatología y anotar de
@@ -1588,6 +1588,22 @@ preguntas queda como registro de las alternativas descartadas.
     local de turnos); borrar solo lo que la prueba creó con nombre "Prueba D" (pacientes o consultas); **no** borrar lo migrado; restaurar la
     licencia del médico de prueba como dice `MEMORY.md` si se extendió; no vaciar la base local de hclinica. Nada que commitear.
   - Hecho cuando: el usuario confirma los pasos 1 a 10 y la limpieza.
+  - **Cerrada con excepciones aceptadas por el usuario el 2026-10-28** (junto con el cierre de la spec 003, "marcá
+    enfermedades como terminada"). El "Hecho cuando" de arriba **no se cumplió entero**: la `[x]` no quiere decir que los
+    10 pasos se hayan hecho.
+    - **Confirmado por el usuario** (lo único): en el `devWeb` contra la copia local ya migrada, no aparece "no se pudo
+      migrar la base del navegador" (paso 1); la HC vieja ya no existe como casilla (paso 2); el médico ve una sola HC,
+      Clínica, con el perfil Hepatología (paso 3); y una consulta creada con un perfil se ve al cambiar de perfil, con las
+      secciones que quedan fuera del perfil en solo lectura (spec 001, RF-22).
+    - **No se pudo hacer: la comparación antes/después** (P1 a P3 y paso 4: que las consultas, el laboratorio, las
+      serologías y los antecedentes de los pacientes de hepatología quedaran iguales a lo anotado). La base del navegador
+      ya estaba migrada cuando se la respaldó, así que no existe el "antes". El respaldo posterior a la migración quedó
+      fuera del repo, en `%TEMP%\opencode\respaldos`. Esto deja sin prueba manual la preservación de datos de `8.sqm` (RF-30);
+      queda cubierta solo por `MigracionHepatologiaTest` y por la validación del reviewer de la tanda D.
+    - **Sin confirmación** (no se dan por verificados): el paso 5 (choque, con el antecedente repetido y los cambios que
+      se ven), el 6 (secciones ocultas en Configuración), el 7 (cerrar sesión, volver a entrar y recargar sin duplicados),
+      el 8 (destildar y volver a tildar «Clínica» y mirar `salud360_medico_hc` en turnos), el 9 (médico con pediatría), el 10
+      («Perfiles HC → Médicos»), el resto del paso 2 (chips y «Nuevo usuario») y la limpieza propia de esta tarea.
 
 - [x] **T53. Cierre de la tanda: documentación.** RF-29
   - `AGENTS.md` (decisión 7 de la tanda B): la línea de "Tests" pasa a `:core:data:jvmTest`, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest` y

@@ -935,7 +935,7 @@ Reglas de la F3, además de las de arriba y las de la F2:
     administrador no tienen `controlador` (`vm.controlador == null`), así que aunque se llamara no pediría nada; el filtro por
     `medicoPropio` ya los saca antes. Sin `/sdd-change` ni texto nuevo (el título es el nombre por defecto de la spec 001 RF-34).
 
-- [ ] **F3.7. Prueba manual completa en `devWeb` y de punta a punta app ↔ web (la hace el usuario, en tandas cortas).**
+- [x] **F3.7. Prueba manual completa en `devWeb` y de punta a punta app ↔ web (la hace el usuario, en tandas cortas).** — **cerrada con excepciones aceptadas por el usuario; NO verificada completa, y con la limpieza de datos de prueba pendiente (ver la nota al final de esta tarea)**
   RF-1 a RF-7, RF-9 a RF-12, RF-15 a RF-24, RF-28, RF-30, RF-31, RF-35, RF-37 a RF-47, RF-56, RF-57, RF-58, RF-59
   - **El agente prepara, el usuario mira.** Preparación (agente): (a) compilar con `.\gradlew
     :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` y confirmar que el `devWeb` del usuario sirve el
@@ -1035,6 +1035,42 @@ Reglas de la F3, además de las de arriba y las de la F2:
     filas en `medico_enfermedades` y `paciente_enfermedades`, de `pacientes`/`medico_pacientes` de los documentos de
     prueba y del perfil de prueba da 0, y los conteos por `activo` de las tres tablas son los de antes de empezar;
     `git status` sin cambios en datos (esta tarea no cambia código salvo los arreglos que salgan, cada uno en su commit).
+  - **Cerrada por decisión del usuario el 2026-10-28** ("marcá enfermedades como terminada"). Es una **cerrada con
+    excepciones aceptadas por el usuario**: el "Hecho cuando" de arriba (un "ok" en cada una de M1 a M8 y la limpieza con
+    conteos iguales a los iniciales) **no se cumplió**. La marca `[x]` no significa que la prueba manual se haya hecho entera.
+    - **Confirmado por el usuario** (lo único): M2 puntos 1 y 2 (la sección se ve en Consulta y no en Telemedicina, con la
+      lista vacía y con una enfermedad marcada); M3 agregar, quitar y marcar (mirado por el usuario en el log de Apache);
+      M7 "consulta cerrada" y «Datos» (puntos 1 y 2). La pregunta del ícono (M2 punto 3) quedó **resuelta por el usuario**
+      ("ya está resuelto"); no hay registro de qué se miró.
+    - **SIN verificar a mano:**
+      - M1 (3): la secretaria. RF-4 queda cubierto solo por `AccesoEnfermedadesTest`.
+      - M3, punto "Crear": el log local de Apache muestra 6 altas a la lista y 9 marcados y **ningún** `POST enfermedades`,
+        así que RF-42, RF-43 y RF-44 no tienen prueba manual. Tampoco los puntos 8 (sin conexión con la ventana abierta) y 9
+        (rotar en Android).
+      - M4 punto 1 ("Guardando…" / "Guardado" unos 3 s), punto 3 (contra la web de clínica, en los dos sentidos) y punto 4
+        ("Slow 3G").
+      - M5 completo: aspecto (columnas), teclado, lector de pantalla y ventana angosta (incluidos los puntos de F3.9).
+      - M6 completo: los motivos de los pacientes B a F y el caso sin conexión. No se corrió `preparar-M6.sql`.
+      - M7: todo lo que no sea la consulta cerrada y «Datos» (puntos 3 a 6: sección solo en Consulta, "Diagnósticos /
+        enfermedades", pediatría sin pedidos a `/enfermedades` y la ficha que crea «Datos» en un paciente nuevo).
+      - M8: el cierre de sesión con el conteo de tokens antes y después (RF-59, en la copia local).
+      - Sin registro de confirmación ni de falla (no estaban en la decisión del usuario, así que **no se dan por
+        verificados**): M1 puntos 1 y 2, M3 puntos 1 y 4 a 7, M4 punto 2.
+    - **Lo que sí respalda la spec sin esa prueba manual:** los tests automáticos (servidor y lógica de la app), el E2E
+      `HcClinicaEnfermedadesE2ETest` contra la copia local y la validación del reviewer de las tandas F1 a F3. No
+      reemplaza la prueba manual de lo anterior.
+    - **LIMPIEZA DE DATOS DE PRUEBA PENDIENTE (deuda explícita, no un olvido).** La base local `hc_clinica` **no volvió al
+      estado inicial**: quedan las enfermedades "Prueba Salud360 1/2/3"; la lista de enfermedades del médico de prueba quedó
+      vaciada por `UPDATE` (6 filas inactivas); el paciente de prueba A y otros pacientes tienen marcas; hay pacientes
+      "PRUEBA SALUD360 A" a "F" (y sus filas de `medico_pacientes`) y el perfil de prueba 4; el médico de prueba quedó con
+      el perfil 2 (el original es el 1, "Clínica general"); y los totales difieren de los iniciales. Los archivos están
+      fuera del repo, en `%TEMP%\opencode\f37`: `estado-inicial.txt` (los conteos de antes), `ids-y-limpieza.txt` (los ids
+      creados y la restauración), `lista-medico9-antes.txt` (la lista del médico de prueba antes del `UPDATE`) y
+      `limpieza.sql` / `verificar-limpieza.sql`. La limpieza se hará **al final**. **ANTES de limpiar** hay que mirar en el
+      log de Apache (`C:\xampp\apache\logs\access.log`) a qué pacientes y enfermedades apuntan los 9 `PUT
+      enfermedades/pacientes/{n}/{n}` del 26 y 27 de octubre, para **restaurar esas marcas** (pueden ser de fichas de la
+      base local que no son de prueba) con `UPDATE` puntuales, y recién entonces correr `limpieza.sql`. La licencia del
+      médico de prueba sigue extendida a propósito (no restaurarla). Vaciar `salud360_token_cache` y nunca `DROP TABLE`.
 
 - [x] **F3.8. `AuthRepository.logout` revoca el token en turnos y en cada HC con API.** RF-59 (C3, C4, PD7)
   - **C4 manda sobre el texto del plan** ("antes de olvidar el token, a lo sumo 3 s"): la revocación corre **en segundo

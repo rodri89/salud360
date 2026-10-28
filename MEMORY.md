@@ -4,23 +4,48 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
-## Traspaso (2026-10-27)
-- Spec 001 (perfiles configurables) y parte 1 de la 002 (pacientes y cartera): implementadas y validadas. Faltan las
-  pruebas manuales del usuario de varias tandas (001: C, C2 a C7 y D/T52; 002: E2, RF-10 y RF-14) y el resto de la 002
-  (envío de consultas).
-- Spec 001, tanda D (hepatología deja de ser una HC aparte): completa salvo T52 (prueba manual del usuario, pasos en `tasks.md`);
-  T53 (documentación) y T54 (cierre de las observaciones del reviewer: tests de la migración con mutaciones, bug de `codigoHc` de
-  `sincronizarAdministracion` —turnos no manda ese código, se conserva el guardado—, correcciones de docs) hechas. `normalizarHistoriasClinicas` lee `hepatologia` de turnos como `clinica` (en `MedicoRow.toModel`,
-  `TurnosImportador` y `AgendaTurnosOnline`); `8.sqm` (esquema local **v9**) solo mueve datos de `hepatologia` a `clinica`
-  (los choques se resuelven sin pérdida: antecedente repetido = gana la más reciente y la otra `activo = 0`; consultas abiertas en las
-  dos = quedan las dos; secciones ocultas = unión). **No hay vuelta atrás en un dispositivo migrado:** una app vieja (v8) sobre
-  una base v9 destruye los datos del navegador en la web. `hepatologiaContribution` se borró (ya no hay casilla ni chip);
-  `internal val hepatologia` queda porque `catalogoHcGeneral` copia de ahí. `HcPerfilesE2ETest` sigue sin escribirse (D7, fuera).
-- Spec 003 (enfermedades): servidor (F1), lógica de la app (F2) y pantallas (F3) completas y validadas por el reviewer; falta
-  F3.7 (prueba manual del usuario, incluida la M8: cierre real contra la copia local). Hay que pasar a la médica de prueba
-  (turnos médico 38) a la HC general desde Administración (ya no hay casilla Hepatología). Estado de la prueba en `%TEMP%\opencode\f37`
-  (fuera del repo); el `devWeb` hay que arrancarlo o refrescarlo (con v9) antes. Detalle por tarea en
-  `specs/003-hc-enfermedades/tasks.md`. Quedan menores del reviewer sin tarea.
+## Traspaso (2026-10-28)
+- **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
+  E3.1 (`specs/002-hc-clinica/tasks.md`). El usuario aprobó el 2026-10-28 la spec, el plan y las tareas de la L y, con
+  "arranquemos con la tanda S", la tanda S entera (E3 y E4, sin preguntar tarea por tarea). **E9 (producción) requiere
+  aprobación aparte**; la entrega E (escritura) es borrador sin aprobar y sin tareas. Q1 a Q14 y Q16 a Q18 como
+  recomendó el planificador; **Q15 = nunca borrar**: la lectura no elimina ni vacía nada de lo traído de la web, lo
+  marca "Ya no figura en la web" (RF-63, tarea E6.4b). Las decisiones están en `spec.md` ("Decididas"). Antes de
+  registrar el `HcBackend` de solo lectura de clínica (E6.5) tienen que estar los candados de E5; y no pushear `main`
+  con ese backend antes de que producción tenga las rutas.
+- **Lo que el planificador no pudo verificar** (no ejecutó nada contra bases ni servidores): el esquema real de
+  producción (columnas, `activo`, modo estricto), si hay un respaldo restaurable de producción, qué versión de hclinica
+  corre allá (la ruta `pacientes` contesta `401` aunque esta memoria diga que los repos hermanos no se subieron), qué
+  significa `consultas.activo = 0`, los nombres de las tablas de audio y fotos, el tamaño real del historial de un
+  paciente, cómo muestra la web las filas `activo = 2` y el `429` en el cliente wasm. E3.1 y E4.1 miran lo que se puede
+  en la copia local; el resto es de E9.1.
+- **Spec 003 (enfermedades): cerrada el 2026-10-28 por decisión del usuario, con excepciones.** F1 a F3 completas y
+  validadas por el reviewer. F3.7 (prueba manual) está en `[x]` pero quedó sin verificar en buena parte: secretaria (M1),
+  crear enfermedades (M3: el log de Apache no tiene ningún `POST enfermedades`), M4 puntos 1, 3 y 4, M5, M6, M7 salvo la
+  consulta cerrada y «Datos», y M8 (cierre de sesión con conteo de tokens). Confirmado por el usuario: M2 puntos 1 y 2 y
+  M3 agregar, quitar y marcar. Detalle en la nota de F3.7.
+- **DEUDA, no un olvido: limpieza de datos de prueba de F3.7 sin hacer.** La base local `hc_clinica` no volvió al
+  estado inicial: enfermedades "Prueba Salud360 1/2/3", la lista del médico de prueba vaciada por `UPDATE` (6 filas
+  inactivas), marcas en el paciente de prueba A y en otros, pacientes "PRUEBA SALUD360 A" a "F", un perfil de prueba
+  (4), el médico de prueba con el perfil 2 (el original es el 1) y totales distintos de los iniciales. Archivos fuera
+  del repo en `%TEMP%\opencode\f37` (`estado-inicial.txt`, `ids-y-limpieza.txt`, `lista-medico9-antes.txt`,
+  `limpieza.sql`). Se hace al final y **antes** hay que mirar en el log de Apache a qué pacientes y enfermedades
+  apuntan los 9 `PUT enfermedades/pacientes/{n}/{n}` del 26 y 27 de octubre, para restaurar esas marcas. La tanda S
+  usa la misma base: no mezclar su fixture con estos datos.
+- **Spec 001 (perfiles configurables): completa.** T52 (prueba manual de la tanda D) cerrada con excepciones el
+  2026-10-28: confirmado que no hay error de migración, que hay una sola HC «Clínica» con el perfil Hepatología y que una
+  consulta creada con un perfil se ve al cambiar de perfil; sin comparar antes/después (la base ya estaba migrada al
+  respaldarla; el respaldo quedó en `%TEMP%\opencode\respaldos`) ni los pasos 5 a 10. Falta la prueba manual del usuario
+  de las tandas C y C2 a C7.
+- **Tanda D de la 001 (hepatología deja de ser una HC aparte):** `normalizarHistoriasClinicas` lee `hepatologia` de turnos
+  como `clinica` (en `MedicoRow.toModel`, `TurnosImportador` y `AgendaTurnosOnline`); `8.sqm` (esquema local **v9**) solo
+  mueve datos de `hepatologia` a `clinica` (los choques se resuelven sin pérdida: antecedente repetido = gana la más
+  reciente y la otra `activo = 0`; consultas abiertas en las dos = quedan las dos; secciones ocultas = unión). **No hay
+  vuelta atrás en un dispositivo migrado:** una app vieja (v8) sobre una base v9 destruye los datos del navegador en la
+  web. `hepatologiaContribution` se borró; `internal val hepatologia` queda porque `catalogoHcGeneral` copia de ahí.
+  `HcPerfilesE2ETest` sigue sin escribirse (D7, fuera).
+- **Spec 002 parte 1 (pacientes y cartera): implementada y validada;** falta la prueba manual del usuario (RF-10, RF-14 y la
+  lista de E2.7).
 - Pendientes conocidos (sin tarea):
   - Límite conocido de `8.sqm`: un `paciente_extra` de hepatología frente a una fila `deleted = 1` de `clinica` queda en
     hepatología (no se pierde, pero la HC general no lo ve).
@@ -28,15 +53,14 @@ registros de personas): el repo es público.
   - La web de turnos sigue mostrando la casilla Hepatología (inofensivo: la app la lee como `clinica`).
   - `composeApp` no tiene tests: lo que vive ahí se verifica compilando y a mano.
   - Subida a producción pendiente: pediatría y turnos con sus rutas nuevas (ver "Pendiente"). Los repos hermanos siguen sin push.
-  - Al registrar el `HcBackend` de la 002 (`clinica` en `HcApiSync`): hay que filtrar los antecedentes `activo = 0` (los deja así
-    `8.sqm`) y las consultas ex-hepatología (`remoto_id = ''`, `dirty` de antes) saldrán como envío en bloque. Pendiente de la 002,
-    anotado en su `tasks.md`; no se implementó (T54, H2).
+  - Para el envío de consultas (entrega E): filtrar los antecedentes `activo = 0` que deja `8.sqm` y decidir qué hacer con las
+    consultas ex-hepatología sin enviar (saldrían en bloque). En la L lo cubren los candados de E5.
   - `SyncEngine` no está apagado: corre tras cada login y pega a `<turnos>/api/salud360/sync/push|pull`, que no existen (404 ignorado).
     Si alguien crea esas rutas en turnos saldrían todas las filas `dirty`.
 - **ANTES DE PUSHEAR esta rama hay que limpiar de la historia un nombre de persona real** que entró en los commits `a26d676` y
   `dc94dc4` (`MEMORY.md`), por ejemplo con rebase interactivo (`edit`) sobre `a26d676` y los commits siguientes, o publicando con
-  squash-merge. Hoy hay ~105 commits locales sin push y ninguno está en `origin`. Decisión del usuario (2026-10-27): no reescribir
-  historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
+  squash-merge. Hay más de 100 commits locales sin push y ninguno está en `origin`. Decisión del usuario (2026-10-27): no
+  reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
 - Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
@@ -47,7 +71,7 @@ registros de personas): el repo es público.
 - Las contraseñas de prueba locales no están en ningún archivo: la sesión nueva se las pide al usuario.
 - Menores: ofrecer actualizar el plugin `@xtruder/opencode-claude-max-plugin` (hay versión nueva); revisar si
   `DibujoCanvas.kt` lee valores con `ctx.valor` (el bug de Child-Pugh); `ColumnasEnfermedadesTest` repite
-  `SiNoVacioTest` (aceptado, E9).
+  `SiNoVacioTest` (aceptado, decisión E9 de la 003).
 
 ## Estado actual
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
@@ -60,16 +84,16 @@ registros de personas): el repo es público.
 - Spec 002 parte 1: E1 (servidor, hclinica y hc_pediatria) y E2 (app: `PacientesHcApi`, `VinculoPacientes`,
   `MotivoHc`, `PacientesHcRepository`, `HcPediatriaBackend` delegando, lista con motivos por HC, E2E
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
-- Spec 003: F1 (hclinica: `EnfermedadesReglas`, `EnfermedadesService`, `EnfermedadController`, 5 rutas, `auth/salir`
-  en hclinica y pediatría) y F2.1 a F2.10 (`hcgeneral/NombreEnfermedad`, `EnfermedadesSeccion`, `MotivosEnfermedades`,
-  `MarcadoEnfermedades`, `AdministrarEnfermedades`; `network/hc/EnfermedadesDtos` y `EnfermedadesApi`; `7.sqm` con
-  `hc_enfermedades` (v8; hoy la base es v9 por `8.sqm`) y `repos/EnfermedadesRepository`; `repos/EnfermedadesControlador` con dos `StateFlow`: sección y
-  administrar). Decisiones C1-C5 y E1-E12 en `tasks.md`. El ViewModel de F3 arma el controlador con
-  `EnfermedadesRepository` y `PacientesHcRepository` (de Koin) y su `viewModelScope`.
+- Spec 003 (cerrada con excepciones, ver el traspaso): servidor en hclinica (`EnfermedadesReglas`, `EnfermedadesService`,
+  `EnfermedadController`, 5 rutas, `auth/salir` en hclinica y pediatría); en la app `hcgeneral/*Enfermedad*`,
+  `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v9 por `8.sqm`), `repos/EnfermedadesRepository`
+  y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
+  `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
+- Spec 002 entrega L: aún sin código (la tanda S empieza en E3.1). Cuando exista, `HcClinicaBackend` será de solo lectura.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
-- `HcClinicaEnfermedadesE2ETest` deja en `hc_clinica` dos enfermedades "Prueba Salud360 <n>", sus filas en
+- (No confundir con la deuda de limpieza de F3.7, arriba.) `HcClinicaEnfermedadesE2ETest` deja en `hc_clinica` dos enfermedades "Prueba Salud360 <n>", sus filas en
   `medico_enfermedades`/`paciente_enfermedades`, la ficha del DNI de prueba (desde 99000090) y su `medico_pacientes`:
   limpiar con el SQL del KDoc del test (`DELETE` puntuales en ese orden; verificar antes que el DNI esté libre) y vaciar
   `salud360_token_cache`. Una corrida con datos viejos sin limpiar falla a propósito.
