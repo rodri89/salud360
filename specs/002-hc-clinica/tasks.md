@@ -1,8 +1,12 @@
-# Tareas 002 — parte 1: pacientes y cartera
+# Tareas 002 — parte 1: pacientes y cartera (E1, E2) · parte 2, entrega L: lectura (E3 a E9, al final)
 
 Plan: `plan-parte1.md` (aprobado el 2026-10-19, con PD1 decidido: E1.5 entra). Spec: `spec.md`, parte 1 (RF-8 a
 RF-14 y RF-35 a RF-37), aprobada el 2026-10-19. Las tareas van por tandas; cada tanda se aprueba antes de generar la
 siguiente (la E2, app, se genera después de validar la E1).
+
+**Parte 2, entrega L (solo lectura): tandas E3 a E9, abajo, aprobadas por el usuario el 2026-10-28** (plan en
+`plan.md`; Q15 = nunca borrar; la tanda S, E3 y E4, puede empezar; E9, producción, requiere aprobación aparte). La
+entrega E (escritura) es borrador sin aprobar y no tiene tareas.
 
 Reglas para todas:
 - Commits locales como `rodri89` (ya configurado), uno por tarea, **sin push** en ningún repo. Subir a producción
@@ -140,7 +144,9 @@ Reglas de la tanda (además de las de arriba):
 - Nada contra producción. Los E2E solo contra las copias servidas locales, con `-Psalud360.test.hc.clinica…`
   (o `.pediatria…`) y `--rerun`; lo que creen se borra por SQL puntual (`DELETE`) al terminar.
 - **No se registra un `HcBackend` para "clinica"**: `HcBackends` sigue con `"pediatria" -> …; else -> null` (el
-  envío de consultas de la HC general es el resto de la 002).
+  envío de consultas de la HC general es el resto de la 002). *(Nota 2026-10-28, L aprobada por el usuario: la
+  entrega L registra uno **de solo lectura**, E6.5, y solo después de los candados de E5. Hasta que E5 y E6.5 estén
+  hechas, esta regla sigue vigente en el código: no se registra ninguno.)*
 - Dueño remoto, nunca `dirty`: cartera y vínculo se guardan con `dirty = false`, también el de pediatría.
 - Sin cambio de esquema local (el vínculo vive en `paciente_extra`, especialidad + `hc_paciente_id`). Si apareciera
   la necesidad, se pregunta antes (migración nueva y columnas al final).
@@ -323,6 +329,10 @@ vínculo lo cubren el E2E (`HcClinicaPacientesE2ETest`) y los tests del reposito
 
 ## Pendientes para el envío de consultas (parte 2, aún sin tareas)
 
+*(Nota 2026-10-28: en la **entrega L** estos dos puntos se cubren con los candados de E5, que impiden todo envío de la
+HC general y dejan lo viejo sin tocar. Su resolución definitiva —filtrar `activo = 0`, decidir qué hacer con lo viejo
+sin enviar— es de la **entrega E**.)*
+
 Anotados el 2026-10-27 por el cierre de la tanda D de la 001 (T54, hallazgo H2 del reviewer). **No se implementan en la parte 1.**
 Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC general):
 - **Antecedentes `activo = 0`:** la migración `8.sqm` deja con `activo = 0` al antecedente perdedor cuando la misma clave estaba en
@@ -331,3 +341,415 @@ Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC gen
 - **Envío en bloque:** todas las consultas migradas de hepatología traen `dirty` y `remoto_id = ''` de antes (los datos nunca
   tuvieron API). Al registrar el backend saldrían juntas, como historial viejo. Hay que decidir antes (confirmación del médico, tope por
   lote o marcarlas como ya resueltas) y probarlo con una base migrada.
+
+---
+
+# Parte 2, entrega L — Consultas de la web en la app, solo lectura (tandas E3 a E9)
+
+**Aprobadas por el usuario el 2026-10-28** (redactadas ese mismo día). Spec: `spec.md` ("Parte 2 en entregas", RF-38 a
+RF-63). Plan: `plan.md`. Las dudas Q1 a Q18 están resueltas (Q15 = nunca borrar; las demás, las recomendaciones del
+planificador). Cada tanda se aprueba antes de empezar la siguiente, **salvo la tanda S, que el usuario aprobó entera**
+("arranquemos con la tanda S"). Equivalencia con el pedido: **tanda S = E3 y E4** (servidor), **tanda A = E5, E6 y E7**
+(app), **tanda V = E8** (validación local) **y E9** (producción, **requiere aprobación aparte**).
+
+Tamaños: S = hasta 20 min, M = hasta 30 min. Si una tarea M no entra, se divide antes de empezar.
+"Toca API Laravel: sí" = ya no hay que preguntar en las tareas de E3 y E4 (la aprobación de la tanda S las cubre,
+incluida la base local de datos de prueba de E3.1); para cualquier otra tarea que toque ese repo, o para E9, se pregunta.
+
+Decisiones de la spec de las que dependen (todas resueltas): E3.1 (Q11), E3.2 (Q2, Q12), E4.1 (Q1, Q6, Q7, Q9), E6.2 a
+E6.4b (Q7, **Q15 = nunca borrar**), E7.2 (Q3, Q4, Q9, Q14).
+
+**Alcance cambiado por Q15 (2026-10-28):** el planificador había supuesto un "espejo" opcional (`quitarDeLoTraido`).
+Con "nunca borrar" esa función no existe: se reemplaza por `marcarAusentes` (E6.2), el backend no emite ningún
+`DELETE` ni vacía nada (E6.3, E6.4), y la marca "Ya no figura en la web" tiene su tarea propia, **E6.4b** (nueva, M), y
+sus textos y pantallas (E7.1 a E7.3). E6.3 y E6.4 no crecen porque la marca salió a E6.4b.
+
+## Reglas para todas las tareas de la L (además de las de arriba)
+- Commits locales como `rodri89` (ya configurado), uno por tarea, **sin push** en ningún repo. Pushear `main` publica la
+  app: no se hace hasta que producción tenga las rutas y el usuario lo pida (plan, "Orden de despliegue").
+- **Nada contra producción** salvo la tanda E9, que tiene aprobación aparte y no usa tests automáticos. Las pruebas
+  de la app corren con `-Pentorno=dev` (en esta máquina las URLs locales salen de `local.properties`).
+- Los datos de prueba son **inventados** ("PRUEBA SALUD360", documentos verificados libres con `SELECT COUNT(*)`
+  antes de usarlos). Las bases locales `hc_clinica`, `hc_pediatrica` y `turnosonlinebb` tienen datos reales: solo se
+  mira estructura y agregados (`SHOW COLUMNS`, `COUNT`, valores distintos de columnas de códigos), nunca filas de
+  pacientes; no se copia nada de ahí al repo ni a los tests.
+- Restaurar con `UPDATE`/`INSERT`/`DELETE` puntuales (por id, en el orden de las claves foráneas: hijas → `consultas` →
+  `medico_pacientes` → `pacientes`); **nunca** `DROP TABLE`. Scripts y volcados auxiliares en
+  `C:\Users\flor\AppData\Local\Temp\opencode\lectura\` (fuera del repo).
+- Servidor: PHP 7.3 de 32 bits (sin `fn`, sin propiedades tipadas; ids largos comparados como texto antes de `(int)`);
+  `php -l` de cada archivo; copiar a la copia servida `C:\xampp\htdocs\HClinica-salud360` y `php artisan route:clear`
+  (y `config:cache` si se toca `config/`); phpunit con `C:\xampp\php\php.exe vendor\bin\phpunit tests\Unit\<Test>.php`
+  (si falla, ver el mensaje con `php -r`). La licencia del médico de prueba de hclinica está extendida a propósito: no
+  restaurarla. Vaciar `salud360_token_cache` en las pruebas que revoquen tokens. Throttle de 60 pedidos por minuto por IP:
+  las pruebas con curl se espacian (~1,1 s).
+- App: tests primero (en rojo), después el código, tests en verde; `.\gradlew :core:data:jvmTest --tests '*Nombre*'`;
+  `features/*` no tiene tests, la lógica nueva vive en `core/data` (commonMain) con "hoy"/reloj como parámetro.
+  Si Gradle falla por `JAVA_HOME`: `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
+- La migración de esquema está **fuera** de la L: si una tarea parece necesitarla, se para y se pregunta (`9.sqm`
+  sería la próxima; REQUIERE aprobación explícita).
+- No matar el `devWeb` (Gradle/Node) del usuario; para refrescarlo:
+  `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev`.
+- Si al hacer una tarea aparece un envío a la web (cualquier método distinto de `GET`) hacia `clinica`, se para todo y se avisa.
+
+## Tanda E3 — Servidor I: datos de prueba, mapa y lectura de una consulta (hclinica, rama `salud360-api`)
+
+Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
+`http://localhost/HClinica-salud360/public/index.php/api/salud360/...`; token del médico de prueba sacado de
+`auth/login` de turnos local (credenciales que la sesión pide al usuario, sin escribirlas en ningún lado).
+
+- [ ] **E3.1. Datos de prueba en la copia local y scripts de limpieza y suma de control.** RF-47 a RF-50 (base de todas las
+  pruebas) — **M** — Toca API Laravel: no (toca la base local de datos de prueba; cubierta por la aprobación de la tanda S del 2026-10-28)
+  - Antes de insertar, solo estructura y agregados sobre `hc_clinica`: `SHOW COLUMNS` de las tablas de plan.md ("Mapa") y
+    `SELECT activo, COUNT(*) FROM consultas GROUP BY activo` (igual para `tipo_consulta` y `es_foto`; Q11); los nombres
+    de las tablas de audio y fotos de consulta (`SHOW TABLES LIKE …`). Se anota todo en
+    `...\opencode\lectura\esquema.txt` (sin datos de pacientes). Si una columna del mapa no existe, se avisa antes de seguir.
+  - Fixture inventado (script `fixture.sql`, fuera del repo): un paciente "PRUEBA SALUD360" en la cartera del médico de
+    prueba y consultas: (a) cerrada propia tipo 1 con motivo (con `fecha`), conductas, nota, hábitos, diuresis, somnia,
+    examen físico, alimentación (celíaco con detalle), serologías (mezcla de 0, 1 y 2), Child-Pugh, los 5 estudios, dos
+    cargas de laboratorio general (incluidos albúmina, fósforo, concentración, ácido úrico y B12) y una del reducido
+    (con `otro`), peso, antecedentes familiares (con `dependientes_terceros` y nota), exámenes complementarios,
+    interconsultas y un pendiente; (b) cerrada de **otro** médico, tipo 4; (c) abierta propia con filas `activo = 2`;
+    (d) `es_foto = 1`; (e) `activo = 0`; (f) con un PDF en `consulta_pdfs` (y una cardiológica de 191 caracteres);
+    (g) `tipo_consulta = 2`.
+  - `limpiar.sql` (`DELETE` puntuales por `paciente_id` en orden de claves foráneas) y `suma.sql` (`CHECKSUM TABLE` de
+    las tablas leídas + `consultas`, `pacientes`, `medico_pacientes` y `medico_infos`).
+  - Hecho cuando: `COUNT(*)` de cada tabla con el paciente de prueba coincide con lo esperado; `limpiar.sql` deja 0 y
+    `fixture.sql` se vuelve a correr sin error (dos vueltas); `suma.sql` da el mismo resultado dos veces seguidas sin
+    tocar nada; ningún dato real se copió a ningún archivo del repo.
+
+- [ ] **E3.2. Mapa y reglas puras, con phpunit.** RF-40, RF-42, RF-43, RF-52 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+  - Tests primero: `tests/Unit/MapaClinicaTest.php` (sin Laravel ni base): para cada analito de `labGeneralClinica` y
+    del reducido de la app (la lista va copiada en el test y el id se deriva con la regla de la app
+    `lowercase().replace(Regex("[^a-z0-9]+"), "_")`) existe una columna; casos nombrados: albúmina, fósforo, concentración,
+    ácido úrico, B12 y `otros`→`otro`; `celiaco`→`seliaco`; `dependiente_terceros`→`dependientes_terceros`;
+    `tabaquismo` sin columna; las 16 serologías; las 5 tablas de estudios. `tests/Unit/ConsultasReglasTest.php`:
+    tipo y estado (1→`control`, 4→`telemedicina`, `es_foto`/otros→omitida; `activo` 2/1/0), fecha útil (`1000-01-01` y
+    `0000-00-00`→`null`), `limite` 1..200, serologías 0/1/2→vacío/`SI`/`NO` (nunca `NO` por 0), alimentación `"1|detalle"` y
+    `0` sin detalle no se manda, Child-Pugh `0`/vacío no se manda, armado de laboratorio con el mapa, qué entra en `omitidas`.
+  - Código: `app/Services/Salud360/MapaClinica.php` y `ConsultasReglas.php` (nuevos, sin base). El mapa se contrasta con
+    `esquema.txt` de E3.1 (cualquier columna web que falte se anota y se resuelve antes de seguir).
+  - Hecho cuando: phpunit de los dos tests en verde (antes, en rojo) en la copia servida; `php -l` sin errores; buscar
+    `fn (`, propiedades tipadas, `DB::` e `insert|update|delete` en los dos archivos no da resultados; los analitos
+    desalineados del plan coinciden con los que el test calcula (si difieren, se corrige el plan).
+
+- [ ] **E3.3. Servicio de lectura de una consulta.** RF-39, RF-40, RF-42, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+  - `app/Services/Salud360/ConsultasService.php` (nuevo, solo `SELECT`): `leer($consulta)` con `secciones`,
+    `examen_fisico` y `no_leidas` (solo ids con filas `activo = 1` en `consulta_pdfs`, audio, fotos, diagnósticos y
+    antecedentes personales; nombres de tablas de E3.1). Textos: fila `activo = 1` de mayor `id`.
+  - Hecho cuando: llamado con `php -r` (bootstrap de Laravel de la copia) sobre las consultas (a) a (g) de E3.1, devuelve
+    el JSON esperado de plan.md (a: todo mapeado; b: igual; c: sin las filas `activo = 2`; f: `no_leidas` con
+    `documentos`); un campo vacío no aparece; `suma.sql` antes y después es idéntica; `php -l` sin errores; la búsqueda de
+    `insert|update|delete|save\(|create\(|Schema::|DB::statement|asegurarColumna|inicializarCampos|medico_infos` en el
+    archivo no da resultados.
+
+Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la E4 recién después.**
+
+## Tanda E4 — Servidor II: lista, historial del paciente, rutas y no-escritura (hclinica, rama `salud360-api`)
+
+- [ ] **E4.1. Servicio: lista de consultas e historial del paciente.** RF-38, RF-41, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+  - En `ConsultasService`: `listar($pacienteId, $limite, $desde)` (activo 1/2, tipos 1 y 4, `es_foto = 0`, `total`, `hay_mas`,
+    `omitidas`, `propia`, `medico_nombre` con un solo `SELECT … WHERE id IN (…)`) e `historia($pacienteId)` (antecedentes,
+    laboratorios, estudios, motivos, exámenes complementarios, interconsultas, pendientes; solo `activo = 1` y de
+    consultas con `activo` 1 o 2).
+  - Hecho cuando: sobre el paciente de prueba, `listar` devuelve (a), (b) y (c) —no (d), (e), (g)— con `omitidas` =
+    `{foto: 1, otro: 1}` y `propia` verdadero solo en (a) y (c); `historia` devuelve los laboratorios con ids de la app,
+    los estudios con su `consulta_id`, el motivo de todas las consultas y los antecedentes; el tamaño del JSON del
+    paciente de prueba se anota; `EXPLAIN` de los `SELECT` por paciente sin recorridos completos de tablas grandes (o lo
+    anotado); `suma.sql` idéntica; `php -l` y búsqueda de escrituras sin resultados.
+
+- [ ] **E4.2. Controlador y rutas.** RF-38, RF-39, RF-41, RF-50, RF-51, RF-59 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+  - `ConsultaController` (`index`, `show`, `historia`); `Salud360Controller` suma `consultaVisible` y `formatearConsulta`;
+    `routes/api.php` suma `GET consultas`, `GET consultas/{id}`, `GET pacientes/{id}/historia` dentro del grupo `salud360`.
+  - Hecho cuando (copiado a la servida y con curl, espaciando los pedidos): sin token → `401 sin_token`; token del
+    administrador en las tres → `403 sin_permiso`; médico: `consultas?paciente_id=<prueba>` → 200 con lo de E4.1;
+    `limite=0` y `limite=5000` se acotan; `paciente_id` faltante → `422 datos`; paciente fuera de la cartera →
+    `403 fuera_de_cartera`; paciente inexistente → `404 paciente_no_encontrado`; consulta (e) → `404 consulta_no_encontrada`;
+    `consultas/{id de otro paciente fuera de cartera}` → `403 fuera_de_cartera`; `consultas/<a>` y `pacientes/<id>/historia`
+    → 200; `php artisan route:list` muestra las tres con el middleware `salud360`; la web de hclinica sigue entrando normal.
+
+- [ ] **E4.3. Prueba de no-escritura y documentación.** RF-50 — **S** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)** (solo el `.md`)
+  - Una pasada completa de lecturas (las tres rutas, todas las consultas del paciente de prueba) con `suma.sql` antes y
+    después; búsqueda de escrituras en `ConsultasService.php`, `ConsultasReglas.php`, `MapaClinica.php` y
+    `ConsultaController.php`; revisión del registro de accesos de Apache (`C:\xampp\apache\logs\access.log`): ningún
+    pedido a `/api/salud360/consultas` ni a `.../historia` con método distinto de `GET`.
+  - `md/API_SALUD360_CLINICA.md`: sección "Consultas (lectura)" (rutas, cuerpos, códigos, mapa, `curl` de humo sin
+    credenciales), tabla "Código" y "Lo que viene" actualizadas; sin tokens, contraseñas ni nombres de personas.
+  - Hecho cuando: `suma.sql` antes = después; cero escrituras en el grep y cero métodos distintos de `GET`; la copia
+    servida es igual al clon en los archivos de la tanda (comparación de contenido, sin `.env` ni `vendor/`); phpunit de
+    E3.2, `PerfilesTest`, `PacienteVinculoReglasTest` y `EnfermedadesReglasTest` en verde; `limpiar.sql` aplicado y
+    `COUNT(*)` del paciente de prueba en 0 (o se deja para E8.1, anotándolo).
+
+Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la E5 recién después** (la E5 no depende del
+servidor y puede aprobarse en paralelo).
+
+## Tanda E5 — App I: candados contra el envío (antes de registrar nada)
+
+Esta tanda **no registra** ningún backend: solo agrega los candados y los prueba. Es la condición de E6.5.
+
+- [ ] **E5.1. `HcBackend.soloLectura` y candado en `HcApiSync`.** RF-47, RF-48 — **M** — Toca API Laravel: no
+  - Tests primero: `core/data/src/jvmTest/.../repos/HcApiSyncSoloLecturaTest.kt` (SQLite en archivo temporal, como
+    `PacientesHcRepositoryTest`; backend falso que cuenta cada llamada y `scope` inyectado): con consultas de `clinica`
+    sucias, con secciones, examen, registro, archivo y antecedente `activo = 0` también sucios, un backend con
+    `soloLectura = true` no recibe **ninguna** llamada en `empujarTodo`, `empujarYa` ni `marcarSucia(…, esperaMs = 0)`, ni
+    programa reintentos, y todas las filas siguen con `dirty = 1`; un backend con `soloLectura = false` de otra
+    especialidad (pediatría falsa) sigue recibiendo su envío.
+  - Código: `core/data/.../repos/HcBackend.kt` (`val soloLectura: Boolean get() = false`) y `core/data/.../sync/HcApiSync.kt`
+    (`drenar`, `consultasDeAntecedentesPendientes`, `marcarSucia`, `empujarYa`, `empujarTodo` cortan por backend de solo lectura).
+    El contador `pendientes` no cambia (Q16-A).
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HcApiSyncSoloLecturaTest*'` en verde (antes, en rojo) y
+    `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **E5.2. El candado frente a una base migrada de hepatología (H2).** RF-47, RF-48 — **S** — Toca API Laravel: no
+  - Test: partiendo de una base v8 con consultas de `hepatologia` sucias, antecedentes repetidos y secciones ocultas
+    (la base de `MigracionHepatologiaTest`), migrada a v9, con un backend falso de solo lectura para `clinica`:
+    `empujarTodo` y abrir "consulta" no envían nada; las filas quedan exactamente igual (comparación de `id`, `dirty`,
+    `activo`, `updated_at` antes y después); el antecedente con `activo = 0` sigue con `activo = 0`.
+  - Hecho cuando: el test (en rojo si se quita el candado) en verde; vale como regresión de H2 para la entrega E.
+
+- [ ] **E5.3. `AdminRepository` y `HcRepository` ante un backend de solo lectura.** RF-46, RF-61 — **S** — Toca API Laravel: no
+  - Tests primero: `AdminRepositoryLicenciasTest` (`guardarLicencia` de un médico solo de clínica devuelve `true` y no
+    llama al backend de solo lectura; con pediatría sigue llamándola); `HcRepositoryTest` (`esSoloLectura`;
+    `abrirConsulta` con una consulta de la web abierta del mismo médico crea una **nueva** local y no devuelve la de la
+    web; con pediatría sigue reutilizando la abierta remota).
+  - Código: `AdminRepository` (destinos sin backends de solo lectura), `HcRepository.esSoloLectura` y `abrirConsulta`,
+    consulta SQL `consultaAbiertaLocal` en `HistoriaClinica.sq` (solo la consulta, **sin migración**).
+  - Hecho cuando: ambos tests en verde (antes, en rojo) y `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **E5.4. Pediatría sigue enviando.** RF-60 — **S** — Toca API Laravel: no (usa la copia servida de pediatría)
+  - `HcPediatriaE2ETest` y `HcCarteraE2ETest` con `--rerun` contra la copia servida de pediatría
+    (`-Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php` y el token de prueba, sin
+    escribirlo): la prueba de envío sigue en verde porque se tocó `HcApiSync`.
+  - Hecho cuando: ambos E2E en verde; lo que deja el de pediatría (una consulta de baja y sus imágenes) borrado por id.
+
+Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+## Tanda E6 — App II: backend de lectura y mapeo
+
+- [ ] **E6.1. Cliente de solo lectura y DTOs.** RF-38 a RF-41, RF-47 — **M** — Toca API Laravel: no
+  - Tests primero: `commonTest` `HcClinicaDtosTest` (cada respuesta de plan.md —lista, consulta, historial— leída con
+    sus ejemplos de JSON: `hay_mas` como número, `null`, campos que faltan, `omitidas`, `no_leidas`, valores de más).
+  - Código: `core/data/.../network/hc/HcApiSoloLectura.kt` (expone solo `get`, `leer`, `leerOpcional`, `leerTodo`) y
+    `HcClinicaDtos.kt`; `HcDtos.kt` no se toca.
+  - Hecho cuando: el test en verde (antes, en rojo) y `.\gradlew :core:data:compileKotlinJvm` sin errores; buscar `post(`,
+    `put(`, `delete(`, `subir(`, `pedir(` en `HcApiSoloLectura.kt` no da resultados.
+
+- [ ] **E6.2. Ids y conversión pura (`LecturaClinica`).** RF-40, RF-41, RF-42, RF-52 — **M** — Toca API Laravel: no
+  - Tests primero: `commonTest` `LecturaClinicaTest`: ids `hcc-c`, `hcc-m`, `hcc-l`, `hcc-r`, `hcc-p`, disjuntos de `hcp-c…`
+    y `hc-clinica-p…`; serologías `SI`/`NO`, Child-Pugh `"1"`–`"3"`, alimentación `"1|detalle"`; cada analito (los 5
+    desalineados y `otros`) en su fila; antecedente `dependiente_terceros`; carga de laboratorio con `consulta_id`
+    que no está local → `null`; médico propio → el de la sesión, ajeno → `hcc-m<id>`; `esDeLaWeb`, `esPropia`; nunca un `""`
+    inventado. **Q15 (nunca borrar):** `marcarAusentes(lo ya traído, respuesta, cobertura)` devuelve solo marcas (ids de
+    consultas, cargas, filas de estudio o lista, pendientes, antecedentes, secciones y campos que dejaron de venir);
+    una consulta fuera de la cobertura de la respuesta (lista con `hay_mas`, más allá de la última consulta pedida) no
+    se marca; una respuesta con error o incompleta no marca nada; lo que sigue viniendo, o vuelve a venir, no se
+    marca (la marca vieja se retira); el resultado **no tiene forma de expresar un borrado** (solo marcar y desmarcar).
+  - Código: `core/data/.../hcgeneral/LecturaClinica.kt` (puro). Aquí se fija el formato de las claves `hcc_ausente_…`.
+  - Alcance (2026-10-28, Q15): reemplaza a la `quitarDeLoTraido` del borrador (que ya no existe); sigue en **M**.
+  - Hecho cuando: el test en verde (antes, en rojo).
+
+- [ ] **E6.3. `HcClinicaBackend.traerConsultas`.** RF-38, RF-41, RF-43, RF-45, RF-47, RF-49, RF-52 a RF-54, RF-56, RF-57 — **M** — Toca API Laravel: no
+  - Tests primero: `jvmTest` `HcClinicaBackendTest` y `HcClinicaBackendSoloLecturaTest` (servidor falso con
+    `com.sun.net.httpserver.HttpServer` en `127.0.0.1`, que registra método y ruta): trae lista + historial (2 pedidos,
+    solo `GET`) y guarda las cabeceras con `dirty = 0`, `remoto_id` y `medico_id` (propio / `hcc-m…` + nombre en
+    `medico_preferencia`); `omitidas` y `no_leidas` en `paciente_extra`; traer dos veces no duplica; segunda llamada
+    antes de 60 s (reloj falso) → 0 pedidos, con `forzar` → 2; paciente sin `hc_paciente_id` → **0 pedidos**, aviso de RF-49
+    y nada escrito; servidor apagado, `500`, `429` y JSON cortado → excepción con el motivo, nada cambia y sin reintento
+    propio; una consulta local sucia con la misma clave no se pisa; los métodos de escritura lanzan. **Q15:** aplicar una
+    lista más corta que la que ya había en el dispositivo (una consulta que desapareció) no borra ninguna fila
+    (conteo y contenido de `consulta` iguales antes y después; la marcación la prueba E6.4b).
+  - Código: `core/data/.../repos/HcClinicaBackend.kt` (`soloLectura = true`; recibe `HcApiSoloLectura`, `Salud360Db`,
+    `PacientesHcRepository` y un reloj; usa `fichaConocida`, nunca `vinculo`). Sin `DELETE` sobre tablas clínicas.
+  - Hecho cuando: ambos tests en verde (antes, en rojo) y ningún pedido que no sea `GET` en el registro del servidor falso.
+
+- [ ] **E6.4. `traerConsulta` y aplicar el historial.** RF-39, RF-40, RF-41, RF-53 a RF-55 — **M** — Toca API Laravel: no
+  - Tests primero (en `HcClinicaBackendTest`): una consulta de la web llega completa a `seccion_valor`, `examen_fisico`,
+    `registro_clinico`, `laboratorio`, `antecedente` y `pendiente`, todo `dirty = 0`; una respuesta cortada o con `500`
+    no deja nada de esa consulta (transacción); una clave sucia (antecedente local, laboratorio local) no se toca; **Q15
+    (nunca borrar):** una sección, un texto o un campo que no vino, o vino vacío, no borra ni vacía el que ya estaba
+    (`seccion_valor`, `examen_fisico`, `registro_clinico`, `laboratorio`, `antecedente` y `pendiente` iguales fila por
+    fila antes y después de aplicar una respuesta más corta o vacía); una fila traída que dejó de venir sigue en la
+    base; un valor vacío nunca reemplaza a uno cargado; el examen conserva la frecuencia cardíaca y la circunferencia
+    abdominal locales; una cardiológica de 191 caracteres entra entera.
+  - Código: `traerConsulta` y `aplicarHistoria` en `HcClinicaBackend`, escribiendo campo por campo y solo lo que viene
+    con valor (sin `DELETE`, sin `INSERT OR REPLACE` de una fila armada solo con lo recibido).
+  - Alcance (2026-10-28, Q15): sin `quitarDeLoTraido` ni "aplicar el historial" como espejo. Las marcas "Ya no figura
+    en la web" se ponen en E6.4b.
+  - Hecho cuando: los tests en verde (antes, en rojo).
+
+- [ ] **E6.4b. Marcar lo que ya no figura en la web (Q15).** RF-55, RF-63 — **M** — Toca API Laravel: no
+  - Tarea **nueva** (2026-10-28) por la decisión Q15 = nunca borrar. Va después de E6.2, E6.3 y E6.4.
+  - Tests primero: `jvmTest` `HcClinicaBackendAusentesTest` (servidor falso como en E6.3): **una consulta que desaparece de
+    la respuesta queda en el dispositivo y se marca** (la fila de `consulta` y todas sus hijas iguales antes y después,
+    más la clave `hcc_ausente_…` en `paciente_extra`); lo mismo con una consulta dada de baja, con un `404
+    consulta_no_encontrada` al abrirla, con un texto o una sección que la web vació, y con una carga de laboratorio, un
+    estudio, una interconsulta, un pendiente y un antecedente que dejaron de venir; si el dato vuelve a venir, la marca
+    se retira y se aplica el valor de la web; una respuesta con `500`, cortada, con JSON inválido, o la página 2 de la
+    lista (con `hay_mas`) **no marca nada**; ninguna operación del backend ejecuta un `DELETE` sobre `consulta`,
+    `seccion_valor`, `examen_fisico`, `registro_clinico`, `laboratorio`, `antecedente` ni `pendiente` (se comprueba
+    contando filas antes y después, y revisando el código).
+  - Código: aplicar las marcas de `marcarAusentes` (E6.2) desde `traerConsultas`, `traerConsulta` y `aplicarHistoria`, en
+    la misma transacción que la escritura de lo que sí vino; lectura de las marcas para la pantalla (función de consulta
+    del repositorio o del backend, sin cambiar el esquema).
+  - Hecho cuando: el test en verde (antes, en rojo) y `.\gradlew :core:data:jvmTest` completo en verde.
+
+- [ ] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
+  - **Condición previa verificable: E5.1 a E5.4 hechas y en verde** (y E6.1 a E6.4b, para que lo que se registra ya
+    no pueda borrar nada de lo traído).
+  - `DataModule`: `CodigosHc.GENERAL -> HcClinicaBackend(get(), HcApiSoloLectura(cliente), get(), …)` en `HcBackends`;
+    se actualizan los comentarios (ya no dice "la general no tiene `HcBackend`"); `MotivoHc`: caso `429`
+    ("demasiados pedidos seguidos") con su test en `MotivoHcTest`.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila;
+    con el `devWeb` contra la copia local, abrir la historia de un paciente de clínica no manda ningún pedido que no sea
+    `GET` (registro de accesos de Apache) y las consultas viejas sucias siguen con `dirty = 1`.
+
+- [ ] **E6.6. Coherencia con lo que viene de la web.** RF-62 — **S** — Toca API Laravel: no
+  - Tests primero: `CargasLaboratorioTest` ampliado (una carga `hcc-l…` tiene `puedeBorrar = false` aunque la consulta sea
+    editable; una local sigue `true`); `commonTest` `PendientesWebTest` (los pendientes `hcc-p…` no se marcan resueltos
+    al cerrar una consulta local ni con `resolverPendiente`; los locales sí).
+  - Código: `CargasLaboratorio.kt`, función pura de pendientes y su uso en `ConsultaViewModel.cerrarConPendientes` /
+    `resolverPendiente`.
+  - Hecho cuando: ambos tests en verde (antes, en rojo) y `.\gradlew :features:hc:compileKotlinJvm` compila.
+
+Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+## Tanda E7 — App III: pantalla
+
+- [ ] **E7.1. Lógica pura de la lista y de los avisos.** RF-43 a RF-46, RF-63 — **S** — Toca API Laravel: no
+  - Tests primero: `commonTest` `ConsultaWebTest`: `agruparConsultas` separa "abiertas en la web", "consulta en curso"
+    (solo local), "anteriores" (cerradas, con origen) y "solo en este dispositivo"; la etiqueta de ajena con y sin nombre;
+    una consulta marcada "ya no figura" **sigue en su grupo** (no se oculta ni pasa a otro) y lleva la etiqueta;
+    `AvisosLecturaTest`: textos de `omitidas`, `no_leidas`, sin vínculo, abierta en la web y "Ya no figura en la web"
+    (consulta, sección y fila).
+  - Código: `core/data/.../hcgeneral/AvisosLectura.kt` y el agrupador (en `LecturaClinica.kt` o archivo propio).
+  - Hecho cuando: ambos tests en verde (antes, en rojo).
+
+- [ ] **E7.2. Historia del paciente.** RF-38, RF-44, RF-46, RF-49, RF-56, RF-63 — **M** — Toca API Laravel: no
+  - `HistoriaClinicaViewModel` / `HistoriaClinicaScreen`: grupos de E7.1 (la "Consulta en curso" con Continuar y Anular
+    solo para la local), etiquetas "Web" / "Solo en este dispositivo" / "Cargada por …" / "Ya no figura en la web" (la
+    consulta marcada se sigue listando y abriendo), "Ver más" mientras `hay_mas`,
+    "Actualizar" (fuerza lista e historial), el fallo con `motivoHc` en la tarjeta que ya existe, el aviso de paciente
+    sin vínculo y la línea de `omitidas`.
+  - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` sin errores;
+    revisión de código: ninguna acción de esta pantalla llama a escritura sobre una consulta de la web; la
+    comprobación visual queda para E8.3.
+
+- [ ] **E7.3. Consulta de la web.** RF-39, RF-43, RF-44, RF-45, RF-63 — **M** — Toca API Laravel: no
+  - `ConsultaViewModel` (`ConsultaUi.soloLecturaWeb`, `soloLectura` la incluye) y `ConsultaScreen`: banner "Consulta de la
+    web — solo lectura"; abierta en la web → aviso de RF-44; `no_leidas` → aviso nombrando qué; consulta, sección o fila
+    marcada → "Ya no figura en la web" con su contenido a la vista; sin "Guardar y cerrar" ni
+    "Reabrir para editar"; las secciones, el cuerpo y lo de fuera del perfil como hoy (spec 001). La consulta no manda
+    nada: `onCleared` y `empujarTodo` quedan sin efecto por el candado de E5.1.
+  - Hecho cuando: ambos módulos compilan sin errores; `.\gradlew :core:data:jvmTest` completo en verde; revisión de
+    código: ninguna ruta de esta pantalla puede editar, cerrar, reabrir ni anular una consulta con `remoto_id`.
+
+- [ ] **E7.4. Refresco del `devWeb` y compilación completa.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+  - `.\gradlew :core:data:jvmTest`, `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev` y
+    `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` (sin matar el `devWeb` del usuario).
+  - Hecho cuando: todo en verde y el `devWeb` refrescado (con esquema v9, sin cambios de base).
+
+Al terminar la tanda: validación del reviewer y MEMORY.md.
+
+## Tanda E8 — Validación local (contra la copia servida; nada contra producción)
+
+- [ ] **E8.1. E2E de lectura.** RF-38 a RF-42, RF-52 a RF-54 — **M** — Toca API Laravel: no
+  - `core/data/src/jvmTest/.../repos/HcClinicaConsultasE2ETest.kt`: se saltea sin `salud360.test.hc.clinica`,
+    `.clinica.token` y `.clinica.ficha` (se agrega a la lista de `core/data/build.gradle.kts`); sobre SQLite temporal y
+    **sin `resolver`** (siembra `hc_paciente_id` en `paciente_extra`): trae la lista y cada consulta del paciente de
+    prueba (E3.1) y comprueba cabeceras, textos, formularios, laboratorio con los ids de la app, estudios con historial,
+    antecedentes, pendientes, `omitidas` y `no_leidas`; el total de Child-Pugh que calcula la app coincide con `total_puntos`
+    de la web; nada `dirty`; traer dos veces no duplica. El KDoc trae el comando y el SQL de limpieza, sin credenciales.
+  - Comando: `.\gradlew :core:data:jvmTest --rerun --tests '*HcClinicaConsultasE2ETest*'
+    "-Psalud360.test.hc.clinica=http://localhost/HClinica-salud360/public/index.php"
+    "-Psalud360.test.hc.clinica.token=<token de prueba>" "-Psalud360.test.hc.clinica.ficha=<id de la ficha de prueba>"`.
+  - Hecho cuando: el E2E en verde contra la copia servida; sin las propiedades, `.\gradlew :core:data:jvmTest` en verde y el
+    E2E se saltea; token revocado y `salud360_token_cache` vacía.
+
+- [ ] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
+  - Con una base del dispositivo que tenga consultas viejas de la HC general sucias (la de pruebas anteriores del
+    usuario o una armada): abrir historias y consultas en el `devWeb` contra la copia local con `suma.sql` antes y
+    después; contar las filas sucias del dispositivo antes y después; revisar el registro de accesos.
+  - Hecho cuando: `suma.sql` antes = después; las filas sucias del dispositivo son las mismas; el registro de accesos
+    no tiene ningún método distinto de `GET` hacia `clinica` en la sesión; resultado anotado en esta tarea.
+
+- [ ] **E8.3. Prueba manual del usuario en `devWeb`.** RF-38 a RF-46, RF-49, RF-56, RF-62, RF-63 — **S** — Toca API Laravel: no
+  - Pasos (copia local, médico de prueba con el perfil equivalente al de la web, Q10; el paciente "PRUEBA SALUD360"):
+    1. Abrir la historia del paciente: ve las consultas (a), (b) y (c) de E3.1, con origen; no ve (d), (e), (g); ve la línea de
+       consultas de tipos no mostrables.
+    2. Abrir (a) y compararla con la web **lado a lado**, sección por sección: motivo (con consultas previas), conductas,
+       nota, hábitos, diuresis, somnia, examen físico, alimentación (celíaco), antecedentes familiares (dependiente de
+       terceros), serologías (los "sin cargar" quedan vacíos), Child-Pugh (clase), los cinco estudios, laboratorio general
+       y reducido (albúmina, fósforo, concentración, ácido úrico, B12, "otros"), peso, exámenes complementarios,
+       interconsultas y pendientes. Cada valor en la casilla correcta.
+    3. Abrir (b): dice que la cargó otro médico y no se puede editar. Abrir (c): "abierta en la web", sin "Continuar"
+       ni "Anular", con el aviso de lo pendiente de confirmar. Abrir (f): aviso de que la web tiene un PDF.
+    4. Ninguna consulta de la web tiene "Guardar y cerrar" ni "Reabrir". "Nueva consulta" crea una local con la marca
+       "Solo en este dispositivo" y no devuelve ninguna de la web.
+    5. Cambiar un texto en la web y tocar "Actualizar" (y reabrir la consulta): se ve el cambio en la app. **Vaciar** el
+       texto en la web y actualizar: la app **sigue mostrando el texto anterior** con la marca "Ya no figura en la web"
+       (Q15 = nunca borrar, RF-63); no se vacía ni se oculta.
+    5b. (Al final, después del paso 9, porque cambia la base de la web: el agente da de baja con un `UPDATE` puntual
+       una consulta ya traída de la copia local y la restaura por id al terminar.) Actualizar: la consulta **sigue en la
+       lista y se abre con todo su contenido**, con la marca "Ya no figura en la web"; no desaparece.
+    6. Apagar Apache de la copia local (o modo avión) y volver a abrir: se ve lo traído y el motivo "sin conexión".
+    7. Un paciente de la app sin ficha de la web: aviso "todavía no está vinculado", y en `hc_clinica` no aparece una ficha nueva.
+    8. En una consulta local, no se puede borrar una carga de laboratorio ni resolver un pendiente que vino de la web.
+    9. `suma.sql` antes y después de toda la prueba: igual.
+  - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar.sql` aplicado y token revocado.
+
+- [ ] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+  - RF por RF: qué test lo cubre y el resultado (plan.md, "Estrategia de tests"); lista de los candados con su test;
+    contradicciones y riesgos del plan resueltos o anotados; `MEMORY.md` actualizado (sin datos sensibles).
+  - Hecho cuando: el reviewer aprueba o devuelve observaciones, y las observaciones quedan cerradas o anotadas.
+
+Al terminar la tanda: **el usuario decide si pasa a producción (E9)**. Sin aprobación explícita, la L queda validada
+solo en local.
+
+## Tanda E9 — Producción (otra aprobación, aparte de la L): solo lectura, sin escribir
+
+**No empieza sin aprobación explícita del usuario para producción.** No se corren tests automáticos ni E2E contra
+producción (AGENTS.md): todo se hace a mano, con la app corrida en esta máquina contra producción
+(`.\gradlew devWeb -Pentorno=release`, sin publicar nada), con un paciente de la **cartera de prueba** del médico.
+
+- [ ] **E9.1. Preparación y respaldo.** RF-50, RF-59 — **S** — Toca API Laravel: no (pero toca producción: aprobación aparte)
+  - Confirmar con el usuario: qué versión de hclinica corre en producción (la ruta `pacientes` ya contesta `401` aunque
+    `MEMORY.md` diga que los repos hermanos no se subieron), cómo se despliega, `APP_DEBUG`, si hay un **respaldo
+    reciente y restaurable** de la base de producción (hecho y probado, no solo "existe"), y qué paciente y qué
+    médico de la cartera de prueba se usan.
+  - Hecho cuando: respaldo confirmado por el usuario por escrito; versión y forma de despliegue anotadas; paciente de
+    prueba elegido; si falta el respaldo, **se para** y no se sigue.
+
+- [ ] **E9.2. Subir el servidor y comprobarlo sin token.** RF-50, RF-51 — **M** — Toca API Laravel: **sí** (producción: aprobación aparte)
+  - Subir solo los archivos de E3 y E4 (sin migraciones; no correr `php artisan migrate`), limpiar la caché de rutas
+    como se haya acordado y revisar dueños de archivos si se usó `artisan` en el servidor.
+  - Hecho cuando: sin token, `consultas`, `consultas/1` y `pacientes/1/historia` contestan `401 sin_token` (no `404`); con un
+    token inventado, `401 token` (no `tobb_caido`); la web de clínica sigue entrando; el usuario confirma.
+
+- [ ] **E9.3. Lectura en producción con el paciente de la cartera de prueba.** RF-38 a RF-46, RF-50, RF-56 — **M** — Toca API Laravel: no (solo `GET`)
+  - Lista de comprobación (la ejecuta el usuario o con el usuario mirando):
+    1. Antes: anotar `COUNT(*)` y `MAX(updated_at)` de `consultas` y de las tablas hijas **del paciente de prueba**, y la
+       fila de `medico_infos` del médico (solo lectura de la base).
+    2. Iniciar sesión con el médico de prueba y abrir la historia del paciente: no más de 2 pedidos; comparar la cantidad
+       de consultas con la web.
+    3. Abrir una consulta cerrada propia, una de otro médico (si existe) y una abierta: comparar con la web lado a lado.
+    4. Confirmar que nada se puede editar y que no hay botones de cerrar ni reabrir.
+    5. Modo avión: se ve lo traído.
+    6. Después: los mismos `COUNT` y `MAX(updated_at)`; `medico_infos` igual; en el registro de accesos, solo `GET`.
+    7. No crear consultas en la app con ese paciente durante la prueba, y no abrir la sección "Enfermedades" (puede vincular).
+  - **Parar y avisar** ante: cualquier `500`, un valor que no está en la web, cualquier cambio en los conteos, un
+    pedido que no sea `GET`, o más de 10 pedidos en la prueba.
+  - Hecho cuando: la lista completa con su resultado anotado (sin datos de pacientes ni tokens) y el usuario confirma.
+
+- [ ] **E9.4. Cierre.** — **S** — Toca API Laravel: no
+  - `MEMORY.md` y la tabla de `specs/README.md` actualizados; decisión del usuario sobre la entrega E.
+  - Hecho cuando: el usuario aprueba el cierre de la L.
+
+## Entrega E (escritura) — pendiente, sin tareas
+Crear, editar y cerrar desde la app; laboratorio y pendientes con id de la web (`9.sqm`, **REQUIERE aprobación
+explícita**); filtro de antecedentes `activo = 0`; qué hacer con lo viejo sin enviar; `tabaquismo` (Q13) y el mapa
+al revés; adjuntos; aviso de licencia; sin conexión. Antes: respaldo probado de producción y limpieza de lo que dejen
+las pruebas. Se planifica después de ver funcionar la L.
+
+## Contradicciones, riesgos y lo no verificado
+Ver `plan.md` ("Contradicciones", "Riesgos de la entrega L" y "No verificado"). Lo que más pesa: H2 (E5), el esquema
+y permisos de producción (E9.1) y que `MEMORY.md` y la respuesta de producción no coinciden sobre qué versión de hclinica
+está arriba.
