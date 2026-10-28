@@ -397,7 +397,7 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
 `http://localhost/HClinica-salud360/public/index.php/api/salud360/...`; token del médico de prueba sacado de
 `auth/login` de turnos local (credenciales que la sesión pide al usuario, sin escribirlas en ningún lado).
 
-- [ ] **E3.1. Datos de prueba en la copia local y scripts de limpieza y suma de control.** RF-47 a RF-50 (base de todas las
+- [x] **E3.1. Datos de prueba en la copia local y scripts de limpieza y suma de control.** RF-47 a RF-50 (base de todas las
   pruebas) — **M** — Toca API Laravel: no (toca la base local de datos de prueba; cubierta por la aprobación de la tanda S del 2026-10-28)
   - Antes de insertar, solo estructura y agregados sobre `hc_clinica`: `SHOW COLUMNS` de las tablas de plan.md ("Mapa") y
     `SELECT activo, COUNT(*) FROM consultas GROUP BY activo` (igual para `tipo_consulta` y `es_foto`; Q11); los nombres
@@ -416,6 +416,23 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
   - Hecho cuando: `COUNT(*)` de cada tabla con el paciente de prueba coincide con lo esperado; `limpiar.sql` deja 0 y
     `fixture.sql` se vuelve a correr sin error (dos vueltas); `suma.sql` da el mismo resultado dos veces seguidas sin
     tocar nada; ningún dato real se copió a ningún archivo del repo.
+  - Hecho (2026-10-28): fixture cargado y dejado cargado en `hc_clinica` local (documentos 99000100 y 99000101, texto
+    "Prueba Salud360", un médico extra de `users`); scripts y notas fuera del repo en `%TEMP%\opencode\lectura\`
+    (`fixture.sql`, `limpiar.sql`, `contar.sql`, `ids.sql`, `suma.sql`, `cargar.cmd`, `limpiar.cmd`, `esquema.txt`) y
+    `%TEMP%\opencode\e31\` (`ids-y-limpieza.txt` y los conteos/sumas de las 68 tablas "de antes"). Probado: carga con
+    `STRICT_ALL_TABLES,NO_ZERO_DATE,...` y con `STRICT_TRANS_TABLES`; `contar.sql` da lo esperado; `limpiar.sql` probado con
+    `ROLLBACK`, aplicado 4 veces (cargar-limpiar-cargar) y las 68 sumas y conteos volvieron idénticos a los de antes;
+    `suma.sql` igual dos veces seguidas. Con el fixture cambian 29 tablas y las otras 39 (incluido lo de la spec 003, sin
+    tocar) quedan idénticas.
+  - Hallazgos que cambian tareas siguientes (detalle en `esquema.txt`): (1) **no existe tabla de diagnósticos** en
+    hclinica ni base local, y el audio es `grabaciones_audio`, que **no existe en la base local** (migración sin aplicar):
+    E3.3 no puede hacer `SELECT` ciego de esas dos y debe tolerar tabla ausente sin `Schema::`; (2) la base local no tiene
+    `consultas.activo = 0`, `tipo_consulta` 2 ni `es_foto = 1` (solo `activo` 1 y 2, tipos 1 y 4): esos casos son solo del
+    fixture y Q11 no se puede confirmar con datos reales (E9.1); (3) el texto de E4.1 omite que (f) también se lista (4
+    consultas: a, b, c y f); (4) casi todo es `NOT NULL` sin default y la base local no es estricta: el cliente `mysql -e
+    "source"` **sigue tras un error** (por eso las cargas van por stdin); (5) se sumó una consulta (h) de otro médico en un
+    segundo paciente fuera de la cartera, que E4.2 necesita para `403 fuera_de_cartera` de una consulta. Los ids cambian
+    en cada carga (`ids.sql`). El fixture de E3.1 sigue cargado para E3.2+ y E4; se limpia con `limpiar.cmd` (E4.3/E8.1).
 
 - [ ] **E3.2. Mapa y reglas puras, con phpunit.** RF-40, RF-42, RF-43, RF-52 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - Tests primero: `tests/Unit/MapaClinicaTest.php` (sin Laravel ni base): para cada analito de `labGeneralClinica` y

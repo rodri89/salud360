@@ -6,7 +6,12 @@ registros de personas): el repo es público.
 
 ## Traspaso (2026-10-28)
 - **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
-  E3.1 (`specs/002-hc-clinica/tasks.md`). El usuario aprobó el 2026-10-28 la spec, el plan y las tareas de la L y, con
+  E3.2 (`specs/002-hc-clinica/tasks.md`). **E3.1 hecha (2026-10-28):** el fixture de la L (pacientes 99000100 y 99000101, un
+  médico extra de `users`, consultas a-h) está CARGADO en `hc_clinica` local, aparte de los datos de la 003; scripts en
+  `%TEMP%\opencode\lectura\` (`cargar.cmd`, `limpiar.cmd`, `ids.sql`, `contar.sql`, `suma.sql`, `esquema.txt`) y conteos/sumas
+  de "antes" en `%TEMP%\opencode\e31\`. Cargar y limpiar siempre por stdin (con `mysql -e source` un error no corta). Los
+  ids cambian en cada carga. Hallazgos: no hay tabla de diagnósticos y `grabaciones_audio` no existe en la base local
+  (E3.3 debe tolerarlo); la base local no tiene `consultas.activo = 0`, tipo 2 ni `es_foto = 1`. El usuario aprobó el 2026-10-28 la spec, el plan y las tareas de la L y, con
   "arranquemos con la tanda S", la tanda S entera (E3 y E4, sin preguntar tarea por tarea). **E9 (producción) requiere
   aprobación aparte**; la entrega E (escritura) es borrador sin aprobar y sin tareas. Q1 a Q14 y Q16 a Q18 como
   recomendó el planificador; **Q15 = nunca borrar**: la lectura no elimina ni vacía nada de lo traído de la web, lo
