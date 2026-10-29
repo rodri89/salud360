@@ -554,7 +554,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     función de tablas existentes no se usa acá. (10) Los ids salen como entero; en el PHP de 32 bits uno mayor que 2147483647 se satura (la base llega a miles). Los ids de
     estudios se repiten entre tablas (veda, biopsia y tc_rmn comparten id 1797 en el fixture): la app tiene que armar el id local con el tipo (E6.2).
 
-- [ ] **E4.2. Controlador y rutas.** RF-38, RF-39, RF-41, RF-50, RF-51, RF-59 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+- [x] **E4.2. Controlador y rutas.** RF-38, RF-39, RF-41, RF-50, RF-51, RF-59 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - `ConsultaController` (`index`, `show`, `historia`); `Salud360Controller` suma `consultaVisible` y `formatearConsulta`;
     `routes/api.php` suma `GET consultas`, `GET consultas/{id}`, `GET pacientes/{id}/historia` dentro del grupo `salud360`.
   - Hecho cuando (copiado a la servida y con curl, espaciando los pedidos): sin token → `401 sin_token`; token del
@@ -563,6 +563,40 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     `403 fuera_de_cartera`; paciente inexistente → `404 paciente_no_encontrado`; consulta (e) → `404 consulta_no_encontrada`;
     `consultas/{id de otro paciente fuera de cartera}` → `403 fuera_de_cartera`; `consultas/<a>` y `pacientes/<id>/historia`
     → 200; `php artisan route:list` muestra las tres con el middleware `salud360`; la web de hclinica sigue entrando normal.
+  - Hecho (2026-10-29): hclinica `2d60bf9` (rama `salud360-api`, sin push). Nuevo `ConsultaController` (`index`, `show`, `historia`);
+    `Salud360Controller` suma `idWebValido`, `pacienteVisible`, `consultaNoEncontrada`, `consultaVisible` y `formatearConsulta`; `routes/api.php`
+    suma las tres `GET`. Sin lógica pura nueva (no hay test en rojo): phpunit existente en verde en la servida (`MapaClinicaTest` 94,
+    `ConsultasReglasTest` 255, `EnfermedadesReglasTest` 51, `PacienteVinculoReglasTest` 15, `PerfilesTest` 19, `tests/Unit` 435). `php -l`
+    limpio en los tres; copiados a la servida (iguales al clon en contenido) y `route:clear` (esa copia no tiene caché de rutas: solo
+    `config.php`, que no se tocó). `route:list --path=salud360`: las 3 nuevas, todas `GET|HEAD`, middleware `api,salud360` (el `throttle:60,1`
+    es del grupo `api`); ninguna ruta de escritura de consultas. Curl (fixture de E3.1, token del médico de prueba; 38 pedidos espaciados
+    ~1,25 s): sin token 401 `sin_token` (las 3 rutas); token malo 401 `token`; lista del paciente 200 con 4 consultas (c, b, a, f; `total` 4;
+    `omitidas` `{foto 1, otro 1, sin_fecha 0}`; `propia` solo en c, a y f); `limite=0` 1 consulta y `hay_mas` 1; `limite=5000` las 4;
+    `limite=2&desde=1` b y a; `limite=abc&desde=-5` y `limite[]=1` = valores por defecto (200); `paciente_id` faltante, `abc`, `[]`, `-1` y de
+    10 cifras 422 `datos_invalidos`; paciente fuera de cartera 403 `fuera_de_cartera`; inexistente 404 `paciente_no_encontrado`; consulta a, b
+    (`propia: false`, `telemedicina`), c (`ABIERTA`) y f (`no_leidas: ["documentos"]`) 200; d (foto), e (baja), g (tipo otro), inexistente y `0`
+    404 `consulta_no_encontrada`; h (paciente fuera de cartera) 403 `fuera_de_cartera`; id `abc` o de 10 cifras 422; historia del paciente 200
+    (3690 bytes), fuera de cartera 403, inexistente 404, `abc` o 10 cifras 422; `POST consultas`, `PUT` y `DELETE consultas/<id>` y `POST
+    pacientes/<id>/historia` 405 (no hay rutas). JSON válido en todo (`examen_fisico` y `secciones` vacíos salen `{}`). Cabeceras HTTP
+    idénticas a las de `pacientes/{id}`. `/`, `/login` e `index.php` de la web de hclinica 200 (como el 21/10). `CHECKSUM TABLE` de las 68
+    tablas, conteos de las 68 y `suma.sql` iguales antes y después, salvo `salud360_token_cache` (escrita por el middleware; vaciada al final,
+    quedó en 0). Falla de la base simulada con `php -r` (servicio que lanza): las tres rutas dan 500 `consultas` con mensaje fijo, sin SQL ni
+    traza aunque `APP_DEBUG` esté en `true`; el detalle va a `storage/logs` (el archivo de la prueba se borró). **No se probó el token del
+    administrador** (no hay token de administrador de clínica en `respaldos`; las tres rutas lo cortan con `soloMedico`, igual que
+    `PacienteController`/`EnfermedadController`, que sí están probados así).
+  - Decisiones que la spec no fijaba (cambiables): (1) `paciente_id`, `limite` y `desde` se leen solo de la query (no del cuerpo); `limite` y
+    `desde` inválidos no dan 422 (decisión de E3.2: valores por defecto). (2) En `show` el paciente sale de la propia consulta (la ruta no
+    lleva paciente); el orden es consulta existente → ficha activa (404) → cartera (403) → recién ahí `leer`: una baja o foto de un paciente
+    ajeno da 403, no 404 (no se dice nada de lo que no es del médico), y una consulta de un paciente dado de baja da `404 paciente_no_encontrado`.
+    Por eso «consulta que no es del paciente» no existe como caso en `show`. (3) Un fallo de la base en las tres rutas da `500` con código
+    `consultas` y el mensaje fijo «No se pudo leer la historia clínica.» (ningún otro controlador atrapa excepciones; este sí para no mostrar
+    la traza). (4) `pacienteVisible` vive en la base y no reemplaza al `show` de pacientes ni a enfermedades (no se tocaron). (5) La app
+    puede ver el nombre del médico de una consulta ajena (`medico_nombre`), ya previsto en el plan.
+  - Para E4.3: el registro de Apache tiene cuatro pedidos NO `GET` a rutas con ese nombre, míos de esta tarea, a las 11:45:44-48 del
+    2026-10-29 (`POST consultas`, `PUT` y `DELETE consultas/<id>`, `POST pacientes/<id>/historia`), todos `405` porque esas rutas no
+    existen; no tocaron nada. Hay además pedidos viejos a `consultas/abrir`, `…/secciones`, etc. de septiembre y octubre: son de la copia de
+    **pediatría** (otra base), no de esta. El 405 de una ruta inexistente lo contesta el manejador de Laravel y con `APP_DEBUG=true` trae la
+    traza (9 KB): es de todas las rutas de la API, no de las nuevas; mirarlo en E9.1 (`APP_DEBUG` de producción).
 
 - [ ] **E4.3. Prueba de no-escritura y documentación.** RF-50 — **S** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)** (solo el `.md`)
   - Una pasada completa de lecturas (las tres rutas, todas las consultas del paciente de prueba) con `suma.sql` antes y

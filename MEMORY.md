@@ -6,7 +6,11 @@ registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
-  E4.2 (`specs/002-hc-clinica/tasks.md`; la E4 termina con validación del reviewer). **E4.1 hecha (2026-10-29, hclinica `3905b0d`):**
+  E4.3 (`specs/002-hc-clinica/tasks.md`; la E4 termina con validación del reviewer). **E4.2 hecha (2026-10-29, hclinica `2d60bf9`):**
+  `ConsultaController` + 3 rutas `GET` (`consultas`, `consultas/{id}`, `pacientes/{id}/historia`) probadas con curl contra el fixture; `suma`
+  y conteos iguales (salvo `salud360_token_cache`, vaciada). El administrador no se probó (sin token). En el log de Apache quedaron 4 pedidos
+  no `GET` míos (405, 11:45 del 29/10) que E4.3 debe descontar. Las dos copias de la API de clínica y pediatría comparten el nombre de ruta
+  `consultas/...`: el log mezcla las dos. **E4.1 hecha (2026-10-29, hclinica `3905b0d`):**
   `ConsultasService::listar` (2 queries; `$medicoId` como 4.º parámetro para `propia`) e `historia` (13 queries, una por tabla), con las
   reglas puras nuevas en `ConsultasReglas` (`lista`, `cabecera`, `cargas`, `antecedentesFamiliares`…); contrastado con SQL directo en el
   fixture y en una base descartable ya borrada. Hallazgos: la web guarda `2000-01-01` como fecha vacía de laboratorio y peso (`fechaDeCarga`;
@@ -79,7 +83,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `3905b0d`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `2d60bf9`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
