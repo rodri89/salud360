@@ -467,7 +467,7 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
   - Para E3.3 y E4.1 (no son de esta tarea): `ConsultasReglas` no arma antecedentes familiares ni estudios (E4.1 decide, por ejemplo,
     si una casilla en 0 sin detalle se manda); `diagnosticos` en `no_leidas` sigue sin tabla de donde leerse (hallazgo 1 de E3.1).
 
-- [ ] **E3.3. Servicio de lectura de una consulta.** RF-39, RF-40, RF-42, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+- [x] **E3.3. Servicio de lectura de una consulta.** RF-39, RF-40, RF-42, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - `app/Services/Salud360/ConsultasService.php` (nuevo, solo `SELECT`): `leer($consulta)` con `secciones`,
     `examen_fisico` y `no_leidas` (solo ids con filas `activo = 1` en `consulta_pdfs`, audio, fotos, diagnósticos y
     antecedentes personales; nombres de tablas de E3.1). Textos: fila `activo = 1` de mayor `id`.
@@ -476,6 +476,37 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
     `documentos`); un campo vacío no aparece; `suma.sql` antes y después es idéntica; `php -l` sin errores; la búsqueda de
     `insert|update|delete|save\(|create\(|Schema::|DB::statement|asegurarColumna|inicializarCampos|medico_infos` en el
     archivo no da resultados.
+  - Hecho (2026-10-29): hclinica `92e5977` (rama `salud360-api`, sin push). Nuevo: `app/Services/Salud360/ConsultasService.php`
+    (`leer`, `noLeidas`, `tablasExistentes`; solo `SELECT`). Reglas puras nuevas, con tests, en `ConsultasReglas` (`idTexto`,
+    `idDe`, `clasificarFila`, `mapa`, `tablasNoLeidas`, `noLeidas`) y `MapaClinica::NO_LEIDAS`. Rojo previo: 28 errores en
+    `ConsultasReglasTest` y 3 en `MapaClinicaTest` (método y constante inexistentes). Verde: `MapaClinicaTest` 94, `ConsultasReglasTest`
+    188, `EnfermedadesReglasTest` 51, `PacienteVinculoReglasTest` 15, `PerfilesTest` 19 y `tests/Unit` entera 368 (antes 336). `php -l`
+    limpio; la búsqueda de `insert|update|delete|save(|create(|Schema::|DB::statement|asegurarColumna|inicializarCampos|medico_infos|
+    paciente_id_tobb` (también sin distinguir mayúsculas) en el servicio da 0, y sin `fn` ni propiedades tipadas; la servida es igual al clon
+    en los cinco archivos. Leído el fixture con el bootstrap de Laravel de la servida: **a** 11 secciones (textos, alimentación `1|`+detalle
+    en hiposódica y celíaco, serologías 12 de 16, Child-Pugh 5) + examen físico de 5, `no_leidas` `[]`; conductas lee la fila activa de
+    mayor id (no la de baja con id mayor); **b** 7 secciones (alimentación solo `diabetes: "1|"`, serologías 2), examen de 2, el PDF
+    `activo = 0` no da `documentos`; **c** motivo y nota, sin alimentación, serologías ni Child-Pugh (todo en 0), examen `{}`; **f** solo
+    motivo, `no_leidas` `["documentos"]`; **h** (otro paciente) motivo; **d**, **e** y **g** dan null (no se leen). Mismas salidas con
+    cuatro `sql_mode` (el de Laravel, `STRICT_ALL_TABLES…`, `STRICT_TRANS_TABLES` y sin modo). Los casos que el fixture no tiene (filas
+    `activo = 2` en las tablas por consulta, audio presente, fotos y antecedentes personales con datos, texto de solo espacios, `"0"`, texto
+    con ñ/emoji/salto, PDF de otro paciente) se probaron con 21 aserciones en una base descartable `e33_scratch` (copia de las filas del
+    fixture, ya borrada) y dos mutaciones del servicio (sin filtro `activo`, orden ascendente) las hacen fallar. `CHECKSUM TABLE` de las 68
+    tablas, conteos de las 68 y `suma.sql` iguales antes y después de las lecturas; el fixture de E3.1 sigue cargado.
+  - Decisiones que la spec no fijaba (cambiables, con test): (1) `leer` recibe la fila de `consultas` y devuelve `null` para todo lo que
+    `clasificar` no manda a la lista (`baja`, `foto`, `otro`, `sin_fecha`), no solo `activo = 0`: el controlador (E4.2) lo contesta
+    `404 consulta_no_encontrada`; una consulta que la lista no ofrece no tiene cabecera que mostrar. (2) `secciones` y `examen_fisico`
+    salen siempre como objeto, también vacíos (un `[]` rompería la lectura de la app como mapa). (3) `no_leidas`: `fotos` suma
+    `consulta_fotos` y `examenes_complementarios_fotos`; todas las tablas se filtran por `consulta_id`, `paciente_id` y `activo = 1`
+    (la de PDFs no tiene clave foránea: una fila con otro `paciente_id` no cuenta). (4) Tablas ausentes: se averiguan en
+    `information_schema` (una consulta por `leer`), sin `Schema::` ni `hasTable`; si esa consulta fallara, `leer` falla (500) en vez de callar
+    un aviso. Las tablas de las secciones (`motivo_consultas`…) no son opcionales: si faltan en producción es un error visible (E9.1).
+    (5) `diagnosticos` queda fuera de `no_leidas`: sin tabla, el id nunca se informa (si en producción existiera una tabla de diagnósticos, no
+    se leería: confirmarlo en E9.1). (6) Los formularios (alimentación, serologías, Child-Pugh, examen físico) también toman la fila
+    `activo = 1` de mayor id. (7) El motivo de `secciones` lleva solo `texto` (como el JSON del plan); su `fecha` va en `historia.motivos` (E4.1).
+  - Para E4.1/E4.2: los antecedentes familiares son del historial del paciente (E4.1), no de `leer`; allí falta decidir la casilla en 0 sin
+    detalle: se propone la misma regla que la alimentación (no se manda) y `ConsultasReglas` todavía no tiene la función. El controlador
+    arma la cabecera (`consulta`, `propia`, `medico_nombre`) y busca la fila (`consultaVisible`).
 
 Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la E4 recién después.**
 

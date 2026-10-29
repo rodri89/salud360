@@ -6,9 +6,13 @@ registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
-  E3.3 (`specs/002-hc-clinica/tasks.md`). **E3.2 hecha (2026-10-29, hclinica `a5ec2cc`):** `MapaClinica` y `ConsultasReglas`
-  (puras, con 250 tests phpunit) y el mapa contrastado con la estructura real de `hc_clinica`; decisiones chicas y pendientes
-  para E3.3/E4.1 en la nota de la tarea. **E3.1 hecha (2026-10-28):** el fixture de la L (pacientes 99000100 y 99000101, un
+  E4.1 (`specs/002-hc-clinica/tasks.md`; la E3 termina con validación del reviewer). **E3.3 hecha (2026-10-29, hclinica `92e5977`):**
+  `ConsultasService::leer` (solo `SELECT`: secciones por consulta, examen físico y `no_leidas`), probado contra el fixture (a-h) y en
+  una base descartable ya borrada; devuelve `null` para lo que la lista no ofrece (el controlador lo hará `404`); `secciones` y
+  `examen_fisico` salen como objeto aunque estén vacíos; las tablas ausentes se detectan en `information_schema` (sin `Schema::`);
+  `diagnosticos` no se informa nunca. Pendiente para E4.1: la regla de la casilla de antecedentes familiares en 0 sin detalle (se
+  propone no mandarla, como en la alimentación). **E3.2 hecha (2026-10-29, hclinica `a5ec2cc`):** `MapaClinica` y `ConsultasReglas`
+  (puras) y el mapa contrastado con la estructura real de `hc_clinica`. **E3.1 hecha (2026-10-28):** el fixture de la L (pacientes 99000100 y 99000101, un
   médico extra de `users`, consultas a-h) está CARGADO en `hc_clinica` local, aparte de los datos de la 003; scripts en
   `%TEMP%\opencode\lectura\` (`cargar.cmd`, `limpiar.cmd`, `ids.sql`, `contar.sql`, `suma.sql`, `esquema.txt`) y conteos/sumas
   de "antes" en `%TEMP%\opencode\e31\`. Cargar y limpiar siempre por stdin (con `mysql -e source` un error no corta). Los
@@ -70,7 +74,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `a5ec2cc`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `92e5977`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
