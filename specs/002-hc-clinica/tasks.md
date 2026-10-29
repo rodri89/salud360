@@ -512,7 +512,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
 
 ## Tanda E4 — Servidor II: lista, historial del paciente, rutas y no-escritura (hclinica, rama `salud360-api`)
 
-- [ ] **E4.1. Servicio: lista de consultas e historial del paciente.** RF-38, RF-41, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+- [x] **E4.1. Servicio: lista de consultas e historial del paciente.** RF-38, RF-41, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - En `ConsultasService`: `listar($pacienteId, $limite, $desde)` (activo 1/2, tipos 1 y 4, `es_foto = 0`, `total`, `hay_mas`,
     `omitidas`, `propia`, `medico_nombre` con un solo `SELECT … WHERE id IN (…)`) e `historia($pacienteId)` (antecedentes,
     laboratorios, estudios, motivos, exámenes complementarios, interconsultas, pendientes; solo `activo = 1` y de
@@ -522,6 +522,37 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     los estudios con su `consulta_id`, el motivo de todas las consultas y los antecedentes; el tamaño del JSON del
     paciente de prueba se anota; `EXPLAIN` de los `SELECT` por paciente sin recorridos completos de tablas grandes (o lo
     anotado); `suma.sql` idéntica; `php -l` y búsqueda de escrituras sin resultados.
+  - Hecho (2026-10-29): hclinica `3905b0d` (rama `salud360-api`, sin push). Cambian `ConsultasService.php` (`listar`, `historia`), `ConsultasReglas.php`
+    y `tests/Unit/ConsultasReglasTest.php`. Rojo previo: 66 errores de 255 (métodos inexistentes). Verde: `ConsultasReglasTest` 255 (antes 188),
+    `MapaClinicaTest` 94, `EnfermedadesReglasTest` 51, `PacienteVinculoReglasTest` 15, `PerfilesTest` 19 y `tests/Unit` entera 435 (antes 368). `php -l` limpio;
+    sin `fn` ni propiedades tipadas; la búsqueda de `\b(insert|update|delete)\b|save\(|create\(|Schema::|DB::statement|DB::raw|asegurarColumna|inicializarCampos|medico_infos|paciente_id_tobb`
+    da 0 (ojo: la búsqueda simple `update` encuentra la columna `updated_at` de la cabecera en `ConsultasReglas`; E4.3 tiene que usar `\b`). La servida es igual al clon.
+    Fixture (paciente 1, médico de prueba): `listar` = c, b, a, f (`total` 4), `omitidas {foto: 1, otro: 1, sin_fecha: 0}` (la baja e no se cuenta, Q11), `propia`
+    solo en c, a y f (b es de otro médico); `historia` = laboratorio general 2, reducido 1, peso 2, `laboratorio_sin_fecha` 1 (la de f), estudios 2/1/1/2/1, motivos 6
+    (a, b, c, d, f, g; no e), exámenes 2, interconsultas 1, pendientes 1 y antecedentes de la fila activa de a (6 casillas y nota; la fila de b, de `activo` 0 y mayor id,
+    no cuenta). Todo contrastado con SQL directo (PDO, sin el mapa) con cuatro `sql_mode` (el de Laravel, `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES…` y sin modo):
+    mismas salidas. Queries: `listar` 2 (1 si el paciente no tiene consultas) y `historia` 13, siempre, también con 300 cargas de 52 valores y 300 motivos (sin N+1);
+    `EXPLAIN`: todos por `paciente_id` con su índice y `consultas` por clave primaria (solo `pesos` de 6 filas elige recorrer la tabla, por tamaño). Tamaño del JSON del fixture:
+    lista 996 bytes, historia 3664 (paciente 2: 326 y 441). Sobre los 1015 pacientes reales de la copia (solo agregados): historia máxima 6361 bytes (p95 2812), lista máxima 5553,
+    13 y 2 queries siempre, 0 errores y 0 fallas de `json_encode`; peor caso inventado (300 cargas de laboratorio general + 300 motivos en una base descartable `e41_scratch`, ya
+    borrada) 309 KB. `CHECKSUM TABLE` de las 68 tablas, conteos y `suma.sql` iguales antes y después; `contar.sql` 32 OK; el fixture sigue cargado. Mutaciones probadas (9): casilla en
+    0 que se manda, sin la fecha `2000-01-01`, `hay_mas` con `<=`, la baja contada en `omitidas`, sin el filtro de consulta activa, sin `activo = 1` de la fila, pendientes y
+    antecedentes la fila más vieja y el SELECT de nombres por médico: los tests o la base descartable las detectan.
+  - Decisiones que la spec no fijaba (cambiables, con test): (1) `listar` recibe un cuarto parámetro `$medicoId` (`users.id` del pedido) para `propia`; el texto de la tarea no lo
+    nombra. (2) `omitidas` de la lista es `{foto, otro, sin_fecha}`: la baja no figura (Q11), aunque el pedido de esta tarea mencionaba `baja`. (3) La cabecera no lleva `edad_meses`
+    (el plan sí): en clínica `consultas.edad_paciente` vale 0 en todas las filas reales, no es una edad. (4) La web guarda `2000-01-01` cuando una carga de laboratorio o de peso
+    no trae fecha (`MedicoController`: `guardarLaboratorioGeneral`, `guardarLaboratorioGeneral2`, `guardarPeso`); `fechaDeCarga` la toma como vacía, además de `1000-01-01` y
+    `0000-00-00`. Esto corrige el fixture y las reglas de E3.1/E3.2, que solo sabían de `1000-01-01`; `fechaUtil` no cambia. (5) Una carga de laboratorio o de peso sin fecha útil
+    NO se manda (el plan ya tenía `omitidas.laboratorio_sin_fecha`) y se cuenta, salvo que no tenga ningún valor (no hay nada que perder); entra el peso en esa cuenta. Una carga sin
+    ningún valor, y un estudio, motivo, examen o interconsulta sin texto, no se mandan (la web crea filas vacías). Estudios y motivos con texto y sin fecha sí, con `fecha: null`.
+    (6) Antecedentes familiares: `{flag, detalle}` con `flag` 1 o 0 (solo el 1 es marcada), `detalle` solo si lo hay; una casilla en 0 sin detalle no se manda; en 0 con detalle va con
+    `flag` 0 (como la alimentación); `nota` como texto; la fila toda en 0 y sin nota da `antecedentes_familiares: null`. Es la ÚLTIMA fila activa y válida: si está vacía no se busca
+    una anterior (la web muestra esa fila); igual para `pendientes`. (7) Todo lo de la historia filtra también por `consultas.activo` 1 o 2, como pide la tarea; la web no filtra la
+    consulta para antecedentes y laboratorio, así que una carga de una consulta anulada que la web muestra, acá no sale. (8) Exámenes e interconsultas se ordenan por `numero`, el
+    resto por `fecha desc, id desc`; no llevan `consulta_respuesta` (el JSON del plan no lo incluye aunque el mapa lo nombra). (9) `historia` y `listar` no toleran tablas ausentes
+    (las de la historia no son opcionales, igual que en E3.3: si faltan en producción es un error visible, E9.1); `listar` y `historia` no leen audio, fotos ni PDFs, así que la
+    función de tablas existentes no se usa acá. (10) Los ids salen como entero; en el PHP de 32 bits uno mayor que 2147483647 se satura (la base llega a miles). Los ids de
+    estudios se repiten entre tablas (veda, biopsia y tc_rmn comparten id 1797 en el fixture): la app tiene que armar el id local con el tipo (E6.2).
 
 - [ ] **E4.2. Controlador y rutas.** RF-38, RF-39, RF-41, RF-50, RF-51, RF-59 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - `ConsultaController` (`index`, `show`, `historia`); `Salud360Controller` suma `consultaVisible` y `formatearConsulta`;
