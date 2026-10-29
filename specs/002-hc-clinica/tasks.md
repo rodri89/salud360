@@ -794,12 +794,40 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
     que no existen: 404 ignorado); sus adaptadores incluyen las tablas clínicas (también las de `clinica`), y **no se tocó** (fuera de E5.1;
     aviso para el usuario: es la deuda ya anotada en `AGENTS.md`, y si turnos crea esas rutas saldría todo lo `dirty` de la HC general).
 
-- [ ] **E5.2. El candado frente a una base migrada de hepatología (H2).** RF-47, RF-48 — **S** — Toca API Laravel: no
+- [x] **E5.2. El candado frente a una base migrada de hepatología (H2).** RF-47, RF-48 — **S** — Toca API Laravel: no
   - Test: partiendo de una base v8 con consultas de `hepatologia` sucias, antecedentes repetidos y secciones ocultas
     (la base de `MigracionHepatologiaTest`), migrada a v9, con un backend falso de solo lectura para `clinica`:
     `empujarTodo` y abrir "consulta" no envían nada; las filas quedan exactamente igual (comparación de `id`, `dirty`,
     `activo`, `updated_at` antes y después); el antecedente con `activo = 0` sigue con `activo = 0`.
   - Hecho cuando: el test (en rojo si se quita el candado) en verde; vale como regresión de H2 para la entrega E.
+  - **Hecho (2026-10-29, salud360 `0e3c461`; sin cambios en código de producción).** `HcApiSyncBaseMigradaTest` (9, `jvmTest`, `repos/`): base SQLite en
+    archivo temporal que parte de una v8 con datos inventados (pacientes `99000101` a `99000103`) y todo `dirty = 1` como en producción —consultas de
+    `hepatologia` abiertas, cerradas y anulada, otra abierta ya en `clinica` del mismo paciente, secciones, examen, dos adjuntos (subir y dar de baja),
+    registros, laboratorio, `paciente_extra` (uno que choca y se queda en `hepatologia`), preferencias, cuatro antecedentes perdedores del dedupe (tres
+    de un paciente con consultas sucias y uno cuya única consulta está limpia), más una consulta de pediatría— que el driver migra a v9 con `8.sqm`
+    (como `MigracionHepatologiaTest`). Un test comprueba la base de partida (v9, cero `hepatologia` en las cuatro tablas, los cuatro `activo = 0`, los
+    `dirty` de antes intactos). Con un backend falso de solo lectura para `clinica` **que lanza si lo llaman** (una fuga dejaría un reintento):
+    `empujarTodo`; el `init` de `ConsultaViewModel` para cada consulta (`tieneApi` + `traerConsultaRemota` + `empujarTodo`); `marcarSucia` (con y sin
+    espera) y `empujarYa` de cada consulta, incluida la anulada, comprobando tras cada uno que no queda ningún `Job` programado; y todo junto, dos veces.
+    En todos: **cero llamadas** (ni `asegurarConsulta`, ni `pacientes/resolver`, ni `enviar*`), y **todas las tablas de la base** (no solo las
+    clínicas) idénticas columna por columna (`dirty`, `updated_at`, `remoto_id`, `activo`…) antes y después. **Contador (Q16-A):** `pendientes` = 7 con el
+    candado y con un motor sin backend, y 7 después de todos los caminos (los antecedentes `activo = 0` no suman; `c-p3-cerrada` está limpia y no
+    cuenta). **Pediatría** sobre la misma base, junto a la clínica de solo lectura: recibe sus 6 llamadas en orden, queda limpia y el resto de la base
+    queda idéntico, con `pendientes` = 6. **SyncEngine** (sin cambiarlo): contra un `HttpServer` local que contesta 404, `sincronizar()` da `false` tras
+    **un** `POST /sync/push` con las tablas `consultas`, `seccion_valores`, `examen_fisico`, `archivos`, `registros_clinicos`, `laboratorios`,
+    `antecedentes` (con los cuatro `activo = false`), `paciente_extras` y `medico_preferencias`, y no limpia nada.
+    **Rojo previo:** ninguno —el candado de E5.1 ya hacía lo correcto— así que se comprobó con mutaciones sobre `HcApiSync.kt` (revertidas con
+    `git checkout`): (1) quitar el candado de `drenar` → fallan 5 de 9 (`empujarTodo`, `init` del ViewModel, todo junto, pediatría y el límite conocido);
+    (2) `consultasDeAntecedentesPendientes` sin el salto de solo lectura → fallan el contador y pediatría (los dos miran `pendientes`); (3) `esDeSoloLectura` siempre
+    `false` → falla `marcarSucia`/`empujarYa` (queda un envío esperando). **Verde:** `.\gradlew :core:data:jvmTest --rerun` completo (649 tests, 0 fallas,
+    0 salteados). No se compiló `composeApp` (la tarea no toca código de producción).
+    **Avisos.** (a) *Límite conocido, fijado en un test sin cambiarlo:* `archivo` no tiene HC y `archivosPendientesDeConsulta` toma los sucios sin consulta
+    (`consulta_id` NULL) del paciente; el envío de pediatría de una consulta de un paciente que también tiene HC general recoge sus adjuntos por paciente
+    (p. ej. el `familigrama`): si el archivo está en el dispositivo lo subiría a pediatría y, si no, lo marca limpio sin enviarlo. En la L no pierde nada
+    (clínica no envía) pero **la entrega E debe resolverlo antes de enviar adjuntos de clínica** (filtrar por la HC de la consulta de origen). (b) "Abrir
+    consulta" se probó con la secuencia del `init` de `ConsultaViewModel` y no con `HcRepository.abrirConsulta` (que retoma la abierta sin escribir hoy,
+    pero E5.3 cambia su regla). (c) `SyncEngine` sigue fuera del candado: el test fija qué manda (deuda de AGENTS.md); si turnos crea esas rutas, ese test
+    avisa. (d) El fake de backend está duplicado en este archivo y en `HcApiSyncSoloLecturaTest` (a propósito, para no tocar la prueba de E5.1).
 
 - [ ] **E5.3. `AdminRepository` y `HcRepository` ante un backend de solo lectura.** RF-46, RF-61 — **S** — Toca API Laravel: no
   - Tests primero: `AdminRepositoryLicenciasTest` (`guardarLicencia` de un médico solo de clínica devuelve `true` y no

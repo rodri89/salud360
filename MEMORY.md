@@ -7,7 +7,10 @@ registros de personas): el repo es público.
 ## Traspaso (2026-10-29)
 - **Siguiente paso: tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E5.1 hecha
   (2026-10-29): `HcBackend.soloLectura` (default `false`) y candado en `HcApiSync` (`marcarSucia`, `empujarYa`, `drenar`,
-  `consultasDeAntecedentesPendientes`); sigue E5.2. `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada backend que se
+  `consultasDeAntecedentesPendientes`). **E5.2 hecha (2026-10-29, `0e3c461`, solo un test):** `HcApiSyncBaseMigradaTest` prueba el candado
+  con una base v8 con datos de hepatología migrada por `8.sqm` (cero llamadas, base idéntica, `pendientes` igual, pediatría sigue); sigue
+  E5.3. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC
+  (fijado como límite conocido en ese test). `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada backend que se
   registre (E6.5 agrega `clinica` = `true`). Ojo: `SyncEngine` no pasa por el candado (otro canal, hacia turnos, 404 hoy) y
   `AdminRepository.guardarLicencia` llama al backend sin candado hasta E5.3. La tanda S (servidor `hclinica`, rama `salud360-api`,
   E3 y E4: todas las tareas hechas; `specs/002-hc-clinica/tasks.md`) quedó «implementada y con ajustes; falta
