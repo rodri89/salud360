@@ -734,7 +734,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     hace `Schema::create` de sus dos tablas. No toca datos clínicos ni de pacientes ni `medico_infos` (la cláusula principal se cumple) y las dos primeras ocurren en pedidos que terminan en `403`, pero la frase final
     es inexacta: **no se editó la spec**; conviene decidir si se afloja a «lo único que se registra es la sesión de la app y, si corresponde, el aviso de licencia vencida y la lista de médicos sin vincular». (b) `pacienteVisible`
     y `consultaVisible` se ejecutan **antes** del `try` del controlador (fuera de las líneas que pidió la tarea): una excepción de la base ahí todavía saldría con el `500` de Laravel y su traza si `APP_DEBUG=true` (con la base
-    caída el middleware ya falla antes); no se tocó, es una línea más si se quiere. (c) La cifra de 309 KB no se pudo reproducir exacta; queda «≈300 KB según el largo de los textos». (d) Dónde mostrar la nota del perfil 4
+    caída el middleware ya falla antes); no se tocó, es una línea más si se quiere. **(Resuelto el 2026-10-29, hclinica `64849c9`: ambas llamadas dentro del `try`; con el controlador anterior las 9 pruebas de falla —6 con servicio que lanza en `pacienteVisible`/`consultaVisible` y 3 con la base caída— escapaban con `APP_DEBUG=true`, con el nuevo dan `500 consultas` sin traza; los 401/403/404/422 por curl iguales; `tests/Unit` 469 en verde.)** (c) La cifra de 309 KB no se pudo reproducir exacta; queda «≈300 KB según el largo de los textos». (d) Dónde mostrar la nota del perfil 4
     (arriba). (e) Índice en `medico_pacientes` y otros cambios de esquema: **no se hicieron** (nota para E9.1); el perfil 4 de producción: confirmar en E9.1 si la tabla existe.
 
 **Tanda S (E3 y E4): implementada y con ajustes (E4.4); falta validación final del reviewer solo si cambió algo mayor** (E3.1 a E3.3 y E4.1 a E4.4 hechas; E9, producción, sin aprobación). Al terminar la tanda: validación del reviewer y MEMORY.md.
@@ -744,7 +744,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
 
 Esta tanda **no registra** ningún backend: solo agrega los candados y los prueba. Es la condición de E6.5.
 
-- [ ] **E5.1. `HcBackend.soloLectura` y candado en `HcApiSync`.** RF-47, RF-48 — **M** — Toca API Laravel: no
+- [x] **E5.1. `HcBackend.soloLectura` y candado en `HcApiSync`.** RF-47, RF-48 — **M** — Toca API Laravel: no
   - Tests primero: `core/data/src/jvmTest/.../repos/HcApiSyncSoloLecturaTest.kt` (SQLite en archivo temporal, como
     `PacientesHcRepositoryTest`; backend falso que cuenta cada llamada y `scope` inyectado): con consultas de `clinica`
     sucias, con secciones, examen, registro, archivo y antecedente `activo = 0` también sucios, un backend con
@@ -756,6 +756,43 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
     El contador `pendientes` no cambia (Q16-A).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HcApiSyncSoloLecturaTest*'` en verde (antes, en rojo) y
     `.\gradlew :core:data:jvmTest` completo en verde.
+  - **Hecho (2026-10-29).** `HcBackend.soloLectura` (`get() = false`, con KDoc que obliga a declararlo) y el candado en `HcApiSync`, en **cuatro
+    puntos** (el motor, no el backend): `marcarSucia` y `empujarYa` salen sin programar nada si la consulta es de un backend de solo lectura
+    (`esDeSoloLectura`: una lectura de la consulta, nada más); `drenar` —por donde pasan `empujarTodo`, `marcarSucia`, `empujarYa` y los
+    reintentos de 15/60/300 s— sale antes de leer lo pendiente (`backends[...]?.takeUnless { it.soloLectura } ?: return`, el mismo lugar del
+    `?: return` de siempre, antes del `try`: no limpia, no marca, no recuenta); `consultasDeAntecedentesPendientes` salta esos backends (igual que
+    hoy salta una especialidad sin backend, así **`pendientes` no cambia**: Q16-A). `empujarTodo` no necesitó código propio: junta ids y cada
+    uno cae en `drenar`. Pediatría (`soloLectura = false`) sigue por el mismo camino; los tests existentes pasan sin tocarlos (640 en total).
+    **Tests** (`jvmTest`, `repos/`, SQLite en archivo temporal, backend falso que anota cada llamada, motor en `Dispatchers.Unconfined`):
+    `HcApiSyncSoloLecturaTest` (10): con clínica de solo lectura y sucios consulta abierta y cerrada, sección, examen, registro, dos adjuntos (subir y
+    dar de baja), antecedente `activo = 1` y otro `activo = 0` sin consulta, laboratorio y pendiente, `empujarTodo`, `empujarYa` y `marcarSucia`
+    (con `esperaMs = 0` y con la espera de siempre) dejan **cero llamadas** (ni `asegurarConsulta`, ni `pacientes/resolver`, ni `enviar*`, ni
+    `subir/borrarArchivo`), **ningún `Job` activo** (ni reintento ni envío esperando) y las filas sucias **idénticas columna por columna** (`id`,
+    `dirty`, `updated_at`, `remoto_id`…); antecedentes y registros sucios sin consulta sucia tampoco salen ni se cuentan; el backend falso de
+    clínica lanza si lo llaman, así que una fuga dejaría además un reintento programado. Controles: pediatría falsa recibe las 8 llamadas y queda
+    limpia; con `marcarSucia`/`empujarYa` también; un envío que falla deja **un** reintento y una `marcarSucia` normal deja **un** envío esperando
+    (prueba de que el detector de `Job` ve lo que tiene que ver); mezcla pediatría + clínica en el mismo motor: pediatría envía, clínica no.
+    `HcBackendsSoloLecturaTest` (1, Koin real con URLs de pediatría y clínica): cada backend que `HcBackends` registra tiene decidido su valor
+    (`pediatria` → `false`, `clinica` → `true`) y **cualquier otro código falla** hasta que se lo agregue ahí: es la defensa contra «un backend
+    nuevo envía por descuido». Hoy `clinica` no está registrado (E6.5).
+    **Rojo previo** (con la propiedad ya declarada y sin candado): 6 de los 11 tests nuevos fallaban —3 de solo lectura (`empujarTodo`, `empujarYa`, `marcarSucia` sin espera) con
+    `[asegurarConsulta, pacientes/resolver, asegurarConsulta]` en vez de `[]`, el de `marcarSucia` con espera con un envío esperando (1 `Job` en vez de 0),
+    el de antecedentes con `[asegurarConsulta]`, y la mezcla por tiempo agotado (el reintento de clínica)—; los controles de pediatría, el de la consulta inexistente y el de `HcBackends` pasaban.
+    **Mutación:** quitando solo el candado de `drenar` (quedando los de `marcarSucia`/`empujarYa`) fallan `empujarTodo` y la mezcla.
+    **Verde:** `.\gradlew :core:data:jvmTest --rerun` completo (640 tests, 0 fallas, 0 salteados), `:features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan.
+    **Decisión (default de `soloLectura`):** `false`, como pide el texto de E5.1: es lo que mantiene a pediatría enviando sin tocarla. El riesgo
+    —un backend de solo lectura que olvide declararlo enviaría— se cubre con `HcBackendsSoloLecturaTest` (y con el KDoc de la propiedad). La
+    alternativa más segura sería una propiedad **abstracta** (sin valor por defecto: el compilador obliga a declararla en cada backend); no se hizo
+    porque cambia el diseño aprobado del plan y obligaría a los fakes de E6 a declararla; es una línea si se la quiere.
+    **Call-sites de los métodos de envío del backend** (`git grep`, sin tests): `HcApiSync.kt` `asegurarConsulta`, `enviarSecciones`,
+    `enviarRegistros`, `borrarArchivo`, `subirArchivo`, `enviarExamen`, `enviarEstado` —**todos dentro de `drenar`**, tras el candado— y
+    `AdminRepository.kt:84` `guardarLicencia` (NO pasa por `HcApiSync`: lo cierra E5.3). `pacientes/resolver` solo se llega desde el envío por
+    `asegurarConsulta` (`HcPediatriaBackend.resolverPaciente`, `PacientesHcRepository.vinculo`), que el candado corta; el otro llamador de
+    `vinculo` es `EnfermedadesControlador` (acción del médico en la sección Enfermedades, spec 003, no un envío diferido). `bajarArchivo` (lectura)
+    queda permitido. **`SyncEngine` no llama a ningún backend**: es otro canal, hacia `<turnos>/api/salud360/sync/push|pull` y `archivos` (rutas
+    que no existen: 404 ignorado); sus adaptadores incluyen las tablas clínicas (también las de `clinica`), y **no se tocó** (fuera de E5.1;
+    aviso para el usuario: es la deuda ya anotada en `AGENTS.md`, y si turnos crea esas rutas saldría todo lo `dirty` de la HC general).
 
 - [ ] **E5.2. El candado frente a una base migrada de hepatología (H2).** RF-47, RF-48 — **S** — Toca API Laravel: no
   - Test: partiendo de una base v8 con consultas de `hepatologia` sucias, antecedentes repetidos y secciones ocultas
