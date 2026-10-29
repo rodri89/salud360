@@ -655,7 +655,89 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     `500` con código `consultas` y mensaje fijo; antecedentes familiares con `flag` y sin casillas en 0; todo filtra consultas `activo` 1 o 2 (una carga de una consulta anulada que la web muestra, acá
     no sale).
 
-**Tanda S (E3 y E4): implementada, falta la validación del reviewer** (E3.1 a E3.3 y E4.1 a E4.3 hechas; E9, producción, sin aprobación). Al terminar la tanda: validación del reviewer y MEMORY.md.
+- [x] **E4.4. Ajustes de la validación de la tanda S (observaciones del reviewer y decisiones D1 a D5 del 2026-10-29).** RF-39, RF-41, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28; esta tarea la aprobó el usuario el 2026-10-29)** (sin cambios de esquema ni escritura)
+  - Decisiones del usuario (2026-10-29): **D1** las cargas de laboratorio y de peso sin fecha se omiten con aviso (el servidor ya las cuenta en
+    `omitidas.laboratorio_sin_fecha`; el aviso visible es de la app, tanda A); **D2** `antecedentes_familiares_perfil4` se agrega ya como tabla
+    OPCIONAL; **D3** una consulta ajena sigue dando `403 fuera_de_cartera` y se corrige el texto del `.md`; **D4** el IMC `"0"` se muestra como en la
+    web y `"0.00"` es vacío; **D5** los diagnósticos nunca se informan (no hay tabla).
+  - Puntos: (1) **H1** examen físico: `"0.00"` es vacío en peso, talla, TA e IMC (regla de `examen_fisico.blade.php`), `"0"` del IMC es dato; test puro primero;
+    revisar otras columnas numéricas que la web trate igual. (2) **H2/H3/H4/H10** `md/API_SALUD360_CLINICA.md`: comportamiento exacto de `limite` y `desde`
+    (negativos, cero, texto, arreglos); lo que sí escribe el camino del middleware (`activo = 0` de la licencia, `salud360_vinculos_pendientes`, `Schema::create`
+    de sus dos tablas, `ultimo_uso_en` en turnos) sin tocar RF-50; el 403/404 de `consultas/{id}`; la cifra del peor caso medida de nuevo. (3) **H7**
+    `ConsultaController`: `\Throwable` y el `return $this->ok(...)` dentro del `try`; un `\Error` y un JSON no codificable dan el `500 consultas` fijo y sin
+    traza con `APP_DEBUG=true`. (4) **H6** `ultimaActiva` filtra también por `paciente_id`. (5) **H5** fixture ampliado (segunda fila de antecedentes
+    familiares, segunda de `aux_pendientes` y una `activo = 2`, PDF de otro paciente) con sus scripts, y repetir las 4 mutaciones que sobrevivieron (S01, S02,
+    S06, S09) sobre una copia. (6) **D2** `historia.antecedentes_familiares_perfil4` (`{nota}` o `null`), tabla opcional detectada en `information_schema`
+    con función pura para decidir si se consulta; probada en una base descartable creada desde la migración. (7) **Cabecera**: `created_at` completo
+    (`AAAA-MM-DD HH:MM:SS`) además de `fecha`, en la lista y en `leer`, para que la app ordene por `(created_at, id)`.
+  - NO se hace: índice en `medico_pacientes` ni ningún cambio de esquema (nota para E9.1), cambios a `PacienteController`/`EnfermedadController`, escritura de
+    ninguna clase, 404 en lugar de 403 (D3).
+  - Hecho cuando: todos los puntos hechos; los tests nuevos en rojo antes del código y `tests/Unit` entero en verde; `php -l` limpio; grep estático con `\b`
+    de escrituras sin coincidencias injustificadas; el fixture ampliado detecta S01, S02, S06 y S09; conteos y `CHECKSUM TABLE` de las 68 tablas y `suma.sql`
+    iguales antes y después de las lecturas (con el fixture ampliado cargado, salvo `salud360_token_cache`); `historia` y `leer` del fixture sin cambios
+    inesperados respecto de E4.1/E4.3 más lo nuevo; servida igual al clon en los archivos de la tarea; la base descartable borrada.
+  - Hecho (2026-10-29): hclinica `0d0d394` (rama `salud360-api`, sin push, un solo commit con el `.md`). Cambian `ConsultasService.php`, `ConsultasReglas.php`,
+    `MapaClinica.php`, `ConsultaController.php`, `md/API_SALUD360_CLINICA.md` y los dos tests; sin cambios de esquema ni escritura. **Rojo previo:** `ConsultasReglasTest`
+    32 errores y 2 fallas (de 287; métodos inexistentes y la cabecera sin `created_at`) y `MapaClinicaTest` 2 errores (de 96). **Verde:** `ConsultasReglasTest` 287 (antes 255),
+    `MapaClinicaTest` 96 (94), `EnfermedadesReglasTest` 51, `PacienteVinculoReglasTest` 15, `PerfilesTest` 19 y `tests/Unit` entera **469** (435), 1077 aserciones. `php -l` limpio en
+    los 6 archivos PHP; grep estático con `\b` (insert/update/delete/truncate/replace/alter/drop, `save(`, `create(`, `Schema::`, `DB::statement|raw|unprepared|insert|update|delete`,
+    `touch(`, transacciones y locks, `medico_infos`, `paciente_id_tobb`, `fn (`, propiedades tipadas) sobre los 4 archivos del servidor: 1 coincidencia, justificada (`replace` en
+    el comentario de `MapaClinica.php:12`); servida igual al clon (comparación de contenido) en los 7.
+    **(1) H1, la regla exacta:** la pantalla de la web (`examen_fisico.blade.php`, `ocultarSecciones`) oculta peso, talla, TA e IMC cuando el valor es `""` o exactamente `"0.00"`
+    (`localeCompare`); nada más (`examenFisicoCompleto` del resumen usa el mismo par). El servidor: `"0.00"` y vacío/`null`/solo espacios → no se manda; `"0"` (IMC "0", D4) → `"0"`;
+    **`"0.0"` → se manda `"0.0"`** (la web lo muestra), igual que `"0.000"`, `"0,00"` y `" 0.00"` (no es el valor exacto); la nota no tiene la regla. Es solo del examen físico:
+    el único `0.00` de toda la web es este (peso de la tabla de pesos y laboratorio no lo tienen), así que nada más cambió. En la copia local no hay ningún `"0.00"` (4 IMC `"0"`).
+    **(2) Documentación:** `limite=-5` vale **1** (no el defecto: es un entero y se acota; `0` y negativos → 1, más de 200 → 200, no entero/vacío/`abc`/`1.5`/arreglo → 50; `desde`
+    negativo o no entero → 0, enorme se satura en 999999999) y comprobado con curl; H3: el middleware escribe además `medico_licencias.activo = 0` (licencia vencida), `salud360_vinculos_pendientes`
+    (médico no vinculado), hace `Schema::create` de sus dos tablas la primera vez (privilegio `CREATE`), el `UPDATE` (no solo `INSERT`) de la fila de la caché y turnos pone
+    `ultimo_uso_en`; las dos escrituras de licencia y vínculo ocurren solo en pedidos que terminan en `403`; H4: `consultas/{id}` da `403 fuera_de_cartera` si existe y es de un paciente ajeno y
+    `404 consulta_no_encontrada` si no existe, dicho tal cual (tabla de errores y bullet propio); H10: la cifra de 309 KB **no se reprodujo exacta** (no estaban los parámetros): el peor caso
+    inventado (300 cargas de 52 analitos + 300 motivos, base descartable) da ≈290 KB con valores de 4 caracteres y motivos de 40, ≈312 KB con 5 y 60; mediciones reales sobre 1017 pacientes
+    y 1921 consultas legibles: historia máx 6226 B (p95 2868), lista máx 6438 B (con `created_at`; era ≈5,5 KB), una consulta máx 3699 B.
+    **(3) H7:** `catch (\Throwable)` y `return $this->ok(...)` dentro del `try` en las tres acciones, `falloDeLectura(\Throwable)`. Prueba (`php -r` con un servicio falso que lanza, bootstrap de la servida,
+    `APP_DEBUG=true`, 15 casos = 5 × 3 rutas): con el controlador de HEAD **9 casos escapan** (`TypeError`, `Error` e `InvalidArgumentException: Malformed UTF-8` salen sin atrapar); con el nuevo
+    **15 de 15**: los 12 de falla dan `500 consultas`, mensaje fijo, sin `trace`, `.php`, SQL ni el texto de la excepción, y los 3 «todo bien» dan 200. Las entradas que esa prueba dejó en
+    `storage/logs` (marca `E44H7`, y las de mis scripts que fallaron) se borraron truncando al tamaño de antes: los dos logs quedaron byte a byte iguales a su copia previa.
+    **(4) H6:** `ultimaActiva` filtra también por `paciente_id` (todas las tablas por consulta, incluidos alimentación, serologías, Child-Pugh y examen físico). Sobre la base real local
+    (solo conteos): 0 filas con `paciente_id` distinto del de su consulta en las 12 tablas por consulta (5489 filas, con el fixture) y la huella (crc32) de `listar`/`historia` de los 1017 pacientes y de `leer` de las
+    1921 consultas es idéntica entre el código de HEAD y el nuevo (3958 salidas, 0 distintas, sin las novedades de esta tarea). En una base descartable (`e44_scratch`) con una fila de otro
+    paciente colgada de la misma consulta en las 12 tablas: el servicio nuevo lee la del paciente (13 controles de H6 + 1 de consulta consistente, todos OK) y la copia mutada sin el filtro (S10) falla 12 de ellos.
+    **(5) H5, fixture ampliado** (fuera del repo, `%TEMP%\opencode\lectura` y `e31`; `fixture.sql`, `contar.sql` 32 OK, `ids.sql`, `limpiar.sql` y `suma.sql` con notas, `ids-y-limpieza.txt`): segunda fila activa de
+    antecedentes familiares (en (c)), segunda de `aux_pendientes` activa y una `activo = 2`, `conductas` y `examen_fisicos` de (c) con una fila `activo = 2` de id mayor (el examen de (c) trae `0.00`,
+    `0.0`, vacío y `0`), un PDF activo y una nota del paciente 2 colgados de (a). Carga/limpieza probadas en 3 vueltas (modo por defecto, `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES…`): las 68 sumas,
+    los 68 conteos y `suma.sql` **idénticos** a los de justo antes de cargar (el «antes» = E3.1 salvo `salud360_token_cache`). Con el fixture cargado, `verificar-servicio.php` compara el servicio con un
+    oráculo SQL independiente (PDO, sin `MapaClinica` ni `ConsultasReglas`). **Mutaciones sobre una COPIA (nunca el clon ni la servida):** S01 (antecedentes con `asc`) detectada (5 controles), S02 (pendientes
+    con `asc`) detectada (1), S06 (`ultimaActiva` con `activo >= 1`) detectada (2), S09 (`noLeidas` sin `paciente_id`) detectada (1); y de más: S10 (`ultimaActiva` sin `paciente_id`) detectada (1), S11 (examen
+    físico sin la regla del `0.00`) detectada (1) y S12 (`created_at` solo con el día) detectada (4); el código real: 0 fallas. Con el código de HEAD el oráculo marca H6 y H1 como fallas.
+    Cambios esperados del fixture en las salidas (comparadas contra las de E4.1/E4.3, con los ids enmascarados): `historia.antecedentes_familiares` pasa a la fila de (c) (`acv` + nota «(c)»),
+    `historia.pendientes` a «pendiente 2 (c)», `leer(c)` suma `conductas` y `examen_fisico {talla "0.0", imc "0"}`; lo demás (lista, `omitidas`, resto de la historia, `leer` de a, b, f, h) sin cambios.
+    **(6) D2:** `historia.antecedentes_familiares_perfil4` = `{nota}` o `null`. La web (`MedicoController::guardarAntecedentesFamiliaresPerfil4`/`cargar…`, `antecedentes_familiares_perfil4.blade.php`)
+    guarda solo `nota` (varchar, `''` si no hay), una fila por consulta, y muestra la última fila `activo = 1` del paciente. Regla igual a la de antecedentes familiares (`delPaciente`: `activo = 1` y consulta
+    `activo` 1 o 2, `id` mayor, sin buscar una anterior si la última está vacía); la decisión «consultar o no» es la función pura `ConsultasReglas::consultarPerfil4($existentes)` sobre
+    `information_schema` (una consulta más; sin `Schema::`), y la forma pura `antecedentesFamiliaresPerfil4($fila)`. `historia` hace ahora 14 `SELECT` (15 con la tabla), no 13. **`hc_clinica` local (sin la tabla):**
+    `historia` devuelve lo mismo de antes con `antecedentes_familiares_perfil4: null` (huellas iguales; 0 errores). **Base descartable** `e44_scratch` (estructura copiada con `CREATE TABLE … LIKE`; la tabla del
+    perfil 4 creada ejecutando la **migración real** de hclinica) con datos inventados: 13 controles OK (última nota entre consulta abierta y cerrada, `activo = 2` y consulta anulada no cuentan, última fila vacía o
+    de espacios → `null` sin buscar la vieja, un `"0"` es un texto, paciente sin filas → `null`, convive con las casillas); sin la tabla: clave presente y `null`, sin excepción. La base se borró sola y se
+    comprobó que no existe (ni `e44_peor`, la del peor caso).
+    **(7) Cabecera:** `created_at` (`AAAA-MM-DD HH:MM:SS`, texto, siempre presente) después de `fecha` en la lista y en `consultas/{id}`; test puro rojo→verde y documentado; comprobado con curl.
+    **Pasada final** (33 `GET` con curl, espaciados ~1,3 s, fixture ampliado cargado): sin token 401; lista 200 con 4 consultas (c, b, a, f) y `created_at`; `limite=-5`/`0`/`1` → 1, `5000`/`abc`/`[]`/vacío → 4,
+    `desde=-5`/`abc` → 0; `consultas/{a,b,c,f}` 200 (`a` con `no_leidas []` aunque tenga un PDF de otro paciente; `f` con `documentos`), `d`, `e`, `g`, inexistente y `0` 404, `h` 403; historia 200; fuera de cartera 403;
+    inexistente 404; ids inválidos 422. `CHECKSUM TABLE` y conteos de las 68 tablas y `suma.sql` iguales antes y después, salvo `salud360_token_cache` (el middleware actualizó su fila); vaciada al final (0 filas).
+    Apache: 35 `GET` a consultas/historia desde las 15:00 y 0 métodos distintos de `GET`. El fixture ampliado **sigue cargado** para E8.1 (limpiar con `limpiar.cmd`).
+  - Para la tanda A (contrato JSON que cambia, todo retrocompatible): (1) `GET pacientes/{id}/historia` suma **`antecedentes_familiares_perfil4`**: `{"nota": "…"}` o `null` (siempre presente en esta versión; un
+    servidor anterior no lo trae: el DTO tiene que tolerar la ausencia, p. ej. nulo por defecto). Es una nota suelta distinta de las casillas de `antecedentes_familiares`: decidir en E6.2/E7.2 dónde se muestra
+    (propuesta: en la misma sección «Antecedentes familiares», como nota aparte, y solo si no es `null`). (2) La cabecera (`consultas` y `consulta` de `consultas/{id}`) suma **`created_at`** (`"AAAA-MM-DD HH:MM:SS"`):
+    ordenar por `(created_at, id)` y seguir usando `fecha` (el día) para mostrar; también con valor por defecto en el DTO. (3) `examen_fisico` ya no trae `peso`/`talla`/`tension_arterial`/`imc` en `"0.00"`; sigue
+    trayendo `"0"` y `"0.0"` si están guardados (no hay que filtrar nada en la app). (4) `limite` y `desde`: ver el `.md` (negativos se acotan, no vuelven al defecto). (5) `consultas/{id}` ajena: `403 fuera_de_cartera`
+    si existe, `404` si no existe.
+  - Dudas y avisos para el usuario: (a) **RF-50 de la spec** dice «lo único que se registra es la sesión»; el camino de autenticación escribe también `medico_licencias.activo = 0`, `salud360_vinculos_pendientes` y
+    hace `Schema::create` de sus dos tablas. No toca datos clínicos ni de pacientes ni `medico_infos` (la cláusula principal se cumple) y las dos primeras ocurren en pedidos que terminan en `403`, pero la frase final
+    es inexacta: **no se editó la spec**; conviene decidir si se afloja a «lo único que se registra es la sesión de la app y, si corresponde, el aviso de licencia vencida y la lista de médicos sin vincular». (b) `pacienteVisible`
+    y `consultaVisible` se ejecutan **antes** del `try` del controlador (fuera de las líneas que pidió la tarea): una excepción de la base ahí todavía saldría con el `500` de Laravel y su traza si `APP_DEBUG=true` (con la base
+    caída el middleware ya falla antes); no se tocó, es una línea más si se quiere. (c) La cifra de 309 KB no se pudo reproducir exacta; queda «≈300 KB según el largo de los textos». (d) Dónde mostrar la nota del perfil 4
+    (arriba). (e) Índice en `medico_pacientes` y otros cambios de esquema: **no se hicieron** (nota para E9.1); el perfil 4 de producción: confirmar en E9.1 si la tabla existe.
+
+**Tanda S (E3 y E4): implementada y con ajustes (E4.4); falta validación final del reviewer solo si cambió algo mayor** (E3.1 a E3.3 y E4.1 a E4.4 hechas; E9, producción, sin aprobación). Al terminar la tanda: validación del reviewer y MEMORY.md.
 **Aprobación de la E5 recién después** (la E5 no depende del servidor y puede aprobarse en paralelo).
 
 ## Tanda E5 — App I: candados contra el envío (antes de registrar nada)

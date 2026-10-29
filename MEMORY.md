@@ -5,9 +5,18 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: validación del reviewer de la tanda S de la spec 002, entrega L (servidor `hclinica`, rama `salud360-api`,
-  E3 y E4: todas las tareas hechas; `specs/002-hc-clinica/tasks.md`)**; después el usuario aprueba la tanda A (E5 a E7, app).
-  **E4.3 hecha (2026-10-29, hclinica `3948d3c`, solo el `.md`):** grep de escrituras con `\b` sin coincidencias injustificadas; con el
+- **Siguiente paso: el usuario aprueba la tanda A de la spec 002, entrega L (E5 a E7, app); la tanda S (servidor `hclinica`, rama
+  `salud360-api`, E3 y E4: todas las tareas hechas; `specs/002-hc-clinica/tasks.md`) quedó «implementada y con ajustes; falta
+  validación final del reviewer solo si cambió algo mayor».**
+  **E4.4 hecha (2026-10-29, hclinica `0d0d394`, ajustes de la validación y decisiones D1 a D5):** examen físico `"0.00"` = vacío
+  (`"0"` y `"0.0"` son datos), `historia.antecedentes_familiares_perfil4` (`{nota}` o `null`; tabla opcional, no existe en la copia
+  local), `created_at` completo en la cabecera, `\Throwable` en `ConsultaController`, `ultimaActiva` con `paciente_id`, y el `.md`
+  corregido (`limite`/`desde`, qué escribe el middleware, 403/404 de `consultas/{id}`, tamaños). Fixture ampliado (fuera del repo) y
+  4 mutaciones que antes sobrevivían, ahora detectadas. **El fixture sigue cargado** (lo usa E8.1); `salud360_token_cache` vacía.
+  Avisos para el usuario en la nota de E4.4: RF-50 dice «lo único que se registra es la sesión» y el middleware escribe también la
+  licencia vencida y los vínculos pendientes (no se editó la spec); `pacienteVisible`/`consultaVisible` corren fuera del `try`;
+  el índice de `medico_pacientes` y el perfil 4 de producción quedan para E9.1; el DTO de la app debe tolerar la ausencia de los
+  campos nuevos. **E4.3 hecha (2026-10-29, hclinica `3948d3c`, solo el `.md`):** grep de escrituras con `\b` sin coincidencias injustificadas; con el
   general log de MySQL las 3 rutas solo hacen `SELECT` (más el `INSERT` del middleware en `salud360_token_cache`; turnos actualiza
   `ultimo_uso_en` de la sesión); `CHECKSUM` y conteos de las 68 tablas y `suma.sql` iguales; 0 métodos no `GET` en Apache (los 4 `405` de
   E4.2 descontados); `tests/Unit` 435 en verde; general log restaurado. **El fixture sigue cargado** (lo usa E8.1; limpiar con `limpiar.cmd`).
@@ -88,7 +97,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `3948d3c`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `0d0d394`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
@@ -114,8 +123,8 @@ registros de personas): el repo es público.
   `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v9 por `8.sqm`), `repos/EnfermedadesRepository`
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
-- Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`; falta la
-  validación del reviewer. La app (tanda A) aún sin código: `HcClinicaBackend` será de solo lectura.
+- Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A) aún sin código: `HcClinicaBackend` será de solo lectura.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
@@ -216,6 +225,9 @@ registros de personas): el repo es público.
   7.4 y XAMPP tiene 7.3); se ve `E`/`F` pero no el mensaje. Para verlo, llamar el código con `php -r`.
 - `Set-Content -Encoding utf8` de PowerShell 5 agrega BOM: en un `.php` da "Namespace declaration statement has to be the very first
   statement". Para editar o mutar PHP, usar el editor o `[IO.File]::WriteAllText(..., UTF8Encoding($false))`.
+- PowerShell 5: `comando > archivo` escribe UTF-16 (los `diff` y `git diff` ven basura); para volcar salidas usar `cmd /c "... > archivo"`.
+  Con phpunit en el XAMPP un test que falla rompe el printer: correr la clase con un `TestSuite`/`TestResult` propio (ver
+  `%TEMP%\opencode\lectura\corre.php`) para ver los mensajes.
 - OpenCode no habla con Anthropic por API key: el plugin `@xtruder/opencode-claude-max-plugin` (provider
   `anthropic-sdk`) usa el OAuth de Claude Code de `~/.claude/.credentials.json`. Si ese archivo se vacía (la sesión
   OAuth venció, ~8 h de vida del refresh), el error es "Could not resolve authentication method" y no es de red:
