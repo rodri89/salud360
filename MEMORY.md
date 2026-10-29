@@ -5,17 +5,22 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
-  E4.3 (`specs/002-hc-clinica/tasks.md`; la E4 termina con validación del reviewer). **E4.2 hecha (2026-10-29, hclinica `2d60bf9`):**
-  `ConsultaController` + 3 rutas `GET` (`consultas`, `consultas/{id}`, `pacientes/{id}/historia`) probadas con curl contra el fixture; `suma`
-  y conteos iguales (salvo `salud360_token_cache`, vaciada). El administrador no se probó (sin token). En el log de Apache quedaron 4 pedidos
-  no `GET` míos (405, 11:45 del 29/10) que E4.3 debe descontar. Las dos copias de la API de clínica y pediatría comparten el nombre de ruta
-  `consultas/...`: el log mezcla las dos. **E4.1 hecha (2026-10-29, hclinica `3905b0d`):**
+- **Siguiente paso: validación del reviewer de la tanda S de la spec 002, entrega L (servidor `hclinica`, rama `salud360-api`,
+  E3 y E4: todas las tareas hechas; `specs/002-hc-clinica/tasks.md`)**; después el usuario aprueba la tanda A (E5 a E7, app).
+  **E4.3 hecha (2026-10-29, hclinica `3948d3c`, solo el `.md`):** grep de escrituras con `\b` sin coincidencias injustificadas; con el
+  general log de MySQL las 3 rutas solo hacen `SELECT` (más el `INSERT` del middleware en `salud360_token_cache`; turnos actualiza
+  `ultimo_uso_en` de la sesión); `CHECKSUM` y conteos de las 68 tablas y `suma.sql` iguales; 0 métodos no `GET` en Apache (los 4 `405` de
+  E4.2 descontados); `tests/Unit` 435 en verde; general log restaurado. **El fixture sigue cargado** (lo usa E8.1; limpiar con `limpiar.cmd`).
+  Los avisos abiertos para el usuario están en la nota de E4.3 (fecha `2000-01-01`, sin `baja` en `omitidas`, sin `edad_meses`,
+  `antecedentes_familiares_perfil4` sin mapear, ids de estudios repetidos, `APP_DEBUG=true` en el 405, 403 de admin sin probar).
+  Las dos copias de la API de clínica y pediatría comparten el nombre de ruta `consultas/...`: el log de Apache mezcla las dos.
+  **E4.2 hecha (2026-10-29, hclinica `2d60bf9`):** `ConsultaController` + 3 rutas `GET` (`consultas`, `consultas/{id}`,
+  `pacientes/{id}/historia`). **E4.1 hecha (2026-10-29, hclinica `3905b0d`):**
   `ConsultasService::listar` (2 queries; `$medicoId` como 4.º parámetro para `propia`) e `historia` (13 queries, una por tabla), con las
   reglas puras nuevas en `ConsultasReglas` (`lista`, `cabecera`, `cargas`, `antecedentesFamiliares`…); contrastado con SQL directo en el
   fixture y en una base descartable ya borrada. Hallazgos: la web guarda `2000-01-01` como fecha vacía de laboratorio y peso (`fechaDeCarga`;
   esas cargas no se mandan y se cuentan en `omitidas.laboratorio_sin_fecha`); `edad_meses` no se manda (en clínica es 0 siempre); el grep
-  de escrituras de E4.3 tiene que usar `\b(insert|update|delete)\b` porque la cabecera lleva la columna `updated_at`; los ids de estudios se
+  de escrituras usa `\b(insert|update|delete)\b` porque la cabecera lleva la columna `updated_at`; los ids de estudios se
   repiten entre tablas (la app arma el id local con el tipo). Las decisiones chicas están en la nota de E4.1 para que el usuario las revise.
   **E3.3 hecha (2026-10-29, hclinica `92e5977`):** `ConsultasService::leer` (solo `SELECT`: secciones por consulta, examen físico y
   `no_leidas`); devuelve `null` para lo que la lista no ofrece (el controlador lo hará `404`); `secciones` y `examen_fisico` salen como
@@ -83,7 +88,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `2d60bf9`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `3948d3c`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
@@ -109,7 +114,8 @@ registros de personas): el repo es público.
   `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v9 por `8.sqm`), `repos/EnfermedadesRepository`
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
-- Spec 002 entrega L: aún sin código (la tanda S empieza en E3.1). Cuando exista, `HcClinicaBackend` será de solo lectura.
+- Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`; falta la
+  validación del reviewer. La app (tanda A) aún sin código: `HcClinicaBackend` será de solo lectura.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

@@ -598,7 +598,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     **pediatría** (otra base), no de esta. El 405 de una ruta inexistente lo contesta el manejador de Laravel y con `APP_DEBUG=true` trae la
     traza (9 KB): es de todas las rutas de la API, no de las nuevas; mirarlo en E9.1 (`APP_DEBUG` de producción).
 
-- [ ] **E4.3. Prueba de no-escritura y documentación.** RF-50 — **S** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)** (solo el `.md`)
+- [x] **E4.3. Prueba de no-escritura y documentación.** RF-50 — **S** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)** (solo el `.md`)
   - Una pasada completa de lecturas (las tres rutas, todas las consultas del paciente de prueba) con `suma.sql` antes y
     después; búsqueda de escrituras en `ConsultasService.php`, `ConsultasReglas.php`, `MapaClinica.php` y
     `ConsultaController.php`; revisión del registro de accesos de Apache (`C:\xampp\apache\logs\access.log`): ningún
@@ -609,9 +609,54 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
     servida es igual al clon en los archivos de la tanda (comparación de contenido, sin `.env` ni `vendor/`); phpunit de
     E3.2, `PerfilesTest`, `PacienteVinculoReglasTest` y `EnfermedadesReglasTest` en verde; `limpiar.sql` aplicado y
     `COUNT(*)` del paciente de prueba en 0 (o se deja para E8.1, anotándolo).
+  - Hecho (2026-10-29): hclinica `3948d3c` (rama `salud360-api`, sin push). Solo cambia `md/API_SALUD360_CLINICA.md` (sin código): sección
+    "Consultas (solo lectura)" (tres rutas, parámetros, cuerpos del fixture con nombres inventados, errores, `propia`/`omitidas`/`no_leidas`/`hay_mas`,
+    fechas sin dato, mapa de laboratorio, qué no devuelve, «la lectura no escribe», curl de humo sin credenciales), tabla "Código", "Tests" y
+    "Lo que viene" (sale solo la lectura; la escritura sigue pendiente). Sin tokens, contraseñas ni nombres reales (comprobado).
+    **(a) Grep estático** (con `\b`, sin distinguir mayúsculas) sobre `ConsultaController`, `ConsultasService`, `ConsultasReglas`, `MapaClinica` y las
+    66 líneas nuevas de `Salud360Controller` (`idWebValido`, `pacienteVisible`, `consultaNoEncontrada`, `consultaVisible`, `formatearConsulta`): `\b(insert|update|delete|truncate|replace)\b`
+    da **1** coincidencia, justificada: la palabra `replace` en el comentario de `MapaClinica.php:12` (la regla de ids de la app en Kotlin, `...replace(Regex(...))`; no es
+    código); el resto da 0: `save(`, `create(`, `firstOrCreate`, `updateOrCreate`, `Schema::`, `DB::statement`, `DB::raw`, `inicializarCampos`, `medico_infos`,
+    `paciente_id_tobb`, `asegurarColumna`, `touch(`, `fn (`, y también `->save|update|delete|insert|create(`, `DB::insert|update|delete|unprepared`, transacciones, locks y DDL.
+    `updated_at` no coincide con `\b`. `DB::` en el servicio: 5 `table` y 1 `select` (de `information_schema`); en los ayudantes: 3 `table`; todo lectura.
+    **(b) Dinámico** con el general log de MariaDB 10.1 (`log_output='TABLE'`, `general_log='ON'` solo entre 11:52:56 y 11:53:57; token del médico de prueba vigente):
+    37 pedidos `GET` con curl (1 sin token, 36 con token; 25 `200`, 6 `404`, 3 `403`, 2 `422`, 1 `401`): lista del fixture (por defecto, `limite=2&desde=1`, `0`, `5000`,
+    sin `paciente_id`, fuera de cartera, inexistente), las consultas a-h del fixture, inexistente e inválida, historial del fixture, fuera de cartera e inexistente, y 5 pacientes
+    y 6 consultas más de la copia local (de la cartera del médico de prueba; solo ids, sin mirar cuerpos: 1 con 25 consultas, 1 sin consultas, abiertas, telemedicina, de otro médico).
+    Log: 1984 filas. `hc_clinica` (36 conexiones, 1 por pedido con token): 608 sentencias = **535 `SELECT`**, 72 `SET` (los dos de cada conexión de Laravel: `set names` y
+    `set session sql_mode`; de sesión, no escriben) y **1 `INSERT`** en `salud360_token_cache` (lo hace el middleware con la caché vacía, en el primer pedido con token);
+    **0** `UPDATE`, `DELETE`, `REPLACE`, `TRUNCATE` ni DDL; `Prepare` = `Execute` en todos los tipos. De los `SELECT`, 72 son las comprobaciones de existencia de las
+    tablas del middleware (`information_schema`, 2 por conexión), 36 la búsqueda del token en la caché y 10 el aviso `no_leidas`. Tablas tocadas en `hc_clinica` (34 más
+    `information_schema.tables`): `alimentacions`, `antecedentes_familiares`, `antecedentes_personales`, `aux_pendientes`, `biopsia_hepaticas`, `c_p_s`, `catarses`, `conductas`,
+    `consulta_fotos`, `consulta_pdfs`, `consultas`, `datos_objetivos`, `datos_subjetivos`, `ecografia_abdominals`, `estudios_cardiologicos`, `examen_fisicos`,
+    `examenes_complementarios`, `examenes_complementarios_fotos`, `habitos`, `interconsultas`, `laboratorio_general2s`, `laboratorio_generals`, `medico_licencias`,
+    `medico_pacientes`, `motivo_consultas`, `notas`, `pacientes`, `pesos`, `salud360_token_cache`, `serologias_hepatitis`, `somnias`, `tc_rmn_colangiormns`, `users` y
+    `videoendoscopia_digestiva_altas`; la única escrita es `salud360_token_cache`. 0 menciones de `medico_infos` y de `paciente_id_tobb`; `salud360_vinculos_pendientes` solo en
+    36 comprobaciones de existencia. Además, por la caché vacía, el middleware llamó una vez a `auth/perfil` de turnos y **en `turnosonlinebb`** hubo 12 `SELECT`, 2 `SET` y **1 `UPDATE`
+    de `salud360_tokens.ultimo_uso_en`** (lo hace turnos al validar la sesión; no es código de esta tarea ni toca datos clínicos). Restaurado: `general_log` OFF, `log_output` FILE,
+    `general_log_file` original, `mysql.general_log` en 0 filas (estaba en 0); el volcado crudo del log se borró. **(c)** `CHECKSUM TABLE` y conteos de las 68 tablas y `suma.sql`:
+    iguales antes y después (dos tomas de "antes" iguales entre sí; la única diferencia con la caché llena fue `salud360_token_cache`, 1 fila; vaciada, iguales; repetido al final,
+    después de 8 `GET` más para sacar los ejemplos del `.md`). **(d)** Apache: 86 pedidos a `consultas`/`pacientes/{id}/historia` de `HClinica-salud360` en todo el log (82 `GET` —45 `200`,
+    14 `404`, 11 `422`, 7 `403`, 5 `401`— y 4 no `GET`); los 4 no `GET` son los `405` de las 11:45:44-48 de E4.2, descontados: **0** métodos distintos de `GET` de verdad. (El mismo nombre de ruta
+    en `HCDPediatria-salud360` es de la copia de pediatría y no se cuenta. En esa ventana la app abierta hizo 3 `POST sync/push` a turnos: `404` conocido, no a clínica.)
+    phpunit en la servida: `MapaClinicaTest` 94, `ConsultasReglasTest` 255, `EnfermedadesReglasTest` 51, `PacienteVinculoReglasTest` 15, `PerfilesTest` 19 y `tests/Unit` entera 435 en verde;
+    `php -l` limpio en los 8 archivos de la tanda; servida igual al clon (comparación de contenido) en los 8 archivos y en el `.md`; `route:list` muestra las 3 rutas `GET|HEAD` con `api,salud360`.
+    **`limpiar.sql` NO se aplicó**: el fixture (pacientes 99000100 y 99000101) sigue cargado para E8.1; `COUNT(*)` del paciente de prueba ≠ 0 a propósito. `salud360_token_cache` vacía.
+  - Avisos y decisiones de E4.1/E4.2 que siguen abiertos para la revisión del usuario (nada nuevo; ver las notas de esas tareas): (1) **fecha vacía `2000-01-01`**: la web la guarda en laboratorio
+    y peso sin fecha; esas cargas no se mandan y se cuentan en `historia.omitidas.laboratorio_sin_fecha` (`fechaDeCarga`; `fechaUtil` no cambia). (2) `omitidas` de la lista es `{foto, otro,
+    sin_fecha}`, **sin `baja`** (Q11), aunque el texto del pedido de E4.1 la nombraba. (3) **No hay `edad_meses`** (el plan la tenía): en clínica `consultas.edad_paciente` vale 0 en todas las
+    filas reales; `edad_mostrar` sí va. (4) **`antecedentes_familiares_perfil4` no está mapeada**: la web tiene el modelo `AntecedentesFamiliaresPerfil4` (`consulta_id`, `paciente_id`, `nota`,
+    `activo`; `MedicoController::guardarAntecedentesFamiliaresPerfil4`) y la migración figura en `migrations`, pero en la base local no existe ninguna tabla con ese nombre; la L lee solo
+    `antecedentes_familiares`. Hay que ver en E9.1 si existe en producción y si el perfil 4 (lo arma el usuario) la necesita. (5) **Los ids de estudios se repiten entre tablas** (veda, biopsia y
+    tc_rmn comparten 1797 en el fixture): E6.2 arma el id local con el tipo. (6) **`APP_DEBUG=true`** hace que el `405` (y cualquier ruta inexistente) devuelva la traza de Laravel, también acá:
+    mirarlo en E9.1; las tres rutas dan `500 consultas` sin traza aunque esté encendido. (7) **No se probó `403 sin_permiso` con un token de administrador** (no hay token de admin de clínica en
+    `respaldos`): las tres rutas lo cortan con `soloMedico`, como `PacienteController` y `EnfermedadController`, que sí se probaron así. Otras decisiones chicas ya anotadas en E4.1/E4.2 y
+    cambiables: `listar` recibe `$medicoId` para `propia`; `limite`/`desde` inválidos usan los valores por defecto (no `422`); en `consultas/{id}` el paciente ajeno da `403` antes que `404`;
+    `500` con código `consultas` y mensaje fijo; antecedentes familiares con `flag` y sin casillas en 0; todo filtra consultas `activo` 1 o 2 (una carga de una consulta anulada que la web muestra, acá
+    no sale).
 
-Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la E5 recién después** (la E5 no depende del
-servidor y puede aprobarse en paralelo).
+**Tanda S (E3 y E4): implementada, falta la validación del reviewer** (E3.1 a E3.3 y E4.1 a E4.3 hechas; E9, producción, sin aprobación). Al terminar la tanda: validación del reviewer y MEMORY.md.
+**Aprobación de la E5 recién después** (la E5 no depende del servidor y puede aprobarse en paralelo).
 
 ## Tanda E5 — App I: candados contra el envío (antes de registrar nada)
 
