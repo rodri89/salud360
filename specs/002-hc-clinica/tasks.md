@@ -434,7 +434,7 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
     segundo paciente fuera de la cartera, que E4.2 necesita para `403 fuera_de_cartera` de una consulta. Los ids cambian
     en cada carga (`ids.sql`). El fixture de E3.1 sigue cargado para E3.2+ y E4; se limpia con `limpiar.cmd` (E4.3/E8.1).
 
-- [ ] **E3.2. Mapa y reglas puras, con phpunit.** RF-40, RF-42, RF-43, RF-52 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
+- [x] **E3.2. Mapa y reglas puras, con phpunit.** RF-40, RF-42, RF-43, RF-52 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - Tests primero: `tests/Unit/MapaClinicaTest.php` (sin Laravel ni base): para cada analito de `labGeneralClinica` y
     del reducido de la app (la lista va copiada en el test y el id se deriva con la regla de la app
     `lowercase().replace(Regex("[^a-z0-9]+"), "_")`) existe una columna; casos nombrados: albúmina, fósforo, concentración,
@@ -448,6 +448,24 @@ Contrato: `plan.md`, sección "Servidor". URL base de las pruebas:
   - Hecho cuando: phpunit de los dos tests en verde (antes, en rojo) en la copia servida; `php -l` sin errores; buscar
     `fn (`, propiedades tipadas, `DB::` e `insert|update|delete` en los dos archivos no da resultados; los analitos
     desalineados del plan coinciden con los que el test calcula (si difieren, se corrige el plan).
+  - Hecho (2026-10-29): hclinica `a5ec2cc` (rama `salud360-api`, sin push). Nuevos: `app/Services/Salud360/MapaClinica.php`,
+    `ConsultasReglas.php`, `tests/Unit/MapaClinicaTest.php`, `ConsultasReglasTest.php`; nada más cambió. Rojo previo (copiados
+    solo los tests a la servida): 91 y 159 errores por clase inexistente. Verde: 91 tests / 308 aserciones y 159 / 222;
+    `EnfermedadesReglasTest` (51), `PacienteVinculoReglasTest` (15), `PerfilesTest` (19) y `tests/Unit` entera (336) en verde en la
+    servida; `php -l` limpio; sin `fn`, propiedades tipadas, `DB::`, `Schema::`, `medico_infos` ni `insert|update|delete` en los dos
+    archivos de código; la servida es igual al clon en los cuatro. Mutaciones probadas (`otros`→`otro`, ácido úrico sin mapear, 0→NO):
+    los tests fallan. El mapa se contrastó con `information_schema` de `hc_clinica` local (solo estructura): 21 tablas, 0
+    diferencias, laboratorio general (52) y reducido (15) en el mismo orden que la tabla. **Los desalineados del plan coinciden con
+    los que calcula el test** (albúmina, fósforo, concentración, ácido úrico, B12 y `otros`); no apareció ningún otro de laboratorio ni
+    de serologías, Child-Pugh, estudios o textos; el plan no cambia. Se sumó `DESTINO_SECCION` (la tabla de las 25 secciones del plan,
+    verificada contra `CatalogoSecciones`).
+  - Decisiones chicas que la spec no fijaba (cambiables, con test): `limite` que no es un entero → 50 y `desde` → 0 (no `422`; el
+    `422` queda para `paciente_id`); un texto de solo espacios cuenta como vacío y no aparece (un `"0"` sí); Child-Pugh `4` (valor viejo
+    que la app ya ignora) no se manda; una casilla de alimentación sin marcar pero con detalle se manda como `0|detalle`; `clasificar`
+    da prioridad a `baja` > `foto` > `otro` > `sin_fecha` (una consulta suma en una sola clase) y trata `es_foto` distinto de 0 (o nulo)
+    como foto. Los enteros se saturan por dígitos, sin `(int)` (PHP de 32 bits).
+  - Para E3.3 y E4.1 (no son de esta tarea): `ConsultasReglas` no arma antecedentes familiares ni estudios (E4.1 decide, por ejemplo,
+    si una casilla en 0 sin detalle se manda); `diagnosticos` en `no_leidas` sigue sin tabla de donde leerse (hallazgo 1 de E3.1).
 
 - [ ] **E3.3. Servicio de lectura de una consulta.** RF-39, RF-40, RF-42, RF-43, RF-50 — **M** — Toca API Laravel: **sí (aprobada con la tanda S el 2026-10-28)**
   - `app/Services/Salud360/ConsultasService.php` (nuevo, solo `SELECT`): `leer($consulta)` con `secciones`,

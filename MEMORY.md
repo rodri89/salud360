@@ -4,9 +4,11 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
-## Traspaso (2026-10-28)
+## Traspaso (2026-10-29)
 - **Siguiente paso: tanda S de la spec 002, entrega L (solo lectura)**: servidor `hclinica`, rama `salud360-api`, desde
-  E3.2 (`specs/002-hc-clinica/tasks.md`). **E3.1 hecha (2026-10-28):** el fixture de la L (pacientes 99000100 y 99000101, un
+  E3.3 (`specs/002-hc-clinica/tasks.md`). **E3.2 hecha (2026-10-29, hclinica `a5ec2cc`):** `MapaClinica` y `ConsultasReglas`
+  (puras, con 250 tests phpunit) y el mapa contrastado con la estructura real de `hc_clinica`; decisiones chicas y pendientes
+  para E3.3/E4.1 en la nota de la tarea. **E3.1 hecha (2026-10-28):** el fixture de la L (pacientes 99000100 y 99000101, un
   médico extra de `users`, consultas a-h) está CARGADO en `hc_clinica` local, aparte de los datos de la 003; scripts en
   `%TEMP%\opencode\lectura\` (`cargar.cmd`, `limpiar.cmd`, `ids.sql`, `contar.sql`, `suma.sql`, `esquema.txt`) y conteos/sumas
   de "antes" en `%TEMP%\opencode\e31\`. Cargar y limpiar siempre por stdin (con `mysql -e source` un error no corta). Los
@@ -68,7 +70,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `39d13cf`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `a5ec2cc`), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
@@ -193,6 +195,8 @@ registros de personas): el repo es público.
 - El PHP del XAMPP es de 32 bits (`PHP_INT_SIZE` 4): `(int)` de números grandes satura en 2147483647.
 - phpunit en la copia servida: si un test falla, el printer se cae (`phpDocumentor` del `vendor` usa sintaxis PHP
   7.4 y XAMPP tiene 7.3); se ve `E`/`F` pero no el mensaje. Para verlo, llamar el código con `php -r`.
+- `Set-Content -Encoding utf8` de PowerShell 5 agrega BOM: en un `.php` da "Namespace declaration statement has to be the very first
+  statement". Para editar o mutar PHP, usar el editor o `[IO.File]::WriteAllText(..., UTF8Encoding($false))`.
 - OpenCode no habla con Anthropic por API key: el plugin `@xtruder/opencode-claude-max-plugin` (provider
   `anthropic-sdk`) usa el OAuth de Claude Code de `~/.claude/.credentials.json`. Si ese archivo se vacía (la sesión
   OAuth venció, ~8 h de vida del refresh), el error es "Could not resolve authentication method" y no es de red:
