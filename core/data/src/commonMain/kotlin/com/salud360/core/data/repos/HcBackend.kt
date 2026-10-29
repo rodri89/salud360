@@ -29,6 +29,14 @@ interface HcBackend {
     val especialidad: String
 
     /**
+     * true si este backend solo lee: [com.salud360.core.data.sync.HcApiSync] no le manda nada (ni consultas, ni
+     * secciones, ni examen, ni listas, ni adjuntos, ni estados) y lo que haya `dirty` en el dispositivo queda como
+     * está. El valor por defecto es `false` para no cambiar a pediatría: **un backend de solo lectura tiene que
+     * declararlo**, y `HcBackendsSoloLecturaTest` obliga a decidirlo en cada backend que se registre.
+     */
+    val soloLectura: Boolean get() = false
+
+    /**
      * Id de la consulta en la API, creándola allá si todavía no existía.
      * Devuelve null si no se pudo (por ejemplo, el paciente no tiene documento válido).
      */
