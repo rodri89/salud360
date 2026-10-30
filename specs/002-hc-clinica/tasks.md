@@ -1474,7 +1474,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
 Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3). E8.1 no usa la app registrada (arma
 `HcClinicaBackend` a mano); E8.2 y E8.3 sí.
 
-- [ ] **E8.1. E2E de lectura.** RF-38 a RF-42, RF-52 a RF-54 — **M** — Toca API Laravel: no
+- [x] **E8.1. E2E de lectura.** RF-38 a RF-42, RF-52 a RF-54 — **M** — Toca API Laravel: no
   - `core/data/src/jvmTest/.../repos/HcClinicaConsultasE2ETest.kt`: se saltea sin `salud360.test.hc.clinica`,
     `.clinica.token` y `.clinica.ficha` (se agrega a la lista de `core/data/build.gradle.kts`); sobre SQLite temporal y
     **sin `resolver`** (siembra `hc_paciente_id` en `paciente_extra`): trae la lista y cada consulta del paciente de
@@ -1486,6 +1486,27 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     "-Psalud360.test.hc.clinica.token=<token de prueba>" "-Psalud360.test.hc.clinica.ficha=<id de la ficha de prueba>"`.
   - Hecho cuando: el E2E en verde contra la copia servida; sin las propiedades, `.\gradlew :core:data:jvmTest` en verde y el
     E2E se saltea; token revocado y `salud360_token_cache` vacía.
+  - **Hecho (2026-10-30).** `HcClinicaLecturaE2ETest` (no `HcClinicaConsultasE2ETest`: el nombre lo pidió el usuario) en
+    `core/data/src/jvmTest/.../repos/`, 6 tests. Usa el `HcClinicaBackend` de verdad (constructor interno, con reloj falso para los 60 s)
+    sobre `ConsultasClinicaApiRemota` + `HcApiSoloLectura` + `HcApiClient` reales, SQLite en archivo temporal y `PacientesHcRepository`
+    con la API de pacientes prohibida (sembrada la ficha, nunca `resolver`). Se saltea sola si falta cualquiera de **seis** propiedades
+    (en `core/data/build.gradle.kts`): `.clinica`, `.clinica.token`, `.clinica.ficha`, y tres más que no estaban en el texto de la tarea:
+    `.clinica.ficha.ajena` (paciente fuera de cartera), `.clinica.consultas.ocultas` (ids de d, e, g, separados por coma) y
+    `.clinica.consulta.ajena` (la h). Los ids del fixture cambian en cada carga (`ids.sql`) y no se escriben en el repo. Cubre: (a) lista
+    (c, b, a, f; `omitidas` 1|1|0; `propia`; ABIERTA/CERRADA), (b) historial (laboratorio general/reducido/peso con ids `hcc-l…`, `2000-01-01`
+    fuera y `laboratorio_sin_fecha`, estudios con id por tipo aunque el número se repita, exámenes, interconsulta, motivos, pendiente,
+    antecedentes por paciente con la última fila activa), (c) a, b, c y f con secciones y examen físico, `no_leidas` de f = `documentos`,
+    (d) d/e/g y una consulta inexistente sembradas en el dispositivo: se marcan «Ya no figura en la web», `GET consultas/{id}` da `404
+    consulta_no_encontrada` y no se borra ni vacía nada, (e) `403 fuera_de_cartera` (lista y consulta), `404 paciente_no_encontrado`,
+    `401`: un pedido cada uno y la base idéntica, (f) segunda lectura = misma base, 0 pedidos a los 59,999 s, 2 a los 60 s, (g) lo sucio y
+    lo creado en el dispositivo ni se pide ni se toca. Los pedidos van espaciados 1,1 s (`throttle:60,1`). Mutadas 6 aserciones (una por
+    test): las 6 fallaron y se revirtieron. **Diferencias con el texto de la tarea:** (1) la web no manda `total_puntos` de Child-Pugh,
+    así que el test solo comprueba los cinco puntos (suma 9); la clase la calcula `especialidades/clinica`, que `core:data` no ve;
+    (2) el texto pedía «cada consulta del paciente», pero solo son pedibles las cuatro de la lista. Servidor: en el registro de Apache,
+    solo `GET` de `consultas`, `consultas/{n}` y `pacientes/{n}/historia` (0 métodos distintos), `CHECKSUM` y conteos de las 68 tablas
+    iguales (salvo `salud360_token_cache`, vaciada). Una corrida falló por un `request timeout` de 30 s de la copia local (Apache lento,
+    como los frenones ya conocidos de esta máquina) y la repetición salió verde. Token: el de la prueba local, sin revocar (no hace falta
+    para una copia local; vencido, lo regenera el usuario).
 
 - [ ] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
   - Con una base del dispositivo que tenga consultas viejas de la HC general sucias (la de pruebas anteriores del

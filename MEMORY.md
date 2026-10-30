@@ -6,8 +6,13 @@ registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E7.4 (refresco del `devWeb` con `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` y compilación completa; hay que
-  coordinarlo con el usuario: su `devWeb` en :8080 sigue sirviendo el ejecutable del 2026-10-27), dentro de la tanda A (app) de la spec
-  002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E6.5 hecha (2026-10-30):** `DataModule` registra `clinica` =
+  coordinarlo con el usuario: su `devWeb` en :8080 sigue sirviendo el ejecutable del 2026-10-27) y después E8.2 (con la app real), dentro de
+  la entrega L de la spec 002, aprobada por el usuario. E8.1 hecha (2026-10-30):** `HcClinicaLecturaE2ETest` (6 tests, `core/data/src/jvmTest`)
+  con el backend real y la copia local de hclinica; se saltea sin las 6 propiedades `-Psalud360.test.hc.clinica[.token|.ficha|.ficha.ajena|
+  .consultas.ocultas|.consulta.ajena]` (ids del fixture por `ids.sql`; el comando está en su KDoc). Verde, y el servidor solo vio `GET`
+  de `consultas`, `consultas/{n}` y `pacientes/{n}/historia`; sumas y conteos de las 68 tablas iguales; el fixture sigue cargado para E8.2
+  y `salud360_token_cache` vacía. Pedidos espaciados 1,1 s por el `throttle:60,1`; un `request timeout` de 30 s de Apache local en una
+  corrida (se repitió, verde). 1161 tests de `core:data` en verde. **E6.5 hecha (2026-10-30):** `DataModule` registra `clinica` =
   `HcClinicaBackend(…, HcApiSoloLectura(cliente de CodigosHc.GENERAL), …)` en `HcBackends` (`soloLectura = true`; sin URL de la HC general
   no se registra); `HcRepository.tieneApi("clinica")` ya es verdadero. Test nuevo `DataModuleClinicaTest` (8: Koin real + `HttpServer`
   local; solo `GET` de `consultas`, `consultas/{id}`, `pacientes/{id}/historia`; el motor de envío no manda nada; licencias como antes);
@@ -194,7 +199,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); falta E7.4.
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); falta E7.4. E8.1 (E2E de lectura contra la copia local) hecha.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
