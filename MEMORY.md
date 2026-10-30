@@ -5,7 +5,12 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.1, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E5.1 hecha
+- **Siguiente paso: E6.2, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea.
+  E6.1 hecha (2026-10-30):** `HcApiSoloLectura` (solo `get`/`leer`/`leerOpcional`/`leerTodo`), `ConsultasClinicaApi` + `...Remota` (solo
+  `listar`/`consulta`/`historia`, agregado a lo que pedía el plan) y `HcClinicaDtos.kt`; tests con reflexión y servidor falso (solo `GET`, sin
+  cuerpo, un pedido por error); 729 tests en verde y wasm compila. Los DTOs exigen los contenedores de lo que E6.4b podría marcar como
+  ausente (si faltan, `TobbException` `respuesta`); pueden faltar `created_at`, `antecedentes_familiares_perfil4`, `omitidas` y `no_leidas`.
+  E5.1 hecha
   (2026-10-29): `HcBackend.soloLectura` (default `false`) y candado en `HcApiSync` (`marcarSucia`, `empujarYa`, `drenar`,
   `consultasDeAntecedentesPendientes`). **E5.2 hecha (2026-10-29, `0e3c461`, solo un test):** `HcApiSyncBaseMigradaTest` prueba el candado
   con una base v8 con datos de hepatología migrada por `8.sqm` (cero llamadas, base idéntica, `pendientes` igual, pediatría sigue); sigue
@@ -14,7 +19,7 @@ registros de personas): el repo es público.
   `hcgeneral/LecturaClinica.kt` tiene `PREFIJO_ID_WEB` y `Consulta.esDeLaWeb()`, E6.2 lo completa); 671 tests en verde.
   **E5.4 hecha (2026-10-30, solo documentación):** `HcPediatriaE2ETest` y `HcCarteraE2ETest` en verde contra la copia local de pediatría con el
   motor ya con candado; limpiado por id (conteos de las 55 tablas idénticos); `salud360_token_cache` de pediatría NO se vacía (guarda los tokens
-  de prueba sembrados); `HcLicenciasE2ETest` no se corrió. La tanda E5 está completa; sigue E6.1.
+  de prueba sembrados); `HcLicenciasE2ETest` no se corrió. La tanda E5 está completa.
   **D6 (2026-10-29, usuario):** E6.5 (registrar el backend en `DataModule`) va DESPUÉS de E7.3 y antes de E7.4 y de la tanda V (orden: E5, E6.1 a
   E6.4b, E6.6, E7.1 a E7.3, E6.5, E7.4, E8): `cerrarConsulta`, `reabrirConsulta`, `anularConsulta` y `guardar*` de `HcRepository` no distinguen
   consultas de la web hasta E7.3. Mientras tanto no se registra nada y los tests usan backends falsos. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC

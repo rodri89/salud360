@@ -908,13 +908,44 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
 
 ## Tanda E6 — App II: backend de lectura y mapeo
 
-- [ ] **E6.1. Cliente de solo lectura y DTOs.** RF-38 a RF-41, RF-47 — **M** — Toca API Laravel: no
+- [x] **E6.1. Cliente de solo lectura y DTOs.** RF-38 a RF-41, RF-47 — **M** — Toca API Laravel: no
   - Tests primero: `commonTest` `HcClinicaDtosTest` (cada respuesta de plan.md —lista, consulta, historial— leída con
     sus ejemplos de JSON: `hay_mas` como número, `null`, campos que faltan, `omitidas`, `no_leidas`, valores de más).
   - Código: `core/data/.../network/hc/HcApiSoloLectura.kt` (expone solo `get`, `leer`, `leerOpcional`, `leerTodo`) y
     `HcClinicaDtos.kt`; `HcDtos.kt` no se toca.
   - Hecho cuando: el test en verde (antes, en rojo) y `.\gradlew :core:data:compileKotlinJvm` sin errores; buscar `post(`,
     `put(`, `delete(`, `subir(`, `pedir(` en `HcApiSoloLectura.kt` no da resultados.
+  - **Hecho (2026-10-30, tanda A encadenada).** Archivos nuevos en `core/data/.../network/hc/`: `HcApiSoloLectura.kt` (envoltorio de
+    `HcApiClient` con solo `get`, `leer`, `leerOpcional`, `leerTodo`; el cliente completo queda `private`), `HcClinicaDtos.kt` (los DTOs de
+    las 3 respuestas) y `ConsultasClinicaApi.kt` (**agregado a lo que pedía el plan, por pedido de la tanda**: interfaz con solo
+    `listar(pacienteWebId, limite = 50, desde = 0)`, `consulta(id)`, `historia(pacienteWebId)` y `ConsultasClinicaApiRemota(HcApiSoloLectura)`,
+    con el patrón de `EnfermedadesApi`). E6.3 puede recibir cualquiera de las dos capas (el plan dice `HcApiSoloLectura`; la interfaz sirve para
+    probar el backend con una API falsa). Tests: `commonTest` `HcClinicaDtosTest` (los ejemplos del md, ausencias, claves de más, `hay_mas`
+    número, errores del contrato), `ConsultasClinicaApiRutasTest` y `EjemplosConsultasClinica` (JSON inventado); `jvmTest`
+    `ConsultasClinicaApiSoloLecturaTest` (reflexión: lo único público de `HcApiSoloLectura` es `get`/`leer`/`leerOpcional`/`leerTodo`, de la
+    interfaz y de la clase remota `listar`/`consulta`/`historia`, la remota solo recibe un `HcApiSoloLectura` y ningún método recibe más que
+    ids y números; y contra un `HttpServer` en `127.0.0.1`: solo `GET`, la query `paciente_id`/`limite`/`desde`, sin cuerpo ni `Content-Type`,
+    403/404/422/429/500 con status y `codigo`, **un solo pedido** ante cada error (sin reintento, RF-57), JSON cortado y servidor apagado).
+    **Rojo previo:** `:core:data:compileTestKotlinJvm` fallaba con 229 errores `Unresolved reference` solo en los 3 archivos de test nuevos
+    (los tipos que faltaban). **Verde:** `:core:data:jvmTest --rerun` completo 729 tests (671 + 58 nuevos), 0 fallas, 0 errores;
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `post(`, `put(`, `delete(`, `subir(`, `pedir(` no aparecen en
+    `HcApiSoloLectura.kt` ni en `ConsultasClinicaApi.kt`. Mutación: un método `enviar` (con `put`) agregado a `HcApiSoloLectura` hace fallar el
+    test de reflexión (revertido). **Contrastado con el JSON real** de la copia local (fixture de la L: lista, 4 consultas, historia, errores
+    403/404/422): los DTOs lo leen sin error (los JSON reales no se guardaron en el repo; los de los tests son inventados).
+    Decisiones: **(1) Qué puede faltar (Q15):** son obligatorios los contenedores de los que se deduce «ya no está en la web» (`consultas`,
+    `total`, `desde`, `hay_mas`, `secciones`, `examen_fisico`, `laboratorios` y sus 3 listas, `estudios` y sus 5, `motivos`,
+    `examenes_complementarios`, `interconsultas`) y las claves `antecedentes_familiares` y `pendientes` (pueden ser `null`, pero tienen que
+    venir): sin ellas la respuesta es `TobbException` `respuesta` y no se aplica, para que una ausencia nunca se lea como «vacío» y dispare
+    una marca de E6.4b. Pueden faltar `created_at`, `antecedentes_familiares_perfil4`, `omitidas` y `no_leidas` (solo avisan) y los campos
+    opcionales de cada fila (`medico_id`, `medico_nombre`, `tipo`, `tipo_numero`, `updated_at`, `consulta_id`, `fecha`, `respuesta`, ...).
+    **(2) `antecedentes_familiares`** mezcla casillas (objetos) y `nota` (texto) en un objeto: serializador propio solo de lectura →
+    `AntecedentesFamiliaresDto(casillas: Map<String, CasillaAntecedenteDto>, nota)`; guarda también las casillas que la app no conoce.
+    **(3) Los valores** (laboratorio, formularios, examen físico) se leen como cadenas aunque el servidor mandara un número JSON. **(4)** `ids`
+    como `Long`; los de estudios, exámenes e interconsultas quedan crudos (el id local lo arma E6.2 con el tipo). **(5)** Sin conversión al
+    modelo (no la pide E6.1; es E6.2). `estado` queda como texto `ABIERTA`/`CERRADA`.
+    **Diferencias entre el plan y el JSON real:** el plan (`plan.md`) lista `edad_meses` en la cabecera: el servidor **no lo manda** (ya lo
+    corrigió E4.x; el DTO lo ignoraría igual); el plan no tiene `created_at` ni `antecedentes_familiares_perfil4` (E4.4); `datos` del plan es
+    `datos_invalidos` en el código del 422; el `404` de una consulta de un paciente fuera de la cartera es `403 fuera_de_cartera` (D3).
 
 - [ ] **E6.2. Ids y conversión pura (`LecturaClinica`).** RF-40, RF-41, RF-42, RF-52 — **M** — Toca API Laravel: no
   - Tests primero: `commonTest` `LecturaClinicaTest`: ids `hcc-c`, `hcc-m`, `hcc-l`, `hcc-r`, `hcc-p`, disjuntos de `hcp-c…`
