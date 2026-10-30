@@ -5,12 +5,19 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.4 (`traerConsulta` y aplicar el historial), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
-  usuario y encadenada tarea por tarea. E6.3 hecha (2026-10-30):** `repos/HcClinicaBackend.kt` (`soloLectura = true`; envíos lanzan
-  `UnsupportedOperationException`; sin `resolver`) trae SOLO la lista (50 por pedido, hasta 20 páginas, todo en una transacción, de la más
+- **Siguiente paso: E6.4b (aplicar las marcas «Ya no figura en la web» con `marcarAusentes`), dentro de la tanda A (app) de la spec 002,
+  entrega L, aprobada por el usuario y encadenada tarea por tarea. E6.4 hecha (2026-10-30):** `HcClinicaBackend.traerConsulta` (un `GET
+  consultas/{id}`; escribe `seccion_valor`, `examen_fisico` y el aviso `hcc_no_leidas_<id web>`; no pide nada si la consulta no es `hcc-c<remoto>`,
+  no está, está sucia o no hay ficha) y `traerConsultas` ahora hace lista + historial (`aplicarHistoria`: antecedentes con `nota_perfil4`,
+  cargas, estudios, exámenes, interconsultas, motivos de las consultas que están, pendiente; todo `dirty = 0`, lo sucio no se toca, nada se
+  borra ni se vacía). Lista e historial son pedidos, transacciones y esperas de 60 s independientes: si falla la lista no se pide el historial;
+  si falla el historial la lista queda y el próximo pedido repite solo el historial. Las cargas sin fecha (D1) van en `hcc_omitidas_laboratorio`
+  (fila aparte de `hcc_omitidas`). `pendientePorId` en `HistoriaClinica.sq` (sin migración). 979 tests de `core:data` en verde y wasm compila.
+  El backend sigue sin registrarse (E6.5, D6). **E6.3 hecha (2026-10-30):** `repos/HcClinicaBackend.kt` (`soloLectura = true`; envíos lanzan
+  `UnsupportedOperationException`; sin `resolver`) trae la lista (50 por pedido, hasta 20 páginas, todo en una transacción, de la más
   vieja a la más nueva), lo `dirty`/del dispositivo no se toca, nada se borra; `traerConsultas(…, forzar)` y espera de 60 s por
-  (paciente, médico). El pedido de `historia` y `no_leidas` los agrega E6.4 (decisión en la nota de E6.3). `hcc_omitidas` = `foto|otro|sin_fecha`
-  (`OmitidasLectura.kt`). 894 tests de `core:data` en verde y wasm compila. **E6.2 hecha (2026-10-30):** `hcgeneral/LecturaClinica.kt` (puro): ids `hcc-c<id>`, `hcc-m`, `hcc-l<tipo>-<id>`, `hcc-r<tipo>-<id>`, `hcc-p`,
+  (paciente, médico). `hcc_omitidas` = `foto|otro|sin_fecha`
+  (`OmitidasLectura.kt`). **E6.2 hecha (2026-10-30):** `hcgeneral/LecturaClinica.kt` (puro): ids `hcc-c<id>`, `hcc-m`, `hcc-l<tipo>-<id>`, `hcc-r<tipo>-<id>`, `hcc-p`,
   `hcc-a<ficha>-<clave>`; conversión de las respuestas al modelo (nunca un vacío que pise, textos intactos) y `fusionar…` (lo que viene
   pisa, lo que no se conserva, `null` si no cambia nada); `filaDeLaWeb` (siempre `dirty = 0`); `desconocidos(catalogo, …)`;
   `marcarAusentes(traido, marcadas, LecturaWeb)` solo devuelve `marcar`/`desmarcar` (claves `hcc_ausente_<clave>`; la lista solo cubre con
@@ -156,7 +163,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A) aún sin código: `HcClinicaBackend` será de solo lectura.
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5 y E6.1 a E6.4 hechas; `HcClinicaBackend` es de solo lectura y aún no está registrado (E6.5).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

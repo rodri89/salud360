@@ -2,10 +2,12 @@ package com.salud360.core.data.repos
 
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ConsultasClinicaApiRemota
+import com.salud360.core.data.network.hc.EjemplosConsultasClinica
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiSoloLectura
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
+import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.hc.Archivo
@@ -26,10 +28,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `HcClinicaBackend` no escribe nunca (spec 002, E6.3, RF-47): ni por construcción ni por lo que sale a la red. Contra un
- * servidor local de la JVM (`127.0.0.1`, sin dependencias nuevas) que anota método y ruta de cada pedido: la lista son
- * solo `GET`, cada método de envío lanza sin tocar la red y los errores del servidor llegan con su status, sin reintento
- * y sin escribir nada.
+ * `HcClinicaBackend` no escribe nunca (spec 002, E6.3 y E6.4, RF-47): ni por construcción ni por lo que sale a la red.
+ * Contra un servidor local de la JVM (`127.0.0.1`, sin dependencias nuevas) que anota método y ruta de cada pedido: la
+ * lista, el historial y cada consulta son solo `GET`, cada método de envío lanza sin tocar la red y los errores del
+ * servidor llegan con su status, sin reintento y sin escribir nada.
  */
 class HcClinicaBackendSoloLecturaTest {
 
@@ -156,37 +158,166 @@ class HcClinicaBackendSoloLecturaTest {
         assertEquals(antes, volcarTodo(driver))
     }
 
-    // ---- Lo que sale a la red al traer la lista ----
+    // ---- Lo que sale a la red al traer la lista y el historial ----
+
+    private val noEncontrada = """{"ok": false, "mensaje": "Consulta no encontrada.", "codigo": "consulta_no_encontrada"}"""
+
+    /** hclinica con [cabeceras] en la lista, el [historial] del paciente 5001 y las [consultas] por id; lo demás es 404. */
+    private fun web(
+        cabeceras: List<String>,
+        historial: String = EjemplosConsultasClinica.HISTORIA,
+        consultas: Map<Long, String> = emptyMap(),
+    ): (HttpExchange, String) -> Pair<Int, String> = { x, query ->
+        val ruta = x.requestURI.path.removePrefix("/api/salud360/")
+        when {
+            ruta == "consultas" -> 200 to listaDe(cabeceras, query)
+            ruta == "pacientes/5001/historia" -> 200 to historial
+            ruta.startsWith("consultas/") -> consultas[ruta.removePrefix("consultas/").toLongOrNull()]?.let { 200 to it } ?: (404 to noEncontrada)
+            else -> 404 to "{}"
+        }
+    }
 
     @Test
-    fun una_pagina_es_un_solo_get_a_la_lista_con_la_ficha_el_limite_y_el_desde() = conServidor(
-        responder = { _, q -> 200 to listaDe(cabeceras(3), q) },
-    ) {
+    fun abrir_la_historia_son_dos_get_la_lista_y_el_historial() = conServidor(responder = web(cabeceras(3))) {
         val traidas = backend.traerConsultas(PACIENTE, MEDICO, true)
 
         assertEquals(3, traidas.size)
-        val p = pedidos.single()
-        p.assertSoloLectura()
-        assertEquals("/api/salud360/consultas", p.ruta)
-        assertEquals(setOf("paciente_id=5001", "limite=50", "desde=0"), p.query.split("&").toSet())
+        assertEquals(2, pedidos.size)
+        pedidos.forEach { it.assertSoloLectura() }
+        val lista = pedidos[0]
+        assertEquals("/api/salud360/consultas", lista.ruta)
+        assertEquals(setOf("paciente_id=5001", "limite=50", "desde=0"), lista.query.split("&").toSet())
+        val historial = pedidos[1]
+        assertEquals("/api/salud360/pacientes/5001/historia", historial.ruta)
+        assertEquals("", historial.query, "el historial no lleva parámetros: es de la ficha")
     }
 
     @Test
-    fun cuatro_paginas_son_cuatro_get_y_nada_mas() = conServidor(responder = { _, q -> 200 to listaDe(cabeceras(160), q) }) {
+    fun cuatro_paginas_son_cuatro_get_mas_uno_del_historial_y_nada_mas() = conServidor(responder = web(cabeceras(160))) {
         backend.traerConsultas(PACIENTE, MEDICO, true)
 
-        assertEquals(4, pedidos.size)
+        assertEquals(5, pedidos.size)
         pedidos.forEach { it.assertSoloLectura() }
-        assertEquals(setOf("/api/salud360/consultas"), pedidos.map { it.ruta }.toSet(), "ni el historial ni una consulta (eso es de E6.4)")
-        assertEquals(listOf("0", "50", "100", "150"), pedidos.map { p -> p.query.split("&").first { it.startsWith("desde=") }.removePrefix("desde=") })
+        assertEquals(
+            listOf("/api/salud360/consultas", "/api/salud360/consultas", "/api/salud360/consultas", "/api/salud360/consultas", "/api/salud360/pacientes/5001/historia"),
+            pedidos.map { it.ruta },
+            "ninguna consulta suelta: eso lo pide quien abre una",
+        )
+        assertEquals(
+            listOf("0", "50", "100", "150"),
+            pedidos.take(4).map { p -> p.query.split("&").first { it.startsWith("desde=") }.removePrefix("desde=") },
+        )
     }
 
     @Test
-    fun la_segunda_llamada_inmediata_no_sale_a_la_red() = conServidor(responder = { _, q -> 200 to listaDe(cabeceras(3), q) }) {
+    fun la_segunda_llamada_inmediata_no_sale_a_la_red() = conServidor(responder = web(cabeceras(3))) {
         backend.traerConsultas(PACIENTE, MEDICO)
         backend.traerConsultas(PACIENTE, MEDICO)
 
-        assertEquals(1, pedidos.size)
+        assertEquals(2, pedidos.size, "la lista y el historial de la primera; la segunda ve el minuto")
+    }
+
+    @Test
+    fun un_429_del_historial_no_se_reintenta_y_la_lista_ya_traida_se_queda() = conServidor(
+        responder = { x, q ->
+            if (x.requestURI.path.endsWith("/historia")) 429 to """{"message": "Too Many Attempts."}""" else 200 to listaDe(cabeceras(3), q)
+        },
+    ) {
+        val e = assertFailsWith<TobbException> { backend.traerConsultas(PACIENTE, MEDICO, true) }
+
+        assertEquals(429, e.status)
+        assertNull(e.codigo)
+        assertEquals(
+            listOf("/api/salud360/consultas", "/api/salud360/pacientes/5001/historia"), pedidos.map { it.ruta },
+            "la lista y un solo pedido de historial, sin reintento (RF-58)",
+        )
+        pedidos.forEach { it.assertSoloLectura() }
+        assertEquals(3, textos(driver, "SELECT COUNT(*) FROM consulta").single().toInt(), "la lista quedó aplicada")
+    }
+
+    // ---- Lo que sale a la red al abrir una consulta ----
+
+    private val unaDeLaWeb = EjemplosConsultasClinica.CONSULTA_COMPLETA
+
+    @Test
+    fun abrir_una_consulta_es_un_solo_get_a_consultas_id() = conServidor(responder = web(cabeceras(3), consultas = mapOf(9003L to unaDeLaWeb.replace("7003", "9003")))) {
+        backend.traerConsultas(PACIENTE, MEDICO, true)
+        val hastaAca = pedidos.size
+
+        backend.traerConsulta("hcc-c9003", "9003")
+
+        assertEquals(1, pedidos.size - hastaAca, "RF-57: un pedido al abrir cada consulta")
+        val p = pedidos.last()
+        p.assertSoloLectura()
+        assertEquals("/api/salud360/consultas/9003", p.ruta)
+        assertEquals("", p.query)
+        assertEquals(
+            "Prueba Salud360 motivo (a)",
+            textos(driver, "SELECT valor FROM seccion_valor WHERE consulta_id = 'hcc-c9003' AND seccion = 'motivo_consulta'").single(),
+        )
+    }
+
+    private fun conConsultaTraida(responder: (HttpExchange, String) -> Pair<Int, String>, bloque: suspend Contexto.(Int) -> Unit) =
+        conServidor(responder = responder) {
+            backend.traerConsultas(PACIENTE, MEDICO, true)
+            val hastaAca = pedidos.size
+            bloque(hastaAca)
+        }
+
+    private fun conErrorAlAbrir(estado: Int, cuerpo: String, ver: (TobbException) -> Unit) = conConsultaTraida(
+        { x, q -> if (x.requestURI.path.endsWith("/9003")) estado to cuerpo else web(cabeceras(3)).invoke(x, q) },
+    ) { hastaAca ->
+        val antes = volcarTodo(driver)
+
+        val e = assertFailsWith<TobbException> { backend.traerConsulta("hcc-c9003", "9003") }
+
+        ver(e)
+        assertEquals(1, pedidos.size - hastaAca, "un solo pedido: el reintento es manual (RF-58)")
+        pedidos.forEach { it.assertSoloLectura() }
+        assertEquals(antes, volcarTodo(driver), "nada nuevo en el dispositivo y nada borrado")
+    }
+
+    @Test
+    fun consulta_404_consulta_no_encontrada() = conErrorAlAbrir(404, noEncontrada) {
+        assertEquals(404, it.status)
+        assertEquals("consulta_no_encontrada", it.codigo)
+    }
+
+    @Test
+    fun consulta_403_fuera_de_cartera() = conErrorAlAbrir(
+        403, """{"ok": false, "mensaje": "Ese paciente no está en tu cartera.", "codigo": "fuera_de_cartera"}""",
+    ) {
+        assertEquals(403, it.status)
+        assertEquals("fuera_de_cartera", it.codigo)
+    }
+
+    @Test
+    fun consulta_429_sin_reintento() = conErrorAlAbrir(429, """{"message": "Too Many Attempts."}""") {
+        assertEquals(429, it.status)
+        assertNull(it.codigo)
+    }
+
+    @Test
+    fun consulta_500() = conErrorAlAbrir(500, """{"ok": false, "mensaje": "No se pudo leer la consulta.", "codigo": "consultas"}""") {
+        assertEquals(500, it.status)
+    }
+
+    @Test
+    fun consulta_con_json_cortado() = conErrorAlAbrir(200, """{"ok": true, "consulta": {"id": 9003, "paci""") { }
+
+    @Test
+    fun consulta_sin_un_contenedor_obligatorio_no_se_toma_por_una_consulta_vacia() = conErrorAlAbrir(
+        200, """{"ok": true, "consulta": ${EjemplosConsultasClinica.CABECERA_A.replace("7003", "9003")}, "examen_fisico": {}, "no_leidas": []}""", // falta `secciones`
+    ) { assertEquals("respuesta", it.codigo) }
+
+    @Test
+    fun abrir_una_consulta_sin_ficha_no_sale_ningun_pedido() = conServidor(vinculado = false, responder = { _, _ -> 200 to "{}" }) {
+        val antes = volcarTodo(driver)
+
+        backend.traerConsulta("hcc-c9003", "9003")
+
+        assertEquals(emptyList(), pedidos.map { "${it.metodo} ${it.ruta}" })
+        assertEquals(antes, volcarTodo(driver))
     }
 
     @Test

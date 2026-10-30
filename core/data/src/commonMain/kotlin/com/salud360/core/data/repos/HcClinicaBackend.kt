@@ -2,21 +2,40 @@ package com.salud360.core.data.repos
 
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.CATEGORIA_FAMILIARES
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS
+import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS_LABORATORIO
+import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
+import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
 import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.filaDeLaWeb
+import com.salud360.core.data.hcgeneral.fusionarAntecedente
 import com.salud360.core.data.hcgeneral.fusionarConsulta
+import com.salud360.core.data.hcgeneral.fusionarExamenFisico
+import com.salud360.core.data.hcgeneral.fusionarLaboratorio
+import com.salud360.core.data.hcgeneral.fusionarRegistro
 import com.salud360.core.data.hcgeneral.hayAlgo
+import com.salud360.core.data.hcgeneral.idConsultaWeb
+import com.salud360.core.data.hcgeneral.laboratoriosDeLaWeb
+import com.salud360.core.data.hcgeneral.motivosDeLaWeb
+import com.salud360.core.data.hcgeneral.noLeidasComoTexto
 import com.salud360.core.data.hcgeneral.nombreMedicoDeLaWeb
 import com.salud360.core.data.hcgeneral.omitidasComoTexto
+import com.salud360.core.data.hcgeneral.omitidasLaboratorioComoTexto
 import com.salud360.core.data.hcgeneral.ordenarMasRecientesPrimero
+import com.salud360.core.data.hcgeneral.pendienteDeLaWeb
+import com.salud360.core.data.hcgeneral.registrosDeLaWeb
+import com.salud360.core.data.hcgeneral.valoresDeLaWeb
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
+import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
 import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.ConsultasClinicaApiRemota
 import com.salud360.core.data.network.hc.HcApiSoloLectura
+import com.salud360.core.data.network.hc.RespuestaConsultaDto
+import com.salud360.core.data.network.hc.RespuestaHistoriaDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
@@ -30,18 +49,19 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Historia clínica general (`hclinica`), **solo lectura** (spec 002, entrega L): trae la lista de consultas de la web y la
- * deja en el dispositivo; no manda nada, nunca (RF-47).
+ * Historia clínica general (`hclinica`), **solo lectura** (spec 002, entrega L): trae de la web las consultas del paciente,
+ * su historial y el contenido de cada consulta, y lo deja en el dispositivo; no manda nada, nunca (RF-47).
  *
  * - No tiene cómo escribir: recibe un [HcApiSoloLectura] (o una [ConsultasClinicaApi], que solo lee) y todo método de
  *   envío de [HcBackend] lanza [UnsupportedOperationException] sin tocar la red.
  * - Sin ficha de la web (`fichaConocida` nula) no pide nada y no llama a `pacientes/resolver` (RF-49).
+ * - Pedidos (RF-57): abrir la historia de un paciente son la lista (50 por pedido) y un pedido de historial; abrir una
+ *   consulta es un pedido. La lista y el historial son pedidos, transacciones y esperas de 60 s independientes.
  * - Lo del dispositivo manda (RF-48, RF-54): una consulta `dirty`, creada acá o ya vinculada con la misma consulta de la
- *   web no se toca. Lo que la web trae se escribe con `dirty = 0`, y un valor vacío no pisa el que había.
- * - Nada se borra ni se vacía (Q15): una consulta que la web dejó de mandar queda como estaba. Las marcas «Ya no figura
- *   en la web» son de E6.4b.
- *
- * Esta tarea (E6.3) trae solo la lista; el contenido de una consulta y el historial son de E6.4.
+ *   web no se toca, ni una clave sucia de lo que se escribe campo por campo. Lo que la web trae se escribe con `dirty = 0`,
+ *   y un valor vacío o que no viene no pisa el que había.
+ * - Nada se borra ni se vacía (Q15): lo que la web dejó de mandar queda como estaba. Las marcas «Ya no figura en la
+ *   web» son de E6.4b.
  */
 class HcClinicaBackend internal constructor(
     private val db: Salud360Db,
@@ -67,6 +87,9 @@ class HcClinicaBackend internal constructor(
     /** Cuándo se leyó bien la lista de cada (paciente, médico), para no repetirla antes de [ESPERA_MS]. */
     private val ultimaLista = mutableMapOf<String, Long>()
 
+    /** Lo mismo para el historial: es otro pedido y tiene su propio minuto (si falló, no corre el de la lista). */
+    private val ultimoHistorial = mutableMapOf<String, Long>()
+
     // ------------------------------------------------------------------
     // Lectura
     // ------------------------------------------------------------------
@@ -75,11 +98,14 @@ class HcClinicaBackend internal constructor(
 
     /**
      * Trae la lista de consultas de la web del paciente, de a [LIMITE_POR_PAGINA], hasta la última página (con un tope de
-     * [MAX_PAGINAS]), y la escribe de una vez, de la más vieja a la más nueva. [forzar] (el botón «Actualizar») se salta el
-     * minuto de espera. Devuelve las consultas de la web que el dispositivo tiene del paciente.
+     * [MAX_PAGINAS]), y la escribe de una vez, de la más vieja a la más nueva; después trae su historial (un pedido) y lo
+     * escribe. [forzar] (el botón «Actualizar») se salta el minuto de espera de los dos. Devuelve las consultas de la web
+     * que el dispositivo tiene del paciente.
      *
      * Si falla algún pedido (sin conexión, `401`, `403`, `404`, `422`, `429`, `500`, respuesta incompleta) lanza el error de
-     * la API y no escribe nada: lo ya traído se queda como estaba. Sin reintento propio (RF-58).
+     * la API, sin reintento propio (RF-58), y lo que ese pedido iba a escribir no se escribe: lo ya traído se queda como
+     * estaba. La lista y el historial son independientes: si falla la lista no se pide el historial; si falla el historial
+     * la lista ya escrita se queda (y el próximo pedido sin «Actualizar» solo repite el historial).
      */
     suspend fun traerConsultas(pacienteId: Id, medicoId: Id, forzar: Boolean): List<Consulta> = candado.withLock {
         val ficha = pacientes.fichaConocida(pacienteId, especialidad)
@@ -88,14 +114,22 @@ class HcClinicaBackend internal constructor(
             return@withLock emptyList()
         }
         val clave = "$pacienteId|$medicoId"
-        val ultima = ultimaLista[clave]
-        if (!forzar && ultima != null && ahora() - ultima < ESPERA_MS) return@withLock consultasDeLaWeb(pacienteId)
-
-        val paginas = leerLista(ficha)
-        db.transaction { aplicarLista(pacienteId, medicoId, ficha, paginas) }
-        ultimaLista[clave] = ahora()
+        if (forzar || vencida(ultimaLista[clave])) {
+            val paginas = leerLista(ficha)
+            db.transaction { aplicarLista(pacienteId, medicoId, ficha, paginas) }
+            ultimaLista[clave] = ahora()
+        }
+        // Un pedido y una transacción aparte: si falla la lista no se pide (un 429, un 401 o una caída valen para los dos y
+        // RF-57 pide no insistir); si falla el historial, la lista ya escrita se queda y el error sale igual.
+        if (forzar || vencida(ultimoHistorial[clave])) {
+            val historial = leerHistorial(ficha)
+            db.transaction { aplicarHistoria(pacienteId, medicoId, historial) }
+            ultimoHistorial[clave] = ahora()
+        }
         consultasDeLaWeb(pacienteId)
     }
+
+    private fun vencida(ultima: Long?) = ultima == null || ahora() - ultima >= ESPERA_MS
 
     /**
      * Las páginas de `GET consultas`, en orden. Se corta (sin error, y lo recibido igual se aplica) si ya no hay más, si se
@@ -149,19 +183,145 @@ class HcClinicaBackend internal constructor(
     }
 
     /** Lo que la lista no manda y cuenta (RF-43). Es una cuenta, no un dato clínico: sigue a la web, también hacia cero. */
-    private suspend fun guardarOmitidas(pacienteId: Id, primera: RespuestaListaConsultasDto, sello: Long) {
-        val texto = omitidasComoTexto(primera.omitidas)
-        val actual = pq.extrasDePaciente(pacienteId, especialidad).lista { it }.firstOrNull { it.clave == CLAVE_OMITIDAS }
-        val escribir = if (actual == null) primera.omitidas.hayAlgo() else actual.dirty == 0L && actual.valor != texto
-        if (escribir) pq.upsertPacienteExtra(PacienteExtra(pacienteId, especialidad, CLAVE_OMITIDAS, texto).filaDeLaWeb(sello))
+    private suspend fun guardarOmitidas(pacienteId: Id, primera: RespuestaListaConsultasDto, sello: Long) =
+        guardarAviso(pacienteId, CLAVE_OMITIDAS, omitidasComoTexto(primera.omitidas), primera.omitidas.hayAlgo(), sello)
+
+    /**
+     * Un aviso del paciente (`paciente_extra`, sin migración): lo que la web informa y la app no muestra. Es una cuenta o una
+     * lista de nombres, no un dato clínico, así que sigue a la web también hacia cero; sin fila previa y sin nada que avisar
+     * ([hayAlgo] falso) no se escribe, y una fila con cambios sin enviar no se toca.
+     */
+    private suspend fun guardarAviso(pacienteId: Id, clave: String, texto: String, hayAlgo: Boolean, sello: Long) {
+        val actual = pq.extrasDePaciente(pacienteId, especialidad).lista { it }.firstOrNull { it.clave == clave }
+        val escribir = if (actual == null) hayAlgo else actual.dirty == 0L && actual.valor != texto
+        if (escribir) pq.upsertPacienteExtra(PacienteExtra(pacienteId, especialidad, clave, texto).filaDeLaWeb(sello))
     }
 
     private suspend fun consultasDeLaWeb(pacienteId: Id): List<Consulta> =
         hq.consultasDePaciente(pacienteId, especialidad).lista { it.toModel() }.filter { it.esDeLaWeb() }
 
-    /** El contenido de una consulta de la web es de E6.4: hasta entonces este backend no se registra (E6.5). */
+    // ------------------------------------------------------------------
+    // El historial del paciente (`GET pacientes/{id}/historia`)
+    // ------------------------------------------------------------------
+
+    /** Un solo pedido; si la respuesta es de otra ficha es dudosa y no se aplica (RF-55). */
+    private suspend fun leerHistorial(ficha: Long): RespuestaHistoriaDto {
+        val historial = api.historia(ficha)
+        if (historial.pacienteId != ficha) throw respuestaDudosa("el historial es de la ficha ${historial.pacienteId} y se pidió la $ficha")
+        return historial
+    }
+
+    private fun respuestaDudosa(detalle: String) = TobbException(0, "respuesta", "Respuesta inesperada de $especialidad: $detalle")
+
+    /**
+     * Escribe lo que la web guarda por paciente y fecha, campo por campo y solo lo que viene con valor (nunca un
+     * `INSERT OR REPLACE` de una fila armada solo con lo recibido, nunca un `DELETE`): antecedentes familiares (con la nota
+     * del perfil 4), cargas de laboratorio y de peso, estudios, exámenes complementarios, interconsultas, el motivo de las
+     * consultas que ya están en el dispositivo y el pendiente. Lo sucio del dispositivo no se toca, lo traído antes que
+     * ya no viene se queda (Q15) y lo que se escribe lleva `dirty = 0`. Va en una transacción: o entra todo o nada.
+     * Las marcas «Ya no figura en la web» (E6.4b) se escribirán acá, en esta misma transacción.
+     */
+    private suspend fun aplicarHistoria(pacienteId: Id, medicoId: Id, h: RespuestaHistoriaDto) {
+        val sello = ahora()
+        val consultas = hq.consultasDePaciente(pacienteId, especialidad).lista { it.id }.toSet()
+
+        val familiares = hq.antecedentesDeCategoria(pacienteId, especialidad, CATEGORIA_FAMILIARES).lista { it.toModel() }
+        val antecedentesSucios = hq.antecedentesDirty().lista { it.id }.toSet()
+        antecedentesDeLaWeb(pacienteId, h).forEach { web ->
+            fusionarAntecedente(web, familiares, antecedentesSucios)?.let { hq.upsertAntecedente(it.filaDeLaWeb(sello)) }
+        }
+
+        val cargasSucias = hq.laboratoriosDirty().lista { it.id }.toSet()
+        laboratoriosDeLaWeb(pacienteId, h.laboratorios, consultas).filter { it.id !in cargasSucias }.forEach { web ->
+            val local = hq.laboratorioPorId(web.id).uno { it.toModel() }
+            if (local != null && local.pacienteId != pacienteId) return@forEach
+            fusionarLaboratorio(web, local)?.let { hq.upsertLaboratorio(it.filaDeLaWeb(sello)) }
+        }
+
+        val registrosSucios = hq.registrosDirty().lista { it.id }.toSet()
+        registrosDeLaWeb(pacienteId, h, consultas).filter { it.id !in registrosSucios }.forEach { web ->
+            val local = hq.registroPorId(web.id).uno { it.toModel() }
+            if (local != null && local.pacienteId != pacienteId) return@forEach
+            fusionarRegistro(web, local)?.let { hq.upsertRegistro(it.filaDeLaWeb(sello)) }
+        }
+
+        val valoresSucios = hq.seccionValoresDirty().lista { Triple(it.consulta_id, it.seccion, it.campo) }.toSet()
+        motivosDeLaWeb(h, consultas).forEach { web ->
+            if (Triple(web.consultaId, web.seccion, web.campo) in valoresSucios) return@forEach
+            val actual = hq.valoresDeSeccion(web.consultaId, web.seccion).lista { it.toModel() }.firstOrNull { it.campo == web.campo }
+            if (actual?.valor != web.valor) hq.upsertSeccionValor(web.filaDeLaWeb(sello))
+        }
+
+        val pendientesSucios = hq.pendientesDirty().lista { it.id }.toSet()
+        pendienteDeLaWeb(pacienteId, medicoId, h)?.takeIf { it.id !in pendientesSucios }?.let { web ->
+            val local = hq.pendientePorId(web.id).uno { it.toModel() }
+            if (local != null && local.pacienteId != pacienteId) return@let
+            if (local != web) hq.upsertPendiente(web.filaDeLaWeb(sello))
+        }
+
+        val sinFecha = h.omitidas.laboratorioSinFecha.coerceAtLeast(0)
+        guardarAviso(pacienteId, CLAVE_OMITIDAS_LABORATORIO, omitidasLaboratorioComoTexto(sinFecha), sinFecha > 0, sello)
+    }
+
+    // ------------------------------------------------------------------
+    // Una consulta de la web (`GET consultas/{id}`)
+    // ------------------------------------------------------------------
+
+    /**
+     * Trae el contenido de una consulta de la web (un solo pedido, RF-57) y lo escribe en `seccion_valor` y `examen_fisico`
+     * de esa consulta, más el aviso de `no_leidas` (RF-43) en `paciente_extra`; todo con `dirty = 0` y en una transacción.
+     * El resto de lo que la web guarda por consulta (laboratorio, estudios, pendientes, motivos de las otras) viene con el
+     * historial. No cambia la fila de la consulta, que es de la lista: una consulta de la web es siempre solo lectura (RF-25).
+     *
+     * No pide nada, y no escribe, si la consulta no es de la web (su id no es `hcc-c<remotoId>`), si no está en el
+     * dispositivo, si tiene cambios sin enviar o si el paciente no tiene ficha (RF-49). Una clave sucia no se toca, un valor
+     * vacío o que no viene no pisa uno cargado y nada se borra (Q15). Cualquier error de la API (`404
+     * consulta_no_encontrada`, `403`, `429`, ...) sale tal cual, sin reintento y sin escribir: quien quiera marcarla como «ya
+     * no figura en la web» (E6.4b) distingue el `404` por su código.
+     */
     override suspend fun traerConsulta(consultaLocalId: Id, remotoId: String) {
-        throw UnsupportedOperationException("traerConsulta todavía no está hecho (E6.4)")
+        val consultaWebId = remotoId.toLongOrNull()?.takeIf { it > 0 }
+        if (consultaWebId == null || consultaLocalId != idConsultaWeb(consultaWebId)) {
+            log.w { "$consultaLocalId no es la consulta $remotoId de la web: no se pide" }
+            return
+        }
+        candado.withLock {
+            val local = hq.consultaPorId(consultaLocalId).uno { it.toModel() }
+            if (local == null || local.especialidad != especialidad) return@withLock
+            if (consultaLocalId in hq.consultasDirty().lista { it.id }) return@withLock
+            val ficha = pacientes.fichaConocida(local.pacienteId, especialidad)
+            if (ficha == null) {
+                log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
+                return@withLock
+            }
+            val respuesta = api.consulta(consultaWebId)
+            if (respuesta.consulta.id != consultaWebId) throw respuestaDudosa("llegó la consulta ${respuesta.consulta.id} y se pidió la $consultaWebId")
+            if (respuesta.consulta.pacienteId != ficha) {
+                throw respuestaDudosa("la consulta $consultaWebId es de la ficha ${respuesta.consulta.pacienteId} y el paciente tiene la $ficha")
+            }
+            db.transaction { aplicarConsulta(local, respuesta) }
+        }
+    }
+
+    /** Escribe campo por campo lo que la consulta trae con valor; lo sucio no se toca y nada se borra ni se vacía. */
+    private suspend fun aplicarConsulta(local: Consulta, r: RespuestaConsultaDto) {
+        val sello = ahora()
+        val id = local.id
+
+        val sucios = hq.seccionValoresDirty().lista { it }.filter { it.consulta_id == id }.map { it.seccion to it.campo }.toSet()
+        val actuales = hq.valoresDeConsulta(id).lista { it.toModel() }.associateBy { it.seccion to it.campo }
+        valoresDeLaWeb(id, r.secciones).forEach { web ->
+            val clave = web.seccion to web.campo
+            if (clave !in sucios && actuales[clave]?.valor != web.valor) hq.upsertSeccionValor(web.filaDeLaWeb(sello))
+        }
+
+        if (id !in hq.examenesFisicosDirty().lista { it.consulta_id }) {
+            val actual = hq.examenFisicoDeConsulta(id).uno { it.toModel() }
+            fusionarExamenFisico(id, r.examenFisico, actual)?.let { hq.upsertExamenFisico(it.filaDeLaWeb(sello)) }
+        }
+
+        val noLeidas = noLeidasComoTexto(r.noLeidas)
+        guardarAviso(local.pacienteId, claveNoLeidas(r.consulta.id), noLeidas, noLeidas.isNotEmpty(), sello)
     }
 
     // ------------------------------------------------------------------

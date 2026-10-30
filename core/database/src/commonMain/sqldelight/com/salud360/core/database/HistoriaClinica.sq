@@ -234,6 +234,9 @@ CREATE TABLE pendiente (
 );
 
 pendientesDePaciente: SELECT * FROM pendiente WHERE paciente_id = ? AND medico_id = ? AND resuelto = 0 AND deleted = 0 ORDER BY updated_at DESC;
+-- Un pendiente por su id, resuelto o no (el del médico que sea): la lectura de la HC general lo compara antes de escribirlo.
+-- Solo cambia el `.sq`, no el esquema.
+pendientePorId: SELECT * FROM pendiente WHERE id = ? AND deleted = 0;
 contarPendientesDeMedico: SELECT COUNT(*) FROM pendiente WHERE medico_id = ? AND resuelto = 0 AND deleted = 0;
 upsertPendiente: INSERT OR REPLACE INTO pendiente VALUES ?;
 pendientesDirty: SELECT * FROM pendiente WHERE dirty = 1;

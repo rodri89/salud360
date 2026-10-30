@@ -6,11 +6,9 @@ import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
-import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.OmitidasConsultasDto
-import com.salud360.core.data.network.hc.RespuestaConsultaDto
-import com.salud360.core.data.network.hc.RespuestaHistoriaDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
+import com.salud360.core.data.repos.HcClinicaPruebas.ApiFalsa
 import com.salud360.core.data.repos.HcClinicaPruebas.FICHA
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
@@ -47,39 +45,6 @@ import kotlin.test.assertTrue
  * sin vínculo (RF-49), no repite antes de un minuto (RF-57) y no borra ni vacía nada (Q15). Datos inventados.
  */
 class HcClinicaBackendTest {
-
-    private class Pedido(val ficha: Long, val limite: Int, val desde: Int)
-
-    /** La web: la lista de [cabeceras], de la más nueva a la más vieja, en páginas de lo que pida la app. */
-    private class ApiFalsa(
-        var cabeceras: List<ConsultaCabeceraDto> = emptyList(),
-        var omitidas: OmitidasConsultasDto = OmitidasConsultasDto(),
-    ) : ConsultasClinicaApi {
-        val pedidos = mutableListOf<Pedido>()
-
-        /** Para armar una respuesta a medida de cada pedido; por defecto, la lista cortada como el servidor. */
-        var respuesta: ((Pedido) -> RespuestaListaConsultasDto)? = null
-
-        /** Número de pedido (desde 1) → error que lanza en vez de contestar. */
-        val fallas = mutableMapOf<Int, Throwable>()
-
-        /** Si no es null, cada pedido espera a que se abra. */
-        var compuerta: CompletableDeferred<Unit>? = null
-
-        override suspend fun listar(pacienteWebId: Long, limite: Int, desde: Int): RespuestaListaConsultasDto {
-            val pedido = Pedido(pacienteWebId, limite, desde)
-            pedidos += pedido
-            compuerta?.await()
-            fallas[pedidos.size]?.let { throw it }
-            respuesta?.let { return it(pedido) }
-            val pagina = cabeceras.drop(desde).take(limite)
-            return RespuestaListaConsultasDto(pagina, cabeceras.size, desde, if (desde + pagina.size < cabeceras.size) 1 else 0, omitidas)
-        }
-
-        override suspend fun consulta(id: Long): RespuestaConsultaDto = error("traerConsultas no pide una consulta (es de E6.4)")
-
-        override suspend fun historia(pacienteWebId: Long): RespuestaHistoriaDto = error("traerConsultas no pide el historial (es de E6.4)")
-    }
 
     private class Reloj(var millis: Long = 1_700_000_000_000L) {
         fun avanzar(ms: Long) { millis += ms }
@@ -495,6 +460,7 @@ class HcClinicaBackendTest {
 
                 assertSame(error, e)
                 assertEquals(1, api.pedidos.size, "sin reintento (RF-58): ${error.status}")
+                assertEquals(0, api.pedidosHistoria.size, "si la lista falla no se gasta un pedido en el historial: ${error.status}")
                 assertEquals(antes, volcarTodo(driver), "lo ya traído se queda y no entra nada nuevo: ${error.status}")
             }
         }

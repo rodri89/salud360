@@ -1058,7 +1058,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     espera de 60 s se cuenta por (paciente, médico) y solo arranca tras una lectura buena. (9) Las consultas se recorren todas (tope
     20 páginas), no solo las 50 más recientes de Q9: lo pidió la tanda para poder marcar ausentes; la pantalla (E7.2) decide qué muestra.
 
-- [ ] **E6.4. `traerConsulta` y aplicar el historial.** RF-39, RF-40, RF-41, RF-53 a RF-55 — **M** — Toca API Laravel: no
+- [x] **E6.4. `traerConsulta` y aplicar el historial.** RF-39, RF-40, RF-41, RF-53 a RF-55 — **M** — Toca API Laravel: no
   - Tests primero (en `HcClinicaBackendTest`): una consulta de la web llega completa a `seccion_valor`, `examen_fisico`,
     `registro_clinico`, `laboratorio`, `antecedente` y `pendiente`, todo `dirty = 0`; una respuesta cortada o con `500`
     no deja nada de esa consulta (transacción); una clave sucia (antecedente local, laboratorio local) no se toca; **Q15
@@ -1072,6 +1072,57 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
   - Alcance (2026-10-28, Q15): sin `quitarDeLoTraido` ni "aplicar el historial" como espejo. Las marcas "Ya no figura
     en la web" se ponen en E6.4b.
   - Hecho cuando: los tests en verde (antes, en rojo).
+  - **Hecho (2026-10-30, tanda A encadenada).** Código: `repos/HcClinicaBackend.kt` (`traerConsulta`, `aplicarConsulta`,
+    `aplicarHistoria`, `leerHistorial`, `guardarAviso`), `hcgeneral/OmitidasLectura.kt` (claves y formato de los avisos nuevos) y una
+    consulta nueva en `HistoriaClinica.sq` (`pendientePorId`, solo lectura: no cambia el esquema, sin migración). Tests: `jvmTest`
+    `HcClinicaBackendConsultaTest` (32), `HcClinicaBackendHistoriaTest` (38), `HcClinicaBackendSoloLecturaTest` (+9, servidor
+    `HttpServer` en `127.0.0.1`), `HcClinicaPruebas` (la API falsa pasó acá, compartida por los tests de `HcClinicaBackend`) y
+    `commonTest` `OmitidasLecturaTest` (+6). Los de las tareas pedían estar en `HcClinicaBackendTest`: están en archivos aparte
+    (como E6.3 con su `SoloLectura`) para no pasar de 1.500 líneas; `HcClinicaBackendTest` solo cambió para usar la API falsa compartida y
+    comprobar que, si la lista falla, no sale el pedido del historial. **Rojo previo:** `:core:data:compileTestKotlinJvm` fallaba con 30
+    errores de compilación (los avisos nuevos), y con eso compilando, `jvmTest` daba 74 fallas de 154 en los tres archivos nuevos o
+    cambiados (Consulta 31/32, Historia 31/38, SoloLectura 12/29). **Verde:** `:core:data:jvmTest --rerun` completo 979 tests (894 +
+    85), 0 fallas, 0 errores; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `git grep` de `post(`, `put(`, `delete(`,
+    `subir(`, `pedir(`, `descargar(`, `HttpMethod`, `HcApiClient`, `DELETE` y `vinculo(` en `HcClinicaBackend.kt`: solo dos comentarios que
+    nombran `pacientes/resolver` y `DELETE`. Mutaciones (revertidas, 4 a la vez; las detectan 6 tests): sacar el filtro de claves sucias
+    de `seccion_valor`, el de cargas sucias, la espera del historial y el `dirty` del aviso.
+    **Pedidos (RF-57), todos `GET`:** abrir la historia = 1 de lista por cada 50 consultas + 1 de `pacientes/{ficha}/historia` (una con 3
+    consultas = 2; 160 = 4 + 1 = 5; 50 justas = 1 + 1; paciente sin consultas = 1 + 1); abrir una consulta = 1 (`GET consultas/{id}`, sin
+    query ni cuerpo); sin ficha = 0 (ni lista, ni historial, ni consulta, ni `resolver`); segunda llamada antes de 60 s = 0; con
+    `forzar` = los dos otra vez. `429` y cualquier otro error: un solo pedido de ese tipo, sin reintento (RF-58).
+    **Lista e historial son independientes (decisión de la tarea, para revisar):** son dos pedidos, dos transacciones y dos esperas de
+    60 s. (a) Si **la lista falla** (cualquier error) el historial **no se pide**: un `429`, un `401` o una caída valen para los dos y RF-57
+    pide no insistir; nada cambia. (b) Si **el historial falla** (error, respuesta de otra ficha o la base rechaza una fila), la lista ya
+    escrita **se queda**, el historial no deja nada (transacción) y el error sale tal cual; como la lista ya arrancó su minuto, el
+    próximo pedido sin «Actualizar» repite solo el historial (1 pedido). (c) `traerConsultas` lanza en ese caso, así que quien llama no
+    recibe el resultado: lee la lista de la base (`observarConsultas`), que ya está actualizada.
+    **`traerConsulta(consultaLocalId, remotoId)`:** pide `GET consultas/{id}` solo si `remotoId` es un número positivo, el id local es
+    exactamente `hcc-c<remotoId>`, la consulta está en el dispositivo (clínica), **no está sucia** y su paciente tiene ficha; si no, 0
+    pedidos y nada escrito (una del dispositivo con el mismo `remoto_id` tampoco recibe lo de la web). Escribe con `dirty = 0`, en una
+    transacción, **solo `seccion_valor` y `examen_fisico` de esa consulta y el aviso**: `valoresDeLaWeb` (solo lo que tiene dato; no
+    reescribe un valor igual), `fusionarExamenFisico` (conserva frecuencia cardíaca y circunferencia) y `hcc_no_leidas_<id web>`. Una
+    clave sucia no se toca. Los errores salen tal cual (`404 consulta_no_encontrada`, `403`, `429`, ...): el código permite a E6.4b marcarla.
+    Una respuesta de otra consulta o de otra ficha es dudosa: `TobbException` `respuesta` y no se aplica. **No toca la cabecera** (estado,
+    edad, médico): la refresca la lista, porque `traerConsulta` no conoce al médico de la sesión.
+    **`no_leidas` (RF-43, decisión para revisar):** fila de `paciente_extra` `hcc_no_leidas_<id web>` (especialidad `clinica`), valor =
+    los ids del servidor separados por coma, sin repetidos y en su orden (`documentos,audio`; los que la app no conoce también);
+    `noLeidasDeTexto` distingue «sin fila» (`null`, no se sabe) de «fila vacía» (ya no tiene nada). Sin fila y sin nada que avisar no se
+    escribe; sigue a la web también hacia cero (como `hcc_omitidas`: es un aviso, no un dato clínico); una fila sucia no se toca.
+    **Historial (`aplicarHistoria`):** sin `DELETE` ni `INSERT OR REPLACE` de una fila armada con lo recibido: cada fila pasa por la
+    `fusionar…` de E6.2 (devuelve `null` si no cambia nada, así que traerlo dos veces no cambia ni `updated_at`) y se salta si su id está
+    en `…Dirty()`. Antecedentes familiares por `fusionarAntecedente` (uno del dispositivo con la misma casilla manda y no se duplica;
+    casilla 0 sin detalle no se manda: no se inventa), la nota del perfil 4 como `nota_perfil4`, cargas por id determinista (`hcc-l…`,
+    varias del dispositivo de la misma fecha conviven: solo chocan por id), estudios/exámenes/interconsultas por tipo + id (los tres
+    1797 son tres filas; una cardiológica de 191 caracteres entra entera), motivos de las consultas **que están** (sin consulta no se crea
+    nada), pendiente del médico de la sesión (`pendientePorId`; si otro médico lo trae después, pasa a ser de él). Una fila cuyo id ya
+    pertenece a otro paciente local no se mueve (cargas, estudios, pendiente; el antecedente no tiene esa guarda: su id lleva la ficha).
+    **D1 (cargas sin fecha):** las que el servidor omite se cuentan en `omitidas.laboratorio_sin_fecha` y se guardan en una fila **aparte**,
+    `hcc_omitidas_laboratorio` (el número). Decisión para revisar: la tarea decía «en la cuenta de omitidas», pero `hcc_omitidas` es
+    `foto|otro|sin_fecha` de la lista (E6.3; lo lee E7.1 con `omitidasDeTexto`, que exige tres números) y la lista y el historial son
+    pedidos que pueden fallar por separado; E7.1 suma las dos cuentas en el aviso. Una carga que llegara sin fecha (o `1000-01-01`) igual
+    no se guarda. **Q15:** un historial vacío o más corto, una consulta vacía y un `404` no borran ni vacían ninguna fila (comparado fila por
+    fila de las seis tablas); no se pone ninguna marca `hcc_ausente_…` (E6.4b). Sigue sin registrarse el backend (E6.5) ni tocarse
+    pantallas o servidor.
 
 - [ ] **E6.4b. Marcar lo que ya no figura en la web (Q15).** RF-55, RF-63 — **M** — Toca API Laravel: no
   - Tarea **nueva** (2026-10-28) por la decisión Q15 = nunca borrar. Va después de E6.2, E6.3 y E6.4.
