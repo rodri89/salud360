@@ -4,6 +4,7 @@ import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
 import com.salud360.core.data.hcgeneral.DatosConsulta
+import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -56,6 +57,9 @@ class HcRepository(
     /** true si esa especialidad guarda también en su propio sistema. */
     fun tieneApi(especialidad: String): Boolean = backends.containsKey(especialidad)
 
+    /** true si esa especialidad tiene un backend que solo lee: lo traído de ella lo manda su dueño y la app no lo envía. */
+    fun esSoloLectura(especialidad: String): Boolean = backends[especialidad]?.soloLectura == true
+
     /** Especialidades que guardan también en su propio sistema, para traerlas sin que el médico las pida. */
     val especialidadesConApi: Set<String> get() = backends.keys
 
@@ -91,9 +95,18 @@ class HcRepository(
     suspend fun consulta(id: Id): Consulta? = q.consultaPorId(id).uno { it.toModel() }
     suspend fun ultimaConsulta(pacienteId: Id, especialidad: String): Consulta? = q.ultimaConsulta(pacienteId, especialidad).uno { it.toModel() }
 
-    /** Devuelve la consulta abierta del médico para ese paciente o crea una nueva (`activo = 2` en las apps originales). */
+    /**
+     * Devuelve la consulta abierta del médico para ese paciente o crea una nueva (`activo = 2` en las apps originales).
+     * Con un backend de solo lectura (HC general) solo se retoma una abierta **del dispositivo**: una que vino de la web
+     * ([esDeLaWeb]) no es del médico para editarla ni se marca para envío, así que se ignora y se crea una local (RF-46).
+     */
     suspend fun abrirConsulta(pacienteId: Id, medicoId: Id, especialidad: String, tipo: String, fecha: LocalDate, edadMostrar: String): Consulta {
-        q.consultaAbierta(pacienteId, medicoId, especialidad).uno { it.toModel() }?.let { if (it.tipo == tipo) return it }
+        val abierta = if (esSoloLectura(especialidad)) {
+            q.consultaAbiertaLocal(pacienteId, medicoId, especialidad, PREFIJO_ID_WEB).uno { it.toModel() }
+        } else {
+            q.consultaAbierta(pacienteId, medicoId, especialidad).uno { it.toModel() }
+        }
+        abierta?.let { if (it.tipo == tipo) return it }
         val nueva = Consulta(newId(), pacienteId, medicoId, especialidad, tipo, fecha, EstadoConsulta.ABIERTA, edadMostrar)
         q.upsertConsulta(nueva.toRow(ahoraMillis()))
         return nueva

@@ -22,6 +22,9 @@ consultaPorId: SELECT * FROM consulta WHERE id = ? AND deleted = 0;
 consultasDePaciente: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
 consultasDePacienteTodas: SELECT * FROM consulta WHERE paciente_id = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
 consultaAbierta: SELECT * FROM consulta WHERE paciente_id = ? AND medico_id = ? AND especialidad = ? AND estado = 'ABIERTA' AND deleted = 0 ORDER BY updated_at DESC LIMIT 1;
+-- Solo las del dispositivo: sin `remoto_id` y sin el prefijo de lo traído de la web (`:prefijoWeb`, ver `PREFIJO_ID_WEB`).
+-- Para un backend de solo lectura, donde una abierta de la web no se retoma como propia. Sin cambio de tablas.
+consultaAbiertaLocal: SELECT * FROM consulta WHERE paciente_id = :pacienteId AND medico_id = :medicoId AND especialidad = :especialidad AND estado = 'ABIERTA' AND deleted = 0 AND trim(remoto_id) = '' AND instr(id, :prefijoWeb) <> 1 ORDER BY updated_at DESC LIMIT 1;
 ultimaConsulta: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado = 'CERRADA' ORDER BY fecha DESC, updated_at DESC LIMIT 1;
 contarConsultasMedico: SELECT COUNT(*) FROM consulta WHERE medico_id = ? AND fecha >= ? AND fecha <= ? AND deleted = 0 AND estado = 'CERRADA';
 upsertConsulta: INSERT OR REPLACE INTO consulta VALUES ?;

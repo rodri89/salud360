@@ -35,6 +35,13 @@ class AdminRepository(
 ) {
     private val q get() = db.authQueries
 
+    /**
+     * Las que cobran licencias de verdad. Un backend de solo lectura (HC general) no es destino: registrarlo no debe
+     * cambiar nada para un médico solo de esa HC (sin destino, `guardarLicencia` sigue devolviendo true) ni sumar un
+     * `false` por defecto a uno que además usa pediatría (RF-61).
+     */
+    private val destinosDeLicencia get() = backends.filterValues { !it.soloLectura }
+
     fun observarUsuarios(): Flow<List<Usuario>> = q.usuarios().flujoLista { it.toModel() }
     fun observarUsuariosPorRol(rol: Rol): Flow<List<Usuario>> = q.usuariosPorRol(rol.name).flujoLista { it.toModel() }
     suspend fun usuario(id: Id): Usuario? = q.usuarioPorId(id).uno { it.toModel() }
@@ -64,7 +71,7 @@ class AdminRepository(
      * API no informa ninguna y la pestaña queda como estaba.
      */
     suspend fun sincronizarLicencias() {
-        backends.values.forEach { backend ->
+        destinosDeLicencia.values.forEach { backend ->
             val ahora = ahoraMillis()
             backend.traerLicencias().forEach { q.upsertLicencia(it.toRow(ahora, dirty = false)) }
         }
@@ -79,7 +86,7 @@ class AdminRepository(
      */
     suspend fun guardarLicencia(l: Licencia): Boolean {
         q.upsertLicencia(l.toRow(ahoraMillis()))
-        val destinos = (medico(l.medicoId)?.especialidadesHc ?: emptyList()).mapNotNull { backends[it] }
+        val destinos = (medico(l.medicoId)?.especialidadesHc ?: emptyList()).mapNotNull { destinosDeLicencia[it] }
         if (destinos.isEmpty()) return true
         val guardada = destinos.map { it.guardarLicencia(l) }.any { it }
         if (guardada) q.upsertLicencia(l.toRow(ahoraMillis(), dirty = false))
