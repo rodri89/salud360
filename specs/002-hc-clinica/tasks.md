@@ -1189,13 +1189,35 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
 - **E6.5 (registrar el backend de solo lectura) se movió: va DESPUÉS de E7.3**, entre E7.3 y E7.4 (decisión D6 de la spec,
   2026-10-29). La tarea conserva su número y su texto más abajo, en la tanda E7. En esta tanda no se registra nada.
 
-- [ ] **E6.6. Coherencia con lo que viene de la web.** RF-62 — **S** — Toca API Laravel: no
+- [x] **E6.6. Coherencia con lo que viene de la web.** RF-62 — **S** — Toca API Laravel: no
   - Tests primero: `CargasLaboratorioTest` ampliado (una carga `hcc-l…` tiene `puedeBorrar = false` aunque la consulta sea
     editable; una local sigue `true`); `commonTest` `PendientesWebTest` (los pendientes `hcc-p…` no se marcan resueltos
     al cerrar una consulta local ni con `resolverPendiente`; los locales sí).
   - Código: `CargasLaboratorio.kt`, función pura de pendientes y su uso en `ConsultaViewModel.cerrarConPendientes` /
     `resolverPendiente`.
   - Hecho cuando: ambos tests en verde (antes, en rojo) y `.\gradlew :features:hc:compileKotlinJvm` compila.
+  - **Hecho (2026-10-30, tanda A encadenada).** Código: `hcgeneral/CargasLaboratorio.kt` (`Laboratorio.esDeLaWeb()` = id `hcc-…`;
+    `puedeBorrarCarga(carga, editable)` = `editable && !esDeLaWeb`; `columnasLaboratorio` la usa para `puedeBorrar`: la columna de la
+    web se sigue mostrando, sin tacho), `hcgeneral/PendientesWeb.kt` (nuevo, puro: `Pendiente.esDeLaWeb()`, `puedeResolverse()`,
+    `textoDePendientesLocales`, `cambioDePendientes(pendientes, texto)` → `CambioDePendientes(resolver, crear)`) y
+    `ConsultaViewModel` (`resolverPendiente` sale sin hacer nada con uno de la web; `cerrarConPendientes` aplica `cambioDePendientes`;
+    `textoPendientes()` es solo el de los locales). Tests: `CargasLaboratorioTest` +3 y `PendientesWebTest` (10, nuevo; el plan lo
+    pedía en `commonTest`). **Rojo previo:** con la regla vieja a modo de esqueleto (`puedeBorrar = editable`, cierre que resuelve
+    todos) fallaban 10 de los 22 tests de las dos clases. **Verde:** `:core:data:jvmTest --rerun` completo 1027 tests (1014 + 13), 0 fallas,
+    0 errores, 0 salteados; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan. Ningún test
+    existente cambió de resultado.
+    **Decisiones para revisar:** (1) la web guarda **un** pendiente por paciente; al cerrar, el texto que se prellena y con el que se
+    compara es solo el de los pendientes **locales** (si incluyera el de la web, editar el texto lo duplicaría en uno local mientras el
+    de la web sigue). El de la web nunca se resuelve y sigue contando (Q16-A: el contador no cambia). (2) Un pendiente es «de la web» por
+    su id `hcc-p…` (la tabla no tiene `remoto_id`); una carga, por `hcc-l…` (`Laboratorio` tampoco lo tiene). (3) **Lo que E6.6 no
+    hace, a propósito:** ninguna guarda en `HcRepository` (`cerrarConsulta`/`reabrirConsulta`/`anularConsulta`/`guardar*` siguen sin
+    distinguir consultas de la web: el plan lo deja para E7.3, y E5.3 ya lo había anotado), ninguna pantalla. **E7.3 tiene que:** ocultar
+    «Resuelto» en `ConsultaScreen` con `p.puedeResolverse()` (hoy el botón de un pendiente de la web aparecería y no haría nada) y
+    cambiar el texto del diálogo de cierre (dice «vacío = no queda nada pendiente», pero uno de la web sigue ahí; conviene listarlo aparte);
+    el tacho de `LaboratorioSeccion` ya sale de `puedeBorrar`, pero `ConsultaViewModel.eliminarLaboratorio(id)` y `HcRepository.eliminarLaboratorio`
+    siguen sin mirar el id (un `hcc-l…` borrado por otra ruta quedaría `dirty = 1` con `activo = 0`; hoy no hay otra ruta). **No se
+    tocó:** estudios/exámenes/interconsultas (`hcc-r…`): el plan no los nombra y la consulta solo edita sus propias entradas
+    (`observarRegistrosDeConsulta(consultaId, …)`), que nunca son `hcc-r…` porque una consulta de la web no se edita.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 

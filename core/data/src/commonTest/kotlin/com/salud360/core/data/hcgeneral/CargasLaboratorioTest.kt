@@ -72,6 +72,36 @@ class CargasLaboratorioTest {
     }
 
     @Test
+    fun una_carga_de_la_web_nunca_lleva_tacho_aunque_la_consulta_se_pueda_editar() {
+        // RF-62: borrarla acá no llegaría a la web y los dos lados quedarían distintos.
+        val web = Laboratorio(idCargaWeb(TIPO_LABORATORIO_GENERAL, 1797), "p1", null, "clinica", TIPO_LABORATORIO_GENERAL, LocalDate(2026, 10, 9), mapOf("hb" to "12"))
+        val peso = Laboratorio(idCargaWeb(TIPO_PESO, 55), "p1", null, "clinica", TIPO_PESO, LocalDate(2026, 10, 8), mapOf("peso" to "70"))
+        val historico = listOf(carga("a", esta, 10), web, carga("b", "c2", 7), peso)
+        val columnas = columnasLaboratorio(historico, esta, editable = true)
+        assertEquals(listOf("a", web.id, peso.id, "b"), columnas.map { it.carga.id })
+        assertEquals(listOf(true, false, false, true), columnas.map { it.puedeBorrar })
+        // Se siguen mostrando (están en la lista de arriba), solo que sin tacho.
+    }
+
+    @Test
+    fun una_carga_de_la_web_en_una_consulta_cerrada_tampoco_lleva_tacho() {
+        val web = Laboratorio(idCargaWeb(TIPO_LABORATORIO_REDUCIDO, 3), "p1", null, "clinica", "laboratorio_reducido", LocalDate(2026, 10, 9), mapOf("hb" to "12"))
+        assertTrue(columnasLaboratorio(listOf(web, carga("a", "c2", 5)), esta, editable = false).none { it.puedeBorrar })
+    }
+
+    @Test
+    fun puedeBorrarCarga_exige_consulta_editable_y_carga_local() {
+        val web = Laboratorio(idCargaWeb(TIPO_LABORATORIO_GENERAL, 1), "p1", "hcc-c9", "clinica", TIPO_LABORATORIO_GENERAL, LocalDate(2026, 10, 9))
+        val local = carga("3f2c9d1e-0a6b-4c11-9a77-5c1d2e3f4a5b", esta, 10)
+        assertTrue(web.esDeLaWeb())
+        assertFalse(local.esDeLaWeb())
+        assertFalse(puedeBorrarCarga(web, editable = true))
+        assertFalse(puedeBorrarCarga(web, editable = false))
+        assertTrue(puedeBorrarCarga(local, editable = true))
+        assertFalse(puedeBorrarCarga(local, editable = false))
+    }
+
+    @Test
     fun nueva_carga_mientras_se_pueda_editar_y_no_haya_una_abierta() {
         assertTrue(mostrarNuevaCarga(editable = true, abierta = false))
         assertFalse(mostrarNuevaCarga(editable = true, abierta = true))

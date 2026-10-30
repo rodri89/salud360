@@ -5,8 +5,11 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.6 (coherencia con lo que viene de la web), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
-  usuario y encadenada tarea por tarea. E6.4b hecha (2026-10-30):** `repos/MarcasDeLaWeb.kt` aplica `marcarAusentes` desde `traerConsultas`
+- **Siguiente paso: E7.1 (lógica pura de la lista y de los avisos), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
+  usuario y encadenada tarea por tarea. E6.6 hecha (2026-10-30):** `CargasLaboratorio.kt` (`puedeBorrarCarga`: sin tacho para `hcc-l…`) y
+  `PendientesWeb.kt` (`esDeLaWeb`, `puedeResolverse`, `cambioDePendientes`: nunca resuelve `hcc-p…`; el texto del cierre es solo el de los
+  locales) usados por `ConsultaViewModel`; 1027 tests de `core:data` en verde. Sin guardas en `HcRepository` (E7.3); E7.3 debe ocultar
+  «Resuelto» con `puedeResolverse()` y ajustar el diálogo de cierre. **E6.4b hecha (2026-10-30):** `repos/MarcasDeLaWeb.kt` aplica `marcarAusentes` desde `traerConsultas`
   (lista completa), `aplicarHistoria` y `traerConsulta` (también ante `404 consulta_no_encontrada`, que relanza el error): marcas
   `hcc_ausente_<clave>` en `paciente_extra` (`dirty = 0`, valor = fecha), primero y en la misma transacción que lo que trae la respuesta;
   `traido`/`marcadas` solo del paciente y de filas limpias `hcc-…`; quitar una marca = dar de baja su fila (`deleted = 1`, sin `DELETE`);

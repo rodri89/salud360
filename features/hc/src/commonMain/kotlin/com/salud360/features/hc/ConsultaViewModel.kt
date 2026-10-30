@@ -10,6 +10,7 @@ import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.data.hcgeneral.EntradaTexto
 import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
+import com.salud360.core.data.hcgeneral.cambioDePendientes
 import com.salud360.core.data.hcgeneral.cambioEstudio
 import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
@@ -17,7 +18,9 @@ import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
+import com.salud360.core.data.hcgeneral.puedeResolverse
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
+import com.salud360.core.data.hcgeneral.textoDePendientesLocales
 import com.salud360.core.data.hcgeneral.visibleParaSesion
 import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.repos.HcRepository
@@ -359,10 +362,14 @@ class ConsultaViewModel(
 
     // ---- pendientes ----
 
-    fun resolverPendiente(p: Pendiente) = viewModelScope.launch { hc.guardarPendiente(p.copy(resuelto = true)) }
+    /** Un pendiente que vino de la web no se resuelve desde acá: el cambio no llegaría (RF-62). */
+    fun resolverPendiente(p: Pendiente) = viewModelScope.launch {
+        if (!p.puedeResolverse()) return@launch
+        hc.guardarPendiente(p.copy(resuelto = true))
+    }
 
-    /** Texto actual de los pendientes del paciente (los no resueltos, uno por línea), para prellenar el cierre. */
-    fun textoPendientes(): String = ui.value.pendientes.joinToString("\n") { it.texto }.trim()
+    /** Texto actual de los pendientes locales del paciente (los no resueltos, uno por línea), para prellenar el cierre. */
+    fun textoPendientes(): String = textoDePendientesLocales(ui.value.pendientes)
 
     // ---- ciclo de vida de la consulta ----
 
@@ -374,16 +381,14 @@ class ConsultaViewModel(
 
     /**
      * Cierra la consulta dejando `texto` como pendientes para la próxima (modelo de la web: un solo texto por
-     * paciente). Si el texto no cambió se conserva; si cambió, se resuelven los pendientes anteriores y, si no está
-     * vacío, se crea uno nuevo asociado a esta consulta.
+     * paciente). Si el texto no cambió se conserva; si cambió, se resuelven los pendientes locales anteriores y, si no
+     * está vacío, se crea uno nuevo asociado a esta consulta. Los pendientes de la web no se resuelven (RF-62).
      */
     fun cerrarConPendientes(texto: String, onCerrada: () -> Unit) = viewModelScope.launch {
         val c = ui.value.consulta ?: return@launch
-        val nuevo = texto.trim()
-        if (nuevo != textoPendientes()) {
-            ui.value.pendientes.forEach { hc.guardarPendiente(it.copy(resuelto = true)) }
-            if (nuevo.isNotBlank()) hc.guardarPendiente(Pendiente(newId(), c.pacienteId, medicoId, nuevo, consultaId))
-        }
+        val cambio = cambioDePendientes(ui.value.pendientes, texto)
+        cambio.resolver.forEach { hc.guardarPendiente(it) }
+        cambio.crear?.let { hc.guardarPendiente(Pendiente(newId(), c.pacienteId, medicoId, it, consultaId)) }
         flushValores()
         flushEstudios()
         hc.cerrarConsulta(consultaId)
