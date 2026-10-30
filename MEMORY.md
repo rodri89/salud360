@@ -5,8 +5,12 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.3, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea.
-  E6.2 hecha (2026-10-30):** `hcgeneral/LecturaClinica.kt` (puro): ids `hcc-c<id>`, `hcc-m`, `hcc-l<tipo>-<id>`, `hcc-r<tipo>-<id>`, `hcc-p`,
+- **Siguiente paso: E6.4 (`traerConsulta` y aplicar el historial), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
+  usuario y encadenada tarea por tarea. E6.3 hecha (2026-10-30):** `repos/HcClinicaBackend.kt` (`soloLectura = true`; envíos lanzan
+  `UnsupportedOperationException`; sin `resolver`) trae SOLO la lista (50 por pedido, hasta 20 páginas, todo en una transacción, de la más
+  vieja a la más nueva), lo `dirty`/del dispositivo no se toca, nada se borra; `traerConsultas(…, forzar)` y espera de 60 s por
+  (paciente, médico). El pedido de `historia` y `no_leidas` los agrega E6.4 (decisión en la nota de E6.3). `hcc_omitidas` = `foto|otro|sin_fecha`
+  (`OmitidasLectura.kt`). 894 tests de `core:data` en verde y wasm compila. **E6.2 hecha (2026-10-30):** `hcgeneral/LecturaClinica.kt` (puro): ids `hcc-c<id>`, `hcc-m`, `hcc-l<tipo>-<id>`, `hcc-r<tipo>-<id>`, `hcc-p`,
   `hcc-a<ficha>-<clave>`; conversión de las respuestas al modelo (nunca un vacío que pise, textos intactos) y `fusionar…` (lo que viene
   pisa, lo que no se conserva, `null` si no cambia nada); `filaDeLaWeb` (siempre `dirty = 0`); `desconocidos(catalogo, …)`;
   `marcarAusentes(traido, marcadas, LecturaWeb)` solo devuelve `marcar`/`desmarcar` (claves `hcc_ausente_<clave>`; la lista solo cubre con

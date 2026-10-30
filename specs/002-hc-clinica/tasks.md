@@ -1012,7 +1012,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     equivocada). (9) Un historial con `omitidas.laboratorio_sin_fecha` hace que una carga ya traída que perdió la fecha se marque como
     ausente (D1).
 
-- [ ] **E6.3. `HcClinicaBackend.traerConsultas`.** RF-38, RF-41, RF-43, RF-45, RF-47, RF-49, RF-52 a RF-54, RF-56, RF-57 — **M** — Toca API Laravel: no
+- [x] **E6.3. `HcClinicaBackend.traerConsultas`.** RF-38, RF-41, RF-43, RF-45, RF-47, RF-49, RF-52 a RF-54, RF-56, RF-57 — **M** — Toca API Laravel: no
   - Tests primero: `jvmTest` `HcClinicaBackendTest` y `HcClinicaBackendSoloLecturaTest` (servidor falso con
     `com.sun.net.httpserver.HttpServer` en `127.0.0.1`, que registra método y ruta): trae lista + historial (2 pedidos,
     solo `GET`) y guarda las cabeceras con `dirty = 0`, `remoto_id` y `medico_id` (propio / `hcc-m…` + nombre en
@@ -1025,6 +1025,38 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
   - Código: `core/data/.../repos/HcClinicaBackend.kt` (`soloLectura = true`; recibe `HcApiSoloLectura`, `Salud360Db`,
     `PacientesHcRepository` y un reloj; usa `fichaConocida`, nunca `vinculo`). Sin `DELETE` sobre tablas clínicas.
   - Hecho cuando: ambos tests en verde (antes, en rojo) y ningún pedido que no sea `GET` en el registro del servidor falso.
+  - **Hecho (2026-10-30, tanda A encadenada).** Código: `repos/HcClinicaBackend.kt` y `hcgeneral/OmitidasLectura.kt` (`hcc_omitidas`,
+    formato `foto|otro|sin_fecha`, que E7.1 lee con `omitidasDeTexto`). Tests: `jvmTest` `HcClinicaBackendTest` (45, API falsa de
+    `ConsultasClinicaApi` y base SQLite temporal), `HcClinicaBackendSoloLecturaTest` (20, servidor `HttpServer` en `127.0.0.1` que anota
+    método y ruta, con la API remota de verdad), `HcClinicaPruebas` (apoyo) y `commonTest` `OmitidasLecturaTest` (4). **Rojo previo:**
+    `:core:data:compileTestKotlinJvm` sin `HcClinicaBackend` ni `OmitidasLectura`: 94 errores de compilación, solo en los tests nuevos.
+    **Verde:** `:core:data:jvmTest --rerun` completo 894 tests (825 + 69), 0 fallas, 0 errores; `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` compila; `git grep` de `post(`, `put(`, `delete(`, `subir(`, `pedir(`, `descargar(`, `HttpMethod`, `HcApiClient`,
+    `DELETE` y `vinculo(` en `HcClinicaBackend.kt`: solo un comentario que nombra `pacientes/resolver`. Mutación (revertida): escribir de
+    la más nueva a la más vieja hace fallar el test del orden. **Pedidos:** una página = 1; 160 consultas = 4 (`desde` 0, 50, 100, 150,
+    `limite` 50); sin ficha = 0; segunda llamada antes de 60 s = 0 (con `forzar` otra vez); dos llamadas a la vez = 1 (un `Mutex`);
+    tope de 20 páginas. Todos `GET consultas?paciente_id=&limite=&desde=`.
+    **«Local gana» o «web pisa»:** por consulta de la web (`hcc-c<id>`): no se toca si el id está en `consultasDirty()`, si el
+    dispositivo ya tiene otra fila con el mismo `remoto_id` (no se duplica), o si la fila `hcc-c…` es de otro paciente local; las
+    creadas acá (UUID, sin `remoto_id`) no chocan nunca. Si no, `fusionarConsulta` (E6.2): lo que viene pisa, la edad vacía no, y
+    `null` (no se escribe, `updated_at` intacto) si no cambia nada. Se escribe con `dirty = 0`, de la más vieja a la más nueva con
+    `updated_at = ahora + i`, todo en una transacción. `medico_id`: el de la sesión si `propia`, si no `hcc-m<id>` (`hcc-m0` sin id),
+    con el nombre en `medico_preferencia` (vacío no pisa; uno `dirty` no se toca).
+    **Errores:** 401/403/404/422/429/500, sin conexión y respuesta incompleta (falta `total` o `consultas`) → la `TobbException` sale tal
+    cual, un solo pedido, la base idéntica (volcado de 11 tablas). Un error en la página N descarta también las N-1 anteriores (se
+    leen todas y se escribe de una vez, para ordenar bien y ser atómico): se vuelven a pedir en el próximo intento. Un trigger que
+    rechaza la última escritura prueba que no queda media lista. **Decisiones para revisar:** (1) **`traerConsultas` hace solo la lista, no
+    el historial:** el texto de arriba y `plan.md` hablan de «lista + historial (2 pedidos)», pero `aplicarHistoria` es de E6.4 y pedirlo sin
+    aplicarlo sería un pedido gastado contra el límite de 60 por minuto; E6.4 agrega el pedido de `historia` dentro de `traerConsultas`. Del
+    mismo modo `no_leidas` solo viene de `GET consultas/{id}` y es de E6.4; acá se guarda `omitidas` de la lista. (2) `traerConsulta` lanza
+    `UnsupportedOperationException` hasta E6.4 (el backend no se registra antes, E6.5). (3) `bajarArchivo` devuelve `null` y las licencias
+    quedan con el valor por defecto de `HcBackend` (vacío / `false` / `null`), sin llamar a la API. (4) `forzar` es un método de
+    `HcClinicaBackend`, no de `HcBackend`: E7.2 tiene que decidir cómo llega «Actualizar» desde `HcRepository`. (5) `hcc_omitidas` sigue a
+    la web también hacia cero (es una cuenta, no un dato clínico); sin fila previa y en cero no se escribe. (6) Una cabecera con tipo,
+    estado o fecha desconocidos no se escribe (se registra en el log). (7) Con un `total` que cambia, una página vacía o un `desde` que
+    no cuadra se deja de pedir, se escribe lo recibido y no se lanza error; `marcarAusentes` (E6.4b) lo vuelve a comprobar y no marca. (8) La
+    espera de 60 s se cuenta por (paciente, médico) y solo arranca tras una lectura buena. (9) Las consultas se recorren todas (tope
+    20 páginas), no solo las 50 más recientes de Q9: lo pidió la tanda para poder marcar ausentes; la pantalla (E7.2) decide qué muestra.
 
 - [ ] **E6.4. `traerConsulta` y aplicar el historial.** RF-39, RF-40, RF-41, RF-53 a RF-55 — **M** — Toca API Laravel: no
   - Tests primero (en `HcClinicaBackendTest`): una consulta de la web llega completa a `seccion_valor`, `examen_fisico`,
