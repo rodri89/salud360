@@ -5,6 +5,7 @@ import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.network.hc.EnfermedadesApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
+import com.salud360.core.data.network.hc.HcApiSoloLectura
 import com.salud360.core.data.network.hc.PacientesHcApiRemota
 import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.repos.AdminRepository
@@ -14,6 +15,7 @@ import com.salud360.core.data.repos.ConfigHcApiRemota
 import com.salud360.core.data.repos.ConfigHcRepository
 import com.salud360.core.data.repos.EnfermedadesRepository
 import com.salud360.core.data.repos.HcBackends
+import com.salud360.core.data.repos.HcClinicaBackend
 import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesHcRepository
@@ -77,18 +79,24 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
             }.toMap(),
         )
     }
+    // `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada código que se agregue acá. La HC general se
+    // registra de solo lectura (spec 002, entrega L): trae las consultas de la web y no manda nada. Usa el mismo
+    // cliente (misma URL y mismo token) que su configuración, su cartera y sus enfermedades, pero envuelto en
+    // `HcApiSoloLectura`: el backend no recibe con qué escribir. Sin URL de la HC general en el entorno no se registra
+    // y todo queda como antes (sin API).
     single {
         HcBackends(
             get<HcApiClients>().porEspecialidad.mapNotNull { (codigo, cliente) ->
                 when (codigo) {
                     "pediatria" -> codigo to HcPediatriaBackend(get(), cliente)
+                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), HcApiSoloLectura(cliente), get<PacientesHcRepository>())
                     else -> null
                 }
             }.toMap(),
         )
     }
-    // Cartera y vínculo de pacientes de cada HC con API, pediatría y la general por igual (spec 002). La general
-    // no tiene `HcBackend`: sus consultas todavía no viajan.
+    // Cartera y vínculo de pacientes de cada HC con API, pediatría y la general por igual (spec 002). Las consultas de
+    // la general solo se leen (`HcClinicaBackend` arriba).
     single {
         val clientes = get<HcApiClients>().porEspecialidad
         PacientesHcApis(
@@ -116,7 +124,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
     single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }
-    // HC general (hclinica): configuración por perfiles, fuera de `HcBackends` (sus consultas son de la spec 002).
+    // HC general (hclinica): configuración por perfiles, fuera de `HcBackends` (que solo lleva sus consultas, de la spec 002).
     // Sin URL de hclinica en el entorno los dos se comportan como sin conexión.
     single { ConfigHcRepository(get(), get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ConfigHcApiRemota(it) }) }
     single { PerfilesHcRepository(get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]) }

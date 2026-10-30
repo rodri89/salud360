@@ -18,8 +18,7 @@ import kotlin.test.fail
  * vale `false` si un backend no lo declara (para no cambiar a pediatría), así que un backend nuevo podría enviar por
  * descuido: este test lo impide, porque falla con cualquier código de especialidad que no tenga decidido su valor acá.
  *
- * Al registrar el backend de la HC general (E6.5) ya tiene que estar con `true`: el caso `clinica` de abajo lo exige
- * (hoy no está registrado, y está bien: sus consultas todavía no viajan).
+ * La HC general (`clinica`, E6.5) está registrada y es de solo lectura (`true`); pediatría sigue enviando (`false`).
  */
 class HcBackendsSoloLecturaTest {
 
@@ -50,6 +49,7 @@ class HcBackendsSoloLecturaTest {
     fun cada_backend_registrado_tiene_decidido_si_envia() {
         val backends = registrados()
         assertTrue("pediatria" in backends, "pediatría tendría que estar registrada: ${backends.keys}")
+        assertTrue(CodigosHc.GENERAL in backends, "la HC general tendría que estar registrada (E6.5): ${backends.keys}")
         for ((codigo, backend) in backends) {
             val soloLectura = when (codigo) {
                 "pediatria" -> false

@@ -1397,7 +1397,7 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     una consulta local de clínica: sin «Resuelto» en el pendiente de la web, cierre con el pendiente de la web aparte, antecedente de la web
     solo para leer, cargas sin tacho.
 
-- [ ] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
+- [x] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
   - **Movida aquí (D6, 2026-10-29, usuario):** va después de E7.3 y antes de la tanda V. Motivo: `cerrarConsulta`,
     `reabrirConsulta`, `anularConsulta` y `guardar*` de `HcRepository` no distinguen consultas de la web hasta E7.3; con el
     backend registrado antes habría una ventana en que la pantalla dejaría editar una consulta de la web. Alcance y «Hecho
@@ -1412,6 +1412,54 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     con el `devWeb` contra la copia local, abrir la historia de un paciente de clínica no manda ningún pedido que no sea
     `GET` (registro de accesos de Apache) y las consultas viejas sucias siguen con `dirty = 1`. (Para esa comprobación el
     `devWeb` se refresca con el comando de E7.4; E7.4 después repite la compilación completa.)
+  - **Hecho (2026-10-30, tanda A encadenada).** Sin dependencias nuevas, sin migraciones, servidor sin tocar. **Código:** una sola
+    entrada en `DataModule` (`CodigosHc.GENERAL -> HcClinicaBackend(get(), HcApiSoloLectura(cliente), get<PacientesHcRepository>())`
+    dentro de `HcBackends`), con el **mismo** `HcApiClient` por código que usan `ConfigHcRepository`, `PerfilesHcRepository`,
+    `PacientesHcApis`, `EnfermedadesRepository` y el login (el token que `AuthRepository` le pone es el que viaja). Sin URL de la HC
+    general (`HC_URLS` sin `clinica`, o en blanco) no se registra y queda como antes. Comentarios de `DataModule` actualizados (ya
+    no dice «la general no tiene `HcBackend`»). **Tests:** `DataModuleClinicaTest` (8, `jvmTest`, `dataModule` real de Koin + base
+    temporal + `HttpServer` local que anota método, ruta, query, cuerpo y `Authorization`): clínica registrada de solo lectura y
+    pediatría igual (`false`, `HcPediatriaBackend`); sin URL / URL en blanco no se registra (`tieneApi` falso, `traerConsultasRemotas`
+    y `actualizarConsultasRemotas` devuelven `null`, cero pedidos); el cliente es el del login (`Authorization` con el token que se le
+    pone al cliente de `HcApiClients`); flujo completo sin pantalla (`traerConsultasRemotas` = `GET consultas` + `GET
+    pacientes/5001/historia`; repetirlo dentro del minuto no pide nada; `traerConsultaRemota` = un `GET consultas/9003`;
+    `actualizarConsultasRemotas` = otra vez lista + historial) con una consulta local sucia que queda **idéntica** (mismas filas
+    `dirty` antes y después, y la lectura no deja nada nuevo `dirty`); el servidor no ve ningún `POST`/`PUT`/`DELETE`/`PATCH`, ningún
+    `GET` con cuerpo y ninguna ruta fuera de `consultas`, `consultas/{id}` y `pacientes/{id}/historia`; paciente sin vínculo: 0
+    pedidos (tampoco `pacientes/resolver`) y la base idéntica; el motor de envío con la base sucia (una consulta local con valor,
+    examen físico, antecedente y registro, más una vieja `dirty`): `HcApiSync` armado con los backends REALES del módulo y el que
+    arma Koin (`empujarTodo`, `empujarYa`, `marcarSucia` con y sin espera) = cero pedidos, nada programado y la base idéntica;
+    licencia de un médico solo de clínica: mismo resultado (`true`) y misma fila que sin registrar clínica, cero pedidos, y
+    `avisosDeLicencia` vacío. **`HcBackendsSoloLecturaTest`** (único test existente tocado): ahora exige que `clinica` esté registrada
+    (antes solo la decidía si aparecía) con `true`; `pediatria` con `false`; cualquier otro código sigue fallando hasta decidirlo.
+    **Rojo previo:** 6 de los 9 tests (los 5 de registro/flujo/motor de `DataModuleClinicaTest` y `HcBackendsSoloLecturaTest`; «sin URL»,
+    «URL en blanco» y «licencia» pasaban a propósito: fijan lo que ya era así). **Verde:** `:core:data:jvmTest --rerun` completo 1155
+    (1147 + 8), 0 fallas, 0 errores, 0 salteados; `:especialidades:clinica:jvmTest --rerun` 33; `:features:hc:compileKotlinJvm`,
+    `:features:admin:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (klib) compilan. **Ningún camino de la app
+    queda con un envío posible a clínica** (`git grep` de los call-sites, código de producción): (1) `HcApiSync.drenar` es el único que
+    llama a `asegurarConsulta`/`enviarSecciones`/`enviarRegistros`/`borrarArchivo`/`subirArchivo`/`enviarExamen`/`enviarEstado` y a
+    esos métodos solo se llega por `backends[…]?.takeUnless { it.soloLectura }` (`drenar` es por donde pasa todo, también
+    `empujarTodo` y los reintentos); antes de eso `marcarSucia`/`empujarYa` salen por `esDeSoloLectura(consulta)` y
+    `consultasDeAntecedentesPendientes` salta los backends de solo lectura (E5.1), y si algo los llamara igual, `HcClinicaBackend`
+    lanza `UnsupportedOperationException` sin tocar la red; (2) `AdminRepository.guardarLicencia`/
+    `sincronizarLicencias` usan `destinosDeLicencia` (sin los de solo lectura, E5.3): el médico solo de clínica sigue en `true`;
+    (3) `HcRepository` solo llama a `traerConsultas`, `traerConsulta`, `bajarArchivo` (clínica: `null` sin red) y `avisoDeLicencia`
+    (clínica: `null` sin red); (4) `PacientesHcRepository.resolver` (`POST pacientes/resolver`) es el vínculo/cartera de la 002 parte
+    1, de iniciativa del médico, ya existía y registrar el backend no lo alcanza (la lectura nunca lo llama, RF-49); (5)
+    `SyncEngine` **no cambió** (otro canal, hacia turnos; sus rutas siguen dando 404 como antes): no recibe `HcBackends`. **Decisión
+    cerrada (E7.2, pendiente en el texto de arriba):** el `429` se queda con su texto en `motivoDeLaLectura` y `motivoHc` **no
+    cambia** (sigue sin caso `429`, para no alterar Enfermedades ni pediatría); por eso este paso no toca `MotivoHcTest`. **Cambios de
+    comportamiento a mirar:** (a) `PacienteDetalleViewModel` ya pide a todas las HC con API: al abrir la ficha de un paciente
+    vinculado con la HC general salen la lista (50 por pedido) y el historial (throttle de 60/min por IP; el `429` se traga con
+    `runCatching`); uno sin vínculo no pide nada; no filtra por las HC habilitadas del médico (hoy igual para pediatría). (b) Sin
+    URL de clínica en un entorno (p. ej. release sin `salud360.entorno.release.hc.clinica`) no se registra: el despliegue a producción
+    (E9) no debe llevar este commit antes de que producción tenga las rutas (D6 y nota del traspaso). **No hecho aquí (a propósito):**
+    la comprobación de «Hecho cuando» contra el `devWeb` con el log de Apache (necesita E7.4 y navegador, no se abrió ninguno; la
+    reemplaza el servidor local de los tests) y `wasmJsDevelopmentExecutableCompileSync`. **El `devWeb` que corre en :8080 no
+    cambia:** sirve el último ejecutable de desarrollo (`composeApp/build/compileSync/wasmJs/main/developmentExecutable`, del
+    2026-10-27, anterior a E5) y esta tarea solo compiló el klib y los tests, que no reescriben ese ejecutable; sigue sin backend de
+    clínica y sin las pantallas de E7 hasta que E7.4 corra `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` (con las mismas
+    `-P` del `devWeb`) y se recargue la página; la base local es v9 y E6.5 no la migra.
 
 - [ ] **E7.4. Refresco del `devWeb` y compilación completa.** RF-38 a RF-63 — **S** — Toca API Laravel: no
   - **Condición previa: E6.5 hecha** (D6): el refresco tiene que llevar el backend ya registrado.
