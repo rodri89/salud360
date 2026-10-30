@@ -877,11 +877,32 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
     clínica (throttle 60/min por IP; `429` ya contemplado en E6.5). (d) `sincronizarLicencias` también salta los backends de solo lectura (decisión
     mía, conservadora: así registrar clínica no cambia nada; hoy `traerLicencias` de la interfaz es vacío de todos modos).
 
-- [ ] **E5.4. Pediatría sigue enviando.** RF-60 — **S** — Toca API Laravel: no (usa la copia servida de pediatría)
+- [x] **E5.4. Pediatría sigue enviando.** RF-60 — **S** — Toca API Laravel: no (usa la copia servida de pediatría)
   - `HcPediatriaE2ETest` y `HcCarteraE2ETest` con `--rerun` contra la copia servida de pediatría
     (`-Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php` y el token de prueba, sin
     escribirlo): la prueba de envío sigue en verde porque se tocó `HcApiSync`.
   - Hecho cuando: ambos E2E en verde; lo que deja el de pediatría (una consulta de baja y sus imágenes) borrado por id.
+  - **Hecho (2026-10-30, sin cambios de código; solo esta nota).** Con el motor `HcApiSync` tal como queda tras E5.1 a E5.3 (candado;
+    `soloLectura = false` para pediatría) y la API real local (`http://localhost/HCDPediatria-salud360/public/index.php`, base
+    `hc_pediatrica`; Apache y MySQL del XAMPP vivos, `pacientes` sin token da `401`): **`HcPediatriaE2ETest` y `HcCarteraE2ETest` en
+    verde** (`--rerun`, una corrida, ~12 s y ~10 s: corrieron de verdad, no se saltearon). El de pediatría recorre consulta, secciones de texto y
+    formulario, antecedentes, cuatro registros (examen complementario, interconsulta, screening, internación) con su `remoto_id`, examen físico,
+    dos adjuntos (galería y descarga) y el estado, y después los da de baja; el de cartera trae y no duplica la cartera del médico de prueba.
+    Fue con el token del médico (rol `medico`); el del admin solo se usó para comprobar el rol en `auth/perfil`, **`HcLicenciasE2ETest` no se
+    corrió** (E5.4 no la nombra; ya la cubren los tests de `AdminRepository` de E5.3). **Sin propiedades:** `.\gradlew :core:data:jvmTest --rerun`
+    completo 671 tests, 0 fallas, 0 errores (los E2E vuelven antes de hacer nada, como siempre).
+    **Qué no se probó aquí:** un backend de solo lectura de clínica registrado en el mismo motor junto a pediatría con la API real (E5.4 no lo pide;
+    lo cubren `HcApiSyncSoloLecturaTest` y `HcApiSyncBaseMigradaTest` con backends falsos, y E8.2 con la app real).
+    **Limpieza.** Antes: `COUNT(*)` de las 55 tablas de `hc_pediatrica` (solo números, en `%TEMP%\opencode\e54\antes.txt`), 8 imágenes en
+    `public/img/salud360`, 15 consultas con `activo = 0`, `salud360_token_cache` 5 filas. La corrida dejó una consulta de baja (id 28285) y
+    una fila en cada una de 16 tablas (`alimentacions`, `antecedentes_familiares`, `antecedentes_obstetricos`, `antecedentes_personales`,
+    `conductas`, `consulta_fotos`, `examen_fisicos`, `examenes_complementarios`, `examenes_complementarios_fotos`, `familias`,
+    `interconsultas`, `internaciones`, `motivo_consultas`, `observaciones`, `embarazo_actuals`, `screenings`), tres en
+    `desarrollo_madurativo_pacientes` y dos imágenes. Se borraron por id (`limpieza.sql`: fotos → padres, `internaciones` antes que
+    `antecedentes_personales`, `consultas` al final, sin `DROP`) y las dos imágenes por nombre: **los conteos de las 55 tablas quedaron
+    idénticos a los de antes**, 8 imágenes, 15 consultas de baja. **`salud360_token_cache` de pediatría NO se vació a propósito:** sus 5 filas
+    incluyen los dos tokens de prueba sembrados (ver `docs/hc-pediatria-estado-y-plan.md`) y vaciarla impediría las próximas corridas; la corrida
+    no agregó ninguna (5 antes y después). Ningún token quedó en el repo, en este texto ni en el commit.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 

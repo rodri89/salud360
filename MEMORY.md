@@ -5,15 +5,19 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E5.1 hecha
+- **Siguiente paso: E6.1, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E5.1 hecha
   (2026-10-29): `HcBackend.soloLectura` (default `false`) y candado en `HcApiSync` (`marcarSucia`, `empujarYa`, `drenar`,
   `consultasDeAntecedentesPendientes`). **E5.2 hecha (2026-10-29, `0e3c461`, solo un test):** `HcApiSyncBaseMigradaTest` prueba el candado
   con una base v8 con datos de hepatología migrada por `8.sqm` (cero llamadas, base idéntica, `pendientes` igual, pediatría sigue); sigue
   **E5.3 hecha (2026-10-29):** `AdminRepository` ignora los backends de solo lectura para licencias (médico solo de clínica sigue en
   `true`); `HcRepository.esSoloLectura` y `abrirConsulta` con `consultaAbiertaLocal` (no retoma una abierta con `remoto_id` o id `hcc-`;
-  `hcgeneral/LecturaClinica.kt` tiene `PREFIJO_ID_WEB` y `Consulta.esDeLaWeb()`, E6.2 lo completa); 671 tests en verde; sigue E5.4.
-  Ojo (nota de E5.3): cerrar/reabrir/anular de `HcRepository` no distinguen consultas de la web (E7.3) y E6.5 va antes que E7: no
-  usar la pantalla con clínica registrada sin E7.2/E7.3. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC
+  `hcgeneral/LecturaClinica.kt` tiene `PREFIJO_ID_WEB` y `Consulta.esDeLaWeb()`, E6.2 lo completa); 671 tests en verde.
+  **E5.4 hecha (2026-10-30, solo documentación):** `HcPediatriaE2ETest` y `HcCarteraE2ETest` en verde contra la copia local de pediatría con el
+  motor ya con candado; limpiado por id (conteos de las 55 tablas idénticos); `salud360_token_cache` de pediatría NO se vacía (guarda los tokens
+  de prueba sembrados); `HcLicenciasE2ETest` no se corrió. La tanda E5 está completa; sigue E6.1.
+  **D6 (2026-10-29, usuario):** E6.5 (registrar el backend en `DataModule`) va DESPUÉS de E7.3 y antes de E7.4 y de la tanda V (orden: E5, E6.1 a
+  E6.4b, E6.6, E7.1 a E7.3, E6.5, E7.4, E8): `cerrarConsulta`, `reabrirConsulta`, `anularConsulta` y `guardar*` de `HcRepository` no distinguen
+  consultas de la web hasta E7.3. Mientras tanto no se registra nada y los tests usan backends falsos. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC
   (fijado como límite conocido en ese test). `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada backend que se
   registre (E6.5 agrega `clinica` = `true`). Ojo: `SyncEngine` no pasa por el candado (otro canal, hacia turnos, 404 hoy) y
   `AdminRepository` ya no manda licencias a un backend de solo lectura (E5.3). La tanda S (servidor `hclinica`, rama `salud360-api`,
@@ -57,7 +61,7 @@ registros de personas): el repo es público.
   aprobación aparte**; la entrega E (escritura) es borrador sin aprobar y sin tareas. Q1 a Q14 y Q16 a Q18 como
   recomendó el planificador; **Q15 = nunca borrar**: la lectura no elimina ni vacía nada de lo traído de la web, lo
   marca "Ya no figura en la web" (RF-63, tarea E6.4b). Las decisiones están en `spec.md` ("Decididas"). Antes de
-  registrar el `HcBackend` de solo lectura de clínica (E6.5) tienen que estar los candados de E5; y no pushear `main`
+  registrar el `HcBackend` de solo lectura de clínica (E6.5) tienen que estar los candados de E5 y la pantalla E7.3 (D6); y no pushear `main`
   con ese backend antes de que producción tenga las rutas.
 - **Lo que el planificador no pudo verificar** (no ejecutó nada contra bases ni servidores): el esquema real de
   producción (columnas, `activo`, modo estricto), si hay un respaldo restaurable de producción, qué versión de hclinica
@@ -148,7 +152,8 @@ registros de personas): el repo es público.
   `origin/main`). Rotados el 2026-10-20 (solo local).
 - El E2E de pediatría deja en `hc_pediatrica` una consulta de baja (y sus filas) y dos imágenes en
   `public/img/salud360` por corrida: borrarlas por id. Orden de las FK al borrar: fotos → padres, `internaciones`
-  antes que `antecedentes_personales`, `consultas` al final. Ya hay 5 consultas de baja de corridas viejas.
+  antes que `antecedentes_personales`, `consultas` al final. Ya hay 5 consultas de baja de corridas viejas. Limpieza de E5.4: conteos de `COUNT(*)` de las 55 tablas antes y después (`%TEMP%\opencode\e54`); no vaciar
+  `salud360_token_cache` de pediatría (tiene los tokens sembrados).
 - Tras el logout, hclinica aceptaba el token por `salud360_token_cache`: vaciarla en las pruebas (desde F1.7
   `POST auth/salir` también la vacía). Su throttle es por IP y cuenta todo el grupo `api` (~1,1 s entre pedidos).
 
