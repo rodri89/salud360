@@ -5,9 +5,11 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E7.4 (refresco del `devWeb` con `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` y compilación completa; hay que
-  coordinarlo con el usuario: su `devWeb` en :8080 sigue sirviendo el ejecutable del 2026-10-27) y después E8.2 (con la app real), dentro de
-  la entrega L de la spec 002, aprobada por el usuario. E8.1 hecha (2026-10-30):** `HcClinicaLecturaE2ETest` (6 tests, `core/data/src/jvmTest`)
+- **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
+  usuario. E7.4 hecha (2026-10-30, solo infraestructura):** `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` en 4 min 30 s (exit 0,
+  URLs de `Entornos.kt` a `localhost/...-salud360`); el `devWeb` del usuario en :8080 ya sirve el wasm nuevo (43 528 858 bytes, idéntico al
+  compilado) con el backend de clínica registrado y las pantallas de E7; no se repitieron `core:data:jvmTest` ni `compileKotlinJvm`. Sin
+  migraciones (v9). Con poca RAM (~0,4 GB libres al compilar) alcanzó igual. **E8.1 hecha (2026-10-30):** `HcClinicaLecturaE2ETest` (6 tests, `core/data/src/jvmTest`)
   con el backend real y la copia local de hclinica; se saltea sin las 6 propiedades `-Psalud360.test.hc.clinica[.token|.ficha|.ficha.ajena|
   .consultas.ocultas|.consulta.ajena]` (ids del fixture por `ids.sql`; el comando está en su KDoc). Verde, y el servidor solo vio `GET`
   de `consultas`, `consultas/{n}` y `pacientes/{n}/historia`; sumas y conteos de las 68 tablas iguales; el fixture sigue cargado para E8.2
@@ -199,7 +201,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); falta E7.4. E8.1 (E2E de lectura contra la copia local) hecha.
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); E7.4 hecha (el `devWeb` sirve el build nuevo). E8.1 (E2E de lectura contra la copia local) hecha; faltan E8.2 a E8.4.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

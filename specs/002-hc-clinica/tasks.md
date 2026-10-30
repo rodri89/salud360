@@ -1461,11 +1461,27 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     clínica y sin las pantallas de E7 hasta que E7.4 corra `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` (con las mismas
     `-P` del `devWeb`) y se recargue la página; la base local es v9 y E6.5 no la migra.
 
-- [ ] **E7.4. Refresco del `devWeb` y compilación completa.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+- [x] **E7.4. Refresco del `devWeb` y compilación completa.** RF-38 a RF-63 — **S** — Toca API Laravel: no
   - **Condición previa: E6.5 hecha** (D6): el refresco tiene que llevar el backend ya registrado.
   - `.\gradlew :core:data:jvmTest`, `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev` y
     `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` (sin matar el `devWeb` del usuario).
   - Hecho cuando: todo en verde y el `devWeb` refrescado (con esquema v9, sin cambios de base).
+  - **Hecho (2026-10-30), solo infraestructura: ningún cambio de código.** Antes: `devWeb` escuchando en :8080 (200), Apache y MySQL
+    del XAMPP vivos, ~2,2 GB libres de 7,4 GB (la memoria bajó a ~0,4 GB durante la compilación, sin fallos). El wasm servido era del
+    2026-10-27 (42 778 797 bytes). **Compilación:** `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev`, un
+    solo Gradle, sin `--stop` ni matar procesos: `BUILD SUCCESSFUL in 4m 30s`, código de salida 0 (34 de 157 tareas ejecutadas). Sin
+    `-P` de URL (las toma `local.properties`). **URLs confirmadas** en el `Entornos.kt` generado, antes de dar la compilación por
+    buena: `TURNOS_URL = http://localhost/TurnosOnlineBB-salud360/public/index.php` y `HC_URLS["clinica"] =
+    http://localhost/HClinica-salud360/public/index.php` (la de pediatría es el MAMP `{host}:8888` de `gradle.properties`; ninguna de
+    producción). **Resultado:** `composeApp/build/compileSync/wasmJs/main/developmentExecutable/kotlin/salud360.wasm` = 43 528 858 bytes,
+    2026-10-30 15:21:34. El `devWeb` de :8080 (mismo proceso del usuario, sin tocarlo) lo sirve ya: el `salud360.wasm` descargado de
+    `http://localhost:8080/` es **idéntico byte a byte** (mismo SHA-256) y contiene «Abiertas en la web (solo lectura)» y «Ya no figura
+    en la web»; el índice y el `salud360.js` dan 200. **Sin migraciones nuevas:** la última es `8.sqm` (esquema local v9); desde `8.sqm`
+    solo cambió `HistoriaClinica.sq` con tres consultas nuevas (`consultaAbiertaLocal`, `laboratoriosDePacienteTodos`,
+    `pendientePorId`), sin tocar tablas. **No se abrió el navegador ni se cargó la app.** **Alcance (aviso):** esta corrida es la
+    compilación del ejecutable de desarrollo (que compila `composeApp` y todos sus módulos wasm); NO se repitieron
+    `:core:data:jvmTest` ni `:features:hc:compileKotlinJvm` (el código no cambió desde E6.5/E8.1, última corrida: 1161 tests de
+    `core:data` en verde en E8.1). Falta la prueba con la app real (E8.2 y E8.3), que necesita al usuario con el navegador.
 
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 
