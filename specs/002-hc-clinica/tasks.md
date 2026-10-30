@@ -829,7 +829,7 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
     pero E5.3 cambia su regla). (c) `SyncEngine` sigue fuera del candado: el test fija qué manda (deuda de AGENTS.md); si turnos crea esas rutas, ese test
     avisa. (d) El fake de backend está duplicado en este archivo y en `HcApiSyncSoloLecturaTest` (a propósito, para no tocar la prueba de E5.1).
 
-- [ ] **E5.3. `AdminRepository` y `HcRepository` ante un backend de solo lectura.** RF-46, RF-61 — **S** — Toca API Laravel: no
+- [x] **E5.3. `AdminRepository` y `HcRepository` ante un backend de solo lectura.** RF-46, RF-61 — **S** — Toca API Laravel: no
   - Tests primero: `AdminRepositoryLicenciasTest` (`guardarLicencia` de un médico solo de clínica devuelve `true` y no
     llama al backend de solo lectura; con pediatría sigue llamándola); `HcRepositoryTest` (`esSoloLectura`;
     `abrirConsulta` con una consulta de la web abierta del mismo médico crea una **nueva** local y no devuelve la de la
@@ -837,6 +837,44 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
   - Código: `AdminRepository` (destinos sin backends de solo lectura), `HcRepository.esSoloLectura` y `abrirConsulta`,
     consulta SQL `consultaAbiertaLocal` en `HistoriaClinica.sq` (solo la consulta, **sin migración**).
   - Hecho cuando: ambos tests en verde (antes, en rojo) y `.\gradlew :core:data:jvmTest` completo en verde.
+  - **Hecho (2026-10-29).** Sin dependencias, sin migración (la consulta SQL nueva no cambia tablas), sin tocar `DataModule` ni el servidor.
+    **Código:** `AdminRepository.destinosDeLicencia` (= `backends` sin los de `soloLectura`) lo usan `guardarLicencia` y `sincronizarLicencias`;
+    `HcRepository.esSoloLectura(especialidad)` (`backends[…]?.soloLectura == true`) y `abrirConsulta`, que con un backend de solo lectura usa la
+    consulta `consultaAbiertaLocal` (`HistoriaClinica.sq`, junto a `consultaAbierta`, que queda para el resto); `hcgeneral/LecturaClinica.kt`
+    (nuevo, mínimo: E6.2 lo completa) con `PREFIJO_ID_WEB = "hcc-"` y `Consulta.esDeLaWeb()`.
+    **Criterio de «consulta de la web» (hoy):** `remoto_id` no vacío **o** id que empieza con `hcc-`. La consulta SQL aplica lo mismo
+    (`trim(remoto_id) = ''` y `instr(id, :prefijoWeb) <> 1`, con el prefijo pasado como parámetro: una sola constante) y un test recorre 8 casos
+    comparando la SQL con `esDeLaWeb()`. Solo vale frente a un backend de solo lectura: en pediatría una consulta creada en el dispositivo también
+    tiene `remoto_id` tras enviarse, y ahí se sigue reutilizando la abierta como siempre (la rama `consultaAbierta` no cambió). Una especialidad sin
+    backend registrado (la clínica hoy) tampoco cambia. Las locales de clínica (sin `remoto_id`, sin `hcc-`) se siguen retomando aunque haya una
+    de la web más reciente; la de la web no se devuelve, no se escribe (fila idéntica, `dirty` y `updated_at` incluidos) ni se marca.
+    **Tests** (`jvmTest`, `repos/`, SQLite en archivo temporal, backends falsos que fallan si algo intenta enviar): `AdminRepositoryLicenciasTest` (6):
+    médico solo de clínica con backend de clínica de solo lectura registrado → `guardarLicencia` `true`, cero llamadas al backend, licencia local
+    guardada; mismo resultado y misma fila (`dirty` incluido) que **sin** el backend registrado (la vara es lo que hace hoy el código); pediatría
+    recibe la licencia, queda limpia (`dirty = 0`) y si la rechaza devuelve `false` y queda sucia; médico de pediatría + clínica → manda la
+    respuesta de pediatría y clínica no cuenta; `sincronizarLicencias` no le pregunta a la de solo lectura. `HcRepositoryTest` (16): `esSoloLectura`
+    (clínica `true`, pediatría y sin backend `false`); `tieneApi`/`especialidadesConApi` cuentan a la de solo lectura (la historia y la ficha siguen
+    trayendo la lista); `traerConsultasRemotas`/`traerConsultaRemota` solo leen; `abrirConsulta` con una abierta de la web (con `remoto_id`; con
+    `remoto_id` y sin prefijo; con prefijo y sin `remoto_id`) crea una nueva local y deja la de la web idéntica; retoma la local aunque la web sea
+    más reciente; otro tipo crea una nueva; sin ninguna crea una local sucia; sigue sin retomar la de otro médico; pediatría reutiliza la abierta
+    remota y la local ya enviada; sin backend y «clínica sin backend registrado» como hoy; `esDeLaWeb` y su coincidencia con la SQL.
+    **Rojo previo** (con `esSoloLectura` y `esDeLaWeb` como stubs en `false` para que compile): 10 de 22 fallaban —los 4 de licencias que pasan por un
+    backend de clínica (`guardarLicencia` daba `false`: `expected:<true> but was:<false>`; pediatría + clínica llamaba también a clínica;
+    `sincronizarLicencias` la llamaba) y 6 de `HcRepositoryTest` (`abrirConsulta` devolvía `hcc-c77` / `x-1` / `hcc-c78` en vez de una nueva y no
+    retomaba `local-1`; `esSoloLectura` y `esDeLaWeb`)—. **Verde:** los 22; `.\gradlew :core:data:jvmTest --rerun` completo (671 tests, 0 fallas,
+    0 salteados; los 649 anteriores, pediatría incluida, **sin ajustar ninguno**); `:features:hc:compileKotlinJvm`, `:features:admin:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compilan.
+    **Revisión de los caminos de lectura (sin cambios):** `traerConsultasRemotas` solo lo llaman `PacienteDetalleViewModel` y `PacientesViewModel`
+    (ficha: lectura de la lista; el plan no los cambia) y `HistoriaClinicaViewModel` (init, tras `tieneApi`); `traerConsultaRemota` solo el `init`
+    de `ConsultaViewModel` (y solo si hay `remoto_id`). Ninguno pasa por el autoguardado. `tieneApi("clinica")` será `true` al registrar el backend,
+    como pide el plan; **no se registró nada** (E6.5).
+    **Avisos para E6/E7:** (a) `HcRepository.cerrarConsulta`, `reabrirConsulta`, `anularConsulta`, `guardar*` **no** distinguen consultas de la web
+    (nunca lo pidió E5.3; el candado de E5.1 impide que salgan, pero localmente se podrían editar): lo cierra E7.3 en el `ConsultaViewModel`.
+    (b) La pantalla de historia filtra «Consulta en curso» por `estado == ABIERTA` (E7.2 usa `agruparConsultas`, E7.1): hasta E7.2 una abierta de
+    la web se vería como continuable y editable. Solo es alcanzable con el backend registrado, y E6.5 (registro) va **antes** que E7.1 a E7.3 en el
+    orden de las tandas: no usar el `devWeb` con clínica registrada entre E6.5 y E7.3, o pasar E6.5 después de E7.3 (decisión del usuario). (c) Con el backend registrado, `PacienteDetalleViewModel` pedirá 2 pedidos por ficha abierta contra
+    clínica (throttle 60/min por IP; `429` ya contemplado en E6.5). (d) `sincronizarLicencias` también salta los backends de solo lectura (decisión
+    mía, conservadora: así registrar clínica no cambia nada; hoy `traerLicencias` de la interfaz es vacío de todos modos).
 
 - [ ] **E5.4. Pediatría sigue enviando.** RF-60 — **S** — Toca API Laravel: no (usa la copia servida de pediatría)
   - `HcPediatriaE2ETest` y `HcCarteraE2ETest` con `--rerun` contra la copia servida de pediatría

@@ -9,10 +9,14 @@ registros de personas): el repo es público.
   (2026-10-29): `HcBackend.soloLectura` (default `false`) y candado en `HcApiSync` (`marcarSucia`, `empujarYa`, `drenar`,
   `consultasDeAntecedentesPendientes`). **E5.2 hecha (2026-10-29, `0e3c461`, solo un test):** `HcApiSyncBaseMigradaTest` prueba el candado
   con una base v8 con datos de hepatología migrada por `8.sqm` (cero llamadas, base idéntica, `pendientes` igual, pediatría sigue); sigue
-  E5.3. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC
+  **E5.3 hecha (2026-10-29):** `AdminRepository` ignora los backends de solo lectura para licencias (médico solo de clínica sigue en
+  `true`); `HcRepository.esSoloLectura` y `abrirConsulta` con `consultaAbiertaLocal` (no retoma una abierta con `remoto_id` o id `hcc-`;
+  `hcgeneral/LecturaClinica.kt` tiene `PREFIJO_ID_WEB` y `Consulta.esDeLaWeb()`, E6.2 lo completa); 671 tests en verde; sigue E5.4.
+  Ojo (nota de E5.3): cerrar/reabrir/anular de `HcRepository` no distinguen consultas de la web (E7.3) y E6.5 va antes que E7: no
+  usar la pantalla con clínica registrada sin E7.2/E7.3. Hallazgo para la entrega E: `archivosPendientesDeConsulta` recoge los adjuntos por paciente (`consulta_id` NULL) de cualquier HC
   (fijado como límite conocido en ese test). `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada backend que se
   registre (E6.5 agrega `clinica` = `true`). Ojo: `SyncEngine` no pasa por el candado (otro canal, hacia turnos, 404 hoy) y
-  `AdminRepository.guardarLicencia` llama al backend sin candado hasta E5.3. La tanda S (servidor `hclinica`, rama `salud360-api`,
+  `AdminRepository` ya no manda licencias a un backend de solo lectura (E5.3). La tanda S (servidor `hclinica`, rama `salud360-api`,
   E3 y E4: todas las tareas hechas; `specs/002-hc-clinica/tasks.md`) quedó «implementada y con ajustes; falta
   validación final del reviewer solo si cambió algo mayor».** Paso 0 (2026-10-29, hclinica `64849c9`): `pacienteVisible` y
   `consultaVisible` ahora dentro del `try` del `ConsultaController` (el 500 propio también cubre la comprobación de cartera).
