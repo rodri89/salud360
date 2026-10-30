@@ -17,7 +17,7 @@ servidor. Para eso:
    secciones, y el historial por paciente). Un mapa explícito tabla/columna de la web hacia los nombres de la app. Cero
    escrituras.
 2. **App**: un `HcClinicaBackend` **de solo lectura** (nuevo), registrado para `clinica` en `HcBackends`. Se registra
-   *después* de tres candados que impiden cualquier envío: (a) una propiedad `soloLectura` en `HcBackend` que
+   *después* de la pantalla en solo lectura (E7.3; decisión D6 de la spec, 2026-10-29) y de tres candados que impiden cualquier envío: (a) una propiedad `soloLectura` en `HcBackend` que
    `HcApiSync` respeta; (b) el backend ni siquiera tiene en la mano un cliente que sepa escribir (`HcApiSoloLectura`);
    (c) nunca llama a `pacientes/resolver`. Lo traído se guarda con identificadores propios (`hcc-…`) y sin pendiente
    de envío; lo cargado antes en el dispositivo (todo `dirty = 1`) no se toca ni sale. **Nada traído se borra**: lo que
@@ -417,7 +417,10 @@ E2E nuevo `HcClinicaConsultasE2ETest` (`jvmTest`, solo contra la copia local; se
 verifica que ninguna fila quedó sucia.
 
 ## Orden de despliegue
-1. Servidor en la copia local (E3, E4) → app contra la copia (E5 a E7) → validación local (E8).
+1. Servidor en la copia local (E3, E4) → app contra la copia (E5 a E7) → validación local (E8). Dentro de la app, el
+   registro del backend (E6.5) va **después** de la pantalla en solo lectura (E7.3) y antes de E7.4 y de E8 (decisión D6 de la
+   spec, 2026-10-29): antes de E7.3, `cerrarConsulta`, `reabrirConsulta`, `anularConsulta` y `guardar*` no distinguen las
+   consultas de la web y la pantalla dejaría editar una.
 2. Producción (E9) **solo con aprobación aparte**: respaldo verificado → servidor → comprobación sin token (debe dar
    `401`, no `404`) → lectura con un paciente de la cartera de prueba, corriendo la app **en la máquina local con
    `-Pentorno=release`** (no se publica la app).
@@ -429,7 +432,7 @@ verifica que ninguna fila quedó sucia.
 
 | Riesgo | Mitigación |
 |---|---|
-| **H2**: se envía el historial local viejo a producción | Tres candados (E5) con test de base migrada; el registro del backend va *después* de los candados |
+| **H2**: se envía el historial local viejo a producción | Tres candados (E5) con test de base migrada; el registro del backend va *después* de los candados y de E7.3 (D6 de la spec) |
 | Una carga de laboratorio o un pendiente de la web se edita/borra/resuelve en una consulta local y diverge | RF-62; `puedeBorrar` y pendientes (E6.6) |
 | Antecedente local sucio tapa el de la web | RF-54 lo manda; queda registrado (Q7) |
 | Producción estricta / esquema distinto del local (columnas, `activo` con valores no previstos) | E3.1/E3.2 comparan columnas en la copia; E9 prueba una lectura con un paciente de la cartera de prueba antes de cualquier uso |

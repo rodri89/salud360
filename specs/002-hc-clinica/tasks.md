@@ -350,7 +350,8 @@ Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC gen
 RF-63). Plan: `plan.md`. Las dudas Q1 a Q18 están resueltas (Q15 = nunca borrar; las demás, las recomendaciones del
 planificador). Cada tanda se aprueba antes de empezar la siguiente, **salvo la tanda S, que el usuario aprobó entera**
 ("arranquemos con la tanda S"). Equivalencia con el pedido: **tanda S = E3 y E4** (servidor), **tanda A = E5, E6 y E7**
-(app), **tanda V = E8** (validación local) **y E9** (producción, **requiere aprobación aparte**).
+(app), **tanda V = E8** (validación local) **y E9** (producción, **requiere aprobación aparte**). Orden dentro de la
+tanda A (D6, 2026-10-29): E5, E6.1 a E6.4b, E6.6, E7.1 a E7.3, **E6.5**, E7.4.
 
 Tamaños: S = hasta 20 min, M = hasta 30 min. Si una tarea M no entra, se divide antes de empezar.
 "Toca API Laravel: sí" = ya no hay que preguntar en las tareas de E3 y E4 (la aprobación de la tanda S las cubre,
@@ -742,7 +743,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md. **Aprobación de la 
 
 ## Tanda E5 — App I: candados contra el envío (antes de registrar nada)
 
-Esta tanda **no registra** ningún backend: solo agrega los candados y los prueba. Es la condición de E6.5.
+Esta tanda **no registra** ningún backend: solo agrega los candados y los prueba. Es una de las condiciones de E6.5 (la otra es E7.3, D6).
 
 - [x] **E5.1. `HcBackend.soloLectura` y candado en `HcApiSync`.** RF-47, RF-48 — **M** — Toca API Laravel: no
   - Tests primero: `core/data/src/jvmTest/.../repos/HcApiSyncSoloLecturaTest.kt` (SQLite en archivo temporal, como
@@ -871,8 +872,8 @@ Esta tanda **no registra** ningún backend: solo agrega los candados y los prueb
     **Avisos para E6/E7:** (a) `HcRepository.cerrarConsulta`, `reabrirConsulta`, `anularConsulta`, `guardar*` **no** distinguen consultas de la web
     (nunca lo pidió E5.3; el candado de E5.1 impide que salgan, pero localmente se podrían editar): lo cierra E7.3 en el `ConsultaViewModel`.
     (b) La pantalla de historia filtra «Consulta en curso» por `estado == ABIERTA` (E7.2 usa `agruparConsultas`, E7.1): hasta E7.2 una abierta de
-    la web se vería como continuable y editable. Solo es alcanzable con el backend registrado, y E6.5 (registro) va **antes** que E7.1 a E7.3 en el
-    orden de las tandas: no usar el `devWeb` con clínica registrada entre E6.5 y E7.3, o pasar E6.5 después de E7.3 (decisión del usuario). (c) Con el backend registrado, `PacienteDetalleViewModel` pedirá 2 pedidos por ficha abierta contra
+    la web se vería como continuable y editable. Solo es alcanzable con el backend registrado, y E6.5 (registro) iba **antes** que E7.1 a E7.3 en el
+    orden de las tandas: **resuelto el 2026-10-29 por decisión del usuario (D6): E6.5 pasó a después de E7.3**. (c) Con el backend registrado, `PacienteDetalleViewModel` pedirá 2 pedidos por ficha abierta contra
     clínica (throttle 60/min por IP; `429` ya contemplado en E6.5). (d) `sincronizarLicencias` también salta los backends de solo lectura (decisión
     mía, conservadora: así registrar clínica no cambia nada; hoy `traerLicencias` de la interfaz es vacío de todos modos).
 
@@ -953,15 +954,8 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     del repositorio o del backend, sin cambiar el esquema).
   - Hecho cuando: el test en verde (antes, en rojo) y `.\gradlew :core:data:jvmTest` completo en verde.
 
-- [ ] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
-  - **Condición previa verificable: E5.1 a E5.4 hechas y en verde** (y E6.1 a E6.4b, para que lo que se registra ya
-    no pueda borrar nada de lo traído).
-  - `DataModule`: `CodigosHc.GENERAL -> HcClinicaBackend(get(), HcApiSoloLectura(cliente), get(), …)` en `HcBackends`;
-    se actualizan los comentarios (ya no dice "la general no tiene `HcBackend`"); `MotivoHc`: caso `429`
-    ("demasiados pedidos seguidos") con su test en `MotivoHcTest`.
-  - Hecho cuando: `.\gradlew :core:data:jvmTest` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila;
-    con el `devWeb` contra la copia local, abrir la historia de un paciente de clínica no manda ningún pedido que no sea
-    `GET` (registro de accesos de Apache) y las consultas viejas sucias siguen con `dirty = 1`.
+- **E6.5 (registrar el backend de solo lectura) se movió: va DESPUÉS de E7.3**, entre E7.3 y E7.4 (decisión D6 de la spec,
+  2026-10-29). La tarea conserva su número y su texto más abajo, en la tanda E7. En esta tanda no se registra nada.
 
 - [ ] **E6.6. Coherencia con lo que viene de la web.** RF-62 — **S** — Toca API Laravel: no
   - Tests primero: `CargasLaboratorioTest` ampliado (una carga `hcc-l…` tiene `puedeBorrar = false` aunque la consulta sea
@@ -974,6 +968,11 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 
 ## Tanda E7 — App III: pantalla
+
+Orden de la tanda (D6, 2026-10-29): **E7.1, E7.2, E7.3, E6.5, E7.4**. E7.1 a E7.3 no registran el backend: se comprueban con
+tests de lógica pura, con compilación y con revisión de código (la comprobación visual es de E8.3), y los tests de
+`HcRepository`/`ConsultaViewModel` usan un backend falso inyectado, como los de E5. E6.5 (registro en `DataModule`) cierra la
+tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
 
 - [ ] **E7.1. Lógica pura de la lista y de los avisos.** RF-43 a RF-46, RF-63 — **S** — Toca API Laravel: no
   - Tests primero: `commonTest` `ConsultaWebTest`: `agruparConsultas` separa "abiertas en la web", "consulta en curso"
@@ -1003,7 +1002,23 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
   - Hecho cuando: ambos módulos compilan sin errores; `.\gradlew :core:data:jvmTest` completo en verde; revisión de
     código: ninguna ruta de esta pantalla puede editar, cerrar, reabrir ni anular una consulta con `remoto_id`.
 
+- [ ] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
+  - **Movida aquí (D6, 2026-10-29, usuario):** va después de E7.3 y antes de la tanda V. Motivo: `cerrarConsulta`,
+    `reabrirConsulta`, `anularConsulta` y `guardar*` de `HcRepository` no distinguen consultas de la web hasta E7.3; con el
+    backend registrado antes habría una ventana en que la pantalla dejaría editar una consulta de la web. Alcance y «Hecho
+    cuando» no cambian.
+  - **Condición previa verificable: E5 completa (E5.1 a E5.4 hechas y en verde) y E7.3 hecha** (y E6.1 a E6.4b, para que lo
+    que se registra ya no pueda borrar nada de lo traído; E6.6 y E7.1 a E7.2, para que la pantalla ya distinga lo de la web).
+  - `DataModule`: `CodigosHc.GENERAL -> HcClinicaBackend(get(), HcApiSoloLectura(cliente), get(), …)` en `HcBackends`;
+    se actualizan los comentarios (ya no dice "la general no tiene `HcBackend`"); `MotivoHc`: caso `429`
+    ("demasiados pedidos seguidos") con su test en `MotivoHcTest`.
+  - Hecho cuando: `.\gradlew :core:data:jvmTest` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila;
+    con el `devWeb` contra la copia local, abrir la historia de un paciente de clínica no manda ningún pedido que no sea
+    `GET` (registro de accesos de Apache) y las consultas viejas sucias siguen con `dirty = 1`. (Para esa comprobación el
+    `devWeb` se refresca con el comando de E7.4; E7.4 después repite la compilación completa.)
+
 - [ ] **E7.4. Refresco del `devWeb` y compilación completa.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+  - **Condición previa: E6.5 hecha** (D6): el refresco tiene que llevar el backend ya registrado.
   - `.\gradlew :core:data:jvmTest`, `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev` y
     `.\gradlew :composeApp:wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` (sin matar el `devWeb` del usuario).
   - Hecho cuando: todo en verde y el `devWeb` refrescado (con esquema v9, sin cambios de base).
@@ -1011,6 +1026,9 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
 Al terminar la tanda: validación del reviewer y MEMORY.md.
 
 ## Tanda E8 — Validación local (contra la copia servida; nada contra producción)
+
+Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3). E8.1 no usa la app registrada (arma
+`HcClinicaBackend` a mano); E8.2 y E8.3 sí.
 
 - [ ] **E8.1. E2E de lectura.** RF-38 a RF-42, RF-52 a RF-54 — **M** — Toca API Laravel: no
   - `core/data/src/jvmTest/.../repos/HcClinicaConsultasE2ETest.kt`: se saltea sin `salud360.test.hc.clinica`,

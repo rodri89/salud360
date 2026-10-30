@@ -466,6 +466,11 @@ previo y limpieza probada.
   ("arranquemos con la tanda S"): el usuario aprobó la tanda como un todo. La subida a producción (E9) **requiere
   aprobación aparte**; la Entrega E sigue como borrador sin aprobar.
 - D5. Q15 = **nunca borrar** (ver "Decididas"): la lectura no elimina ni vacía nada de lo ya traído; lo marca (RF-63).
+- D6. (2026-10-29, usuario) **El backend de solo lectura de clínica se registra después de la pantalla de solo lectura**: la
+  tarea E6.5 va después de E7.3 y antes de E7.4 y de la tanda V. Motivo: el implementador de E5.3 detectó que
+  `cerrarConsulta`, `reabrirConsulta`, `anularConsulta` y `guardar*` no distinguen consultas de la web hasta E7.3; registrar
+  antes dejaría una ventana en que la pantalla permitiría editar una consulta de la web. No cambia el alcance de ninguna tarea.
+  (No confundir con la «D6» del plan, que es otra decisión de diseño.)
 
 ## Para decidir
 - Nada en la Entrega L. Para la Entrega E: lo que dice "Entrega E (escritura)" arriba.
