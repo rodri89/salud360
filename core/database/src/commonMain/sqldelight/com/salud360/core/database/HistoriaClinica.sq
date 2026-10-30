@@ -172,6 +172,9 @@ CREATE INDEX laboratorio_paciente ON laboratorio(paciente_id, especialidad, tipo
 
 laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 laboratorioPorId: SELECT * FROM laboratorio WHERE id = ? AND deleted = 0;
+-- Todas las cargas del paciente, de cualquier tipo: la lectura de la HC general las compara con lo que la web sigue mandando
+-- (marcas "Ya no figura en la web"). Solo lectura: no cambia el esquema.
+laboratoriosDePacienteTodos: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;
 upsertLaboratorio: INSERT OR REPLACE INTO laboratorio VALUES ?;
 laboratoriosDirty: SELECT * FROM laboratorio WHERE dirty = 1;
 limpiarLaboratorio: UPDATE laboratorio SET dirty = 0 WHERE id = ?;
@@ -237,6 +240,8 @@ pendientesDePaciente: SELECT * FROM pendiente WHERE paciente_id = ? AND medico_i
 -- Un pendiente por su id, resuelto o no (el del médico que sea): la lectura de la HC general lo compara antes de escribirlo.
 -- Solo cambia el `.sq`, no el esquema.
 pendientePorId: SELECT * FROM pendiente WHERE id = ? AND deleted = 0;
+-- Todos los pendientes del paciente, de cualquier médico, resueltos o no (misma razón y misma salvedad que laboratoriosDePacienteTodos).
+pendientesDePacienteTodos: SELECT * FROM pendiente WHERE paciente_id = ? AND deleted = 0;
 contarPendientesDeMedico: SELECT COUNT(*) FROM pendiente WHERE medico_id = ? AND resuelto = 0 AND deleted = 0;
 upsertPendiente: INSERT OR REPLACE INTO pendiente VALUES ?;
 pendientesDirty: SELECT * FROM pendiente WHERE dirty = 1;

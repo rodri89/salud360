@@ -17,9 +17,11 @@ import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.repos.HcClinicaPruebas.TABLAS
 import com.salud360.core.data.repos.HcClinicaPruebas.conBackend
 import com.salud360.core.data.repos.HcClinicaPruebas.historiaVacia
+import com.salud360.core.data.repos.HcClinicaPruebas.marcasVigentes
 import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcar
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
+import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodoSinMarcas
 import com.salud360.core.data.uno
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
@@ -478,14 +480,17 @@ class HcClinicaBackendHistoriaTest {
         api.historial = historiaVacia()
         traer()
 
-        assertEquals(antes, tablas.associateWith { volcar(driver, it) }, "las seis tablas fila por fila; ninguna marca (eso es E6.4b)")
-        assertEquals(emptyList(), textos(driver, "SELECT clave FROM paciente_extra WHERE clave LIKE 'hcc_ausente_%'"))
+        assertEquals(antes, tablas.associateWith { volcar(driver, it) }, "las seis tablas fila por fila")
+        // Lo que la web dejó de mandar recibe una marca (E6.4b; el detalle, en HcClinicaBackendAusentesTest), y nada más.
+        val marcadas = marcasVigentes(driver).map { it.substringBefore("=") }
+        assertTrue(listOf("hcc-a5001-hta", "hcc-llaboratorio_general-703", "hcc-rveda-1797", "hcc-p1744").all { it in marcadas }, "$marcadas")
+        assertTrue("hcc-a5001-nota_perfil4" !in marcadas, "la nota del perfil 4 no se marca nunca")
     }
 
     @Test
     fun un_historial_mas_corto_no_borra_lo_que_dejo_de_venir() = conLaWeb {
         traer()
-        val antes = volcarTodo(driver)
+        val antes = volcarTodoSinMarcas(driver)
 
         api.historial = historia(
             antecedentes = """{"hta": {"flag": 1, "detalle": "Prueba Salud360 hta detalle"}}""",
@@ -495,7 +500,10 @@ class HcClinicaBackendHistoriaTest {
         )
         traer()
 
-        assertEquals(antes, volcarTodo(driver), "la lista de la web es otra y la cuenta es la misma: las tablas quedan idénticas")
+        assertEquals(antes, volcarTodoSinMarcas(driver), "la lista de la web es otra y la cuenta es la misma: las tablas quedan idénticas")
+        val marcadas = marcasVigentes(driver).map { it.substringBefore("=") }
+        assertTrue("hcc-llaboratorio_reducido-19" in marcadas && "hcc-lpeso-25" in marcadas && "hcc-rveda-1797" in marcadas, "$marcadas")
+        assertTrue(listOf("hcc-llaboratorio_general-703", "hcc-a5001-hta", "hcc-p1744").none { it in marcadas }, "lo que sigue viniendo no se marca")
     }
 
     @Test

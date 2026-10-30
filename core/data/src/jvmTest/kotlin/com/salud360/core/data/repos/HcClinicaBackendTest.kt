@@ -12,9 +12,11 @@ import com.salud360.core.data.repos.HcClinicaPruebas.ApiFalsa
 import com.salud360.core.data.repos.HcClinicaPruebas.FICHA
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
+import com.salud360.core.data.repos.HcClinicaPruebas.marcasVigentes
 import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcar
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
+import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodoSinMarcas
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
@@ -602,22 +604,25 @@ class HcClinicaBackendTest {
     }
 
     @Test
-    fun una_lista_mas_corta_que_la_que_habia_no_borra_ni_marca_nada() = conBackend(ApiFalsa(tres)) {
+    fun una_lista_mas_corta_que_la_que_habia_no_borra_nada_solo_marca() = conBackend(ApiFalsa(tres)) {
         traer()
         sembrarHijas()
-        val antes = volcarTodo(driver)
+        val antes = volcarTodoSinMarcas(driver)
         assertEquals(3, antes.getValue("consulta").size)
 
         // Desaparecieron la 7003 y la 7004 de la web.
         api.cabeceras = listOf(tres.first())
         traer()
-        assertEquals(antes, volcarTodo(driver), "conteo y contenido de consulta y de las hijas iguales; ninguna marca (eso es E6.4b)")
+        assertEquals(antes, volcarTodoSinMarcas(driver), "conteo y contenido de consulta y de las hijas iguales; solo hay marcas nuevas (E6.4b)")
+        val consultasMarcadas = { marcasVigentes(driver).map { it.substringBefore("=") }.filter { it.startsWith("hcc-c") && ':' !in it } }
+        assertEquals(listOf("hcc-c7003", "hcc-c7004"), consultasMarcadas())
 
         // Y la lista vacía tampoco vacía nada.
         api.cabeceras = emptyList()
         traer()
-        assertEquals(antes, volcarTodo(driver))
+        assertEquals(antes, volcarTodoSinMarcas(driver))
         assertEquals(3, filas().size)
+        assertEquals(listOf("hcc-c7003", "hcc-c7004", "hcc-c7005"), consultasMarcadas())
     }
 
     @Test

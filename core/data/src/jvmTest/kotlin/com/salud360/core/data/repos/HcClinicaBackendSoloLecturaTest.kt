@@ -9,6 +9,7 @@ import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
+import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodoSinMarcas
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
@@ -264,7 +265,7 @@ class HcClinicaBackendSoloLecturaTest {
             bloque(hastaAca)
         }
 
-    private fun conErrorAlAbrir(estado: Int, cuerpo: String, ver: (TobbException) -> Unit) = conConsultaTraida(
+    private fun conErrorAlAbrir(estado: Int, cuerpo: String, marcada: Boolean = false, ver: (TobbException) -> Unit) = conConsultaTraida(
         { x, q -> if (x.requestURI.path.endsWith("/9003")) estado to cuerpo else web(cabeceras(3)).invoke(x, q) },
     ) { hastaAca ->
         val antes = volcarTodo(driver)
@@ -274,11 +275,17 @@ class HcClinicaBackendSoloLecturaTest {
         ver(e)
         assertEquals(1, pedidos.size - hastaAca, "un solo pedido: el reintento es manual (RF-58)")
         pedidos.forEach { it.assertSoloLectura() }
-        assertEquals(antes, volcarTodo(driver), "nada nuevo en el dispositivo y nada borrado")
+        assertEquals(antes.mapValues { (_, f) -> f.filterNot { "'hcc_ausente_" in it } }, volcarTodoSinMarcas(driver), "nada nuevo en el dispositivo y nada borrado")
+        // Solo el `404 consulta_no_encontrada` deja algo (E6.4b): la marca «Ya no figura en la web»; cualquier otro error, nada.
+        if (marcada) {
+            assertEquals(listOf("hcc-c9003"), HcClinicaPruebas.marcasVigentes(driver).map { it.substringBefore("=") })
+        } else {
+            assertEquals(antes, volcarTodo(driver), "ni siquiera una marca")
+        }
     }
 
     @Test
-    fun consulta_404_consulta_no_encontrada() = conErrorAlAbrir(404, noEncontrada) {
+    fun consulta_404_consulta_no_encontrada() = conErrorAlAbrir(404, noEncontrada, marcada = true) {
         assertEquals(404, it.status)
         assertEquals("consulta_no_encontrada", it.codigo)
     }

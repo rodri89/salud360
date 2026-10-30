@@ -228,9 +228,18 @@ fun fusionarExamenFisico(consultaLocalId: Id, e: ExamenFisicoDto, local: ExamenF
     return nuevo.takeIf { it != base }
 }
 
-private fun camposDelExamen(e: ExamenFisicoDto): List<String> = listOf(
-    "peso" to e.peso, "talla" to e.talla, "tension_arterial" to e.tensionArterial, "imc" to e.imc, "nota" to e.nota,
+private fun camposDelExamen(peso: String?, talla: String?, tension: String?, imc: String?, nota: String?): List<String> = listOf(
+    "peso" to peso, "talla" to talla, "tension_arterial" to tension, "imc" to imc, "nota" to nota,
 ).filter { !it.second.isNullOrBlank() }.map { it.first }
+
+private fun camposDelExamen(e: ExamenFisicoDto) = camposDelExamen(e.peso, e.talla, e.tensionArterial, e.imc, e.nota)
+
+/**
+ * Las claves de ausencia de los campos del examen físico [e] del dispositivo que la web manda (peso, talla, tensión, IMC y nota)
+ * y tienen dato: lo que ya se trajo y [marcarAusentes] podría marcar. La frecuencia cardíaca y los demás campos son de la app.
+ */
+fun clavesDelExamenTraido(consultaLocalId: Id, e: ExamenFisico): Set<String> =
+    camposDelExamen(e.peso, e.talla, e.tensionArterial, e.imc, e.nota).map { claveDeCampo(consultaLocalId, SeccionesComunes.EXAMEN_FISICO, it) }.toSet()
 
 // ---------- Antecedentes familiares ----------
 

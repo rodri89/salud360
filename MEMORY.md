@@ -5,8 +5,14 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.4b (aplicar las marcas «Ya no figura en la web» con `marcarAusentes`), dentro de la tanda A (app) de la spec 002,
-  entrega L, aprobada por el usuario y encadenada tarea por tarea. E6.4 hecha (2026-10-30):** `HcClinicaBackend.traerConsulta` (un `GET
+- **Siguiente paso: E6.6 (coherencia con lo que viene de la web), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
+  usuario y encadenada tarea por tarea. E6.4b hecha (2026-10-30):** `repos/MarcasDeLaWeb.kt` aplica `marcarAusentes` desde `traerConsultas`
+  (lista completa), `aplicarHistoria` y `traerConsulta` (también ante `404 consulta_no_encontrada`, que relanza el error): marcas
+  `hcc_ausente_<clave>` en `paciente_extra` (`dirty = 0`, valor = fecha), primero y en la misma transacción que lo que trae la respuesta;
+  `traido`/`marcadas` solo del paciente y de filas limpias `hcc-…`; quitar una marca = dar de baja su fila (`deleted = 1`, sin `DELETE`);
+  `HcClinicaBackend.marcasAusentes(pacienteId)` las lee para E7. Un `TRIGGER` por tabla prueba que nada se borra ni se reescribe salvo marcas.
+  1014 tests de `core:data` en verde, wasm compila; 8 tests de E6.3/E6.4 que decían «sin marcas hasta E6.4b» se ajustaron. Sigue sin
+  registrarse el backend (E6.5). **E6.4 hecha (2026-10-30):** `HcClinicaBackend.traerConsulta` (un `GET
   consultas/{id}`; escribe `seccion_valor`, `examen_fisico` y el aviso `hcc_no_leidas_<id web>`; no pide nada si la consulta no es `hcc-c<remoto>`,
   no está, está sucia o no hay ficha) y `traerConsultas` ahora hace lista + historial (`aplicarHistoria`: antecedentes con `nota_perfil4`,
   cargas, estudios, exámenes, interconsultas, motivos de las consultas que están, pendiente; todo `dirty = 0`, lo sucio no se toca, nada se
@@ -163,7 +169,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5 y E6.1 a E6.4 hechas; `HcClinicaBackend` es de solo lectura y aún no está registrado (E6.5).
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5 y E6.1 a E6.4b hechas; `HcClinicaBackend` es de solo lectura y aún no está registrado (E6.5).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

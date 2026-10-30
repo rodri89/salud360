@@ -112,6 +112,20 @@ internal object HcClinicaPruebas {
 
     fun volcarTodo(driver: SqlDriver): Map<String, List<String>> = TABLAS.associateWith { volcar(driver, it) }
 
+    /**
+     * Como [volcarTodo] pero sin las filas `hcc_ausente_…` de `paciente_extra` (las marcas «Ya no figura en la web», E6.4b,
+     * vivas o dadas de baja): sirve para comprobar que, además de marcar, no cambió ninguna otra fila.
+     */
+    fun volcarTodoSinMarcas(driver: SqlDriver): Map<String, List<String>> =
+        volcarTodo(driver).mapValues { (_, filas) -> filas.filterNot { "'hcc_ausente_" in it } }
+
+    /** Las marcas vigentes de [paciente] como `clave de ausencia=fecha`, ordenadas (las dadas de baja no cuentan). */
+    fun marcasVigentes(driver: SqlDriver, paciente: Id = PACIENTE): List<String> = textos(
+        driver,
+        "SELECT substr(clave, 13) || '=' || valor FROM paciente_extra WHERE paciente_id = '$paciente' AND especialidad = 'clinica' " +
+            "AND clave LIKE 'hcc!_ausente!_%' ESCAPE '!' AND deleted = 0 ORDER BY clave",
+    )
+
     /** Cuántas filas de las tablas de la lectura quedaron con pendiente de envío (lo traído de la web nunca debe). */
     fun filasSucias(driver: SqlDriver): Int = TABLAS.sumOf { textos(driver, "SELECT COUNT(*) FROM $it WHERE dirty <> 0").single().toInt() }
 

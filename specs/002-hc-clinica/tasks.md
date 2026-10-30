@@ -1124,7 +1124,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     fila de las seis tablas); no se pone ninguna marca `hcc_ausente_…` (E6.4b). Sigue sin registrarse el backend (E6.5) ni tocarse
     pantallas o servidor.
 
-- [ ] **E6.4b. Marcar lo que ya no figura en la web (Q15).** RF-55, RF-63 — **M** — Toca API Laravel: no
+- [x] **E6.4b. Marcar lo que ya no figura en la web (Q15).** RF-55, RF-63 — **M** — Toca API Laravel: no
   - Tarea **nueva** (2026-10-28) por la decisión Q15 = nunca borrar. Va después de E6.2, E6.3 y E6.4.
   - Tests primero: `jvmTest` `HcClinicaBackendAusentesTest` (servidor falso como en E6.3): **una consulta que desaparece de
     la respuesta queda en el dispositivo y se marca** (la fila de `consulta` y todas sus hijas iguales antes y después,
@@ -1139,6 +1139,52 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     la misma transacción que la escritura de lo que sí vino; lectura de las marcas para la pantalla (función de consulta
     del repositorio o del backend, sin cambiar el esquema).
   - Hecho cuando: el test en verde (antes, en rojo) y `.\gradlew :core:data:jvmTest` completo en verde.
+  - **Hecho (2026-10-30, tanda A encadenada).** Código: `repos/MarcasDeLaWeb.kt` (nuevo, `internal`: `aplicar` y `delPaciente`),
+    `repos/HcClinicaBackend.kt` (llama a `marcarAusentes` desde `traerConsultas`, `aplicarHistoria` y `traerConsulta`; función pública
+    `marcasAusentes(pacienteId)` para la pantalla: clave de ausencia → fecha), `hcgeneral/LecturaClinica.kt` (`clavesDelExamenTraido`, para que
+    el examen físico local y el de la respuesta usen los mismos nombres de campo) y dos consultas de lectura en `HistoriaClinica.sq`
+    (`laboratoriosDePacienteTodos`, `pendientesDePacienteTodos`; sin migración, sin tocar el esquema). Tests: `jvmTest`
+    `HcClinicaBackendAusentesTest` (35, API falsa y base SQLite temporal) y 8 existentes ajustados (ver abajo). **Rojo previo:** con solo
+    `marcasAusentes()` escrito (la lectura de las marcas, que sin escritura devuelve vacío) el test nuevo daba 24 fallas de 35 (las 11 que
+    pasaban eran las de «no marca nada», que lo cumplen sin código). **Verde:** `:core:data:jvmTest --rerun` completo 1014 tests (979 + 35),
+    0 fallas, 0 errores, 0 salteados (dos corridas completas seguidas); `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `git grep`
+    de `DELETE`, `post(`, `put(`, `delete(`, `subir(`, `pedir(`, `descargar(`, `HttpMethod`, `HcApiClient` y `vinculo(` en `HcClinicaBackend.kt` y
+    `MarcasDeLaWeb.kt`: solo un comentario que nombra `DELETE`. Mutaciones (revertidas, las tres a la vez): marcar en una transacción aparte
+    de la escritura de la lista, no filtrar `dirty` al armar `traido`, y marcar ante cualquier `404` hacen fallar 3 tests (uno cada una).
+    **Cómo marca (decisiones para revisar):** (1) **Las marcas se escriben primero** dentro de la transacción de cada respuesta (lista,
+    historial, consulta), antes que lo que la web mandó: así un test con un `TRIGGER` que falla en una escritura posterior prueba que la marca
+    se deshace, y uno que falla en la marca prueba que no queda lo demás. (2) **`traido` y `marcadas` salen solo del paciente** (`paciente_id`
+    de cada fila: consultas, antecedentes, cargas, filas de estudio, pendientes, y las marcas de `paciente_extra`) y solo de filas con `dirty = 0`
+    y con el prefijo `hcc-`: lo sucio, lo creado acá (UUID) y las consultas del dispositivo con `remoto_id` no entran nunca. Según el tipo
+    de respuesta solo se arma lo que esa respuesta puede cubrir (la lista, las consultas; la consulta, su contenido: valores no vacíos de
+    `seccion_valor` y los cinco campos del examen que la web manda —la frecuencia cardíaca y la circunferencia abdominal no—; el historial,
+    antecedentes, cargas, filas, pendientes y el motivo de cada consulta). (3) **Quitar una marca es dar de baja su fila** (`deleted = 1`,
+    `dirty = 0`, por `upsertPacienteExtra`): no se agregó ningún `DELETE` al `.sq`; `marcasAusentes` y `extrasDePaciente` ya filtran
+    `deleted = 0`, y una marca nueva sobre la misma clave la reemplaza. Quedan filas dadas de baja de marcas que ya reaparecieron (a lo sumo una por
+    clave); si se prefiere borrarlas de verdad es un `DELETE` acotado a `hcc_ausente_%`. (4) **`404 consulta_no_encontrada`** (`status` 404 y ese
+    `codigo`; cualquier otro `404`, `403`, `429`... no marca) escribe la marca de la consulta en su propia transacción **y relanza el mismo
+    error**; si ni eso se puede escribir se anota y se conserva el `404` (`addSuppressed`). Sigue sin pedirse nada para una consulta sucia,
+    del dispositivo, de un paciente sin ficha o cuyo id remoto no es el suyo. (5) La fecha de la marca es el día del reloj del backend
+    (zona del dispositivo) y una marca vigente no se reescribe: dos corridas iguales dejan la base idéntica, `updated_at` incluido.
+    **Qué respuesta marca qué:** lista completa (todas las páginas de un «Actualizar», `total` constante, suma exacta, tope no alcanzado,
+    todas de la ficha) → las consultas `hcc-c<id>` limpias del paciente que no vinieron; lista parcial, con error, de una página no pedida, de
+    otra ficha o que pasa del tope → nada. Historial de la ficha → antecedentes `hcc-a<ficha>-<clave>` (menos `nota_perfil4`, que nunca se
+    marca), cargas `hcc-l…` (también las que la web guarda ahora sin fecha), filas `hcc-r…`, pendiente `hcc-p…` y `<consulta>:motivo_consulta:texto`;
+    con error o de otra ficha → nada. `GET consultas/{id}` correcto → `<consulta>:<sección>:<campo>` de esa consulta (un texto en blanco cuenta
+    como vacío); `404 consulta_no_encontrada` → la consulta, no su contenido. Lo que vuelve a venir (en cualquiera de las tres) pierde la marca.
+    **Tests existentes que había que ajustar** (decían «ninguna marca, eso es E6.4b»): `HcClinicaBackendTest` (lista más corta),
+    `HcClinicaBackendHistoriaTest` (historial vacío y más corto), `HcClinicaBackendConsultaTest` (respuesta vacía y `404`; los demás errores
+    siguen sin marca) y `HcClinicaBackendSoloLecturaTest` (`404` de una consulta): comparan con `volcarTodoSinMarcas` (nuevo en `HcClinicaPruebas`)
+    y comprueban la marca; los demás siguen con `volcarTodo`, o sea que ahí ni una marca. **Nunca se borra:** `ninguna_rama_de_la_lectura_borra_ni_vacia_nada…`
+    instala un `TRIGGER` por tabla que aborta todo `INSERT`/`UPDATE`/`DELETE` salvo filas `hcc_ausente_…` de `paciente_extra`, corre la lista, el
+    historial, una consulta vacía y un `404`, y compara las 11 tablas antes y después sin las marcas. **Dudas para el revisor:** (a) si la lista dice
+    que una consulta ya no está y su `GET consultas/{id}` contesta bien, la segunda respuesta le quita la marca (E6.2 lo definió así: la consulta
+    abierta existe); el servidor contesta `404` por lo mismo que la lista omite, así que no debería pasar, pero si pasara la marca se alternaría;
+    (b) el motivo de una consulta lo cubren el historial (`motivos`) y la consulta (`secciones.motivo_consulta`): si el servidor los desalineara
+    se alternaría igual; (c) `traido` es por paciente, no por (paciente, médico): una consulta traída con la sesión de un médico y vista después por otro
+    de la misma base local se marca según lo que diga la lista en ese momento. Esto da por hecho que la lista del servidor no depende de
+    quién pide más que por `propia` (no se verificó en esta tarea, que no toca el servidor); si dependiera, la lista de un médico marcaría
+    las consultas que solo veía el otro.
 
 - **E6.5 (registrar el backend de solo lectura) se movió: va DESPUÉS de E7.3**, entre E7.3 y E7.4 (decisión D6 de la spec,
   2026-10-29). La tarea conserva su número y su texto más abajo, en la tanda E7. En esta tanda no se registra nada.

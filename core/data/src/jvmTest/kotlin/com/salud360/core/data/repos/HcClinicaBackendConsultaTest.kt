@@ -12,10 +12,12 @@ import com.salud360.core.data.repos.HcClinicaPruebas.Contexto
 import com.salud360.core.data.repos.HcClinicaPruebas.ERRORES
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.repos.HcClinicaPruebas.conBackend
+import com.salud360.core.data.repos.HcClinicaPruebas.marcasVigentes
 import com.salud360.core.data.repos.HcClinicaPruebas.sembrar
 import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcar
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
+import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodoSinMarcas
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.EstadoConsulta
@@ -199,11 +201,12 @@ class HcClinicaBackendConsultaTest {
         for (respuesta in listOf(vacia, enBlanco)) {
             conBackend(apiCon(respuesta)) {
                 sembrarLoPrevio()
-                val antes = volcarTodo(driver)
+                val antes = volcarTodoSinMarcas(driver)
 
                 traer()
 
-                assertEquals(antes, volcarTodo(driver), "seccion_valor, examen_fisico, registro_clinico, laboratorio, antecedente y pendiente fila por fila")
+                // Desde E6.4b lo que la web dejó de mandar recibe una marca (HcClinicaBackendAusentesTest); acá importa que nada más cambie.
+                assertEquals(antes, volcarTodoSinMarcas(driver), "seccion_valor, examen_fisico, registro_clinico, laboratorio, antecedente y pendiente fila por fila")
             }
         }
     }
@@ -236,17 +239,20 @@ class HcClinicaBackendConsultaTest {
     }
 
     @Test
-    fun una_consulta_que_dejo_de_tener_un_dato_en_la_web_lo_conserva_y_no_pone_marcas() = conBackend(apiCon(completa)) {
+    fun una_consulta_que_dejo_de_tener_un_dato_en_la_web_lo_conserva_y_lo_marca() = conBackend(apiCon(completa)) {
         sembrarLoPrevio()
         traer()
-        val conTodo = volcarTodo(driver)
+        assertEquals(emptyList(), marcasVigentes(driver), "con lo que la web manda no falta nada")
+        val conTodo = volcarTodoSinMarcas(driver)
 
-        // La web vació todo: lo ya traído queda (la marca «Ya no figura en la web» es de E6.4b).
+        // La web vació todo: lo ya traído queda y se marca «Ya no figura en la web» (E6.4b; el detalle, en HcClinicaBackendAusentesTest).
         api.consultas[7003] = RespuestasClinicaDeEjemplo.consultaConSecciones("{}")
         traer()
 
-        assertEquals(conTodo, volcarTodo(driver))
-        assertEquals(emptyList(), textos(driver, "SELECT clave FROM paciente_extra WHERE clave LIKE 'hcc_ausente_%'"))
+        assertEquals(conTodo, volcarTodoSinMarcas(driver))
+        val marcas = marcasVigentes(driver).map { it.substringBefore("=") }
+        assertTrue(marcas.isNotEmpty() && marcas.all { it.startsWith("hcc-c7003:") }, "$marcas")
+        assertTrue("hcc-c7003:habitos:texto" in marcas && "hcc-c7003:examen_fisico:peso" in marcas)
     }
 
     // ---- Lo del dispositivo manda (RF-48, RF-54) ----
@@ -381,7 +387,8 @@ class HcClinicaBackendConsultaTest {
 
     @Test
     fun cada_error_deja_todo_como_estaba_con_un_solo_pedido_y_lo_propaga_tal_cual() {
-        for (error in ERRORES) {
+        // El `404 consulta_no_encontrada` sí deja algo: la marca «Ya no figura en la web» (E6.4b, test siguiente).
+        for (error in ERRORES.filterNot { it.status == 404 && it.codigo == "consulta_no_encontrada" }) {
             conBackend(apiCon(completa)) {
                 sembrarLoPrevio()
                 db.pacientesQueries.upsertPacienteExtra(PacienteExtra(PACIENTE, "clinica", claveNoLeidas(7003), "documentos").toRow(10, dirty = false))
@@ -398,16 +405,16 @@ class HcClinicaBackendConsultaTest {
     }
 
     @Test
-    fun la_consulta_que_la_web_ya_no_tiene_se_queda_entera_sin_marcas_hasta_la_e6_4b() = conBackend(apiCon(completa)) {
+    fun la_consulta_que_la_web_ya_no_tiene_se_queda_entera_y_se_marca() = conBackend(apiCon(completa)) {
         sembrarLoPrevio()
-        val antes = volcarTodo(driver)
+        val antes = volcarTodoSinMarcas(driver)
         api.fallasConsulta[7003] = TobbException(404, "consulta_no_encontrada", "Consulta no encontrada.")
 
         val e = assertFailsWith<TobbException> { traer() }
 
-        assertEquals("consulta_no_encontrada", e.codigo, "quien llama puede distinguirla (E6.4b la marca y E7.3 la muestra)")
-        assertEquals(antes, volcarTodo(driver))
-        assertEquals(emptyList(), textos(driver, "SELECT clave FROM paciente_extra WHERE clave LIKE 'hcc_ausente_%'"))
+        assertEquals("consulta_no_encontrada", e.codigo, "el error sale igual: quien llama puede distinguirlo (E7.3 lo muestra)")
+        assertEquals(antes, volcarTodoSinMarcas(driver))
+        assertEquals(listOf("hcc-c7003"), marcasVigentes(driver).map { it.substringBefore("=") }, "E6.4b: la consulta, sin tocarla")
     }
 
     @Test

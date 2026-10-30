@@ -5,6 +5,7 @@ import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.hcgeneral.CATEGORIA_FAMILIARES
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS_LABORATORIO
+import com.salud360.core.data.hcgeneral.LecturaWeb
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
 import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
@@ -45,8 +46,13 @@ import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.pacientes.PacienteExtra
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 /**
  * Historia clínica general (`hclinica`), **solo lectura** (spec 002, entrega L): trae de la web las consultas del paciente,
@@ -60,8 +66,9 @@ import kotlinx.coroutines.sync.withLock
  * - Lo del dispositivo manda (RF-48, RF-54): una consulta `dirty`, creada acá o ya vinculada con la misma consulta de la
  *   web no se toca, ni una clave sucia de lo que se escribe campo por campo. Lo que la web trae se escribe con `dirty = 0`,
  *   y un valor vacío o que no viene no pisa el que había.
- * - Nada se borra ni se vacía (Q15): lo que la web dejó de mandar queda como estaba. Las marcas «Ya no figura en la
- *   web» son de E6.4b.
+ * - Nada se borra ni se vacía (Q15): lo que la web dejó de mandar queda como estaba, solo se lo marca «Ya no figura en la
+ *   web» (RF-63, [MarcasDeLaWeb] y [marcasAusentes]) en la misma transacción que escribe la respuesta. Solo marca una
+ *   respuesta completa y correcta de la ficha del paciente; un error, una lista a medias o una de otra ficha no marcan.
  */
 class HcClinicaBackend internal constructor(
     private val db: Salud360Db,
@@ -80,6 +87,7 @@ class HcClinicaBackend internal constructor(
     private val log = Logger.withTag("HcClinica")
     private val hq get() = db.historiaClinicaQueries
     private val pq get() = db.pacientesQueries
+    private val marcas = MarcasDeLaWeb(db)
 
     /** Una lectura a la vez: dos pantallas que piden lo mismo juntas hacen un solo pedido (la segunda ve el minuto). */
     private val candado = Mutex()
@@ -116,20 +124,30 @@ class HcClinicaBackend internal constructor(
         val clave = "$pacienteId|$medicoId"
         if (forzar || vencida(ultimaLista[clave])) {
             val paginas = leerLista(ficha)
-            db.transaction { aplicarLista(pacienteId, medicoId, ficha, paginas) }
+            db.transaction {
+                marcas.aplicar(pacienteId, LecturaWeb.Lista(ficha, paginas), hoy(), ahora())
+                aplicarLista(pacienteId, medicoId, ficha, paginas)
+            }
             ultimaLista[clave] = ahora()
         }
         // Un pedido y una transacción aparte: si falla la lista no se pide (un 429, un 401 o una caída valen para los dos y
         // RF-57 pide no insistir); si falla el historial, la lista ya escrita se queda y el error sale igual.
         if (forzar || vencida(ultimoHistorial[clave])) {
             val historial = leerHistorial(ficha)
-            db.transaction { aplicarHistoria(pacienteId, medicoId, historial) }
+            db.transaction { aplicarHistoria(pacienteId, medicoId, ficha, historial) }
             ultimoHistorial[clave] = ahora()
         }
         consultasDeLaWeb(pacienteId)
     }
 
     private fun vencida(ultima: Long?) = ultima == null || ahora() - ultima >= ESPERA_MS
+
+    /**
+     * Lo que el paciente ya tiene traído y la web dejó de mandar (RF-63, Q15): clave de ausencia (el id local de la cosa, o
+     * `<consulta>:<sección>:<campo>` para el contenido de una consulta) → fecha en que se notó. Las filas siguen en el
+     * dispositivo; esto solo dice cuáles mostrar como «Ya no figura en la web».
+     */
+    suspend fun marcasAusentes(pacienteId: Id): Map<String, String> = marcas.delPaciente(pacienteId)
 
     /**
      * Las páginas de `GET consultas`, en orden. Se corta (sin error, y lo recibido igual se aplica) si ya no hay más, si se
@@ -211,6 +229,9 @@ class HcClinicaBackend internal constructor(
         return historial
     }
 
+    /** El día de hoy según el reloj del backend (el mismo que sella las filas): es el valor de una marca. */
+    private fun hoy(): LocalDate = Instant.fromEpochMilliseconds(ahora()).toLocalDateTime(TimeZone.currentSystemDefault()).date
+
     private fun respuestaDudosa(detalle: String) = TobbException(0, "respuesta", "Respuesta inesperada de $especialidad: $detalle")
 
     /**
@@ -218,11 +239,12 @@ class HcClinicaBackend internal constructor(
      * `INSERT OR REPLACE` de una fila armada solo con lo recibido, nunca un `DELETE`): antecedentes familiares (con la nota
      * del perfil 4), cargas de laboratorio y de peso, estudios, exámenes complementarios, interconsultas, el motivo de las
      * consultas que ya están en el dispositivo y el pendiente. Lo sucio del dispositivo no se toca, lo traído antes que
-     * ya no viene se queda (Q15) y lo que se escribe lleva `dirty = 0`. Va en una transacción: o entra todo o nada.
-     * Las marcas «Ya no figura en la web» (E6.4b) se escribirán acá, en esta misma transacción.
+     * ya no viene se queda (Q15) y lo que se escribe lleva `dirty = 0`. Va en una transacción: o entra todo o nada, también
+     * las marcas «Ya no figura en la web» de lo que esta respuesta dejó de traer (E6.4b), que se escriben primero.
      */
-    private suspend fun aplicarHistoria(pacienteId: Id, medicoId: Id, h: RespuestaHistoriaDto) {
+    private suspend fun aplicarHistoria(pacienteId: Id, medicoId: Id, ficha: Long, h: RespuestaHistoriaDto) {
         val sello = ahora()
+        marcas.aplicar(pacienteId, LecturaWeb.Historia(ficha, h), hoy(), sello)
         val consultas = hq.consultasDePaciente(pacienteId, especialidad).lista { it.id }.toSet()
 
         val familiares = hq.antecedentesDeCategoria(pacienteId, especialidad, CATEGORIA_FAMILIARES).lista { it.toModel() }
@@ -294,7 +316,12 @@ class HcClinicaBackend internal constructor(
                 log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
                 return@withLock
             }
-            val respuesta = api.consulta(consultaWebId)
+            val respuesta = try {
+                api.consulta(consultaWebId)
+            } catch (e: TobbException) {
+                if (e.status == 404 && e.codigo == CODIGO_CONSULTA_NO_ENCONTRADA) marcarNoEncontrada(local, consultaWebId, e)
+                throw e
+            }
             if (respuesta.consulta.id != consultaWebId) throw respuestaDudosa("llegó la consulta ${respuesta.consulta.id} y se pidió la $consultaWebId")
             if (respuesta.consulta.pacienteId != ficha) {
                 throw respuestaDudosa("la consulta $consultaWebId es de la ficha ${respuesta.consulta.pacienteId} y el paciente tiene la $ficha")
@@ -303,10 +330,29 @@ class HcClinicaBackend internal constructor(
         }
     }
 
-    /** Escribe campo por campo lo que la consulta trae con valor; lo sucio no se toca y nada se borra ni se vacía. */
+    /**
+     * La web contesta `404 consulta_no_encontrada` por una consulta que ya se había traído (RF-63): se la marca «Ya no figura
+     * en la web» y queda en el dispositivo con todo su contenido. El error sale igual (lo lanza quien llama); si ni la marca se
+     * puede escribir, se anota y se conserva el `404`.
+     */
+    private suspend fun marcarNoEncontrada(local: Consulta, consultaWebId: Long, error: TobbException) {
+        try {
+            db.transaction { marcas.aplicar(local.pacienteId, LecturaWeb.ConsultaNoEncontrada(consultaWebId), hoy(), ahora()) }
+        } catch (falla: Exception) {
+            if (falla is CancellationException) throw falla
+            log.w(falla) { "no se pudo marcar la consulta $consultaWebId como ausente de la web" }
+            error.addSuppressed(falla)
+        }
+    }
+
+    /**
+     * Escribe campo por campo lo que la consulta trae con valor; lo sucio no se toca y nada se borra ni se vacía. Primero van
+     * las marcas «Ya no figura en la web» del contenido que esta respuesta dejó de traer (E6.4b): en la misma transacción.
+     */
     private suspend fun aplicarConsulta(local: Consulta, r: RespuestaConsultaDto) {
         val sello = ahora()
         val id = local.id
+        marcas.aplicar(local.pacienteId, LecturaWeb.UnaConsulta(r), hoy(), sello)
 
         val sucios = hq.seccionValoresDirty().lista { it }.filter { it.consulta_id == id }.map { it.seccion to it.campo }.toSet()
         val actuales = hq.valoresDeConsulta(id).lista { it.toModel() }.associateBy { it.seccion to it.campo }
@@ -357,5 +403,8 @@ class HcClinicaBackend internal constructor(
 
         /** No se repite la lista del mismo paciente antes de un minuto (RF-57). */
         const val ESPERA_MS = 60_000L
+
+        /** El `codigo` del `404` de `GET consultas/{id}` cuando la consulta ya no figura (dada de baja o inexistente). */
+        const val CODIGO_CONSULTA_NO_ENCONTRADA = "consulta_no_encontrada"
     }
 }
