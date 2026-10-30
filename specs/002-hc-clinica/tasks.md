@@ -1331,7 +1331,7 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     tarjeta de error se anuncian; la fila se lee junta); el foco después de «Reintentar» (la tarjeta desaparece si sale bien); que una consulta de
     la web abierta no ofrezca Continuar ni Anular.
 
-- [ ] **E7.3. Consulta de la web.** RF-39, RF-43, RF-44, RF-45, RF-63 — **M** — Toca API Laravel: no
+- [x] **E7.3. Consulta de la web.** RF-39, RF-43, RF-44, RF-45, RF-63 — **M** — Toca API Laravel: no
   - `ConsultaViewModel` (`ConsultaUi.soloLecturaWeb`, `soloLectura` la incluye) y `ConsultaScreen`: banner "Consulta de la
     web — solo lectura"; abierta en la web → aviso de RF-44; `no_leidas` → aviso nombrando qué; consulta, sección o fila
     marcada → "Ya no figura en la web" con su contenido a la vista; sin "Guardar y cerrar" ni
@@ -1339,6 +1339,63 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     nada: `onCleared` y `empujarTodo` quedan sin efecto por el candado de E5.1.
   - Hecho cuando: ambos módulos compilan sin errores; `.\gradlew :core:data:jvmTest` completo en verde; revisión de
     código: ninguna ruta de esta pantalla puede editar, cerrar, reabrir ni anular una consulta con `remoto_id`.
+  - **Hecho (2026-10-30, tanda A encadenada).** Decisión del usuario sobre la duda de E6.6: además de la pantalla, **guardas
+    defensivas en `HcRepository`**. Código en `core/data` (sin dependencias, sin migraciones, servidor sin tocar):
+    `hcgeneral/SoloLecturaDeLaWeb.kt` (puro: `esIdDeLaWeb`, `Consulta.esSoloLecturaWeb(backendSoloLectura)` = id `hcc-…` siempre, o
+    `remoto_id` con backend de solo lectura; `edicionDeConsulta` → `EdicionDeConsulta(soloLectura, puedeCerrar, puedeReabrir)`;
+    `etiquetaDeEstadoEnLectura`; `puedeEditarRegistro` / `puedeEditarAntecedente` / `pendientesDeLaWeb`; `avisosDeLaPantallaDeConsulta`;
+    `marcaDeSeccion`; `LecturaDeLaConsulta` y `mensajeDeLaLecturaDeConsulta`), `AusenciasEnLaWeb.antecedenteDeClave`,
+    `AvisosDeConsulta.NINGUNO` y las guardas de `HcRepository`. **Guardas:** `guardarConsulta`, `cerrarConsulta`, `reabrirConsulta`,
+    `anularConsulta`, `guardarValor`/`guardarSeccion`, `guardarExamenFisico`, `guardarAntecedente`, `guardarRegistro`/`eliminarRegistro`,
+    `guardarLaboratorio`/`eliminarLaboratorio`, `guardarPendiente`, `guardarArchivo`/`eliminarArchivo`, `asignarDiagnostico` y
+    `guardarVacuna` devuelven `Boolean` (`true` = escribió; `false` = no escribió: era de la web, `hcc-…` o consulta con `remoto_id` de
+    un backend de solo lectura, o no existía) y, si es de la web, no tocan la base. Lo del dispositivo y pediatría no cambian. En
+    `features/hc`: `ConsultaViewModel` (`ConsultaUi.soloLecturaWeb`/`avisos`/`ausencias`/`edicion`; `lecturaWeb`, `reintentarLectura`; todo
+    mutador, `onCleared` y `empujarTodo` salen sin hacer nada si `soloLecturaWeb`; el resto marca `marcarSucia` solo si el repositorio
+    escribió), `ConsultaDeLaWeb.kt` (composables nuevos), `ConsultaScreen` y las secciones de laboratorio, registros, estudios y
+    antecedentes. Tests: `SoloLecturaDeLaWebTest` (24, `commonTest`) y `HcRepositoryGuardasDeLaWebTest` (14, `jvmTest`, base temporal:
+    cada operación sobre lo de la web se rechaza y el volcado de las tablas queda idéntico y sin filas sucias; lo local y pediatría
+    siguen). **Rojo previo:** `:core:data:compileTestKotlinJvm` con 160 errores de compilación (`Unresolved reference`), solo en los dos
+    archivos nuevos; mutación (revertida): sin cuatro guardas (`eliminarLaboratorio`, `cerrarConsulta`, `guardarPendiente`,
+    `guardarAntecedente`) fallan 7 de los 14 tests. **Verde:** `:core:data:jvmTest --rerun` completo 1147 tests (1109 + 38), 0 fallas, 0 errores,
+    0 salteados; `:especialidades:clinica:jvmTest --rerun` 33; `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` compilan. Ningún test existente cambió.
+    **Cómo se ve la consulta de la web (hoy inalcanzable hasta E6.5):** abre siempre en solo lectura (`SeccionContext.soloLectura = true`
+    aunque esté abierta allá). Arriba de las pestañas, los avisos de `avisosDeConsulta`, cada uno con ícono y `liveRegion`: «Consulta de la
+    web — solo lectura», «Cargada por …» (de otro médico), «Esta consulta ya no figura en la web: …» (marcada), «Abierta en la web: lo
+    pendiente de confirmar no se ve hasta que se cierre» y «La web tiene … que esta versión no muestra»; la cabecera dice «Solo lectura» si
+    está abierta allá y «Cerrada» si no. Sin «Guardar y cerrar», sin «Reabrir para editar», sin fecha editable, sin «Resuelto», sin
+    agregar/borrar/editar en secciones, laboratorio, registros, estudios y adjuntos, sin «Elegir filas». «Cargando…» mientras lee (se ve lo
+    ya traído); si falla, la tarjeta «No se pudo traer la historia clínica» con el motivo de `motivoDeLaLectura` nombrando la HC, «Lo que
+    está cargado en este dispositivo se sigue viendo y nada se pierde.» y «Reintentar» (48 dp, a mano); el `404 consulta_no_encontrada` no
+    muestra tarjeta: lo dice el aviso de la marca. **Marcas «Ya no figura en la web»:** consulta (aviso), sección (chip sobre la tarjeta,
+    con el nombre de los campos si el catálogo los conoce), carga de laboratorio (en su columna), estudio (el de la consulta y los previos),
+    registro/examen/interconsulta, pendiente y antecedente (casilla y nota); todo se sigue viendo entero. **En una consulta del
+    dispositivo de la HC general:** igual que hoy, salvo que las filas de la web (cargas sin tacho, registros sin «Editar»/«Quitar»,
+    antecedentes de la web solo para leer, el pendiente de la web con el chip «Web» y sin «Resuelto») no se tocan, y el cierre lista el
+    pendiente de la web aparte, solo para leer, con el campo de texto solo para los locales.
+    **Decisiones que la spec no fijaba (para revisar):** (1) **Antecedentes familiares de la web en una consulta del dispositivo pasan a
+    solo lectura** (la guarda de `guardarAntecedente` rechaza la fila `hcc-a…`; dejarlos editables en pantalla sería una casilla que no
+    guarda): cambia respecto de hoy solo para esas filas. (2) **«Elegir filas» del laboratorio no se ofrece en una consulta de la web** y
+    `guardarPreferencia` sale sin hacer nada ahí: guarda `medico_preferencia` con pendiente de envío y la condición era que la pantalla no
+    marque nada; se sigue eligiendo desde cualquier consulta del dispositivo. (3) Las guardas devuelven `Boolean` en vez de lanzar: la pantalla
+    ya no ofrece nada de esto y una excepción tiraría el autoguardado; `false` incluye «no existía». (4) La regla `hcc-…` vale con cualquier
+    backend (ese prefijo solo lo usa esta lectura); `remoto_id` solo cuenta si el backend de la especialidad es de solo lectura (pediatría
+    sigue editando sus consultas con `remoto_id`). (5) `traerConsulta` no tiene espera propia (la de 60 s es de la lista y del historial): cada
+    apertura de una consulta de la web es **un** pedido, y el VM no reintenta solo. (6) Las «Consultas previas» del motivo no llevan marca por
+    entrada (la consulta a la que pertenece sí la lleva en su fila de la lista). (7) Si ni la marca del `404` pudo escribirse (E6.4b lo anota
+    y conserva el error), no hay aviso. (8) `Enfermedades` (spec 003) no se tocó: sus cambios van por su propia API y no marcan nada en la HC.
+    **Textos: ninguno nuevo.** Usados: los de la spec/plan y las constantes de E7.1/E7.2 (`BANNER_CONSULTA_DE_LA_WEB`,
+    `CONSULTA_ABIERTA_EN_LA_WEB`, `CONSULTA_YA_NO_FIGURA_EN_LA_WEB`, `YA_NO_FIGURA_EN_LA_WEB`, `etiquetaCargadaPor`, `avisoNoLeidas`,
+    `ETIQUETA_WEB`, `TEXTO_REINTENTAR`, `motivoDeLaLectura`) y literales que ya existían («Solo lectura», «Cerrada», «Cargando…», «No se pudo
+    traer la historia clínica», «Lo que está cargado en este dispositivo se sigue viendo y nada se pierde.»). **Duda:** el texto del cierre
+    («Dejalo vacío si no hay pendientes») sigue igual aunque haya un pendiente de la web que no se va; no escribí uno nuevo.
+    **Para la prueba manual (E7.4/E8.3):** que cada aviso se anuncie con lector de pantalla; «Reintentar» (foco al volver) sin conexión y con
+    `429`; borrar una consulta en la web y abrirla (aviso + contenido a la vista, sin tarjeta); un solo `GET consultas/{id}` por apertura en
+    el log de Apache y ningún método distinto de `GET`; marcas de sección, carga, estudio, pendiente y antecedente con datos reales de la
+    copia local (vaciar/borrar allá); 360 dp (marcas con campos largos, columna de laboratorio con la marca en dos líneas, avisos largos);
+    una consulta local de clínica: sin «Resuelto» en el pendiente de la web, cierre con el pendiente de la web aparte, antecedente de la web
+    solo para leer, cargas sin tacho.
 
 - [ ] **E6.5. Registrar el backend de solo lectura.** RF-38, RF-47, RF-56, RF-60 — **S** — Toca API Laravel: no
   - **Movida aquí (D6, 2026-10-29, usuario):** va después de E7.3 y antes de la tanda V. Motivo: `cerrarConsulta`,

@@ -20,6 +20,7 @@ import com.salud360.core.ui.components.DateField
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.TextAreaField
 import com.salud360.features.hc.ConsultaUi
+import com.salud360.features.hc.MarcaYaNoFigura
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
 import kotlinx.datetime.LocalDate
@@ -48,8 +49,14 @@ fun EstudioConHistorialSeccion(s: SeccionDef, regDef: RegistroDef, ctx: SeccionC
     }
 
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "registros"), initiallyExpanded = s.inicialmenteExpandida) {
-        CampoConHistorial(s.titulo, EntradaHistorial(fecha, texto), previas.map { EntradaHistorial(it.fecha, it.textoEstudio) }) { modifier ->
+        // RF-63: el estudio que la web ya no manda se sigue viendo entero, con la marca (el de esta consulta y los previos).
+        val ausenteEnEstaConsulta = entrada?.let { ui.ausencias.fila(it.id) } == true
+        CampoConHistorial(
+            s.titulo, EntradaHistorial(fecha, texto, ausenteEnEstaConsulta),
+            previas.map { EntradaHistorial(it.fecha, it.textoEstudio, ui.ausencias.fila(it.id)) },
+        ) { modifier ->
             Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (ausenteEnEstaConsulta) MarcaYaNoFigura()
                 DateField("Fecha", fecha, { it?.let { f -> cambiar(f, texto) } }, readOnly = ctx.soloLectura)
                 if (ctx.soloLectura && texto.isBlank()) Text("Sin datos en esta consulta", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else TextAreaField(s.titulo, texto, { cambiar(fecha, it) }, minLines = 10, readOnly = ctx.soloLectura)

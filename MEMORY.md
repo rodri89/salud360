@@ -5,8 +5,14 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E7.3 (consulta de la web, solo lectura), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
-  usuario y encadenada tarea por tarea. E7.2 hecha (2026-10-30):** `hcgeneral/VistaDeLaHistoria.kt` (`vistaDeLaHistoria`: grupos de E7.1 +
+- **Siguiente paso: E6.5 (registrar el backend de solo lectura en `DataModule`; D6: después de E7.3 y antes de E7.4), dentro de la tanda A
+  (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea. E7.3 hecha (2026-10-30):** la consulta de la web
+  se abre siempre en solo lectura (`hcgeneral/SoloLecturaDeLaWeb.kt`, puro: `esSoloLecturaWeb`, `edicionDeConsulta`, avisos, `marcaDeSeccion`,
+  `mensajeDeLaLecturaDeConsulta`; `ConsultaViewModel` no escribe ni llama a `HcApiSync` si `soloLecturaWeb`; `ConsultaDeLaWeb.kt` y las
+  secciones con las marcas «Ya no figura en la web»). **Guardas en `HcRepository`** (decisión del usuario): `cerrar/reabrir/anular/guardar*/
+  eliminar*` sobre lo `hcc-…` (o `remoto_id` con backend de solo lectura) devuelven `false` y no tocan la base; ahora esas operaciones
+  devuelven `Boolean`. Efectos a revisar: antecedentes de la web solo para leer en consultas locales, «Elegir filas» fuera de la consulta de
+  la web; ningún texto nuevo; detalle en la nota de E7.3. 1147 tests de `core:data` en verde. **E7.2 hecha (2026-10-30):** `hcgeneral/VistaDeLaHistoria.kt` (`vistaDeLaHistoria`: grupos de E7.1 +
   50 más recientes y «Ver más» sobre lo ya traído + avisos), `repos/Refrescable.kt` (capacidad opcional: «Actualizar» = `traerConsultas(forzar =
   true)` vía `HcRepository.actualizarConsultasRemotas`; `HcBackend` intacto), `motivoDeLaLectura` (el `429` con texto propio, sin tocar `motivoHc`),
   `HistoriaDeLaWeb.kt` y `HistoriaClinicaScreen` (solo con backend de solo lectura: hoy inalcanzable hasta E6.5) y la nota del perfil 4 en
@@ -181,7 +187,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5 y E6.1 a E6.4b hechas; `HcClinicaBackend` es de solo lectura y aún no está registrado (E6.5).
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.4b, E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y aún no está registrado (E6.5).
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

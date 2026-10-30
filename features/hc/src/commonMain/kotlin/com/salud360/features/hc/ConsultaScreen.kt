@@ -36,8 +36,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.ETIQUETA_WEB
+import com.salud360.core.data.hcgeneral.esDeLaWeb
+import com.salud360.core.data.hcgeneral.etiquetaDeEstadoEnLectura
+import com.salud360.core.data.hcgeneral.marcaDeSeccion
+import com.salud360.core.data.hcgeneral.mensajeDeLaLecturaDeConsulta
+import com.salud360.core.data.hcgeneral.pendientesDeLaWeb
+import com.salud360.core.data.hcgeneral.puedeResolverse
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.SeccionDef
+import com.salud360.core.model.hc.Pendiente
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.especialidad.TipoSeccion
 import com.salud360.core.ui.components.AcceptButton
@@ -87,6 +95,7 @@ fun ConsultaScreen(
     val ui by vm.ui.collectAsState()
     val valores by vm.valores.collectAsState()
     val guardadoEn by vm.guardadoEn.collectAsState()
+    val lecturaWeb by vm.lecturaWeb.collectAsState()
     val registry = koinInject<EspecialidadRegistry>()
     val consulta = ui.consulta
     val def = ui.definicion
@@ -95,6 +104,7 @@ fun ConsultaScreen(
 
     var pestania by remember { mutableIntStateOf(0) }
     var mostrarCierre by remember { mutableStateOf(false) }
+    // Una consulta de la web se lee siempre, abierta o cerrada allá: `ui.soloLectura` la incluye (RF-45).
     val soloLectura = ui.soloLectura
     val color = Salud360Colors.especialidad(consulta.especialidad)
 
@@ -142,7 +152,7 @@ fun ConsultaScreen(
                 if (soloLectura) {
                     Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(6.dp))
-                    StatusChip(if (ui.soloLecturaPorTipo) "Solo lectura" else "Cerrada", Color.White)
+                    StatusChip(etiquetaDeEstadoEnLectura(consulta.estado, ui.soloLecturaPorTipo, ui.soloLecturaWeb), Color.White)
                 } else {
                     StatusChip(guardadoEn?.let { "Guardado" } ?: "En edición", Color.White)
                 }
@@ -157,12 +167,28 @@ fun ConsultaScreen(
             }
         }
 
+        // Una consulta de la web: sus avisos (RF-43 a RF-45, RF-63) y, si la lectura falló, el motivo con «Reintentar» (RF-56, RF-58).
+        // Lo que ya estaba en el dispositivo se ve igual debajo, mientras se lee y después de un fallo.
+        AvisosDeLaConsulta(ui.avisos)
+        if (ui.soloLecturaWeb) {
+            val mensaje = lecturaWeb.error?.let { mensajeDeLaLecturaDeConsulta(def.nombre, it) }
+            if (mensaje != null) FalloDeLaLecturaDeLaConsulta(mensaje, lecturaWeb.leyendo, vm::reintentarLectura)
+            else if (lecturaWeb.leyendo) LeyendoLaConsulta()
+        }
+
         pendientesPrevios.takeIf { it.isNotEmpty() }?.let { lista ->
             SectionCard("Pendientes de la consulta anterior", icon = Icons.Default.NotificationsActive, initiallyExpanded = true) {
                 lista.forEach { p ->
                     Row(verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f)) { p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") } }
-                        if (!soloLectura) LinkButton("Resuelto", onClick = { vm.resolverPendiente(p) })
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") }
+                            // El de la web no se resuelve desde acá (RF-62) y, si la web ya no lo tiene, sigue a la vista con la marca (RF-63).
+                            if (p.esDeLaWeb()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                StatusChip(ETIQUETA_WEB, MaterialTheme.colorScheme.onSurfaceVariant, pequeno = true)
+                                if (ui.ausencias.pendiente(p.id)) MarcaYaNoFigura()
+                            }
+                        }
+                        if (!soloLectura && p.puedeResolverse()) LinkButton("Resuelto", onClick = { vm.resolverPendiente(p) })
                     }
                 }
             }
@@ -235,9 +261,10 @@ fun ConsultaScreen(
         // ---- acciones ----
         ActionRow {
             BackButton(onClick = onVolver)
-            if (!soloLectura) {
+            // Lo decide `edicionDeConsulta`: una consulta de la web no tiene ni «Guardar y cerrar» ni «Reabrir para editar» (RF-45).
+            if (ui.edicion.puedeCerrar) {
                 PillButton("Guardar y cerrar consulta", onClick = { mostrarCierre = true })
-            } else if (ui.puedeReabrir) {
+            } else if (ui.edicion.puedeReabrir) {
                 // Sin perfil, sin configuración o "HC digitalizada" de la HC general: solo para leer.
                 AcceptButton("Reabrir para editar", onClick = { vm.reabrir() })
             }
@@ -245,8 +272,9 @@ fun ConsultaScreen(
         Spacer(Modifier.height(32.dp))
     }
 
-    if (mostrarCierre) PendientesCierreDialog(
+    if (mostrarCierre && ui.edicion.puedeCerrar) PendientesCierreDialog(
         inicial = vm.textoPendientes(),
+        deLaWeb = pendientesDeLaWeb(ui.pendientes),
         onConfirmar = { mostrarCierre = false; vm.cerrarConPendientes(it, onCerrada) },
         onCancelar = { mostrarCierre = false },
     )
@@ -263,7 +291,7 @@ fun ConsultaScreen(
  * el texto viene prellenado con los pendientes actuales; vacío significa que no queda nada pendiente.
  */
 @Composable
-private fun PendientesCierreDialog(inicial: String, onConfirmar: (String) -> Unit, onCancelar: () -> Unit) {
+private fun PendientesCierreDialog(inicial: String, deLaWeb: List<Pendiente>, onConfirmar: (String) -> Unit, onCancelar: () -> Unit) {
     var texto by remember(inicial) { mutableStateOf(inicial) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
@@ -271,6 +299,14 @@ private fun PendientesCierreDialog(inicial: String, onConfirmar: (String) -> Uni
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextAreaField("Pendientes", texto, { texto = it }, minLines = 4, placeholder = "Qué hay que recordar en la próxima consulta")
+                // El pendiente de la web no se edita ni se resuelve desde acá (RF-62): el campo de arriba es solo el de los locales,
+                // y el de la web se muestra aparte, solo para leer, y sigue ahí después de cerrar.
+                deLaWeb.forEach { p ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        StatusChip(ETIQUETA_WEB, MaterialTheme.colorScheme.onSurfaceVariant, pequeno = true)
+                        p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    }
+                }
                 Text(
                     "Se muestran al abrir la próxima consulta. Dejalo vacío si no hay pendientes. Al confirmar, la consulta queda cerrada en la historia clínica; podés reabrirla si necesitás corregir algo.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -328,6 +364,10 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
 
 @Composable
 private fun RenderSeccionSola(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
+    // RF-63: lo que la web dejó de mandar de esta sección (o de alguno de sus campos) se sigue viendo, con la marca arriba.
+    if (ui.soloLecturaWeb) {
+        marcaDeSeccion(ui.ausencias, ctx.consultaId, s.id, s.campos.associate { it.clave to it.etiqueta })?.let { MarcaDeLaSeccion(it) }
+    }
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
         TipoSeccion.TEXTO -> TextoSeccion(s, ctx, ui, valores[s.id] ?: emptyMap())

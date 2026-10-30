@@ -168,11 +168,16 @@ data class AvisosDeConsulta(
 ) {
     /** Los que corresponden, en el orden en que van arriba de la consulta. */
     val todos: List<String> get() = listOfNotNull(banner, cargadaPor, ausente, abiertaEnLaWeb, noLeidas)
+
+    companion object {
+        /** Una consulta del dispositivo o de otra HC: se ve como siempre. */
+        val NINGUNO = AvisosDeConsulta(false, null, null, null, null, null)
+    }
 }
 
 /** Los avisos de [consulta] para quien la mira ([medicoSesionId]); [nombresMedicos] son los de [nombresDeMedicosWeb]. */
 fun avisosDeConsulta(consulta: Consulta, medicoSesionId: Id, nombresMedicos: Map<Id, String>, lectura: ExtrasDeLectura): AvisosDeConsulta {
-    if (!consulta.esDeLaWeb()) return AvisosDeConsulta(false, null, null, null, null, null)
+    if (!consulta.esDeLaWeb()) return AvisosDeConsulta.NINGUNO
     return AvisosDeConsulta(
         soloLecturaWeb = true,
         banner = BANNER_CONSULTA_DE_LA_WEB,

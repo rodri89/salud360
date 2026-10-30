@@ -5,6 +5,9 @@ import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
+import com.salud360.core.data.hcgeneral.esDeLaWeb
+import com.salud360.core.data.hcgeneral.esIdDeLaWeb
+import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
 import com.salud360.core.data.hcgeneral.nombresDeMedicosWeb
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
@@ -123,22 +126,41 @@ class HcRepository(
         return nueva
     }
 
-    suspend fun guardarConsulta(consulta: Consulta) = q.upsertConsulta(consulta.toRow(ahoraMillis()))
+    // Guardas de la lectura de la web (spec 002, E7.3, RF-45, RF-47, RF-62): lo que vino de la web (consultas y filas `hcc-…`)
+    // no se escribe desde acá —ni se cierra, reabre, anula, edita o borra—, porque el cambio no llegaría a la web y quedaría
+    // `dirty` para siempre. Las operaciones que escriben devuelven `true` si escribieron y `false` si no lo hicieron: porque
+    // era de la web (la fila no se toca, nada queda pendiente de envío) o porque no existía. Lo del dispositivo y pediatría
+    // no cambian. La pantalla ya no ofrece ninguna de estas acciones sobre lo de la web; esto es la segunda barrera.
 
-    /** Cierra la consulta (`establecer_activo`). */
-    suspend fun cerrarConsulta(id: Id, fecha: LocalDate? = null, edadMostrar: String? = null) {
-        val c = consulta(id) ?: return
+    /** La consulta se lee porque vino de la web ([esSoloLecturaWeb]); con el backend de su especialidad si lo tiene. */
+    private fun Consulta.deLaWeb(): Boolean = esSoloLecturaWeb(esSoloLectura(especialidad))
+
+    /** Escribe la cabecera de la consulta. `false` si es de la web: esa la trae la lectura y no se pisa desde acá. */
+    suspend fun guardarConsulta(consulta: Consulta): Boolean {
+        if (consulta.deLaWeb()) return false
+        q.upsertConsulta(consulta.toRow(ahoraMillis()))
+        return true
+    }
+
+    /** Cierra la consulta (`establecer_activo`). `false` si no existe o es de la web (una consulta de la web no se cierra, RF-45). */
+    suspend fun cerrarConsulta(id: Id, fecha: LocalDate? = null, edadMostrar: String? = null): Boolean {
+        val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
         q.upsertConsulta(c.copy(estado = EstadoConsulta.CERRADA, fecha = fecha ?: c.fecha, edadMostrar = edadMostrar ?: c.edadMostrar).toRow(ahoraMillis()))
+        return true
     }
 
-    suspend fun reabrirConsulta(id: Id) {
-        val c = consulta(id) ?: return
+    /** `false` si no existe o es de la web (no se reabre, RF-45). */
+    suspend fun reabrirConsulta(id: Id): Boolean {
+        val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
         q.upsertConsulta(c.copy(estado = EstadoConsulta.ABIERTA).toRow(ahoraMillis()))
+        return true
     }
 
-    suspend fun anularConsulta(id: Id) {
-        val c = consulta(id) ?: return
+    /** `false` si no existe o es de la web (no se anula, RF-45). */
+    suspend fun anularConsulta(id: Id): Boolean {
+        val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
         q.upsertConsulta(c.copy(estado = EstadoConsulta.ANULADA).toRow(ahoraMillis()))
+        return true
     }
 
     suspend fun contarConsultas(medicoId: Id, desde: LocalDate, hasta: LocalDate): Long =
@@ -157,14 +179,21 @@ class HcRepository(
     suspend fun valoresDeSeccion(consultaId: Id, seccion: String): Map<String, String> =
         q.valoresDeSeccion(consultaId, seccion).lista { it.toModel() }.associate { it.campo to it.valor }
 
-    suspend fun guardarValor(consultaId: Id, seccion: String, campo: String, valor: String) =
+    /** `false` si [consultaId] es una consulta de la web: sus secciones las trae la lectura y no se escriben desde acá. */
+    suspend fun guardarValor(consultaId: Id, seccion: String, campo: String, valor: String): Boolean {
+        if (esIdDeLaWeb(consultaId)) return false
         q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahoraMillis()))
+        return true
+    }
 
-    suspend fun guardarSeccion(consultaId: Id, seccion: String, valores: Map<String, String>) {
+    /** `false` si [consultaId] es una consulta de la web (ver [guardarValor]); no escribe ningún campo. */
+    suspend fun guardarSeccion(consultaId: Id, seccion: String, valores: Map<String, String>): Boolean {
+        if (esIdDeLaWeb(consultaId)) return false
         val ahora = ahoraMillis()
         db.transaction {
             valores.forEach { (campo, valor) -> q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahora)) }
         }
+        return true
     }
 
     /** Historial de un campo en consultas anteriores (ej. "Consultas previas" del motivo de consulta). */
@@ -188,7 +217,12 @@ class HcRepository(
     // ---- examen físico ----
 
     fun observarExamenFisico(consultaId: Id): Flow<ExamenFisico?> = q.examenFisicoDeConsulta(consultaId).flujoUno { it.toModel() }
-    suspend fun guardarExamenFisico(examen: ExamenFisico) = q.upsertExamenFisico(examen.toRow(ahoraMillis()))
+    /** `false` si el examen es de una consulta de la web: lo trae la lectura y no se escribe desde acá. */
+    suspend fun guardarExamenFisico(examen: ExamenFisico): Boolean {
+        if (esIdDeLaWeb(examen.consultaId)) return false
+        q.upsertExamenFisico(examen.toRow(ahoraMillis()))
+        return true
+    }
 
     fun observarExamenesFisicos(pacienteId: Id): Flow<List<ExamenFisicoFechado>> =
         q.examenesFisicosDePaciente(pacienteId).flujoLista {
@@ -210,10 +244,16 @@ class HcRepository(
     fun observarAntecedentes(pacienteId: Id, especialidad: String, categoria: String): Flow<List<Antecedente>> =
         q.antecedentesDeCategoria(pacienteId, especialidad, categoria).flujoLista { it.toModel() }
 
-    suspend fun guardarAntecedente(pacienteId: Id, especialidad: String, categoria: String, clave: String, flag: Boolean, detalle: String, consultaId: Id?) {
+    /**
+     * `false` si el antecedente ya existe y vino de la web (`hcc-a…`, la web es su dueña y el cambio no llegaría) o si se
+     * atribuye a una consulta de la web; no escribe nada.
+     */
+    suspend fun guardarAntecedente(pacienteId: Id, especialidad: String, categoria: String, clave: String, flag: Boolean, detalle: String, consultaId: Id?): Boolean {
         val existente = q.antecedentesDeCategoria(pacienteId, especialidad, categoria).lista { it.toModel() }.firstOrNull { it.clave == clave }
+        if (existente?.esDeLaWeb() == true || (consultaId != null && esIdDeLaWeb(consultaId))) return false
         val a = (existente ?: Antecedente(newId(), pacienteId, especialidad, categoria, clave)).copy(flag = flag, detalle = detalle, consultaId = consultaId)
         q.upsertAntecedente(a.toRow(ahoraMillis()))
+        return true
     }
 
     // ---- registros repetibles ----
@@ -246,14 +286,20 @@ class HcRepository(
     /** Un registro por su id local, para conservar lo que no se está editando (la consulta de origen). */
     suspend fun registro(id: Id): RegistroClinico? = q.registroPorId(id).uno { it.toModel() }
 
-    suspend fun guardarRegistro(registro: RegistroClinico) {
+    /** `false` si el registro es de la web (`hcc-r…`) o cuelga de una consulta de la web: lo trae la lectura y no se escribe. */
+    suspend fun guardarRegistro(registro: RegistroClinico): Boolean {
+        if (registro.esDeLaWeb() || registro.consultaId?.let(::esIdDeLaWeb) == true) return false
         val remoto = registro.remotoId.ifBlank { q.registroPorId(registro.id).uno { it.remoto_id }.orEmpty() }
         q.upsertRegistro(registro.copy(remotoId = remoto).toRow(ahoraMillis()))
+        return true
     }
 
-    suspend fun eliminarRegistro(id: Id) {
-        val r = q.registroPorId(id).uno { it.toModel() } ?: return
+    /** `false` si no existe o es de la web (`hcc-r…`): no se quita desde acá. */
+    suspend fun eliminarRegistro(id: Id): Boolean {
+        if (esIdDeLaWeb(id)) return false
+        val r = q.registroPorId(id).uno { it.toModel() } ?: return false
         q.upsertRegistro(r.copy(activo = false).toRow(ahoraMillis()))
+        return true
     }
 
     // ---- laboratorios ----
@@ -261,11 +307,19 @@ class HcRepository(
     fun observarLaboratorios(pacienteId: Id, especialidad: String, tipo: String): Flow<List<Laboratorio>> =
         q.laboratoriosDePaciente(pacienteId, especialidad, tipo).flujoLista { it.toModel() }
 
-    suspend fun guardarLaboratorio(lab: Laboratorio) = q.upsertLaboratorio(lab.toRow(ahoraMillis()))
+    /** `false` si la carga es de la web (`hcc-l…`) o cuelga de una consulta de la web: la web es su dueña (RF-62). */
+    suspend fun guardarLaboratorio(lab: Laboratorio): Boolean {
+        if (lab.esDeLaWeb() || lab.consultaId?.let(::esIdDeLaWeb) == true) return false
+        q.upsertLaboratorio(lab.toRow(ahoraMillis()))
+        return true
+    }
 
-    suspend fun eliminarLaboratorio(id: Id) {
-        val l = q.laboratorioPorId(id).uno { it.toModel() } ?: return
+    /** `false` si no existe o es de la web (`hcc-l…`): el cambio no llegaría y la carga quedaría `dirty` para siempre (RF-62). */
+    suspend fun eliminarLaboratorio(id: Id): Boolean {
+        if (esIdDeLaWeb(id)) return false
+        val l = q.laboratorioPorId(id).uno { it.toModel() } ?: return false
         q.upsertLaboratorio(l.copy(activo = false).toRow(ahoraMillis()))
+        return true
     }
 
     // ---- archivos ----
@@ -275,25 +329,46 @@ class HcRepository(
     fun observarArchivosDeRegistro(registroId: Id): Flow<List<Archivo>> = q.archivosDeRegistro(registroId).flujoLista { it.toModel() }
     suspend fun archivosPendientesDeSubir(): List<Archivo> = q.archivosPendientesDeSubir().lista { it.toModel() }
     suspend fun archivo(id: Id): Archivo? = q.archivoPorId(id).uno { it.toModel() }
-    suspend fun guardarArchivo(archivo: Archivo) = q.upsertArchivo(archivo.toRow(ahoraMillis()))
-    suspend fun eliminarArchivo(id: Id) {
-        val a = archivo(id) ?: return
-        q.upsertArchivo(a.copy(activo = false).toRow(ahoraMillis()))
+
+    /** `false` si el adjunto cuelga de una consulta de la web (o lleva un id de la web): esas no se escriben desde acá. */
+    suspend fun guardarArchivo(archivo: Archivo): Boolean {
+        if (archivo.deLaWeb()) return false
+        q.upsertArchivo(archivo.toRow(ahoraMillis()))
+        return true
     }
+
+    /** `false` si no existe o cuelga de una consulta de la web. */
+    suspend fun eliminarArchivo(id: Id): Boolean {
+        val a = archivo(id)?.takeUnless { it.deLaWeb() } ?: return false
+        q.upsertArchivo(a.copy(activo = false).toRow(ahoraMillis()))
+        return true
+    }
+
+    private fun Archivo.deLaWeb(): Boolean = esIdDeLaWeb(id) || consultaId?.let(::esIdDeLaWeb) == true
 
     // ---- pendientes ----
 
     fun observarPendientes(pacienteId: Id, medicoId: Id): Flow<List<Pendiente>> = q.pendientesDePaciente(pacienteId, medicoId).flujoLista { it.toModel() }
     fun observarCantidadPendientes(medicoId: Id): Flow<Long> = q.contarPendientesDeMedico(medicoId).flujoUno { it }.map { it ?: 0L }
-    suspend fun guardarPendiente(p: Pendiente) = q.upsertPendiente(p.toRow(ahoraMillis()))
+
+    /** `false` si el pendiente es de la web (`hcc-p…`, no se resuelve ni se reemplaza, RF-62) o cuelga de una consulta de la web. */
+    suspend fun guardarPendiente(p: Pendiente): Boolean {
+        if (p.esDeLaWeb() || p.consultaId?.let(::esIdDeLaWeb) == true) return false
+        q.upsertPendiente(p.toRow(ahoraMillis()))
+        return true
+    }
 
     // ---- diagnósticos ----
 
     fun observarDiagnosticos(medicoId: Id): Flow<List<Diagnostico>> = q.diagnosticosDeMedico(medicoId).flujoLista { it.toModel() }
     fun observarDiagnosticosDeConsulta(consultaId: Id): Flow<List<Diagnostico>> = q.diagnosticosDeConsulta(consultaId).flujoLista { it.toModel() }
     suspend fun guardarDiagnostico(d: Diagnostico) = q.upsertDiagnostico(d.toRow(ahoraMillis()))
-    suspend fun asignarDiagnostico(consultaId: Id, diagnosticoId: Id, asignado: Boolean) =
+    /** `false` si [consultaId] es una consulta de la web: sus diagnósticos no se escriben desde acá. */
+    suspend fun asignarDiagnostico(consultaId: Id, diagnosticoId: Id, asignado: Boolean): Boolean {
+        if (esIdDeLaWeb(consultaId)) return false
         q.upsertConsultaDiagnostico(ConsultaDiagnostico(consultaId, diagnosticoId).toRow(ahoraMillis(), deleted = !asignado))
+        return true
+    }
 
     /** Copia los diagnósticos de la última consulta cerrada a la consulta nueva (HC hematología). */
     suspend fun copiarUltimosDiagnosticos(pacienteId: Id, especialidad: String, consultaId: Id) {
@@ -312,7 +387,13 @@ class HcRepository(
     // ---- vacunas ----
 
     fun observarVacunas(pacienteId: Id): Flow<List<VacunaAplicada>> = q.vacunasDePaciente(pacienteId).flujoLista { it.toModel() }
-    suspend fun guardarVacuna(v: VacunaAplicada) = q.upsertVacuna(v.toRow(ahoraMillis()))
+
+    /** `false` si la vacuna se atribuye a una consulta de la web. */
+    suspend fun guardarVacuna(v: VacunaAplicada): Boolean {
+        if (v.consultaId?.let(::esIdDeLaWeb) == true) return false
+        q.upsertVacuna(v.toRow(ahoraMillis()))
+        return true
+    }
     suspend fun vacunas(pacienteId: Id): List<VacunaAplicada> = q.vacunasDePaciente(pacienteId).lista { it.toModel() }
 
     // ---- datos de una consulta (HC general, bloque de solo lectura) ----

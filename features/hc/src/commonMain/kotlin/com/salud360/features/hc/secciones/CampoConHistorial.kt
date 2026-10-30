@@ -34,10 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.salud360.core.ui.components.LinkButton
 import com.salud360.core.ui.components.toDisplay
+import com.salud360.features.hc.MarcaYaNoFigura
 import kotlinx.datetime.LocalDate
 
-/** Una entrada del historial tal como se muestra: la fecha (si tiene) y el texto. */
-data class EntradaHistorial(val fecha: LocalDate?, val texto: String)
+/**
+ * Una entrada del historial tal como se muestra: la fecha (si tiene) y el texto. [ausente]: la web dejó de mandarla (RF-63,
+ * spec 002); se sigue viendo entera, con la marca «Ya no figura en la web».
+ */
+data class EntradaHistorial(val fecha: LocalDate?, val texto: String, val ausente: Boolean = false)
 
 /**
  * Campo de esta consulta con su historial, como los estudios de la web (RF-38 a RF-42) y el motivo de consulta
@@ -96,6 +100,7 @@ private fun ConsultasPrevias(previas: List<EntradaHistorial>, onVerTodo: () -> U
 private fun Entrada(e: EntradaHistorial) {
     Column {
         e.fecha?.let { Text(it.toDisplay(), fontWeight = FontWeight.SemiBold) }
+        if (e.ausente) MarcaYaNoFigura()
         Text(e.texto, style = MaterialTheme.typography.bodyMedium)
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.SECCION_DE_LA_NOTA_PERFIL4
 import com.salud360.core.data.hcgeneral.notaPerfil4
+import com.salud360.core.data.hcgeneral.puedeEditarAntecedente
 import com.salud360.core.model.especialidad.ModoAntecedentes
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.ui.components.CheckboxWithDetail
@@ -23,6 +24,7 @@ import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.features.hc.ConsultaUi
+import com.salud360.features.hc.MarcaYaNoFigura
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
 import kotlinx.coroutines.delay
@@ -56,15 +58,21 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             ModoAntecedentes.CASILLAS -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items.forEach { item ->
                     val a = actuales[item.clave]
-                    if (item.soloDetalle) {
-                        DebouncedText(item.etiqueta, a?.detalle ?: "", ro, multiline = false) { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it.isNotBlank(), it) }
-                    } else {
-                        CheckboxWithDetail(
-                            label = item.etiqueta, checked = a?.flag == true, detail = a?.detalle ?: "",
-                            onCheckedChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it, a?.detalle ?: "") },
-                            onDetailChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, true, it) },
-                            readOnly = ro,
-                        )
+                    // Un antecedente que vino de la web no se edita desde una consulta del dispositivo (RF-62), y si la web ya no
+                    // lo manda se sigue viendo entero, con la marca (RF-63).
+                    val soloLeer = !puedeEditarAntecedente(a, editable = !ro)
+                    Column {
+                        if (item.soloDetalle) {
+                            DebouncedText(item.etiqueta, a?.detalle ?: "", soloLeer, multiline = false) { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it.isNotBlank(), it) }
+                        } else {
+                            CheckboxWithDetail(
+                                label = item.etiqueta, checked = a?.flag == true, detail = a?.detalle ?: "",
+                                onCheckedChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it, a?.detalle ?: "") },
+                                onDetailChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, true, it) },
+                                readOnly = soloLeer,
+                            )
+                        }
+                        if (ui.ausencias.antecedenteDeClave(item.clave)) MarcaYaNoFigura()
                     }
                 }
             }
@@ -86,7 +94,8 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             }
         }
         if (cat.notaLibre && (!ro || nota.isNotBlank())) {
-            DebouncedText("Nota", nota, ro, multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
+            DebouncedText("Nota", nota, !puedeEditarAntecedente(actuales["nota"], editable = !ro), multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
+            if (ui.ausencias.antecedenteDeClave("nota")) MarcaYaNoFigura()
         }
         notaDelPerfil4?.let { TextAreaField("Nota", it, {}, Modifier.fillMaxWidth(), minLines = 3, readOnly = true) }
     }

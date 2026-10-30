@@ -85,6 +85,12 @@ data class AusenciasEnLaWeb(val marcas: Map<String, String> = emptyMap()) {
     /** El antecedente familiar [antecedenteId] ya no figura en la web. */
     fun antecedente(antecedenteId: Id): Boolean = clasificadas.any { it is ItemAusente.Antecedente && it.id == antecedenteId }
 
+    /**
+     * El antecedente familiar de la casilla o nota [clave] ya no figura en la web. Se busca por la clave porque la fila local
+     * puede tener otro id que el `hcc-a<ficha>-<clave>` de la marca (la marca es del paciente de esta pantalla).
+     */
+    fun antecedenteDeClave(clave: String): Boolean = clasificadas.any { it is ItemAusente.Antecedente && it.clave == clave }
+
     /** Todas las marcas reconocidas, en el orden de sus claves; las que no se reconocen quedan afuera (siguen en [marcas]). */
     fun items(): List<ItemAusente> = clasificadas
 

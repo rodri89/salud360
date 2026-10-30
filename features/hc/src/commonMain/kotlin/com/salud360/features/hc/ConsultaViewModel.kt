@@ -4,21 +4,31 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
+import com.salud360.core.data.hcgeneral.AusenciasEnLaWeb
+import com.salud360.core.data.hcgeneral.AvisosDeConsulta
 import com.salud360.core.data.hcgeneral.CONSULTAS_POR_VEZ
 import com.salud360.core.data.hcgeneral.CambioEstudio
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.EdicionDeConsulta
 import com.salud360.core.data.hcgeneral.EntradaTexto
+import com.salud360.core.data.hcgeneral.ExtrasDeLectura
 import com.salud360.core.data.hcgeneral.LayoutConsulta
+import com.salud360.core.data.hcgeneral.LecturaDeLaConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
 import com.salud360.core.data.hcgeneral.VistaDeLaHistoria
+import com.salud360.core.data.hcgeneral.avisosDeLaPantallaDeConsulta
 import com.salud360.core.data.hcgeneral.cambioDePendientes
 import com.salud360.core.data.hcgeneral.cambioEstudio
 import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
+import com.salud360.core.data.hcgeneral.edicionDeConsulta
 import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.esDeLaWeb
+import com.salud360.core.data.hcgeneral.esIdDeLaWeb
+import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
+import com.salud360.core.data.hcgeneral.extrasDeLectura
 import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.masConsultas
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
@@ -50,6 +60,7 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
 import com.salud360.core.model.pacientes.Paciente
+import com.salud360.core.model.pacientes.PacienteExtra
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -88,11 +99,29 @@ data class ConsultaUi(
     val resuelta: DefinicionResuelta? = null,
     /** HC general: lo cargado fuera del perfil, solo para leer (RF-22 al final, RF-34 en "Datos"); vacío en las demás. */
     val fueraDelPerfil: SoloLecturaConsulta = SoloLecturaConsulta(),
+    /**
+     * HC general, spec 002 (entrega L): la consulta vino de la web y se lee siempre, abierta o cerrada allá (RF-45): sin
+     * editar, sin cerrar, sin reabrir y sin anular. Lo decide `esSoloLecturaWeb`; false en las demás.
+     */
+    val soloLecturaWeb: Boolean = false,
+    /** Los avisos de la consulta de la web (banner, abierta en la web, «Ya no figura en la web», `no_leidas`); ninguno si no es de la web. */
+    val avisos: AvisosDeConsulta = AvisosDeConsulta.NINGUNO,
+    /** Lo que la web dejó de mandar (RF-63), para las marcas de las secciones, cargas, estudios, pendientes y antecedentes. */
+    val ausencias: AusenciasEnLaWeb = AusenciasEnLaWeb.NINGUNA,
 ) {
     /** "HC digitalizada" en la HC general: se lee aunque haya quedado abierta ("Decidido" 5 del plan). */
     val soloLecturaPorTipo: Boolean get() = consulta?.let { resuelta?.soloLecturaPorTipo(it.tipo) } == true
-    val soloLectura: Boolean get() = consulta?.estado != EstadoConsulta.ABIERTA || soloLecturaPorTipo
-    val puedeReabrir: Boolean get() = consulta?.let { resuelta?.puedeReabrir(it.tipo) } != false
+
+    /** Si se edita, se cierra o se reabre: lo decide `edicionDeConsulta` (una consulta de la web no hace nada de eso). */
+    val edicion: EdicionDeConsulta
+        get() = edicionDeConsulta(
+            estado = consulta?.estado ?: EstadoConsulta.CERRADA,
+            soloLecturaPorTipo = soloLecturaPorTipo,
+            puedeReabrirPorTipo = consulta?.let { resuelta?.puedeReabrir(it.tipo) } != false,
+            soloLecturaWeb = soloLecturaWeb,
+        )
+    val soloLectura: Boolean get() = edicion.soloLectura
+    val puedeReabrir: Boolean get() = edicion.puedeReabrir
     val edadMeses: Int? get() {
         val nac = paciente?.fechaNacimiento ?: return null
         val fecha = consulta?.fecha ?: return null
@@ -127,6 +156,18 @@ class ConsultaViewModel(
 
     private val consultaFlow = hc.observarConsulta(consultaId)
 
+    /**
+     * La consulta vino de la web y se lee siempre (RF-45): esta pantalla no escribe, no marca nada para enviar ni llama a
+     * `HcApiSync`. Arranca por el id (`hcc-…`) y, ya cargada la consulta, se confirma con `esSoloLecturaWeb` (que además mira
+     * el `remoto_id` de un backend de solo lectura). Se asigna y se lee en el hilo principal.
+     */
+    private var soloLecturaWeb: Boolean = esIdDeLaWeb(consultaId)
+
+    private val _lecturaWeb = MutableStateFlow(LecturaDeLaConsulta())
+
+    /** Cómo va la lectura de la consulta de la web al abrirla (RF-56, RF-58); la pantalla muestra el motivo y «Reintentar». */
+    val lecturaWeb: StateFlow<LecturaDeLaConsulta> = _lecturaWeb
+
     // Este init tiene que ir *después* de `consultaFlow`: `viewModelScope` usa Dispatchers.Main.immediate,
     // así que el cuerpo del launch arranca acá mismo y no en el siguiente turno del bucle de eventos.
     // Con el init más arriba, `consultaFlow` todavía valía null y la app se caía al abrir la consulta.
@@ -135,10 +176,40 @@ class ConsultaViewModel(
         // médico escribió y todavía no se envió. Además se reintenta lo que haya quedado pendiente.
         viewModelScope.launch {
             val c = consultaFlow.first { it != null } ?: return@launch
+            soloLecturaWeb = c.esSoloLecturaWeb(hc.esSoloLectura(c.especialidad))
             if (!hc.tieneApi(c.especialidad)) return@launch
+            // Una consulta de la web: un solo pedido (RF-57), a mano si falla (RF-58), y nada que enviar ni reintentar.
+            if (soloLecturaWeb) { leerDeLaWeb(c); return@launch }
             runCatching { hc.traerConsultaRemota(c) }
             hcApi.empujarTodo()
         }
+    }
+
+    /**
+     * Trae el contenido de la consulta de la web (`traerConsulta`: un pedido) y deja el resultado en [lecturaWeb]. Si falla,
+     * lo ya traído se queda y se ve (RF-56); no reintenta sola. Un `404 consulta_no_encontrada` ya dejó su marca «Ya no
+     * figura en la web» (E6.4b) y la pantalla no lo cuenta como error.
+     */
+    private fun leerDeLaWeb(c: Consulta) {
+        if (_lecturaWeb.value.leyendo) return
+        _lecturaWeb.value = LecturaDeLaConsulta(leyendo = true)
+        viewModelScope.launch {
+            _lecturaWeb.value = try {
+                hc.traerConsultaRemota(c)
+                LecturaDeLaConsulta()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                LecturaDeLaConsulta(error = e)
+            }
+        }
+    }
+
+    /** «Reintentar» después de un fallo de la lectura: a mano, nunca solo (RF-58). Solo para una consulta de la web. */
+    fun reintentarLectura() {
+        if (!soloLecturaWeb) return
+        val c = ui.value.consulta ?: return
+        leerDeLaWeb(c)
     }
 
     /**
@@ -161,6 +232,11 @@ class ConsultaViewModel(
             val def = resuelta?.definicion
             // Solo la HC general mira lo cargado fuera del perfil; las demás no piden nada más (RF-33).
             val catalogo = if (resuelta?.porPerfil == true) definiciones.catalogo(c.especialidad) else null
+            // Spec 002 (entrega L): con un backend de solo lectura (HC general) además se leen las marcas, los avisos y los
+            // nombres de los médicos de la web; las demás HC no piden nada más.
+            val backendSoloLectura = hc.esSoloLectura(c.especialidad)
+            val esDeLaWeb = c.esSoloLecturaWeb(backendSoloLectura)
+            val leeLaWeb = esDeLaWeb || backendSoloLectura
             combine(
                 pacientes.observar(c.pacienteId),
                 hc.observarExamenFisico(c.id),
@@ -171,11 +247,17 @@ class ConsultaViewModel(
                 hc.observarVacunas(c.pacienteId),
                 hc.observarPreferencias(medicoId),
                 if (catalogo != null) hc.observarDatosConsulta(c.id) else flowOf(DatosConsulta()),
+                if (leeLaWeb) pacientes.observarFilasExtra(c.pacienteId, c.especialidad) else flowOf(emptyList<PacienteExtra>()),
+                if (leeLaWeb) hc.observarNombresDeMedicosWeb() else flowOf(emptyMap<Id, String>()),
             ) { arr ->
                 @Suppress("UNCHECKED_CAST")
                 val antecedentes = arr[2] as List<Antecedente>
                 @Suppress("UNCHECKED_CAST")
                 val preferencias = arr[7] as Map<String, String>
+                @Suppress("UNCHECKED_CAST")
+                val lectura = if (leeLaWeb) extrasDeLectura(arr[9] as List<PacienteExtra>) else ExtrasDeLectura.VACIO
+                @Suppress("UNCHECKED_CAST")
+                val nombresMedicos = arr[10] as Map<Id, String>
                 @Suppress("UNCHECKED_CAST")
                 ConsultaUi(
                     consulta = c, paciente = arr[0] as Paciente?, definicion = def, tipo = def?.tipoConsulta(c.tipo),
@@ -185,6 +267,9 @@ class ConsultaViewModel(
                     resuelta = resuelta,
                     fueraDelPerfil = if (catalogo == null || def == null) SoloLecturaConsulta()
                     else soloLecturaConsulta(catalogo, def, c.tipo, arr[8] as DatosConsulta, antecedentes, ocultasDe(def, preferencias)),
+                    soloLecturaWeb = esDeLaWeb,
+                    avisos = avisosDeLaPantallaDeConsulta(c, backendSoloLectura, medicoId, nombresMedicos, lectura),
+                    ausencias = lectura.ausencias,
                 )
             }
         }
@@ -213,6 +298,8 @@ class ConsultaViewModel(
     fun valor(seccion: String, campo: String): String = _valores.value[seccion]?.get(campo) ?: ""
 
     fun setValor(seccion: String, campo: String, valor: String) {
+        // Una consulta de la web no se escribe: ni en memoria ni con el autoguardado (RF-45, RF-47).
+        if (soloLecturaWeb) return
         _valores.value = _valores.value + (seccion to ((_valores.value[seccion] ?: emptyMap()) + (campo to valor)))
         pendientesGuardar.getOrPut(seccion) { mutableMapOf() }[campo] = valor
         jobGuardar?.cancel()
@@ -221,7 +308,7 @@ class ConsultaViewModel(
 
     /** Escribe en la base los valores de sección que todavía están en memoria (autoguardado). */
     suspend fun flushValores() {
-        if (pendientesGuardar.isEmpty()) return
+        if (soloLecturaWeb || pendientesGuardar.isEmpty()) return
         val copia = pendientesGuardar.mapValues { it.value.toMap() }
         pendientesGuardar.clear()
         copia.forEach { (s, campos) -> hc.guardarSeccion(consultaId, s, campos) }
@@ -234,8 +321,9 @@ class ConsultaViewModel(
     // ---- examen físico ----
 
     fun guardarExamen(examen: ExamenFisico) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val imc = examen.calcularImc() ?: examen.imc
-        hc.guardarExamenFisico(examen.copy(consultaId = consultaId, imc = imc))
+        if (!hc.guardarExamenFisico(examen.copy(consultaId = consultaId, imc = imc))) return@launch
         hcApi.marcarSucia(consultaId)
         _guardadoEn.value = com.salud360.core.data.ahoraMillis()
     }
@@ -243,8 +331,10 @@ class ConsultaViewModel(
     // ---- antecedentes ----
 
     fun guardarAntecedente(categoria: String, clave: String, flag: Boolean, detalle: String) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
-        hc.guardarAntecedente(c.pacienteId, c.especialidad, categoria, clave, flag, detalle, consultaId)
+        // Un antecedente que vino de la web no se cambia desde una consulta del dispositivo (el repositorio lo rechaza): sin marca de envío.
+        if (!hc.guardarAntecedente(c.pacienteId, c.especialidad, categoria, clave, flag, detalle, consultaId)) return@launch
         hcApi.marcarSucia(consultaId)
     }
 
@@ -257,18 +347,21 @@ class ConsultaViewModel(
     fun registrosDelPaciente(tipo: String) = ui.value.consulta?.let { c -> hc.observarRegistros(c.pacienteId, c.especialidad, tipo) } ?: flowOf(emptyList())
 
     fun guardarRegistro(tipo: String, id: Id?, fecha: LocalDate?, campos: Map<String, String>, porPaciente: Boolean) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
         // Al editar se conserva la consulta de origen. Un examen pedido en otra consulta se puede
         // completar desde esta, y moverlo acá lo haría pasar por pedido hoy: pediatría anota la consulta
         // donde se cargó la respuesta en una columna aparte, y el pedido queda donde estaba.
         val consultaOriginal = id?.let { hc.registro(it)?.consultaId }
         val deLaConsulta = if (porPaciente) null else consultaOriginal ?: c.id
-        hc.guardarRegistro(RegistroClinico(id ?: newId(), c.pacienteId, deLaConsulta, c.especialidad, tipo, fecha, campos))
+        // Un registro que vino de la web no se edita desde acá (RF-62): el repositorio lo rechaza y no queda nada por enviar.
+        if (!hc.guardarRegistro(RegistroClinico(id ?: newId(), c.pacienteId, deLaConsulta, c.especialidad, tipo, fecha, campos))) return@launch
         hcApi.marcarSucia(consultaId)
     }
 
     fun eliminarRegistro(id: Id) = viewModelScope.launch {
-        hc.eliminarRegistro(id)
+        if (soloLecturaWeb) return@launch
+        if (!hc.eliminarRegistro(id)) return@launch
         hcApi.marcarSucia(consultaId)
     }
 
@@ -284,6 +377,7 @@ class ConsultaViewModel(
 
     /** Como el autoguardado de valores: en el dispositivo, con la misma espera; nunca la API. */
     fun guardarEstudio(tipo: String, fecha: LocalDate, texto: String) {
+        if (soloLecturaWeb) return
         pendientesEstudio[tipo] = fecha to texto
         jobEstudios?.cancel()
         jobEstudios = viewModelScope.launch { delay(600); flushEstudios() }
@@ -295,7 +389,7 @@ class ConsultaViewModel(
      * a escribir), así un volcado cortado al salir lo deja para el de `onCleared`.
      */
     suspend fun flushEstudios() = candadoEstudios.withLock {
-        if (pendientesEstudio.isEmpty()) return@withLock
+        if (soloLecturaWeb || pendientesEstudio.isEmpty()) return@withLock
         val c = ui.value.consulta ?: return@withLock
         pendientesEstudio.toMap().forEach { (tipo, cambio) ->
             val actual = entradaDeConsulta(hc.observarRegistrosDeConsulta(consultaId, tipo).first(), consultaId)
@@ -316,11 +410,16 @@ class ConsultaViewModel(
     fun laboratorios(tipo: String) = ui.value.consulta?.let { c -> hc.observarLaboratorios(c.pacienteId, c.especialidad, tipo) } ?: flowOf(emptyList())
 
     fun guardarLaboratorio(tipo: String, id: Id?, fecha: LocalDate, valores: Map<String, String>) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
         hc.guardarLaboratorio(Laboratorio(id ?: newId(), c.pacienteId, c.id, c.especialidad, tipo, fecha, valores.filterValues { it.isNotBlank() }))
     }
 
-    fun eliminarLaboratorio(id: Id) = viewModelScope.launch { hc.eliminarLaboratorio(id) }
+    /** Una carga que vino de la web no se borra (RF-62): sale sin hacer nada, y el repositorio la rechaza igual. */
+    fun eliminarLaboratorio(id: Id) = viewModelScope.launch {
+        if (soloLecturaWeb || esIdDeLaWeb(id)) return@launch
+        hc.eliminarLaboratorio(id)
+    }
 
     // ---- archivos ----
 
@@ -331,7 +430,10 @@ class ConsultaViewModel(
     fun archivosDeRegistro(registroId: Id) = hc.observarArchivosDeRegistro(registroId)
 
     fun agregarArchivo(seccion: String, nombre: String, bytes: ByteArray, registroId: Id? = null, duracionMs: Long = 0, porPaciente: Boolean = false) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
+        // Un adjunto de un registro de la web tampoco se agrega desde acá (RF-62).
+        if (registroId != null && esIdDeLaWeb(registroId)) return@launch
         val id = newId()
         val ruta = archivos.guardar(id, nombre, bytes)
         hc.guardarArchivo(Archivo(id, c.pacienteId, if (porPaciente) null else c.id, registroId, seccion, nombre, mimeDe(nombre), bytes.size.toLong(), duracionMs, ruta))
@@ -355,24 +457,35 @@ class ConsultaViewModel(
     }
 
     fun eliminarArchivo(id: Id) = viewModelScope.launch {
-        hc.eliminarArchivo(id)
+        if (soloLecturaWeb) return@launch
+        if (!hc.eliminarArchivo(id)) return@launch
         hcApi.marcarSucia(consultaId)
     }
 
     // ---- diagnósticos ----
 
-    fun toggleDiagnostico(diagnosticoId: Id, asignado: Boolean) = viewModelScope.launch { hc.asignarDiagnostico(consultaId, diagnosticoId, asignado) }
-    fun nuevoDiagnostico(nombre: String) = viewModelScope.launch { hc.guardarDiagnostico(Diagnostico(newId(), medicoId, nombre.trim().uppercase())) }
+    fun toggleDiagnostico(diagnosticoId: Id, asignado: Boolean) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
+        hc.asignarDiagnostico(consultaId, diagnosticoId, asignado)
+    }
+
+    fun nuevoDiagnostico(nombre: String) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
+        hc.guardarDiagnostico(Diagnostico(newId(), medicoId, nombre.trim().uppercase()))
+    }
 
     // ---- vacunas ----
 
-    fun guardarVacuna(v: VacunaAplicada) = viewModelScope.launch { hc.guardarVacuna(v.copy(consultaId = v.consultaId ?: consultaId)) }
+    fun guardarVacuna(v: VacunaAplicada) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
+        hc.guardarVacuna(v.copy(consultaId = v.consultaId ?: consultaId))
+    }
 
     // ---- pendientes ----
 
     /** Un pendiente que vino de la web no se resuelve desde acá: el cambio no llegaría (RF-62). */
     fun resolverPendiente(p: Pendiente) = viewModelScope.launch {
-        if (!p.puedeResolverse()) return@launch
+        if (soloLecturaWeb || !p.puedeResolverse()) return@launch
         hc.guardarPendiente(p.copy(resuelto = true))
     }
 
@@ -382,6 +495,7 @@ class ConsultaViewModel(
     // ---- ciclo de vida de la consulta ----
 
     fun cambiarFecha(fecha: LocalDate) = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
         val edad = ui.value.paciente?.edad(fecha)?.toString() ?: c.edadMostrar
         hc.guardarConsulta(c.copy(fecha = fecha, edadMostrar = edad))
@@ -393,6 +507,8 @@ class ConsultaViewModel(
      * está vacío, se crea uno nuevo asociado a esta consulta. Los pendientes de la web no se resuelven (RF-62).
      */
     fun cerrarConPendientes(texto: String, onCerrada: () -> Unit) = viewModelScope.launch {
+        // Una consulta de la web no se cierra (RF-45): ni se crea ni se resuelve ningún pendiente, ni se manda nada.
+        if (soloLecturaWeb) return@launch
         val c = ui.value.consulta ?: return@launch
         val cambio = cambioDePendientes(ui.value.pendientes, texto)
         cambio.resolver.forEach { hc.guardarPendiente(it) }
@@ -406,9 +522,16 @@ class ConsultaViewModel(
         onCerrada()
     }
 
-    fun reabrir() = viewModelScope.launch { hc.reabrirConsulta(consultaId) }
+    fun reabrir() = viewModelScope.launch {
+        if (soloLecturaWeb) return@launch
+        hc.reabrirConsulta(consultaId)
+    }
 
-    fun guardarPreferencia(clave: String, valor: String) = viewModelScope.launch { hc.guardarPreferencia(medicoId, clave, valor) }
+    fun guardarPreferencia(clave: String, valor: String) = viewModelScope.launch {
+        // Una preferencia queda con pendiente de envío: desde una consulta de la web no se guarda nada (RF-47).
+        if (soloLecturaWeb) return@launch
+        hc.guardarPreferencia(medicoId, clave, valor)
+    }
 
     /** Historial de un campo en consultas anteriores ("consultas previas"). */
     fun historial(seccion: String, campo: String) = ui.value.consulta?.let { c -> hc.observarHistorial(c.pacienteId, c.especialidad, seccion, campo) } ?: flowOf(emptyList())
@@ -478,6 +601,8 @@ class ConsultaViewModel(
     // nada y se perdería lo tecleado en los últimos 600 ms, incluso en el dispositivo. Por eso un
     // ámbito propio, que nadie cancela.
     override fun onCleared() {
+        // Una consulta de la web no vuelca ni manda nada al salir (RF-47); además el candado de E5.1 lo frena en el motor.
+        if (soloLecturaWeb) return
         salida.launch {
             flushValores()
             flushEstudios()

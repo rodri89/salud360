@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.YA_NO_FIGURA_EN_LA_WEB
 import com.salud360.core.data.hcgeneral.alternarFila
 import com.salud360.core.data.hcgeneral.cargaNuevaValida
 import com.salud360.core.data.hcgeneral.cargasMultiples
@@ -167,7 +168,9 @@ private fun LaboratorioVariasCargas(s: SeccionDef, ctx: SeccionContext, ui: Cons
     val clavePreferencia = clavePreferenciaFilasOcultas(def.codigo, labDef.tipo)
     val ocultas = ocultasDePreferencia(ui.preferencias[clavePreferencia])
     val visibles = filasVisibles(labDef.analitos, ocultas)
-    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos)) {
+    // «Elegir filas» guarda una preferencia del médico (`medico_preferencia`, con pendiente de envío): una consulta de la web
+    // no marca nada para enviar (RF-47), así que ahí no se ofrece; se elige desde cualquier consulta del dispositivo.
+    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos) && !ui.soloLecturaWeb) {
         { LinkButton(textoBotonFilas(labDef.analitos, ocultas), onClick = { eligiendoFilas = true }) }
     } else null
     val columnas = columnasLaboratorio(historico, ctx.consultaId, editable)
@@ -190,6 +193,8 @@ private fun LaboratorioVariasCargas(s: SeccionDef, ctx: SeccionContext, ui: Cons
                             Column(Modifier.weight(1f)) {
                                 Text(c.carga.fecha.toDisplay(), color = Color.White, fontWeight = FontWeight.SemiBold)
                                 if (c.deEstaConsulta) Text("Esta consulta", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                // RF-63: la carga que la web ya no manda se sigue viendo entera, con la marca en su columna.
+                                if (ui.ausencias.carga(c.carga.id)) Text(YA_NO_FIGURA_EN_LA_WEB, color = Color.White, style = MaterialTheme.typography.labelSmall)
                             }
                             if (c.puedeBorrar) IconButton(onClick = { borrar = c.carga }, modifier = Modifier.height(24.dp)) { Icon(Icons.Default.Delete, contentDescription = "Eliminar columna", tint = Color.White) }
                         }
