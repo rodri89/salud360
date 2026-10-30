@@ -5,6 +5,7 @@ import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
+import com.salud360.core.data.hcgeneral.nombresDeMedicosWeb
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -75,6 +76,16 @@ class HcRepository(
     /** Trae del servidor las consultas del paciente y las deja en el dispositivo. Null si no hay API. */
     suspend fun traerConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =
         backends[especialidad]?.traerConsultas(pacienteId, medicoId)
+
+    /** true si esa especialidad sabe traer a pedido lo de la web ([Refrescable]): solo ahí la pantalla ofrece «Actualizar». */
+    fun puedeActualizar(especialidad: String): Boolean = backends[especialidad] is Refrescable
+
+    /**
+     * «Actualizar» (RF-57, RF-58): como [traerConsultasRemotas] pero saltándose el minuto de espera. Null si esa especialidad
+     * no sabe hacerlo (no cambia nada para ella). Si falla lanza el error de la API, sin reintento propio.
+     */
+    suspend fun actualizarConsultasRemotas(pacienteId: Id, medicoId: Id, especialidad: String): List<Consulta>? =
+        (backends[especialidad] as? Refrescable)?.traerConsultas(pacienteId, medicoId, forzar = true)
 
     /** Trae del servidor el contenido de una consulta, sin pisar lo que esté pendiente de enviar. */
     suspend fun traerConsultaRemota(consulta: Consulta) {
@@ -326,4 +337,8 @@ class HcRepository(
         q.preferenciasDeMedico(medicoId).flujoLista { it.toModel() }.map { l -> l.associate { it.clave to it.valor } }
     suspend fun guardarPreferencia(medicoId: Id, clave: String, valor: String) =
         q.upsertPreferencia(MedicoPreferencia(medicoId, clave, valor).toRow(ahoraMillis()))
+
+    /** Nombres de los médicos de la web que cargaron consultas (`hcc-m<id>` → nombre), para «Cargada por …» (Q4). Solo lectura. */
+    fun observarNombresDeMedicosWeb(): Flow<Map<Id, String>> =
+        q.nombresDeMedicosWeb().flujoLista { it.toModel() }.map { nombresDeMedicosWeb(it) }
 }

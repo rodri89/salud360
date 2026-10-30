@@ -5,8 +5,13 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E7.2 (historia del paciente), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
-  usuario y encadenada tarea por tarea. E7.1 hecha (2026-10-30):** `hcgeneral/ConsultaWeb.kt` (`agruparConsultas` → abiertas en la web / en curso /
+- **Siguiente paso: E7.3 (consulta de la web, solo lectura), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
+  usuario y encadenada tarea por tarea. E7.2 hecha (2026-10-30):** `hcgeneral/VistaDeLaHistoria.kt` (`vistaDeLaHistoria`: grupos de E7.1 +
+  50 más recientes y «Ver más» sobre lo ya traído + avisos), `repos/Refrescable.kt` (capacidad opcional: «Actualizar» = `traerConsultas(forzar =
+  true)` vía `HcRepository.actualizarConsultasRemotas`; `HcBackend` intacto), `motivoDeLaLectura` (el `429` con texto propio, sin tocar `motivoHc`),
+  `HistoriaDeLaWeb.kt` y `HistoriaClinicaScreen` (solo con backend de solo lectura: hoy inalcanzable hasta E6.5) y la nota del perfil 4 en
+  `AntecedentesSeccion`; 1109 tests de `core:data` en verde. Textos nuevos a revisar: el del `429` y el rótulo «Nota» (detalle en la nota de
+  E7.2). **E7.1 hecha (2026-10-30):** `hcgeneral/ConsultaWeb.kt` (`agruparConsultas` → abiertas en la web / en curso /
   anteriores, con origen, autor y marca), `AusenciasEnLaWeb.kt` (qué ítem lleva «Ya no figura en la web») y `AvisosLectura.kt` (textos de la
   spec/plan como constantes, `extrasDeLectura`, `avisosDeLaHistoria`, `avisosDeConsulta`, `notaPerfil4`); 1078 tests de `core:data` en verde. Dos
   avisos distintos (consultas omitidas y cargas sin fecha: no se suman); el aviso de D1 y los singulares no están en la spec, hay que revisarlos

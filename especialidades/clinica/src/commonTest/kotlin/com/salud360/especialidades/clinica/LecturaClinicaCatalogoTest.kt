@@ -3,6 +3,7 @@ package com.salud360.especialidades.clinica
 import com.salud360.core.data.hcgeneral.CLAVE_NOTA
 import com.salud360.core.data.hcgeneral.CLAVE_NOTA_PERFIL4
 import com.salud360.core.data.hcgeneral.Desconocido
+import com.salud360.core.data.hcgeneral.SECCION_DE_LA_NOTA_PERFIL4
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
 import com.salud360.core.data.hcgeneral.desconocidos
 import com.salud360.core.data.hcgeneral.idConsultaWeb
@@ -135,6 +136,16 @@ class LecturaClinicaCatalogoTest {
         // `tabaquismo` está en el catálogo y la web no lo tiene (Q13): no se inventa. Las dos notas no son casillas.
         assertEquals(catalogo - "tabaquismo" + CLAVE_NOTA + CLAVE_NOTA_PERFIL4, web)
         assertTrue("tabaquismo" !in web)
+    }
+
+    @Test
+    fun la_nota_del_perfil_4_no_es_una_casilla_de_antecedentes_familiares() {
+        // El renderer de la sección recorre `items` del catálogo (AntecedentesSeccion): con la nota fuera de ellos nunca se
+        // dibuja como una casilla más (E7.2, D2); se muestra aparte, con `notaPerfil4`.
+        val familiares = catalogoHcGeneral.seccion("antecedentes_familiares")!!.antecedentes.single { it.categoria == "familiares" }
+        assertTrue(familiares.items.none { it.clave == CLAVE_NOTA_PERFIL4 }, "nota_perfil4 no puede ser una casilla")
+        assertTrue(familiares.items.none { it.clave == CLAVE_NOTA }, "la nota común tampoco")
+        assertEquals("antecedentes_familiares", SECCION_DE_LA_NOTA_PERFIL4)
     }
 
     @Test

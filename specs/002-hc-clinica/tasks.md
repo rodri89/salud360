@@ -1277,7 +1277,7 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     web no entra en ningún aviso (Q16-A: el contador no cambia). Duda para el usuario: RF-43 pide avisar «que se ve en la web»; el texto del plan
     («La web tiene … que esta versión no muestra») lo da a entender pero no lo dice.
 
-- [ ] **E7.2. Historia del paciente.** RF-38, RF-44, RF-46, RF-49, RF-56, RF-63 — **M** — Toca API Laravel: no
+- [x] **E7.2. Historia del paciente.** RF-38, RF-44, RF-46, RF-49, RF-56, RF-63 — **M** — Toca API Laravel: no
   - `HistoriaClinicaViewModel` / `HistoriaClinicaScreen`: grupos de E7.1 (la "Consulta en curso" con Continuar y Anular
     solo para la local), etiquetas "Web" / "Solo en este dispositivo" / "Cargada por …" / "Ya no figura en la web" (la
     consulta marcada se sigue listando y abriendo), "Ver más" mientras `hay_mas`,
@@ -1286,6 +1286,50 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
   - Hecho cuando: `.\gradlew :features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` sin errores;
     revisión de código: ninguna acción de esta pantalla llama a escritura sobre una consulta de la web; la
     comprobación visual queda para E8.3.
+  - **Hecho (2026-10-30, tanda A encadenada).** Código en `core/data` (todo puro salvo dos métodos de repositorio, sin dependencias ni
+    migraciones, servidor sin tocar): `hcgeneral/VistaDeLaHistoria.kt` (`vistaDeLaHistoria` → `VistaDeLaHistoria(abiertasEnLaWeb, enCurso,
+    anteriores, totalAnteriores, ocultas, avisos)` con `hayMas`; `CONSULTAS_POR_VEZ = 50`, `masConsultas`, `vinculadoConLaWeb`, `TEXTO_VER_MAS`,
+    `TEXTO_ACTUALIZAR`), `hcgeneral/MotivoHc.kt` (`motivoDeLaLectura`, `TEXTO_DEMASIADOS_PEDIDOS`), `repos/Refrescable.kt` (interfaz mínima:
+    `traerConsultas(pacienteId, medicoId, forzar)`; `HcClinicaBackend` la implementa y `HcBackend` no cambia), `HcRepository`
+    (`puedeActualizar`, `actualizarConsultasRemotas` → `null` si el backend no es `Refrescable`, `observarNombresDeMedicosWeb`), consulta
+    `nombresDeMedicosWeb` en `HistoriaClinica.sq` (solo `SELECT`, sin migración) y `PacientesRepository.observarFilasExtra`. En `features/hc`:
+    `HistoriaClinicaViewModel` (`soloLectura`, `puedeActualizar`, `vista`, `leyendo`, `actualizar`, `reintentar`, `verMas`; `anular` ignora una
+    consulta de la web), `HistoriaDeLaWeb.kt` (composables nuevos), `HistoriaClinicaScreen` y `AntecedentesSeccion` (nota del perfil 4).
+    Tests (`commonTest`/`jvmTest`, 31 nuevos): `VistaDeLaHistoriaTest` (17), `MotivoDeLaLecturaTest` (8), `HcRepositoryActualizarTest` (6, uno con
+    el backend de verdad: abrir dos veces = 2 pedidos, «Actualizar» = 4) y uno en `especialidades/clinica` (la nota del perfil 4 no es una casilla
+    del catálogo). **Rojo previo:** `:core:data:compileTestKotlinJvm` con 59 errores de compilación (`Unresolved reference`), solo en los tres
+    archivos nuevos. **Verde:** `:core:data:jvmTest --rerun` completo 1109 tests (1078 + 31), 0 fallas, 0 errores, 0 salteados;
+    `:especialidades:clinica:jvmTest --rerun` 33 (32 + 1); `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`
+    compilan. Ningún test existente cambió de resultado ni se tocó.
+    **Cómo se ve (solo con un backend de solo lectura registrado, o sea después de E6.5; hoy `clinica` no lo tiene y la pantalla es la de
+    siempre, igual que pediatría):** cabecera y pendientes como hoy; tarjeta «No se pudo traer la historia clínica» (la que ya existía) con el
+    texto de `motivoDeLaLectura` y un botón «Reintentar»; los avisos de `avisosDeLaHistoria` (sin vínculo, consultas omitidas, cargas sin fecha;
+    cada uno con ícono y `liveRegion`); «Actualizar»; «Consulta en curso» (una tarjeta por cada abierta del dispositivo, con «Solo en este
+    dispositivo (no se envía a la web)», Continuar y Anular) o «Nueva consulta»; «Abiertas en la web (solo lectura)» si hay; «Consultas anteriores
+    (N)» con la web y el dispositivo juntas, cada fila con fecha, tipo · edad, etiquetas («Web» / «Solo en este dispositivo», «Ya no figura en la
+    web», «Cargada por …») y «Ver»; «Ver más» mientras `ocultas > 0`. Todo botón nuevo tiene 48 dp como mínimo y los renglones de botones son
+    `FlowRow`. **«Actualizar» llega así:** `HistoriaClinicaViewModel.actualizar()` → `HcRepository.actualizarConsultasRemotas` → el backend, solo si
+    es `Refrescable` (hoy `HcClinicaBackend`): `traerConsultas(…, forzar = true)`, que se salta los 60 s de la lista y del historial; pediatría y
+    las demás no tienen el botón y `HcBackend` no se tocó. «Reintentar» es `traerConsultasRemotas` (sin `forzar`): si falló la lista vuelve a
+    pedirla; si falló solo el historial repite solo ese. **Decisiones que la spec no fijaba (para revisar):** (1) **«Ver más» es sobre lo ya
+    traído** (la lista llega completa, hasta 20 páginas, E6.3): `hay_mas` del servidor no interviene; el tope de 50 cuenta las abiertas en la web y
+    las cerradas juntas por fecha (las del dispositivo cerradas también) y la «Consulta en curso» del dispositivo siempre se ve y no cuenta; una
+    abierta en la web muy vieja puede quedar detrás de «Ver más». (2) **El `429` tiene texto propio en `motivoDeLaLectura`, no en `motivoHc`:** el
+    plan pone ese caso en E6.5 (`MotivoHc`), pero `motivoHc` lo usa también la sección Enfermedades (003) y pediatría, y cambiarlo ahora movía su
+    comportamiento; E6.5 puede pasarlo a `motivoHc` (con `TEXTO_DEMASIADOS_PEDIDOS`) o dejarlo. (3) Los errores que no son de la API dicen su mensaje
+    («error» si no hay). (4) La nota del perfil 4 se muestra en `AntecedentesSeccion` (solo la sección `antecedentes_familiares`, solo para leer,
+    también en una consulta del dispositivo) con el rótulo «Nota» y cuenta como contenido (una sección fuera del perfil, solo para leer, ya no sale
+    vacía si solo tiene esa nota); como la HC general no tiene `notaLibre` en familiares, ese rótulo no choca con otro. (5) El aviso RF-44
+    («Abierta en la web: lo pendiente…») no está en la lista, solo en la consulta (E7.3), como dice el plan. (6) `vista` es `null` mientras se lee
+    la base y se muestra «Cargando la historia clínica…». **Textos:** todos de la spec/plan o de E7.1 salvo los de abajo. Nuevos para revisar:
+    «demasiados pedidos seguidos. Intentá de nuevo en un momento.» (RF-56 y el plan dicen «demasiados pedidos» / «demasiados pedidos seguidos»; la
+    segunda oración copia la de «sin conexión»); el rótulo «Nota» de la nota del perfil 4 (la spec no fija título). Ya existentes: «Reintentar»
+    (`TEXTO_REINTENTAR`, 003), «Cargando…» (mientras lee, en el lugar de «Actualizar»), «Continuar», «Anular», «Ver», «Nueva consulta», «Consultas
+    anteriores», «Todavía no hay consultas cerradas». **Para la prueba manual (E8.3):** que no haya `nota_perfil4` como casilla; el `FlowRow` con
+    360 dp de ancho (botones sin recortes); «Ver más» con más de 50 consultas (de a 50); «Actualizar» deshabilitado mientras lee y sin pedido
+    antes de 60 s al abrir dos veces; sin conexión y `429` (mensaje, «Reintentar» a mano, lo traído sigue visible); lector de pantalla (avisos y
+    tarjeta de error se anuncian; la fila se lee junta); el foco después de «Reintentar» (la tarjeta desaparece si sale bien); que una consulta de
+    la web abierta no ofrezca Continuar ni Anular.
 
 - [ ] **E7.3. Consulta de la web.** RF-39, RF-43, RF-44, RF-45, RF-63 — **M** — Toca API Laravel: no
   - `ConsultaViewModel` (`ConsultaUi.soloLecturaWeb`, `soloLectura` la incluye) y `ConsultaScreen`: banner "Consulta de la
@@ -1305,7 +1349,8 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     que se registra ya no pueda borrar nada de lo traído; E6.6 y E7.1 a E7.2, para que la pantalla ya distinga lo de la web).
   - `DataModule`: `CodigosHc.GENERAL -> HcClinicaBackend(get(), HcApiSoloLectura(cliente), get(), …)` en `HcBackends`;
     se actualizan los comentarios (ya no dice "la general no tiene `HcBackend`"); `MotivoHc`: caso `429`
-    ("demasiados pedidos seguidos") con su test en `MotivoHcTest`.
+    ("demasiados pedidos seguidos") con su test en `MotivoHcTest`. (E7.2 ya dejó ese texto en `motivoDeLaLectura`, que usa la historia del
+    paciente, sin tocar `motivoHc`: acá se decide si `motivoHc` lo adopta para las demás pantallas.)
   - Hecho cuando: `.\gradlew :core:data:jvmTest` completo en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila;
     con el `devWeb` contra la copia local, abrir la historia de un paciente de clínica no manda ningún pedido que no sea
     `GET` (registro de accesos de Apache) y las consultas viejas sucias siguen con `dirty = 1`. (Para esa comprobación el

@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.SECCION_DE_LA_NOTA_PERFIL4
+import com.salud360.core.data.hcgeneral.notaPerfil4
 import com.salud360.core.model.especialidad.ModoAntecedentes
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.ui.components.CheckboxWithDetail
@@ -39,10 +41,14 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val items = if (ro) cat.items.filter { i -> actuales[i.clave]?.let { it.flag || it.detalle.isNotBlank() } == true } else cat.items
     val historico = actuales["texto"]?.detalle ?: ""
     val nota = actuales["nota"]?.detalle ?: ""
+    // La nota de la pestaña de antecedentes familiares del perfil 4 (D2): la web la guarda aparte de las casillas y de la
+    // nota común, y llega como el antecedente `nota_perfil4`. Las casillas salen de `cat.items` (el catálogo), así que nunca
+    // se dibuja como una más; acá se muestra, solo para leer, y solo si existe (`notaPerfil4` es null si no hay).
+    val notaDelPerfil4 = notaPerfil4(ui.antecedentes).takeIf { s.id == SECCION_DE_LA_NOTA_PERFIL4 }
     val hayContenido = when (cat.modo) {
         ModoAntecedentes.CASILLAS -> items.isNotEmpty()
         ModoAntecedentes.TEXTO_ACUMULATIVO -> historico.isNotBlank()
-    } || (cat.notaLibre && nota.isNotBlank())
+    } || (cat.notaLibre && nota.isNotBlank()) || notaDelPerfil4 != null
     if (ro && !hayContenido) { SeccionVacia(); return }
 
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "antecedentes"), initiallyExpanded = s.inicialmenteExpandida) {
@@ -82,6 +88,7 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
         if (cat.notaLibre && (!ro || nota.isNotBlank())) {
             DebouncedText("Nota", nota, ro, multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
         }
+        notaDelPerfil4?.let { TextAreaField("Nota", it, {}, Modifier.fillMaxWidth(), minLines = 3, readOnly = true) }
     }
 }
 

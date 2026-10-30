@@ -4,22 +4,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.files.mimeDe
+import com.salud360.core.data.hcgeneral.CONSULTAS_POR_VEZ
 import com.salud360.core.data.hcgeneral.CambioEstudio
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
 import com.salud360.core.data.hcgeneral.EntradaTexto
 import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
+import com.salud360.core.data.hcgeneral.VistaDeLaHistoria
 import com.salud360.core.data.hcgeneral.cambioDePendientes
 import com.salud360.core.data.hcgeneral.cambioEstudio
 import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
+import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.layoutConsulta
+import com.salud360.core.data.hcgeneral.masConsultas
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
+import com.salud360.core.data.hcgeneral.motivoDeLaLectura
 import com.salud360.core.data.hcgeneral.puedeResolverse
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
+import com.salud360.core.data.hcgeneral.vistaDeLaHistoria
 import com.salud360.core.data.hcgeneral.textoDePendientesLocales
 import com.salud360.core.data.hcgeneral.visibleParaSesion
 import com.salud360.core.data.repos.AuthRepository
@@ -44,6 +50,7 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
 import com.salud360.core.model.pacientes.Paciente
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -59,6 +66,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -507,19 +515,80 @@ class HistoriaClinicaViewModel(
     /** Aviso cuando no se pudo traer la historia clínica del servidor de la especialidad. */
     val mensaje: StateFlow<String?> = _mensaje
 
-    init {
-        // Si la especialidad tiene su propio sistema (hoy pediatría), se trae lo que haya allá. La lista se
-        // observa de la base, así que aparece sola; sin conexión se sigue viendo lo que ya está en el dispositivo.
-        if (hc.tieneApi(especialidad)) {
-            viewModelScope.launch {
-                runCatching { hc.traerConsultasRemotas(pacienteId, medicoId, especialidad) }
-                    .onFailure { _mensaje.value = "No se pudo traer la historia clínica del servidor: ${it.message}" }
-            }
+    /**
+     * true si la HC solo lee de la web (HC general, spec 002 entrega L): la pantalla muestra los grupos de [vista] y las
+     * consultas de la web son solo para leer. Pediatría y las demás siguen con la lista de siempre.
+     */
+    val soloLectura: Boolean = hc.esSoloLectura(especialidad)
+
+    /** true si la pantalla ofrece «Actualizar» (RF-57): solo donde el backend sabe leer a pedido. */
+    val puedeActualizar: Boolean = hc.puedeActualizar(especialidad)
+
+    private val _visibles = MutableStateFlow(CONSULTAS_POR_VEZ)
+
+    /**
+     * La historia tal como se muestra (grupos, «Ver más» y avisos; todo lo decide `vistaDeLaHistoria`), o null mientras
+     * se lee de la base y siempre que la HC no es de solo lectura.
+     */
+    val vista: StateFlow<VistaDeLaHistoria?> =
+        if (soloLectura) {
+            combine(
+                hc.observarConsultas(pacienteId, especialidad),
+                hc.observarNombresDeMedicosWeb(),
+                pacientes.observarFilasExtra(pacienteId, especialidad),
+                _visibles,
+            ) { consultas, nombres, extras, visibles -> vistaDeLaHistoria(consultas, medicoId, nombres, extras, visibles) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        } else {
+            MutableStateFlow(null)
         }
+
+    private val _leyendo = MutableStateFlow(false)
+
+    /** Hay una lectura de la web en curso (al abrir, «Actualizar» o «Reintentar»). */
+    val leyendo: StateFlow<Boolean> = _leyendo
+
+    init {
+        // Si la especialidad tiene su propio sistema (pediatría, la HC general), se trae lo que haya allá. La lista se
+        // observa de la base, así que aparece sola; sin conexión se sigue viendo lo que ya está en el dispositivo.
+        if (hc.tieneApi(especialidad)) leer(forzar = false)
         if (existe && _definicion.value == null) {
             viewModelScope.launch { _definicion.value = definiciones.resolver(especialidad, medicoId) }
         }
     }
+
+    /**
+     * Una lectura de la web. Sin [forzar] respeta la espera de un minuto del backend; con [forzar] («Actualizar», RF-57) la
+     * salta. Si falla no reintenta sola (RF-58): deja el motivo en [mensaje] y lo ya traído se sigue viendo.
+     */
+    private fun leer(forzar: Boolean) {
+        if (_leyendo.value) return
+        _leyendo.value = true
+        viewModelScope.launch {
+            try {
+                if (forzar) hc.actualizarConsultasRemotas(pacienteId, medicoId, especialidad)
+                else hc.traerConsultasRemotas(pacienteId, medicoId, especialidad)
+                _mensaje.value = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _mensaje.value =
+                    if (soloLectura) motivoDeLaLectura(nombre, e).texto
+                    else "No se pudo traer la historia clínica del servidor: ${e.message}"
+            } finally {
+                _leyendo.value = false
+            }
+        }
+    }
+
+    /** «Actualizar»: vuelve a leer la lista y el historial de la web aunque no haya pasado el minuto. */
+    fun actualizar() = leer(forzar = true)
+
+    /** «Reintentar» después de un fallo: a mano, nunca solo. Repite lo que no se pudo (respeta el minuto de lo que sí salió). */
+    fun reintentar() = leer(forzar = false)
+
+    /** «Ver más» (Q9): 50 consultas más de las que ya están en el dispositivo; no pide nada a la web. */
+    fun verMas() = _visibles.update(::masConsultas)
 
     fun nuevaConsulta(tipo: String, onAbierta: (Consulta) -> Unit) = viewModelScope.launch {
         // Sin perfil o sin configuración no se crean consultas (RF-19, RF-26); la pantalla ya no lo ofrece.
@@ -533,5 +602,9 @@ class HistoriaClinicaViewModel(
         onAbierta(c)
     }
 
-    fun anular(c: Consulta) = viewModelScope.launch { hc.anularConsulta(c.id) }
+    fun anular(c: Consulta) = viewModelScope.launch {
+        // Una consulta de la web no se anula desde acá (RF-45): solo la "en curso" del dispositivo tiene esa acción.
+        if (soloLectura && c.esDeLaWeb()) return@launch
+        hc.anularConsulta(c.id)
+    }
 }

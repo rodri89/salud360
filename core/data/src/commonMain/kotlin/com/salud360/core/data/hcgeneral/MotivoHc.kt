@@ -34,3 +34,16 @@ fun motivoHc(nombreHc: String, e: TobbException): MotivoHc {
     }
     return MotivoHc(tipo, "Historia clínica de $nombreHc: $texto")
 }
+
+/** RF-56: el `429` de Laravel (límite de pedidos por minuto), que llega sin código y con un texto en inglés. */
+const val TEXTO_DEMASIADOS_PEDIDOS = "demasiados pedidos seguidos. Intentá de nuevo en un momento."
+
+/**
+ * El motivo por el que no se pudo leer la historia de la web (RF-56, RF-58): el de [motivoHc] y, para el `429`, «demasiados
+ * pedidos» ([TEXTO_DEMASIADOS_PEDIDOS]) en vez del texto de Laravel. Un error que no es de la API dice su mensaje.
+ */
+fun motivoDeLaLectura(nombreHc: String, e: Throwable): MotivoHc {
+    if (e !is TobbException) return motivoHc(nombreHc, TobbException(0, "respuesta", e.message?.trim()?.ifEmpty { null } ?: "error"))
+    if (e.status == 429) return MotivoHc(MotivoHc.Tipo.OTRO, "Historia clínica de $nombreHc: $TEXTO_DEMASIADOS_PEDIDOS")
+    return motivoHc(nombreHc, e)
+}

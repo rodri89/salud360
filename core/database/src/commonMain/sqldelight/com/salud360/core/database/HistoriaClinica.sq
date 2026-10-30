@@ -335,6 +335,8 @@ preferenciasDeMedico: SELECT * FROM medico_preferencia WHERE medico_id = ? AND d
 upsertPreferencia: INSERT OR REPLACE INTO medico_preferencia VALUES ?;
 preferenciasDirty: SELECT * FROM medico_preferencia WHERE dirty = 1;
 limpiarPreferencia: UPDATE medico_preferencia SET dirty = 0 WHERE medico_id = ? AND clave = ?;
+-- Los nombres de los médicos de la web (`hcc-m<id>`, clave `nombre`) para «Cargada por …» (spec 002, E7.2). Solo lectura: no cambia el esquema.
+nombresDeMedicosWeb: SELECT * FROM medico_preferencia WHERE medico_id LIKE 'hcc-m%' AND clave = 'nombre' AND deleted = 0;
 
 -- Qué se cargó en una consulta, para saber qué secciones tienen datos en ella (HC general, bloque de solo
 -- lectura). Lo que es del paciente (sin consulta) no entra. Solo lectura: no cambia el esquema.

@@ -76,7 +76,7 @@ class HcClinicaBackend internal constructor(
     private val pacientes: PacientesHcRepository,
     private val ahora: () -> Long,
     private val maxPaginas: Int,
-) : HcBackend {
+) : HcBackend, Refrescable {
     constructor(db: Salud360Db, api: HcApiSoloLectura, pacientes: PacientesHcRepository, ahora: () -> Long = ::ahoraMillis) :
         this(db, ConsultasClinicaApiRemota(api), pacientes, ahora, MAX_PAGINAS)
 
@@ -115,7 +115,7 @@ class HcClinicaBackend internal constructor(
      * estaba. La lista y el historial son independientes: si falla la lista no se pide el historial; si falla el historial
      * la lista ya escrita se queda (y el próximo pedido sin «Actualizar» solo repite el historial).
      */
-    suspend fun traerConsultas(pacienteId: Id, medicoId: Id, forzar: Boolean): List<Consulta> = candado.withLock {
+    override suspend fun traerConsultas(pacienteId: Id, medicoId: Id, forzar: Boolean): List<Consulta> = candado.withLock {
         val ficha = pacientes.fichaConocida(pacienteId, especialidad)
         if (ficha == null) {
             log.i { "$pacienteId no tiene ficha en la HC general: no se pide nada" }

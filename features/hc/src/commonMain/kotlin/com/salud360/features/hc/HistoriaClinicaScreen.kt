@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -41,8 +42,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.TEXTO_REINTENTAR
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Consulta
@@ -94,6 +99,9 @@ fun HistoriaClinicaScreen(
     val pendientes by vm.pendientes.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val resuelta by vm.definicion.collectAsState()
+    // Solo la HC que lee de la web (clínica) usa estos dos; las demás siguen con la lista de siempre.
+    val vista by vm.vista.collectAsState()
+    val leyendo by vm.leyendo.collectAsState()
     var elegirTipo by remember { mutableStateOf(false) }
     var anular by remember { mutableStateOf<Consulta?>(null) }
     val color = Salud360Colors.especialidad(especialidad)
@@ -123,24 +131,32 @@ fun HistoriaClinicaScreen(
         // "no tiene" de "no se pudo traer".
         mensaje?.let { m ->
             SectionCard("No se pudo traer la historia clínica", icon = Icons.Default.CloudOff, collapsible = false) {
-                Text(m, color = Salud360Colors.Danger)
+                // En la HC de la web el aviso se anuncia al aparecer y el reintento es a mano: nunca se repite solo (RF-58).
+                Text(
+                    m, color = Salud360Colors.Danger,
+                    modifier = if (vm.soloLectura) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier,
+                )
                 Text(
                     "Lo que está cargado en este dispositivo se sigue viendo y nada se pierde.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (vm.soloLectura) BotonDeLaLectura(TEXTO_REINTENTAR, onClick = vm::reintentar, enabled = !leyendo)
             }
         }
 
         val r = resuelta
         if (!vm.existe) {
             EmptyState("La especialidad \"$especialidad\" no está disponible en esta versión de la app.")
-        } else if (r == null) {
-            // HC general: esperando la configuración del médico (a lo sumo unos segundos, después vale la guardada).
+        } else if (r == null || (vm.soloLectura && vista == null)) {
+            // HC general: esperando la configuración del médico (a lo sumo unos segundos, después vale la guardada) o la
+            // lectura de la base para armar los grupos.
             Text("Cargando la historia clínica…", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             val def = r.definicion
             val tipos = r.tiposNuevos
+            // Con backend de solo lectura (HC general) los grupos, las etiquetas y los avisos salen de `vistaDeLaHistoria`.
+            val lectura = vista.takeIf { vm.soloLectura }
             // Sin perfil (RF-19) o sin la configuración la primera vez (RF-26): no hay consulta nueva, lo guardado se lee.
             if (r.sinPerfil) SectionCard("Falta que el administrador te asigne un perfil", collapsible = false) {
                 Text("Hasta entonces no podés cargar consultas nuevas. Las anteriores se pueden abrir para leerlas.")
@@ -155,18 +171,29 @@ fun HistoriaClinicaScreen(
                     )
                 }
             }
+            if (lectura != null) {
+                AvisosDeLaLectura(lectura.avisos.todos)
+                if (vm.puedeActualizar) AccionesDeLaLectura(leyendo, onActualizar = vm::actualizar)
+            }
             val abierta = consultas.firstOrNull { it.estado == EstadoConsulta.ABIERTA }
-            if (abierta != null) {
-                // Una consulta ya abierta se sigue y se anula aunque el médico haya quedado sin perfil (C10).
-                SectionCard("Consulta en curso", collapsible = false) {
-                    Text("${abierta.fecha.toDisplay()} · ${def.tipoConsulta(abierta.tipo)?.nombre ?: abierta.tipo}", fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PillButton("Continuar", onClick = { onAbrirConsulta(abierta) })
-                        LinkButton("Anular", onClick = { anular = abierta })
+            // Una consulta de la web nunca es la "en curso" (RF-44, RF-46): con la lectura de la web, solo las del dispositivo.
+            val hayEnCurso = if (lectura != null) lectura.enCurso.isNotEmpty() else abierta != null
+            lectura?.enCurso?.forEach { item ->
+                ConsultaEnCursoLocal(item, def, onContinuar = { onAbrirConsulta(item.consulta) }, onAnular = { anular = item.consulta })
+            }
+            if (hayEnCurso) {
+                if (lectura == null && abierta != null) {
+                    // Una consulta ya abierta se sigue y se anula aunque el médico haya quedado sin perfil (C10).
+                    SectionCard("Consulta en curso", collapsible = false) {
+                        Text("${abierta.fecha.toDisplay()} · ${def.tipoConsulta(abierta.tipo)?.nombre ?: abierta.tipo}", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PillButton("Continuar", onClick = { onAbrirConsulta(abierta) })
+                            LinkButton("Anular", onClick = { anular = abierta })
+                        }
                     }
                 }
             } else if (!elegirTipo && tipos.isNotEmpty()) {
-                PillButton("Nueva consulta", icon = Icons.Default.Add, onClick = {
+                PillButton("Nueva consulta", icon = Icons.Default.Add, modifier = if (lectura != null) Modifier.heightIn(min = 48.dp) else Modifier, onClick = {
                     if (tipos.size == 1) vm.nuevaConsulta(tipos.first().codigo, onAbrirConsulta) else elegirTipo = true
                 })
             }
@@ -180,7 +207,10 @@ fun HistoriaClinicaScreen(
                 }
             }
 
-            SectionCard("Consultas anteriores (${consultas.count { it.estado == EstadoConsulta.CERRADA }})", collapsible = false) {
+            if (lectura != null) {
+                AbiertasEnLaWeb(lectura, def, color, onAbrirConsulta)
+                AnterioresDeLaLectura(lectura, def, color, onAbrirConsulta, onVerMas = vm::verMas)
+            } else SectionCard("Consultas anteriores (${consultas.count { it.estado == EstadoConsulta.CERRADA }})", collapsible = false) {
                 val cerradas = consultas.filter { it.estado == EstadoConsulta.CERRADA }
                 if (cerradas.isEmpty()) Text("Todavía no hay consultas cerradas", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 cerradas.forEach { c ->

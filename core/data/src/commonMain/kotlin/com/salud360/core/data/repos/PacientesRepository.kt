@@ -112,6 +112,10 @@ class PacientesRepository(private val db: Salud360Db) {
     fun observarExtras(pacienteId: Id, especialidad: String): Flow<Map<String, String>> =
         q.extrasDePaciente(pacienteId, especialidad).flujoLista { it.toModel() }.map { lista -> lista.associate { it.clave to it.valor } }
 
+    /** Las mismas filas que [observarExtras], enteras: la lectura de la HC general reconoce las suyas por clave. */
+    fun observarFilasExtra(pacienteId: Id, especialidad: String): Flow<List<PacienteExtra>> =
+        q.extrasDePaciente(pacienteId, especialidad).flujoLista { it.toModel() }
+
     suspend fun guardarExtra(pacienteId: Id, especialidad: String, clave: String, valor: String) {
         q.upsertPacienteExtra(PacienteExtra(pacienteId, especialidad, clave, valor).toRow(ahoraMillis()))
     }
