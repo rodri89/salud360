@@ -5,8 +5,15 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E6.2, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea.
-  E6.1 hecha (2026-10-30):** `HcApiSoloLectura` (solo `get`/`leer`/`leerOpcional`/`leerTodo`), `ConsultasClinicaApi` + `...Remota` (solo
+- **Siguiente paso: E6.3, dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el usuario y encadenada tarea por tarea.
+  E6.2 hecha (2026-10-30):** `hcgeneral/LecturaClinica.kt` (puro): ids `hcc-c<id>`, `hcc-m`, `hcc-l<tipo>-<id>`, `hcc-r<tipo>-<id>`, `hcc-p`,
+  `hcc-a<ficha>-<clave>`; conversión de las respuestas al modelo (nunca un vacío que pise, textos intactos) y `fusionar…` (lo que viene
+  pisa, lo que no se conserva, `null` si no cambia nada); `filaDeLaWeb` (siempre `dirty = 0`); `desconocidos(catalogo, …)`;
+  `marcarAusentes(traido, marcadas, LecturaWeb)` solo devuelve `marcar`/`desmarcar` (claves `hcc_ausente_<clave>`; la lista solo cubre con
+  todas las páginas de un «Actualizar»; la nota del perfil 4 nunca se marca). 825 tests de `core:data`, 32 de `clinica` y wasm en verde; el
+  test contra `catalogoHcGeneral` vive en `especialidades/clinica`. E6.3 debe escribir las consultas de la más vieja a la más nueva
+  (no se guarda `created_at`). Detalle y decisiones en la nota de E6.2.
+  **E6.1 hecha (2026-10-30):** `HcApiSoloLectura` (solo `get`/`leer`/`leerOpcional`/`leerTodo`), `ConsultasClinicaApi` + `...Remota` (solo
   `listar`/`consulta`/`historia`, agregado a lo que pedía el plan) y `HcClinicaDtos.kt`; tests con reflexión y servidor falso (solo `GET`, sin
   cuerpo, un pedido por error); 729 tests en verde y wasm compila. Los DTOs exigen los contenedores de lo que E6.4b podría marcar como
   ausente (si faltan, `TobbException` `respuesta`); pueden faltar `created_at`, `antecedentes_familiares_perfil4`, `omitidas` y `no_leidas`.

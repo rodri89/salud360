@@ -947,7 +947,7 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
     corrigió E4.x; el DTO lo ignoraría igual); el plan no tiene `created_at` ni `antecedentes_familiares_perfil4` (E4.4); `datos` del plan es
     `datos_invalidos` en el código del 422; el `404` de una consulta de un paciente fuera de la cartera es `403 fuera_de_cartera` (D3).
 
-- [ ] **E6.2. Ids y conversión pura (`LecturaClinica`).** RF-40, RF-41, RF-42, RF-52 — **M** — Toca API Laravel: no
+- [x] **E6.2. Ids y conversión pura (`LecturaClinica`).** RF-40, RF-41, RF-42, RF-52 — **M** — Toca API Laravel: no
   - Tests primero: `commonTest` `LecturaClinicaTest`: ids `hcc-c`, `hcc-m`, `hcc-l`, `hcc-r`, `hcc-p`, disjuntos de `hcp-c…`
     y `hc-clinica-p…`; serologías `SI`/`NO`, Child-Pugh `"1"`–`"3"`, alimentación `"1|detalle"`; cada analito (los 5
     desalineados y `otros`) en su fila; antecedente `dependiente_terceros`; carga de laboratorio con `consulta_id`
@@ -960,6 +960,57 @@ Al terminar la tanda: validación del reviewer y MEMORY.md.
   - Código: `core/data/.../hcgeneral/LecturaClinica.kt` (puro). Aquí se fija el formato de las claves `hcc_ausente_…`.
   - Alcance (2026-10-28, Q15): reemplaza a la `quitarDeLoTraido` del borrador (que ya no existe); sigue en **M**.
   - Hecho cuando: el test en verde (antes, en rojo).
+  - **Hecho (2026-10-30, tanda A encadenada).** `hcgeneral/LecturaClinica.kt` (puro: sin red, sin base, sin Compose; sin dependencias ni
+    migraciones; `SeccionesSoloLectura.tieneDato` pasó de `private` a `internal` para usar la misma regla de «hay dato» en la
+    alimentación). Tests: `commonTest` `LecturaClinicaTest` (ids y conversión), `LecturaClinicaAusentesTest` (Q15) y el helper
+    `RespuestasClinicaDeEjemplo` (los ejemplos inventados de E6.1 ya leídos con los DTOs); `jvmTest` `LecturaClinicaSinBorradoTest`
+    (reflexión: `MarcasAusentes` solo tiene `marcar`/`desmarcar`, ningún nombre de la lectura sugiere un borrado o un vaciado y nada
+    toca `Queries`/`Salud360Db`); y `especialidades/clinica` `commonTest` `LecturaClinicaCatalogoTest` (**fuera de `core/data` a
+    propósito**: `catalogoHcGeneral` vive en ese módulo y `core:data` no lo ve) que recorre una respuesta con todas las claves del
+    contrato y comprueba contra el catálogo real que cada sección, campo, analito, tipo de registro y antecedente existe (los 5
+    analitos desalineados y `otros` incluidos), que `tabaquismo` no se inventa y que cada una de las 25 secciones del catálogo tiene
+    una decisión (se escribe por consulta, por paciente, es el examen, o no tiene equivalente: `enfermedades` y `documentos`).
+    **Rojo previo:** `:core:data:compileTestKotlinJvm` fallaba con 728 errores de compilación (`Unresolved reference` y la inferencia
+    que arrastran) solo en los archivos de test nuevos. **Verde:** `:core:data:jvmTest --rerun` completo 825 tests (729 + 96 nuevos),
+    0 fallas, 0 errores; `:especialidades:clinica:jvmTest --rerun` 32 (7 nuevos); `:composeApp:compileKotlinWasmJs -Pentorno=dev`
+    compila. Mutaciones (revertidas): una lista parcial que cubre, un examen que se pisa con `""` y una serología que acepta cualquier
+    valor hacen fallar 5 tests.
+    **Ids (RF-52), siempre `hcc-` + letra + tipo + id de la web:** consulta `hcc-c7003`; médico de otra `hcc-m14` (`hcc-m0` si la web no lo
+    informó); carga `hcc-l<tipo>-<id>` (`hcc-llaboratorio_general-703`, `hcc-lpeso-25`); estudio, examen o interconsulta `hcc-r<tipo>-<id>`
+    (`hcc-rveda-1797`, `hcc-rbiopsia_hepatica-1797`, `hcc-rexamen_complementario-22`); pendiente `hcc-p1744`; antecedente familiar
+    `hcc-a<ficha>-<clave>` (`hcc-a5001-hta`, `-nota`, `-nota_perfil4`). Salen solo de lo que la web mandó (no del paciente local ni de un
+    contador): traer lo mismo dos veces da el mismo id. Test de tabla: sin repetidos entre tipos, números y fichas, ninguno empieza con
+    `hcp-`, `hc-clinica-p` ni `tobb-`, y 500 `newId()` nunca empiezan con `hcc-`.
+    **`marcarAusentes(traido, marcadas, lectura)`** devuelve `MarcasAusentes(marcar, desmarcar)` (dos conjuntos de «claves de ausencia») y nada
+    más: no existe un resultado, una función ni un nombre que exprese un borrado. `lectura` es `LecturaWeb`: `Lista(pacienteWebId, páginas)`,
+    `UnaConsulta`, `ConsultaNoEncontrada` (el `404 consulta_no_encontrada`), `Historia(pacienteWebId, respuesta)` y `ConError` (no marca
+    ni desmarca nada). Clave de ausencia = el id local de la cosa (`hcc-c7003`, `hcc-rveda-1797`, `hcc-p1744`, `hcc-a5001-hta`) o, para el
+    contenido de una consulta, `<consulta>:<sección>:<campo>` (`hcc-c7003:habitos:texto`, `hcc-c7003:examen_fisico:peso`); la marca es la
+    fila de `paciente_extra` `hcc_ausente_<clave de ausencia>` con la fecha como valor (`marcaAusente`, `claveDeLaMarca`;
+    `filaDeLaWeb` la deja con `dirty = 0`). Solo marca lo que la respuesta cubre: la lista, únicamente si las páginas de un mismo
+    «Actualizar» empiezan en 0, encadenan, tienen el mismo `total`, todas menos la última dicen `hay_mas` y la suma da el total, sin
+    repetidos y todas del paciente; la consulta, su contenido; la historia, lo del paciente (antecedentes, cargas, filas, pendiente y
+    el motivo de cada consulta). Lo que vuelve a venir se desmarca y una marca ya puesta no se repite. `traido` y `marcadas` los arma
+    E6.4b y tienen que ser solo del paciente. `clavesDeLaConsulta` y `clavesDeLaHistoria` dan las claves de lo que una respuesta trae.
+    **Decisiones que la spec no fijaba (para revisar):** (1) las conversiones devuelven el modelo con `updatedAt = null` y las
+    `fusionar…` (consulta, examen físico, antecedente, carga, registro) devuelven lo que hay que escribir o `null` si no cambia nada:
+    lo que viene pisa, lo que no viene o viene vacío se conserva (el examen conserva FC y circunferencia abdominal); `consulta_id`,
+    fecha y detalle ya traídos no vuelven a `null` ni a `""`. (2) El motivo de `historia.motivos` va como el texto
+    `motivo_consulta/texto` de `hcc-c<consulta_id>` y **solo si esa consulta está local** (no se crea una consulta ni una fila
+    huérfana); por eso no tiene id propio, y su marca es la del contenido de la consulta. (3) Un antecedente de la web usa siempre el
+    id `hcc-a…`; si el dispositivo ya tiene una fila de esa clave con otro id, o sucia, `fusionarAntecedente` devuelve `null` (lo del
+    dispositivo manda y no se duplica). La nota del perfil 4 es el antecedente `familiares/nota_perfil4`; dónde se muestra lo decide
+    E7.2, y **nunca se marca como ausente** porque el DTO no distingue una clave que falta de un `null` (servidor anterior o tabla
+    inexistente). (4) `numero` (orden de exámenes e interconsultas) se guarda como un campo más; `remoto_id` de los registros es el id
+    de la web. (5) Una consulta con tipo (`control`/`telemedicina`, o `tipo_numero` 1/4 si falta), estado o fecha que no se
+    reconocen devuelve `null`: no se muestra ni se inventa nada (E6.3 decide si lo registra). (6) La lista solo cubre con todas las
+    páginas, como pidió la tanda; no se marca «por rango» una consulta más nueva que la última de una página parcial (más fino, y
+    más riesgoso). Una página parcial sí quita la marca de lo que trae. (7) `created_at` no se guarda (no hay columna): dos
+    consultas del mismo día se desempatan en la base por `updated_at`, así que E6.3 debería escribirlas de la más vieja a la más nueva
+    con `updated_at` creciente. (8) `desconocidos(catalogo, …)` informa lo que el catálogo no conoce pero la conversión lo guarda
+    igual; una serología que no es `SI`/`NO` o un punto de Child-Pugh fuera de 1 a 3 no se guarda (RF-42: nada en una casilla
+    equivocada). (9) Un historial con `omitidas.laboratorio_sin_fecha` hace que una carga ya traída que perdió la fecha se marque como
+    ausente (D1).
 
 - [ ] **E6.3. `HcClinicaBackend.traerConsultas`.** RF-38, RF-41, RF-43, RF-45, RF-47, RF-49, RF-52 a RF-54, RF-56, RF-57 — **M** — Toca API Laravel: no
   - Tests primero: `jvmTest` `HcClinicaBackendTest` y `HcClinicaBackendSoloLecturaTest` (servidor falso con

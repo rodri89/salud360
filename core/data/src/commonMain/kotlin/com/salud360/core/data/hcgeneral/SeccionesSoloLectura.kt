@@ -145,7 +145,7 @@ private fun valoresExamen(ex: ExamenFisico) = listOf(
     ex.temperatura, ex.saturacion, ex.ipd, ex.nota,
 )
 
-private fun tieneDato(valor: String?): Boolean {
+internal fun tieneDato(valor: String?): Boolean {
     val v = valor?.trim().orEmpty()
     if ('|' !in v) return v.isNotEmpty() && v != "0"
     val marca = v.substringBefore('|').trim()
