@@ -1228,7 +1228,7 @@ tests de lógica pura, con compilación y con revisión de código (la comprobac
 `HcRepository`/`ConsultaViewModel` usan un backend falso inyectado, como los de E5. E6.5 (registro en `DataModule`) cierra la
 tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
 
-- [ ] **E7.1. Lógica pura de la lista y de los avisos.** RF-43 a RF-46, RF-63 — **S** — Toca API Laravel: no
+- [x] **E7.1. Lógica pura de la lista y de los avisos.** RF-43 a RF-46, RF-63 — **S** — Toca API Laravel: no
   - Tests primero: `commonTest` `ConsultaWebTest`: `agruparConsultas` separa "abiertas en la web", "consulta en curso"
     (solo local), "anteriores" (cerradas, con origen) y "solo en este dispositivo"; la etiqueta de ajena con y sin nombre;
     una consulta marcada "ya no figura" **sigue en su grupo** (no se oculta ni pasa a otro) y lleva la etiqueta;
@@ -1236,6 +1236,46 @@ tanda de código y E7.4 refresca el `devWeb` ya con el backend registrado.
     (consulta, sección y fila).
   - Código: `core/data/.../hcgeneral/AvisosLectura.kt` y el agrupador (en `LecturaClinica.kt` o archivo propio).
   - Hecho cuando: ambos tests en verde (antes, en rojo).
+  - **Hecho (2026-10-30, tanda A encadenada).** Código (todo puro, `core/data/.../hcgeneral`, sin dependencias ni migraciones, sin tocar
+    pantallas ni servidor): `ConsultaWeb.kt` (`agruparConsultas`, `ConsultaDeLaLista`, `GruposDeConsultas`, `OrigenConsulta`,
+    `Consulta.origen()`, `Consulta.idWeb()`, `nombresDeMedicosWeb`), `AusenciasEnLaWeb.kt` (`AusenciasEnLaWeb`, `ItemAusente`, `itemAusente`) y
+    `AvisosLectura.kt` (los textos como constantes, `extrasDeLectura`, `avisosDeLaHistoria`, `avisosDeConsulta`, `avisoNoLeidas`, `notaPerfil4`).
+    Tests (`commonTest`, 51): `ConsultaWebTest` (20), `AvisosLecturaTest` (22; los textos fijos TAL CUAL) y `AusenciasEnLaWebTest` (9).
+    **Rojo previo:** `:core:data:compileTestKotlinJvm` fallaba con 350 errores de compilación (`Unresolved reference`), solo en los tres
+    archivos nuevos. **Verde:** `:core:data:jvmTest --rerun` completo 1078 tests (1027 + 51), 0 fallas, 0 errores, 0 salteados (dos corridas
+    completas); `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila. Mutaciones (revertidas, las tres a la vez; las detectan 6 tests):
+    desempatar por id como texto, sacar de la lista a la consulta marcada y sumar las cargas sin fecha a las consultas omitidas.
+    **Qué consume E7.2/E7.3:** (a) `agruparConsultas(consultas, medicoSesionId, nombresMedicos, ausencias)` → `GruposDeConsultas(abiertasEnLaWeb,
+    enCurso, anteriores)` de `ConsultaDeLaLista(consulta, origen, propia, autor, cargadaPor, ausenteDesde)` con `soloLectura`, `abiertaEnLaWeb`,
+    `ausente` y `etiquetas` (origen, «Ya no figura en la web», «Cargada por …»); `soloEnEsteDispositivo` es una vista de `anteriores`. (b)
+    `extrasDeLectura(filas de paciente_extra)` → `ExtrasDeLectura(omitidasConsultas, cargasSinFecha, noLeidas por id web, ausencias)`;
+    `avisosDeLaHistoria(vinculado, lectura)` y `avisosDeConsulta(consulta, medicoSesionId, nombresMedicos, lectura)`. (c) `AusenciasEnLaWeb`
+    (`consulta`, `seccion`, `campo`s, `contenido`, `carga`, `fila`, `pendiente`, `antecedente`, `items()`) con el id local de lo que se muestra.
+    (d) `notaPerfil4(antecedentes)` y `SECCION_DE_LA_NOTA_PERFIL4` (= `antecedentes_familiares`).
+    **Textos (de la spec y del plan, tal cual):** «Ya no figura en la web» (RF-63), «Esta consulta ya no figura en la web: lo que ves es lo último
+    que se trajo», «Este paciente todavía no está vinculado con la historia clínica de la web» (RF-49), «Abiertas en la web (solo lectura)»,
+    «Consulta de la web — solo lectura», «Abierta en la web: lo pendiente de confirmar no se ve hasta que se cierre», «Web», «Solo en este
+    dispositivo» y «Solo en este dispositivo (no se envía a la web)» (Q14), «Cargada por <nombre>» / «Cargada por otro médico», «N consultas de
+    la web de un tipo que esta versión no muestra», «La web tiene <adjuntos PDF, audio, …> que esta versión no muestra». **Textos que NO están en la
+    spec ni en el plan** (pedir que el usuario los revise): (1) el aviso de D1, «N cargas de laboratorio/peso sin fecha no se muestran», sale de la
+    descripción de la tarea (la spec solo dice «se cuenta en el aviso»); (2) el singular de las dos líneas con cantidad («1 consulta de la web de un
+    tipo…», «1 carga de laboratorio/peso sin fecha no se muestra»); (3) los nombres de `no_leidas` (`documentos` = «adjuntos PDF», `diagnosticos` =
+    «diagnósticos», `antecedentes_personales` = «antecedentes personales», de RF-43) y la unión «A, B y C»; un id que el servidor mande y la app no
+    conozca se nombra tal cual vino; (4) «Cargada por otro médico» para el caso sin nombre (el plan dice «"Cargada por <nombre>" (o "otro médico")»).
+    **Decisiones que la spec no fijaba (para revisar):** (1) **dos avisos y no uno**: las consultas omitidas de la lista (`hcc_omitidas`:
+    foto + otro + sin_fecha) son consultas; las cargas sin fecha de `hcc_omitidas_laboratorio` son cargas. La nota de E6.4 decía «E7.1 suma las dos
+    cuentas»; sumarlas daría «N consultas de un tipo que esta versión no muestra» con cargas adentro, así que cada una tiene su línea y no se
+    duplica ninguna. (2) El orden es por `fecha` descendente y, dentro del mismo día, el orden en que llegan las consultas (el de la base, que
+    equivale a `(created_at, id)` porque E6.3 las escribe de la más vieja a la más nueva): la base no guarda `created_at` y comparar ids como texto
+    pondría `hcc-c9` antes que `hcc-c10`. (3) «Anteriores» mezcla cerradas de la web y del dispositivo con su etiqueta, como dice el plan;
+    `soloEnEsteDispositivo` es solo una vista de ese grupo. (4) `enCurso` es una lista (normalmente una): una base migrada de hepatología puede tener
+    dos abiertas locales y ninguna se oculta. (5) «Cargada por …» solo en las consultas de la web (el nombre de un médico solo se guarda para las
+    `hcc-m…`). (6) Las marcas de una consulta del dispositivo no se muestran nunca. (7) Las anuladas no se listan. (8) La nota del perfil 4 solo se
+    muestra si el antecedente `familiares/nota_perfil4` existe, está activo y no está en blanco; la pantalla pone el título (la spec no fija uno).
+    **Para E7.2/E7.3:** «Ver más» (50 por vez) y el filtro de lo visible no están acá (la lista llega completa, hasta 20 páginas); `notaPerfil4` no saca
+    la nota de la lista de casillas (revisar que el renderer de `antecedentes_familiares` no muestre `nota_perfil4` como casilla); el pendiente de la
+    web no entra en ningún aviso (Q16-A: el contador no cambia). Duda para el usuario: RF-43 pide avisar «que se ve en la web»; el texto del plan
+    («La web tiene … que esta versión no muestra») lo da a entender pero no lo dice.
 
 - [ ] **E7.2. Historia del paciente.** RF-38, RF-44, RF-46, RF-49, RF-56, RF-63 — **M** — Toca API Laravel: no
   - `HistoriaClinicaViewModel` / `HistoriaClinicaScreen`: grupos de E7.1 (la "Consulta en curso" con Continuar y Anular

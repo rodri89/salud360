@@ -5,8 +5,12 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso (2026-10-29)
-- **Siguiente paso: E7.1 (lógica pura de la lista y de los avisos), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
-  usuario y encadenada tarea por tarea. E6.6 hecha (2026-10-30):** `CargasLaboratorio.kt` (`puedeBorrarCarga`: sin tacho para `hcc-l…`) y
+- **Siguiente paso: E7.2 (historia del paciente), dentro de la tanda A (app) de la spec 002, entrega L, aprobada por el
+  usuario y encadenada tarea por tarea. E7.1 hecha (2026-10-30):** `hcgeneral/ConsultaWeb.kt` (`agruparConsultas` → abiertas en la web / en curso /
+  anteriores, con origen, autor y marca), `AusenciasEnLaWeb.kt` (qué ítem lleva «Ya no figura en la web») y `AvisosLectura.kt` (textos de la
+  spec/plan como constantes, `extrasDeLectura`, `avisosDeLaHistoria`, `avisosDeConsulta`, `notaPerfil4`); 1078 tests de `core:data` en verde. Dos
+  avisos distintos (consultas omitidas y cargas sin fecha: no se suman); el aviso de D1 y los singulares no están en la spec, hay que revisarlos
+  (lista en la nota de E7.1). **E6.6 hecha (2026-10-30):** `CargasLaboratorio.kt` (`puedeBorrarCarga`: sin tacho para `hcc-l…`) y
   `PendientesWeb.kt` (`esDeLaWeb`, `puedeResolverse`, `cambioDePendientes`: nunca resuelve `hcc-p…`; el texto del cierre es solo el de los
   locales) usados por `ConsultaViewModel`; 1027 tests de `core:data` en verde. Sin guardas en `HcRepository` (E7.3); E7.3 debe ocultar
   «Resuelto» con `puedeResolverse()` y ajustar el diálogo de cierre. **E6.4b hecha (2026-10-30):** `repos/MarcasDeLaWeb.kt` aplica `marcarAusentes` desde `traerConsultas`
