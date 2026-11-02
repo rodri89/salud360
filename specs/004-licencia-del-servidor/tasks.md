@@ -31,7 +31,7 @@ Reglas para todas:
 
 ## Tanda A — Lógica y datos (`core:data`, worktree)
 
-- [ ] **T1. Estado de la licencia del servidor y reglas puras.** RF-5, RF-6, RF-7, RF-8, RF-10, RF-11, RF-12 · tamaño S (~20 min)
+- [x] **T1. Estado de la licencia del servidor y reglas puras.** RF-5, RF-6, RF-7, RF-8, RF-10, RF-11, RF-12 · tamaño S (~20 min)
   - Tests primero: `core/data/src/commonTest/.../repos/LicenciaDelServidorTest.kt`. `licenciaBloqueadaSegun`: tabla
     `Vigente` / `Vencida` / `SinLicencia` / `SinDato` × copia vigente, vencida por fecha, inactiva, ausente, con fecha corrupta
     (`SinDato` + ausente = no bloquea; `Vigente` + copia vencida = no bloquea; `Vencida` + copia vigente = bloquea;
@@ -44,6 +44,17 @@ Reglas para todas:
     red, sin base, sin reloj propio (`licenciaBloqueada()` ya usa `hoy()`).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*LicenciaDelServidorTest*' --tests '*LicenciaTest*'` en verde;
     `LicenciaTest.kt` sin cambios en `git diff`.
+  - **Hecho (2026-11-02, worktree, commit `920d206`).** Rojo previo: `LicenciaDelServidorTest` sin el código fallaba al compilar solo
+    por los tres símbolos que faltan (67 errores, todos «Unresolved reference» de `EstadoLicenciaRemoto`, `licenciaBloqueadaSegun`
+    y `copiaDeLicencia`). Verde: `LicenciaDelServidorTest` 18/18 y `LicenciaTest` 8/8; `:core:data:jvmTest --rerun` completo 43 tests, 0
+    fallas (el árbol publicado tiene 9 clases de test; los E2E se saltean solos). `LicenciaTest.kt` sin cambios. No se compiló
+    wasm (T1 no lo pide; es `commonMain` puro).
+    Decisiones que el texto no fijaba: (1) `SinLicencia` nace en T1 (la spec ya la pedía por P3) y **nunca bloquea, ni siquiera con
+    la copia vencida o inactiva**; no toca la copia. (2) `Vigente` con `vence` en blanco: `copiaDeLicencia` devuelve `null`
+    (no se pisa la copia con un vacío; el backend, en T2, ya lo traduce a `SinDato`). (3) `Vencida` solo desactiva una copia que
+    estaba activa; si ya estaba inactiva devuelve `null`. (4) El aviso vacío conserva el de la previa o queda `""` sin previa.
+    (5) `licenciaBloqueadaSegun` no mira el rol: filtrar al administrador, la secretaria y al médico sin HC con licencia es de
+    `decidirLicencia` (T3, RF-4).
 
 - [ ] **T2. El backend de pediatría informa la licencia.** RF-1, RF-5, RF-6, RF-9, RF-10, RF-19, RF-20 · tamaño M (~30 min)
   - Tests primero: `core/data/src/jvmTest/.../repos/HcPediatriaLicenciaServidorTest.kt` con un `HttpServer`

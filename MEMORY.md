@@ -19,6 +19,11 @@ registros de personas): el repo es público.
   licencias (revisar las fechas reales), `APP_DEBUG=false` en pediatría y en hclinica, 10 médicos sin alta, y el cambio de licencia
   (la app debe leer la licencia del servidor al entrar, no la copia local), que va en una rama aparte (`pediatria-licencia-servidor`,
   worktree `..\salud360-pediatria`, sobre `origin/main`).
+- **Spec 004 (licencia del servidor) aprobada el 2026-11-02** (`specs/004-licencia-del-servidor/`; P1 a P6 decididas; **P3 = solo se
+  bloquea la HC de pediatría del médico sin fila**, por eso hay una T3b y el estado `SinLicencia`). Se implementa T1 a T8 en el worktree
+  (rama `pediatria-licencia-servidor`, sin push; publicar a `main` y T9 solo con pedido). **T1 hecha** (`920d206`: reglas puras en
+  `core/data/.../repos/LicenciaDelServidor.kt`); sigue T2 (`HcPediatriaBackend.licenciaDelServidor`). El worktree hizo su primera
+  compilación en frío (~7 min); el árbol publicado solo tiene 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
