@@ -109,6 +109,8 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
+    // `backendsHc`: los backends con API (pediatría informa la licencia; clínica, de solo lectura, contesta «sin dato») para que el ingreso la consulte al
+    // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
     // `revocar` (RF-59): al cerrar sesión, en segundo plano, turnos y cada HC con API (hclinica y pediatría) olvidan el token.
     single {
         val enfermedades = get<EnfermedadesRepository>()
@@ -117,6 +119,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
         AuthRepository(
             get(), get(), turnos, get(), clientes, enfermedades::cerrarSesion,
             revocar = listOf(RevocaSesion(turnos::cerrarSesion)) + clientes.values.map { RevocaSesion(it::salir) },
+            backendsHc = get<HcBackends>().porEspecialidad,
         )
     }
     single { PacientesRepository(get()) }

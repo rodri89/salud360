@@ -51,10 +51,10 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Spec 004, T3: `AuthRepository.decidirLicencia` decide con lo que contesta el servidor de la HC y deja la copia local al
  * día. T4: `restaurar` la usa antes de publicar la sesión. T5: `login` también, con el token ya puesto en los clientes
- * de HC y antes de guardar la sesión. Todavía falta cablearla a `refrescarPerfil` (T6): se llama directo.
+ * de HC y antes de guardar la sesión. T6: `refrescarPerfil` (el que lanza `LoginViewModel` tras un login online) también.
  *
  * SQLite temporal, turnos apuntado a un puerto cerrado (nunca el cliente por defecto, que apunta a producción; solo los
- * tests de `refrescarPerfilRemoto` y de `login` lo apuntan a un turnos falso en `127.0.0.1`) y un backend falso
+ * tests de `refrescarPerfilRemoto`, de `login` y de `refrescarPerfil` lo apuntan a un turnos falso en `127.0.0.1`) y un backend falso
  * programable. Ids, fechas (relativas a `hoy()`) y tokens inventados.
  */
 class AuthRepositoryLicenciaServidorTest {
@@ -892,6 +892,236 @@ class AuthRepositoryLicenciaServidorTest {
             assertNull(e.cliente.token, "sin sesión no puede quedar un token suelto en los clientes de HC")
             assertNull(e.repo.sesion.value)
             assertNull(e.sesionGuardada())
+        }
+    }
+
+    // ---- refrescarPerfil (T6: RF-3, RF-14) ----
+
+    @Test
+    fun refrescarPerfil_justo_despues_de_entrar_no_consulta_y_no_cierra_aunque_la_fecha_local_ya_paso() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            assertIs<ResultadoLogin.Ok>(e.entrar())
+            // Reloj del dispositivo corrido (o copia vieja): la copia dice que venció ayer. Manda lo que dijo el servidor.
+            e.copia(vence = ayer)
+            e.reloj.ahora = 30_000
+
+            e.repo.refrescarPerfil()
+
+            assertEquals(1, e.pediatria.consultas.get(), "el refresco reutiliza la respuesta del ingreso (RF-14)")
+            assertNotNull(e.repo.sesion.value, "la sesión sigue abierta")
+            assertNotNull(e.sesionGuardada())
+            assertEquals("tok-login", e.cliente.token)
+            assertEquals(ayer, e.copiaLocal()?.fechaExpiracion, "la memoria no reescribe la copia")
+            assertEquals(1, turnos.logins.get())
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_con_la_memoria_vencida_consulta_una_vez_y_pone_la_copia_al_dia() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            assertIs<ResultadoLogin.Ok>(e.entrar())
+            e.copia(vence = ayer, aviso = avisoViejo, importe = 9.5, activo = false)
+            e.reloj.ahora = 61_000
+
+            e.repo.refrescarPerfil()
+
+            assertEquals(2, e.pediatria.consultas.get(), "pasado el minuto vuelve a preguntar, una sola vez")
+            assertNotNull(e.repo.sesion.value)
+            assertEquals(lejos, e.repo.sesion.value?.medico?.licenciaVence)
+            assertEquals(Licencia(MEDICO_ID, lejos, avisoYa, importe = 9.5, activo = true), e.copiaLocal())
+            assertTrue(e.dirty().isEmpty())
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_con_el_servidor_vencida_cierra_la_sesion() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            assertIs<ResultadoLogin.Ok>(e.entrar())
+            e.copia(vence = lejos, importe = 7.0)
+            // Pasó más de un minuto y mientras tanto dieron de baja la licencia.
+            e.reloj.ahora = 61_000
+            e.pediatria.responde(EstadoLicenciaRemoto.Vencida)
+
+            e.repo.refrescarPerfil()
+
+            assertEquals(2, e.pediatria.consultas.get())
+            assertNull(e.repo.sesion.value)
+            assertNull(e.sesionGuardada(), "no queda sesión guardada")
+            assertNull(e.cliente.token, "los clientes de HC quedan sin token")
+            assertEquals(Licencia(MEDICO_ID, lejos, avisoYa, importe = 7.0, activo = false), e.copiaLocal())
+            assertTrue(e.dirty().isEmpty())
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_con_el_servidor_sin_licencia_no_cierra_aunque_la_copia_diga_vencida_o_inactiva() = runBlocking {
+        // P3: el médico sin fila entra a la app. Con la regla local, este refresco (que lanza `LoginViewModel` tras
+        // cada ingreso) le cerraría la sesión que el `login` acaba de dejar abrir.
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.SinLicencia) }
+            e.copia(vence = ayer, activo = false)
+            assertIs<ResultadoLogin.Ok>(e.entrar())
+
+            // Dentro del minuto: cae en la memoria.
+            e.reloj.ahora = 30_000
+            e.repo.refrescarPerfil()
+            assertNotNull(e.repo.sesion.value, "dentro del minuto")
+            assertEquals(1, e.pediatria.consultas.get())
+
+            // Pasado el minuto: consulta de nuevo y el servidor sigue diciendo que no hay licencia.
+            e.reloj.ahora = 61_000
+            e.repo.refrescarPerfil()
+            assertNotNull(e.repo.sesion.value, "pasado el minuto")
+            assertNotNull(e.sesionGuardada())
+            assertEquals(2, e.pediatria.consultas.get())
+            assertEquals(Licencia(MEDICO_ID, ayer, avisoYa, importe = 0.0, activo = false), e.copiaLocal(), "la copia no se tocó")
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_con_el_servidor_vigente_y_la_copia_vencida_e_inactiva_no_cierra() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            e.copia(vence = ayer, activo = false)
+            assertIs<ResultadoLogin.Ok>(e.entrar())
+            // Otra vez la copia vieja (otra pestaña, el panel del administrador): el servidor sigue mandando.
+            e.copia(vence = ayer, activo = false)
+
+            e.reloj.ahora = 30_000
+            e.repo.refrescarPerfil()
+            assertNotNull(e.repo.sesion.value, "dentro del minuto")
+
+            e.reloj.ahora = 61_000
+            e.repo.refrescarPerfil()
+            assertNotNull(e.repo.sesion.value, "pasado el minuto")
+            assertEquals(2, e.pediatria.consultas.get())
+            assertEquals(lejos, e.copiaLocal()?.fechaExpiracion)
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_sin_dato_decide_la_copia_con_la_regla_de_hoy_y_no_la_toca() = runBlocking {
+        TurnosFalso().use { turnos ->
+            // La copia vigente: se queda adentro, aunque el refresco vuelva a preguntar y siga sin respuesta.
+            val vigenteLocal = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.SinDato) }
+            vigenteLocal.copia(vence = lejos)
+            assertIs<ResultadoLogin.Ok>(vigenteLocal.entrar())
+            vigenteLocal.reloj.ahora = 61_000
+            vigenteLocal.repo.refrescarPerfil()
+            assertNotNull(vigenteLocal.repo.sesion.value)
+            assertEquals(2, vigenteLocal.pediatria.consultas.get())
+            assertEquals(1L, vigenteLocal.actualizadaEn(), "la copia no se tocó")
+
+            // La copia que pasó a vencida con la sesión abierta: la regla de hoy cierra la sesión.
+            val vencidaLocal = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.SinDato) }
+            vencidaLocal.copia(vence = lejos)
+            assertIs<ResultadoLogin.Ok>(vencidaLocal.entrar())
+            vencidaLocal.copia(vence = ayer)
+            vencidaLocal.reloj.ahora = 30_000
+            vencidaLocal.repo.refrescarPerfil()
+            assertNull(vencidaLocal.repo.sesion.value)
+            assertNull(vencidaLocal.sesionGuardada())
+            assertNull(vencidaLocal.cliente.token)
+            assertEquals(1, vencidaLocal.pediatria.consultas.get())
+            assertEquals(1L, vencidaLocal.actualizadaEn(), "la copia no se tocó")
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_con_la_memoria_vencida_y_un_servidor_que_no_contesta_vuelve_por_el_tope_de_iniciar_sesion() = runBlocking {
+        val compuerta = CompletableDeferred<EstadoLicenciaRemoto>()
+        try {
+            TurnosFalso().use { turnos ->
+                // El tope de restaurar es largo a propósito: el refresco que sigue al login usa el suyo.
+                val e = escena(turnosUrl = turnos.url, esperaLogin = 100.milliseconds, esperaRestaurar = 30.seconds)
+                e.pediatria.responde(vigente)
+                assertIs<ResultadoLogin.Ok>(e.entrar())
+                e.pediatria.respuesta = { compuerta.await() }
+                e.reloj.ahora = 61_000
+
+                withTimeout(20.seconds) { e.repo.refrescarPerfil() }
+
+                assertEquals(2, e.pediatria.consultas.get())
+                assertTrue(e.repo.sesion.value != null, "sin respuesta decide la copia, que quedó vigente del ingreso")
+            }
+        } finally {
+            compuerta.complete(EstadoLicenciaRemoto.SinDato)
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_del_administrador_y_de_la_secretaria_no_consulta_nada() = runBlocking {
+        listOf("admin", "secretaria").forEach { rol ->
+            TurnosFalso().use { turnos ->
+                turnos.rol = rol
+                val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+                assertIs<ResultadoLogin.Ok>(e.entrar(), rol)
+                e.reloj.ahora = 61_000
+
+                e.repo.refrescarPerfil()
+
+                assertEquals(0, e.pediatria.consultas.get(), rol)
+                assertNotNull(e.repo.sesion.value, rol)
+            }
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_del_medico_sin_hc_con_licencia_no_consulta_y_decide_la_copia_como_hoy() = runBlocking {
+        TurnosFalso().use { turnos ->
+            turnos.historias = listOf("clinica")
+            val vigenteLocal = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+            vigenteLocal.copia(vence = lejos)
+            assertIs<ResultadoLogin.Ok>(vigenteLocal.entrar())
+            vigenteLocal.reloj.ahora = 61_000
+            vigenteLocal.repo.refrescarPerfil()
+            assertNotNull(vigenteLocal.repo.sesion.value)
+            assertEquals(0, vigenteLocal.pediatria.consultas.get())
+
+            val vencidaLocal = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            vencidaLocal.copia(vence = lejos)
+            assertIs<ResultadoLogin.Ok>(vencidaLocal.entrar())
+            vencidaLocal.copia(vence = ayer)
+            vencidaLocal.repo.refrescarPerfil()
+            assertNull(vencidaLocal.repo.sesion.value)
+            assertEquals(0, vencidaLocal.pediatria.consultas.get())
+        }
+    }
+
+    @Test
+    fun refrescarPerfil_sin_sesion_no_hace_nada_ni_consulta() = runBlocking {
+        val e = escena().also { it.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+        e.repo.refrescarPerfil()
+        assertNull(e.repo.sesion.value)
+        assertEquals(0, e.pediatria.consultas.get())
+    }
+
+    @Test
+    fun refrescarPerfil_no_revive_una_sesion_que_se_cerro_mientras_esperaba_la_consulta() = runBlocking {
+        val compuerta = CompletableDeferred<EstadoLicenciaRemoto>()
+        try {
+            TurnosFalso().use { turnos ->
+                val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+                assertIs<ResultadoLogin.Ok>(e.entrar())
+                e.pediatria.respuesta = { compuerta.await() }
+                e.reloj.ahora = 61_000
+
+                val refresco = launch(Dispatchers.Default) { e.repo.refrescarPerfil() }
+                withTimeout(20.seconds) { while (e.pediatria.consultas.get() < 2) kotlinx.coroutines.delay(10) }
+                // El médico cierra la sesión mientras el refresco espera al servidor.
+                e.repo.logout()
+                compuerta.complete(vigente)
+                withTimeout(20.seconds) { refresco.join() }
+
+                assertNull(e.repo.sesion.value, "la sesión cerrada no se vuelve a publicar")
+                assertNull(e.sesionGuardada())
+                assertNull(e.cliente.token)
+            }
+        } finally {
+            compuerta.complete(EstadoLicenciaRemoto.SinDato)
         }
     }
 
