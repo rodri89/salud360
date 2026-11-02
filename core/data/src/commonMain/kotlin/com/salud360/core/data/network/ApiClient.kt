@@ -31,6 +31,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
 
@@ -40,6 +41,7 @@ class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
  * @param codigo código de la API (`ocupado`, `mismo_dia`, `cupo_primer_control`, `dia_con_turnos`, ...).
  * @param errores campo por campo, cuando la API contesta `422 validacion` con `errores` (perfiles de la HC general).
  * @param candidatos las fichas entre las que elige el médico, cuando una HC contesta `409 paciente_ambiguo`.
+ * @param cuerpo el objeto JSON de la respuesta cuando lo había (hoy solo lo llena `HcApiClient`); `null` si no. No va en el mensaje.
  */
 class TobbException(
     val status: Int,
@@ -47,6 +49,7 @@ class TobbException(
     mensaje: String,
     val errores: List<ErrorPerfil> = emptyList(),
     val candidatos: List<HcPacienteCandidato> = emptyList(),
+    val cuerpo: JsonObject? = null,
 ) : Exception(mensaje)
 
 @Serializable

@@ -124,7 +124,7 @@ class HcApiClient(
             val candidatos = obj?.get("candidatos")
                 ?.let { runCatching { json.decodeFromJsonElement(ListSerializer(HcPacienteCandidato.serializer()), it) }.getOrNull() }
                 .orEmpty()
-            throw TobbException(status, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, errores, candidatos)
+            throw TobbException(status, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, errores, candidatos, cuerpo = obj)
         }
         return obj
     }
