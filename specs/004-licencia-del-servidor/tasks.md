@@ -287,7 +287,7 @@ Reglas para todas:
     tras un login online y hoy esa función aún decide con la regla local; un médico `SinLicencia` con copia vencida/inactiva (P3), o con
     reloj corrido, **entra al `login` y ese refresco le cierra la sesión**. T6 lo corrige; no publicar T5 sin T6.
 
-- [ ] **T6. `refrescarPerfil` y el armado de Koin.** RF-3, RF-14 · tamaño S (~20 min)
+- [x] **T6. `refrescarPerfil` y el armado de Koin.** RF-3, RF-14 · tamaño S (~20 min)
   - Tests primero (mismo archivo): `refrescarPerfil()` justo después de entrar no hace consultas nuevas y no cierra la
     sesión de un médico `Vigente` aunque la fecha local ya haya pasado (reloj del dispositivo corrido); con la memoria vencida
     (>60 s) consulta una vez; `Vencida` → cierra la sesión.
@@ -296,6 +296,47 @@ Reglas para todas:
   - Hecho cuando: `.\gradlew :core:data:jvmTest` completo en verde; `.\gradlew :composeApp:compileKotlinWasmJs` compila (el
     grafo de Koin se arma: `AuthRepository` ← `HcBackends` ← `HcApiClients`, sin ciclo); ninguna ruta de `features/*` ni
     `composeApp` cambió en `git diff --stat`.
+  - **Hecho (2026-11-02, worktree, commit `0e4e266`).** Rojo previo: con los tests y el código viejo, 13 de 72 fallaban (8 de los 11 de
+    `refrescarPerfil` y 5 de los 7 de Koin); pasaban de entrada los que fijan «lo que no cambia» (administrador/secretaria, médico sin HC con
+    licencia, sin sesión) y el de armado de Koin (que `HcBackends` solo trae pediatría y que armar el grafo no pide nada). El refresco sin
+    cablear: no consultaba (`0` en vez de `1`), cerraba al médico `SinLicencia`/`Vigente` con copia vencida y al `Vencida` con copia vigente
+    no le cerraba; en Koin, `login`/`restaurar` nunca llegaban al servidor (`backendsHc` vacío). Verde: `AuthRepositoryLicenciaServidorTest` 65/65
+    (54 + 11), `DataModuleLicenciaTest` 7/7 y `:core:data:jvmTest --rerun` completo **165 tests, 0 fallas, 0 errores** (147 + 18);
+    `:features:auth:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev` (klib) compilan. Mutación: sin la guarda de «la sesión
+    ya no es la misma» falla solo el test del `logout` en vuelo. `git diff --stat` de `features/` y `composeApp/`: vacío. Ningún test
+    existente cambió (solo se agregaron tests y se actualizó el KDoc de la clase de test).
+    Cambios: `AuthRepository.refrescarPerfil` (+ guarda), `DataModule` (`backendsHc = get<HcBackends>().porEspecialidad`, por nombre), tests.
+    Flujo de `refrescarPerfil` (tope = `esperaLogin`, 10 s; el médico sigue siendo el de la sesión abierta):
+    | Entrada | Resultado | Copia local |
+    |---|---|---|
+    | sin sesión | no hace nada, sin pedido | — |
+    | administrador, secretaria; médico sin HC con backend de licencia | no consulta; el médico sin HC decide la copia con la regla de hoy (cierra si está vencida) | no se toca |
+    | memoria de 60 s del mismo token (recién entró) | usa el estado guardado, **0 pedidos**; `Vigente`/`SinLicencia` no cierran aunque la copia diga vencida/inactiva; `SinDato` decide la copia | no se reescribe |
+    | memoria vencida (≥ 60 s) y `Vigente` | 1 pedido; no cierra | pasa a vigente (importe previo), sin `dirty` |
+    | memoria vencida y `SinLicencia` (P3) | 1 pedido; no cierra aunque la copia diga vencida/inactiva | no se toca |
+    | memoria vencida y `Vencida` | 1 pedido; `cerrarPorLicencia()` (= `logout()`): sin sesión, ni guardada, ni token | si estaba activa, `activo = false` |
+    | memoria vencida y `SinDato` (red, tope de 10 s, 5xx, backend que lanza) | la copia decide con la regla de hoy | no se toca |
+    | la sesión se cerró (o entró otra) mientras esperaba | vuelve sin publicar ni cerrar nada | — |
+    Koin: `AuthRepository(db, api, turnos, settings, hcClients, backendsHc = get<HcBackends>().porEspecialidad)`; `ahora` y los topes con sus
+    defaults (10 s / 5 s). `HcBackends` ← `HcApiClients` y la base, sin ciclo; resolver el grafo no hace pedidos (test). Hoy `HcBackends` solo
+    trae `pediatria` (en este árbol publicado no hay backend de clínica); una URL de HC sin backend (p. ej. `clinica`) no consulta nada.
+    `DataModuleLicenciaTest` (nuevo, `core/data/src/jvmTest/.../DataModuleLicenciaTest.kt`): Koin real con `koinApplication`, servidores falsos
+    `HttpServer` (turnos, pediatría y una HC «clinica» que cuenta pedidos) y las preferencias en un nodo propio de `java.util.prefs` que se
+    borra al terminar; resuelve `AuthRepository` y comprueba `login` (token nuevo en el pedido, 1 solo, clínica 0), `login` vencida, médico solo
+    de clínica (0 pedidos), `refrescarPerfil` sin pedido nuevo, `restaurar` vigente con copia vencida (el caso reportado) y `restaurar` vencida.
+    Lista del `git grep` de decisiones de licencia (código no-test): `AuthRepository.restaurar` (`:108`), `refrescarPerfilRemoto` (`:122`),
+    `login` online (`:139`) y `refrescarPerfil` (`:244`) pasan por `decidirLicencia`; el ingreso sin conexión con sesión previa (`:161`) usa
+    `licenciaBloqueada()` con la copia (RF-7, a propósito); `licenciaBloqueadaSegun` (`LicenciaDelServidor.kt:36`, `SinDato`) y el propio
+    `decidirLicencia` (`:202`, médico sin HC con backend) usan la regla local como respaldo (es la regla de hoy). Fuera de la app: `:server`
+    (`Application.kt:149`, Ktor, la app no habla con él) sigue con `licenciaBloqueada()`; no se tocó. `features/*` y `composeApp` no deciden nada
+    (solo muestran `ResultadoLogin.LicenciaVencida`, `licenciaVence` y el aviso).
+    Decisiones que el texto no fijaba: (1) **guarda de sesión en `refrescarPerfil`**: con la consulta ahora puede esperar hasta 10 s, y si el
+    médico cierra la sesión en ese lapso `guardarSesion` la habría vuelto a publicar y guardar; se compara el token de la sesión abierta
+    antes y después y, si cambió, no hace nada (test con compuerta y mutación). (2) Tope = `esperaLogin` (10 s, como pedía D9), no el de
+    restaurar. (3) `refrescarPerfilRemoto` (T4) tiene el mismo riesgo en teoría (espera a turnos, hasta 30 s, más la licencia) y no se tocó: es
+    anterior y T6 no lo pide; queda como duda. (4) El test de Koin pisa `Settings` con un nodo de `java.util.prefs` aislado porque no hay
+    `MapSettings` en las dependencias de prueba (sin dependencias nuevas). (5) `restaurar` por Koin se prueba con un segundo grafo sobre la
+    misma base (equivale a recargar la página).
 
 ## Tanda B — Punta a punta y cierre
 
