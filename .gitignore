@@ -17,3 +17,6 @@ iosApp/Pods/
 # Node
 node_modules/
 kotlin-js-store/
+
+# Dumps locales de bases (datos de pacientes), nunca subir
+bd_test/
