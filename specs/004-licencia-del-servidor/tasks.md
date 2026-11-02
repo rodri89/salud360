@@ -92,7 +92,7 @@ Reglas para todas:
     (con excepción y mensaje) a una línea con el `codigo` o el status (RF-20). (5) Se agregó un fake `HcBackend` mínimo en el test
     para probar el default `SinDato`; T3 tendrá que armar el suyo, programable.
 
-- [ ] **T3. `AuthRepository` decide con el servidor (sin cablear aún a los flujos).** RF-1, RF-4, RF-7, RF-11, RF-12, RF-14, RF-15 · tamaño M (~30 min)
+- [x] **T3. `AuthRepository` decide con el servidor (sin cablear aún a los flujos).** RF-1, RF-4, RF-7, RF-11, RF-12, RF-14, RF-15 · tamaño M (~30 min)
   - Tests primero: `core/data/src/jvmTest/.../repos/AuthRepositoryLicenciaServidorTest.kt`, con SQLite temporal,
     `TurnosOnlineClient` apuntado a `http://127.0.0.1:1` (cae rápido; nunca el cliente por defecto, que apunta a
     producción) y un backend falso programable. Llamando a `decidirLicencia` (`internal`): médico con HC con licencia →
@@ -107,6 +107,39 @@ Reglas para todas:
     sin llamarla desde `login`/`restaurar`/`refrescarPerfil`.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AuthRepositoryLicenciaServidorTest*'` en verde; ningún
     `AuthRepository(...)` existente deja de compilar (`.\gradlew :core:data:compileKotlinJvm`).
+  - **Hecho (2026-11-02, worktree, commit `98ef156`).** Rojo previo: `AuthRepositoryLicenciaServidorTest` no compilaba (65 errores, todos
+    consecuencia de lo que falta: `decidirLicencia`, y los parámetros `backendsHc` y `ahora`). Verde: 27/27 y `:core:data:jvmTest --rerun`
+    completo 95 tests (68 + 27), 0 fallas, 0 salteados; `:core:data:compileKotlinWasmJs` compila (`composeApp` no: T3 no lo pide).
+    Ningún test existente cambió; los métodos públicos de `AuthRepository` (`login`, `restaurar`, `refrescarPerfil`) no tienen ni una línea
+    cambiada (el `git diff` solo agrega), y `DataModule` sigue igual (T6 le pasa `backendsHc`).
+    Firma: `internal suspend fun decidirLicencia(sesion: Sesion, tope: Duration): Pair<Sesion, Boolean>` (sesión rearmada desde la copia,
+    «bloqueada»). Constructor: `backendsHc: Map<String, HcBackend> = emptyMap()`, `ahora: () -> Long = ::ahoraMillis`,
+    `esperaLogin = 10.seconds`, `esperaRestaurar = 5.seconds`, al final y con default. `logout` borra la memoria; `cerrarPorLicencia()`
+    (privada, llama a `logout()`) todavía sin usar.
+    Árbol de decisión: (1) sin `sesion.medico` (administrador, secretaria) → `(sesion, false)`, sin pedido ni escritura. (2) Backends = los de
+    `backendsHc` cuyo código está en las especialidades del médico; si no hay ninguno → `(sesion, licenciaBloqueadaSegun(SinDato, sesion))`,
+    o sea la regla de hoy sobre la copia, sin pedido ni escritura. (3) Con memoria del mismo token y de menos de 60 s (`0 <= ahora - en <
+    60 000`, a los 60 s justos ya consulta) → se reusa el estado y **no se escribe nada**. (4) Si no, un pedido por backend con
+    `withTimeoutOrNull(tope)` (tope → `SinDato`; cualquier `Throwable` que no sea cancelación → `SinDato`, se loguea solo la clase); varios
+    backends se juntan con `combinarEstadosDeLicencia` (`Vencida` > primera `Vigente` > `SinLicencia` > `SinDato`); se escribe la copia con
+    `copiaDeLicencia` (`upsertLicencia(fila.toRow(ahoraMillis(), dirty = false))`, solo si devuelve algo) y se guarda la memoria (también
+    `SinDato` y `SinLicencia`). (5) Se rearma la sesión con `resolverPerfil` y se devuelve `licenciaBloqueadaSegun(estado, rearmada)`.
+    | Estado | Bloquea | Copia local |
+    |---|---|---|
+    | `Vigente` | no, aunque la copia diga vencida/inactiva/ausente | fecha, aviso (el previo si viene vacío), `activo = true`, importe previo (0.0 sin previa); no se reescribe si es igual |
+    | `Vencida` | sí, aunque la copia diga vigente | solo si había copia activa → `activo = false`; sin copia no se crea fila |
+    | `SinLicencia` | no, aunque la copia diga vencida/inactiva | no se toca |
+    | `SinDato` (sin respuesta, tope, falla del backend) | decide la copia (hoy); sin copia entra | no se toca |
+    Decisiones que el texto no fijaba: (1) **médico sin backend con licencia → decide la copia, no `false`:** el plan D6 decía «devuelve
+    la sesión y `false`», pero eso cambiaría el comportamiento de hoy para un médico de pediatría sin backend registrado (p. ej. sin URL) o
+    para quien tenga una fila de licencia vencida sin HC con licencia; RF-7/«los tests existentes» piden la regla de hoy, y en la práctica
+    coincide (sin copia = `false`). (2) «HC con licencia» = HC del médico que tiene backend en `backendsHc` (no hay un indicador en
+    `HcBackend`); un backend sin licencia (clínica) contesta `SinDato` al instante, sin red. (3) Con varias HC se consulta a todas, una
+    tras otra, cada una con su tope (peor caso n × tope; hoy n = 1) y la combinación de arriba, que la spec dejaba para cuando exista la
+    segunda; está en `LicenciaDelServidor.kt` (pura) y la cubren dos tests de `AuthRepository`. (4) La memoria hit no reescribe la copia
+    (ya se aplicó). (5) La memoria guarda `ahora()` al terminar el pedido, no al empezarlo. (6) Sin `Mutex`: dos `decidirLicencia`
+    simultáneos pueden hacer dos pedidos (en los flujos de la app son secuenciales). (7) No hay guarda de «generación» contra un pedido que
+    termina después de `logout`: la memoria está atada al token, y el siguiente ingreso trae otro token.
 
 - [ ] **T3b. El error de la API de HC conserva su cuerpo y el backend distingue «sin licencia».** RF-10, RF-21, RF-22 · tamaño M (~25 min) · depende de T2 (y va después de T3)
   - Contexto: por P3 (solo la HC) el servidor contesta `403 licencia_vencida` con `licencia: null` (sin fila) o con

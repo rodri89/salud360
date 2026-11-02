@@ -24,8 +24,10 @@ registros de personas): el repo es público.
   (rama `pediatria-licencia-servidor`, sin push; publicar a `main` y T9 solo con pedido). **T1 hecha** (`920d206`: reglas puras en
   `core/data/.../repos/LicenciaDelServidor.kt`). **T2 hecha** (`3fc1a24`: `HcBackend.licenciaDelServidor()` con default `SinDato`;
   `HcPediatriaBackend` lee `auth/perfil` y el `403 licencia_vencida` → `Vencida`; `avisoDeLicencia` sobre la misma lectura; 25 tests
-  con un `HttpServer` falso; `core:data` 68 tests en verde). Sigue T3 (`AuthRepository.decidirLicencia`); T3b separa `SinLicencia`
-  (hoy todo `licencia_vencida` es `Vencida`). El árbol publicado tenía 43 tests en `core:data`.
+  con un `HttpServer` falso; `core:data` 68 tests en verde). **T3 hecha** (`98ef156`: `AuthRepository.decidirLicencia(sesion, tope)`
+  `internal`, memoria de 60 s por token, copia sin `dirty`; 27 tests nuevos, `core:data` 95 en verde; sin cablear a `login`/`restaurar`/
+  `refrescarPerfil`; sin backend con licencia decide la copia como hoy, no `false` como decía el plan D6). Sigue T3b (`TobbException.cuerpo`;
+  separa `SinLicencia`: hoy todo `licencia_vencida` es `Vencida`), después T4 a T8. El árbol publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
