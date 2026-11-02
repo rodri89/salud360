@@ -120,6 +120,8 @@ class AuthRepository(
         // Pasa por la misma decisión: justo después de `restaurar` cae en la memoria de 60 s (sin pedido), y la regla local
         // no le cierra la sesión a quien el servidor acaba de dejar entrar.
         val (nueva, bloqueada) = decidirLicencia(local, esperaRestaurar)
+        // Esperó a turnos y a la licencia: si en ese lapso se cerró la sesión (o entró otra), este refresco ya no es de nadie.
+        if (_sesion.value?.token != actual.token) return
         if (bloqueada) { cerrarPorLicencia(); return }
         guardarSesion(nueva)
     }

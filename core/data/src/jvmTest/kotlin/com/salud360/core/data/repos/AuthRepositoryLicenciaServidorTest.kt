@@ -612,6 +612,37 @@ class AuthRepositoryLicenciaServidorTest {
         }
     }
 
+    @Test
+    fun el_refresco_del_perfil_de_restaurar_no_revive_una_sesion_que_se_cerro_mientras_esperaba() = runBlocking {
+        // Turnos tarda en contestar el perfil (hasta 30 s en la app) y el médico cierra la sesión en ese lapso: el refresco
+        // que sigue a `restaurar` no puede volver a publicar ni a guardar una sesión cerrada.
+        val llego = java.util.concurrent.CountDownLatch(1)
+        val soltar = java.util.concurrent.CountDownLatch(1)
+        try {
+            TurnosFalso().use { turnos ->
+                val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+                e.copia(vence = lejos)
+                e.guardarSesion()
+                turnos.alResponder = { llego.countDown(); soltar.await(20, java.util.concurrent.TimeUnit.SECONDS) }
+
+                val recarga = launch(Dispatchers.Default) { e.repo.restaurar() }
+                assertTrue(llego.await(20, java.util.concurrent.TimeUnit.SECONDS), "restaurar tenía que llegar a pedirle el perfil a turnos")
+                assertNotNull(e.repo.sesion.value, "la sesión ya estaba publicada mientras el refresco esperaba")
+                // El médico cierra la sesión mientras el refresco espera a turnos.
+                e.repo.logout()
+                soltar.countDown()
+                withTimeout(20.seconds) { recarga.join() }
+
+                assertEquals(1, turnos.pedidos.get(), "el refresco sí llegó a pedirle el perfil a turnos")
+                assertNull(e.repo.sesion.value, "la sesión cerrada no se vuelve a publicar")
+                assertNull(e.sesionGuardada(), "ni se vuelve a guardar")
+                assertNull(e.cliente.token, "ni los clientes de HC recuperan el token")
+            }
+        } finally {
+            soltar.countDown()
+        }
+    }
+
     // ---- login (T5: RF-1, RF-5, RF-6, RF-13, RF-14, RF-15) ----
 
     @Test
