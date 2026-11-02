@@ -61,8 +61,12 @@ Todas las rutas y líneas son del **worktree `C:\Users\flor\rebonline\salud360-p
   | 200 con `perfil.licencia` y `vence` no vacío | `Vigente` |
   | 403 con `codigo = licencia_vencida` y `licencia` **no nula** en el cuerpo (con fecha) | `Vencida` |
   | 403 con `codigo = licencia_vencida` y `licencia` **explícitamente nula** (sin fila) | `SinLicencia` |
-  | 403 con `codigo = licencia_vencida` cuyo cuerpo no se pudo leer o no trae la clave `licencia` | `Vencida` (ante la duda se bloquea, RF-21) |
-  | 200 sin `licencia` / `vence` vacío, 401, 403 otro código, 429, 5xx, 503 `tobb_caido`, red (`codigo = red`), cuerpo ilegible, tiempo agotado | `SinDato` |
+  | 403 con `codigo = licencia_vencida` cuyo cuerpo JSON no trae la clave `licencia` o la trae de otro tipo (o no se conservó el cuerpo) | `Vencida` (ante la duda se bloquea, RF-21) |
+  | 200 sin `licencia` / `vence` vacío, 401, 403 otro código o sin `codigo`, 403 con cuerpo que no es JSON (sin `codigo` no se sabe que era `licencia_vencida`), 429, 5xx, 503 `tobb_caido`, red (`codigo = red`), respuesta ilegible, tiempo agotado | `SinDato` (decide la copia local, RF-9) |
+
+  (aclaración 2026-11-02, T3b: la fila «cuerpo no se pudo leer → `Vencida`» no se puede cumplir tal cual cuando el cuerpo no
+  es JSON, porque `HcApiClient` no tiene `codigo` y el 403 no se reconoce como `licencia_vencida`; queda `SinDato`. Es lo
+  que hace el código de T3b.)
 
   Se loguea el `codigo`, nunca el token ni las fechas (RF-20). Hay que relanzar la `CancellationException` (el
   tope de espera usa `withTimeoutOrNull`): no tragarla con `runCatching` pelado; patrón del cierre de sesión de
@@ -111,7 +115,8 @@ Todas las rutas y líneas son del **worktree `C:\Users\flor\rebonline\salud360-p
   firma ni de comportamiento; `HcApiClient.interpretar` (`:105-116`) lo pasa con el objeto ya parseado. El mensaje, el
   código y el estado quedan idénticos (RF-22). Es lo único que cambia fuera de la lógica de licencias, y solo agrega un
   campo. `HcPediatriaBackend.leerPerfilDeLicencia` mira, ante `licencia_vencida`, si el cuerpo trae la clave `licencia`
-  con `JsonNull`: `SinLicencia`; en cualquier otro caso (con fecha, sin la clave, cuerpo `null`): `Vencida` (RF-21).
+  con `JsonNull`: `SinLicencia`; en cualquier otro caso de un `licencia_vencida` ya reconocido (con fecha, sin la clave, de otro
+  tipo, cuerpo `null`): `Vencida` (RF-21; aclaración 2026-11-02, T3b: un cuerpo que no es JSON nunca llega acá, es `SinDato`).
   `decidirLicencia` no cambia: ya trata `SinLicencia` como «no bloquea, no escribe la copia» por las reglas de T1.
   *Descartado:* un indicador booleano suelto en la excepción (`licenciaNula`): el cuerpo completo sirve a otros casos
   sin costo y deja la decisión en el backend, que es quien conoce el contrato.
@@ -186,7 +191,7 @@ Base: SQLite temporal como `HcLicenciasE2ETest` (`createDatabase(DriverFactory(a
 | 5, 6, 7, 8, 10 | `licenciaBloqueadaSegun`: tabla `Vigente`/`Vencida`/`SinLicencia`/`SinDato` × copia vigente / vencida / inactiva / ausente / fecha corrupta | `commonTest` `LicenciaDelServidorTest` |
 | 10, 11, 12 | `copiaDeLicencia`: vigente sobre vencida, sobre ausente, conserva importe, no reescribe si es igual, `Vencida` sin previa no crea, `SinLicencia` y `SinDato` no tocan | ídem |
 | 9, 10, 19, 20 | `HcPediatriaBackend.licenciaDelServidor` contra `HttpServer` falso en `127.0.0.1`: 200 con licencia, 200 sin licencia, 200 con `vence` vacío, 403 `licencia_vencida` con `licencia` con fecha (T2: `Vencida`), 403 `hc_no_habilitada`/`medico_no_vinculado`/`sin_permiso`, 401, 429, 500, 503, cuerpo no JSON, puerto cerrado; y `avisoDeLicencia` sin regresión | `jvmTest` `HcPediatriaLicenciaServidorTest` |
-| 10, 21, 22 | T3b: `TobbException` conserva el cuerpo (y sin cuerpo `cuerpo == null`); un `HttpServer` falso con 403 `licencia_vencida` y `licencia: null` → `SinLicencia`; con `licencia: {vence, vencida}` → `Vencida`; sin la clave `licencia` o cuerpo ilegible → `Vencida`; los errores existentes no cambian (código, estado, mensaje) | `jvmTest` `HcPediatriaLicenciaServidorTest` y `HcApiClientErrorTest` (nuevo) |
+| 10, 21, 22 | T3b: `TobbException` conserva el cuerpo (y sin cuerpo `cuerpo == null`); un `HttpServer` falso con 403 `licencia_vencida` y `licencia: null` → `SinLicencia`; con `licencia: {vence, vencida}` → `Vencida`; sin la clave `licencia` o de otro tipo → `Vencida`; 403 con cuerpo que no es JSON → `SinDato`; los errores existentes no cambian (código, estado, mensaje) | `jvmTest` `HcPediatriaLicenciaServidorTest` y `HcApiClientErrorTest` (nuevo) |
 | 10 | `AuthRepository` con backend falso `SinLicencia`: `restaurar`/`login`/`refrescarPerfil` no bloquean aunque la copia diga vencida, y no tocan la copia | `jvmTest` `AuthRepositoryLicenciaServidorTest` |
 | 1, 4, 14 | `AuthRepository` con backend falso: pregunta solo a las HC del médico con licencia; no pregunta al administrador, a la secretaria ni al médico sin HC con licencia; una consulta por entrada | `jvmTest` `AuthRepositoryLicenciaServidorTest` |
 | 2, 5, 6, 7, 13, 15 | `restaurar`: copia vencida + servidor vigente → sesión; copia vigente + servidor vencida → null, sesión borrada, nunca publicada (se observa `sesion` desde un colector); servidor sin respuesta → decide la copia; servidor colgado → vuelve a los 5 s con la copia | ídem |

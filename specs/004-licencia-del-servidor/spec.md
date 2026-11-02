@@ -88,9 +88,16 @@ dato manda; la base del dispositivo es caché y modo sin señal).
   texto del servidor (hoy: «No se pudo traer la historia clínica…»). Esto vale **aunque la copia local diga vencida o
   inactiva**: el servidor dijo que no hay licencia que decidir. (P3, decidida: distinta de la recomendación del
   planificador, que era bloquear toda la app.)
-- RF-21. EL SISTEMA distingue «sin licencia» de «vencida» solo cuando el cuerpo del rechazo `licencia_vencida` trae la
-  clave `licencia` **explícitamente nula**. Cuerpo ilegible, sin esa clave, o con `licencia` no nula: es *vencida*
-  (RF-5). Ante la duda se bloquea, como antes de esta decisión.
+- RF-21. EL SISTEMA distingue «sin licencia» de «vencida» solo cuando el cuerpo del rechazo `licencia_vencida` (un 403
+  con `codigo` en un cuerpo JSON) trae la clave `licencia` **explícitamente nula**. Si el rechazo es `licencia_vencida`
+  y la clave `licencia` falta, o es de otro tipo (por ejemplo texto, número o lista) o es un objeto con fecha: es
+  *vencida* (RF-5). Ante la duda se bloquea, como antes de esta decisión. Un cuerpo que **no es JSON** (sin `codigo`)
+  o un 403 sin código no se reconoce como `licencia_vencida`: es «sin respuesta concluyente» (RF-9) y decide la copia
+  local.
+  (aclaración 2026-11-02, T3b: la redacción anterior decía «cuerpo ilegible → *vencida*», que era imposible de
+  cumplir: sin JSON no hay `codigo` y no se puede saber que el rechazo era `licencia_vencida`. No es un requisito
+  nuevo: es lo que el código hace y lo único posible. «Ilegible → *vencida*» solo vale para un rechazo ya reconocido
+  como `licencia_vencida` cuyo cuerpo no se conservó.)
 - RF-22. EL SISTEMA conserva el cuerpo de un error de la API de HC para poder leer esa clave, **sin cambiar** el
   código, el estado HTTP ni el mensaje de ningún error existente (ni la forma de construir `TobbException`).
 
@@ -158,8 +165,9 @@ dato manda; la base del dispositivo es caché y modo sin señal).
     modifica; la HC de pediatría muestra el rechazo del servidor. Si además tiene HC general, esa funciona.
 15. Médico sin fila de licencia **y con una copia local vencida o inactiva** (p. ej. de otro tiempo): entra igual
     (RF-10); manda lo que dijo el servidor, no la copia.
-16. Rechazo `licencia_vencida` cuyo cuerpo no trae la clave `licencia` o no se puede leer: se trata como *vencida* y
-    bloquea (RF-21).
+16. Rechazo `licencia_vencida` cuyo cuerpo JSON no trae la clave `licencia` o la trae de otro tipo: se trata como
+    *vencida* y bloquea (RF-21). Un 403 cuyo cuerpo no es JSON, o sin `codigo`, es «sin respuesta concluyente» y
+    decide la copia local (aclaración 2026-11-02, T3b).
 
 ## Fuera de alcance
 - Cambios en los servidores (pediatría, turnos, `hclinica`) y en la rama `hc-general`/clínica.
