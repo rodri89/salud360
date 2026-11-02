@@ -193,7 +193,7 @@ Reglas para todas:
     `toString()` (hay un test con una fecha inventada), y el log sigue siendo solo `codigo ?: status`. (5) El diff de `ApiClient.kt` suma,
     además del parámetro, el `import` de `JsonObject` y la línea `@param cuerpo` del KDoc.
 
-- [ ] **T4. `restaurar` consulta al servidor antes de publicar la sesión.** RF-2, RF-5, RF-6, RF-7, RF-13, RF-15 · tamaño M (~25 min)
+- [x] **T4. `restaurar` consulta al servidor antes de publicar la sesión.** RF-2, RF-5, RF-6, RF-7, RF-13, RF-15 · tamaño M (~25 min)
   - Tests primero (en `AuthRepositoryLicenciaServidorTest`): sesión guardada de un médico +
     - copia vencida e inactiva + servidor `Vigente` → `restaurar()` devuelve la sesión y la copia queda vigente (**el caso reportado**);
     - copia vigente + servidor `Vencida` → devuelve `null`, la sesión guardada queda borrada y `sesion` **nunca pasó por un valor
@@ -208,6 +208,35 @@ Reglas para todas:
     (cae en la memoria: cero pedidos más).
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AuthRepositoryLicenciaServidorTest*'` en verde y el colector de
     `sesion` del caso «servidor vencida» solo vio `null`.
+  - **Hecho (2026-11-02, worktree, commit `3de1538`).** Rojo previo: con los tests y el código viejo, 8 de 39 fallaban (el caso
+    reportado, servidor vencida con copia vigente [el colector vio una sesión], el token y el orden, sin licencia, el tope de 5 s, el
+    pedido único y el refresco por la decisión del servidor ×2); los 27 de T3 y los 4 nuevos que fijan «lo que no cambia» (sin dato,
+    administrador/secretaria, médico sin HC con licencia, sin sesión guardada) ya pasaban. Verde: `AuthRepositoryLicenciaServidorTest`
+    39/39 (27 + 12) y `:core:data:jvmTest --rerun` completo **132 tests, 0 fallas, 0 errores, 0 salteados** (120 + 12);
+    `:core:data:compileKotlinWasmJs` compila (`composeApp` no: T4 no lo pide y no se tocó). Mutación: con el
+    refresco de perfil vuelto a la regla local, fallan los dos tests del refresco (la verifican).
+    Cambios: `AuthRepository.kt` solo en `restaurar` y `refrescarPerfilRemoto` (`git diff`: 15 líneas); el helper `escena(...)` del test
+    ganó parámetros con default, y la clase de test, un turnos falso en `HttpServer` (`auth/perfil`) y un gancho `alConsultar` en el
+    backend falso. Ningún test existente cambió.
+    Nuevo flujo de `restaurar`:
+    | Entrada (sesión guardada + servidor) | Resultado | `sesion` | Copia local |
+    |---|---|---|---|
+    | médico, `Vigente`, copia vencida/inactiva/ausente | devuelve la sesión | publicada una vez, después de decidir | pasa a vigente (importe previo), sin `dirty` |
+    | médico, `Vencida`, copia vigente | `null` | nunca no nula; sesión guardada (base y `Settings`) y tokens de los clientes borrados | si estaba activa, `activo = false`; sin copia no se crea |
+    | médico, `SinLicencia` (P3), copia vencida/inactiva/ausente | devuelve la sesión | publicada | no se toca |
+    | médico, `SinDato` (red, tope de 5 s, 5xx, 429, otro 401/403, backend que lanza) | decide la copia con la regla de hoy (vigente entra, vencida/inactiva `null`); sin copia entra (P1) | según la copia | no se toca |
+    | médico sin HC con backend de licencia | regla de hoy sobre la copia, sin pedido | según la copia | no se toca |
+    | administrador, secretaria | devuelve la sesión, sin pedido | publicada | — |
+    | sin sesión guardada | `null`, sin pedido | nunca | — |
+    Después de publicar, `refrescarPerfilRemoto` (turnos) también pasa por `decidirLicencia(…, esperaRestaurar)`: dentro de los 60 s
+    cae en la memoria (cero pedidos más); pasado el minuto consulta una vez más y, si ahora está `Vencida`, cierra la sesión
+    (única forma de que `sesion` pase por no nulo y vuelva a `null` en una restauración: turnos tardó más de un minuto).
+    Decisiones que el texto no fijaba: (1) **`refrescarPerfilRemoto` va en T4** (el texto de T4 lo dice en «Código»); T6 queda con
+    `refrescarPerfil` (el público, tras sincronizar) y `DataModule`. (2) `refrescarPerfilRemoto` usa el tope de restaurar (5 s), no
+    el de iniciar sesión. (3) El bloqueo usa `cerrarPorLicencia()` (hoy `logout()`), que ya borra la memoria, la sesión guardada y los
+    tokens. (4) `restaurar` publica la sesión rearmada por `decidirLicencia` (con la copia ya escrita), no la de antes de consultar.
+    (5) Los tests no usan `Settings` (no hay `MapSettings` en las dependencias de prueba): la sesión guardada se mira en la base.
+    (6) Se esperan hasta 5 s por la licencia más lo que ya esperaba el refresco de turnos; no se tocó nada de eso.
 
 - [ ] **T5. `login` consulta al servidor antes de guardar la sesión.** RF-1, RF-5, RF-6, RF-13, RF-14, RF-15 · tamaño M (~30 min)
   - Tests primero (mismo archivo): la parte de `login` posterior a turnos expuesta como función `internal` (como

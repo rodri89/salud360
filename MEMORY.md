@@ -30,7 +30,10 @@ registros de personas): el repo es público.
   `TobbException.cuerpo: JsonObject? = null` opcional, `HcApiClient.interpretar` lo pasa; el `403 licencia_vencida` con `licencia: null`
   explícito → `SinLicencia`, todo otro `licencia_vencida` → `Vencida`; `HcApiClientErrorTest` 17 + 8 tests nuevos en
   `HcPediatriaLicenciaServidorTest`; `core:data` 120 en verde; un test de T2 se ajustó a `SinLicencia`). Ojo: un 403 con cuerpo no JSON es
-  `SinDato` (sin JSON no hay `codigo`), no `Vencida` como decía el texto de T3b. Sigue T4 a T8. El árbol publicado tenía 43 tests en `core:data`.
+  `SinDato` (sin JSON no hay `codigo`), no `Vencida` como decía el texto de T3b: RF-21 y la tabla D3 se aclararon el 2026-11-02 (`doc:`
+  `d1a5176`). **T4 hecha** (`3de1538`: `restaurar` y `refrescarPerfilRemoto` pasan por `decidirLicencia(…, 5 s)` antes de publicar `sesion`;
+  12 tests nuevos, `core:data` 132 en verde, wasm de `core:data` compila; ningún test existente cambió). Sigue T5 a T8 (T6 ya no toca
+  `refrescarPerfilRemoto`, solo `refrescarPerfil` y `DataModule`). El árbol publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
