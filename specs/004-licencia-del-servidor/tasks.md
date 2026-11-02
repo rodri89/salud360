@@ -56,7 +56,7 @@ Reglas para todas:
     (5) `licenciaBloqueadaSegun` no mira el rol: filtrar al administrador, la secretaria y al médico sin HC con licencia es de
     `decidirLicencia` (T3, RF-4).
 
-- [ ] **T2. El backend de pediatría informa la licencia.** RF-1, RF-5, RF-6, RF-9, RF-10, RF-19, RF-20 · tamaño M (~30 min)
+- [x] **T2. El backend de pediatría informa la licencia.** RF-1, RF-5, RF-6, RF-9, RF-10, RF-19, RF-20 · tamaño M (~30 min)
   - Tests primero: `core/data/src/jvmTest/.../repos/HcPediatriaLicenciaServidorTest.kt` con un `HttpServer`
     (`com.sun.net.httpserver`) en `127.0.0.1` que contesta `auth/perfil` según el caso, y `HcPediatriaBackend(db,
     HcApiClient(url, "pediatria"))` con SQLite temporal. Casos: 200 con `licencia` → `Vigente` (fechas y `por_vencer` bien
@@ -71,6 +71,26 @@ Reglas para todas:
     `codigo` del error, nunca token ni fechas.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HcPediatriaLicenciaServidorTest*'` en verde; el test del aviso
     pasa igual antes y después de tocar `avisoDeLicencia`; `.\gradlew :core:data:compileKotlinJvm` sin errores.
+  - **Hecho (2026-11-02, worktree, commit `3fc1a24`).** Rojo previo en dos pasos: sin nada, el test no compilaba (5 «Unresolved
+    reference» de `licenciaDelServidor`); con solo el default en `HcBackend`, 7 de 25 fallaban (`Vigente` x2, `Vencida` x2, el pedido
+    único/solo lectura, y las dos cancelaciones) y los 5 del aviso pasaban con el `avisoDeLicencia` viejo. Verde: 25/25, y
+    `:core:data:jvmTest --rerun` completo 68 tests (43 + 25), 0 fallas; `compileKotlinJvm` y `:core:data:compileKotlinWasmJs` compilan
+    (no se compiló `composeApp`: T2 no lo pide y es `commonMain`). Ningún test existente cambió (`LicenciaTest` y el E2E sin tocar).
+    Mapeo (`leerPerfilDeLicencia`): 200 con `perfil.licencia` y `vence` no vacío → `Vigente(vence, aviso_desde, por_vencer)`; 200 sin
+    `licencia`/`perfil`, con `vence` vacío o ilegible → `SinDato`; **403 + `licencia_vencida` → `Vencida`** (con o sin `licencia` en el
+    cuerpo: hoy `TobbException` no conserva el cuerpo); cualquier otro 401/403, 429, 5xx, 503 `tobb_caido`, cuerpo no JSON, 200 con
+    `ok: false` y red (`codigo = red`, puerto cerrado) → `SinDato`. La `CancellationException` se relanza. Solo `GET auth/perfil`, uno por lectura.
+    **Punto de extensión para T3b:** el `catch (e: TobbException)` de `leerPerfilDeLicencia` (hoy devuelve `Vencida` para todo
+    `licencia_vencida`); con `e.cuerpo` ahí se mira `JsonNull` → `SinLicencia`. El test
+    `en_esta_tarea_licencia_vencida_sin_licencia_en_el_cuerpo_tambien_es_vencida` pide hoy `Vencida` para `licencia: null` y T3b tiene
+    que cambiarlo a `SinLicencia` (el texto de T3b ya lo prevé).
+    Decisiones que el texto no fijaba: (1) **un cambio de comportamiento a propósito en `avisoDeLicencia`:** antes tragaba la
+    cancelación (`runCatching`) y devolvía `null`; ahora la relanza. Resultado observable igual en todo lo demás; el único llamador
+    (`HcRepository.avisosDeLicencia`) ya la traga con su propio `runCatching`, así que no cambia nada visible, y hay un test que lo fija.
+    (2) El `403 licencia_vencida` exige status 403 **y** código (otro status con ese código → `SinDato`). (3) Cualquier `Throwable` que no
+    sea `TobbException` ni cancelación también da `SinDato`, y se loguea solo el nombre de la clase. (4) El log pasó de `log.w(it)`
+    (con excepción y mensaje) a una línea con el `codigo` o el status (RF-20). (5) Se agregó un fake `HcBackend` mínimo en el test
+    para probar el default `SinDato`; T3 tendrá que armar el suyo, programable.
 
 - [ ] **T3. `AuthRepository` decide con el servidor (sin cablear aún a los flujos).** RF-1, RF-4, RF-7, RF-11, RF-12, RF-14, RF-15 · tamaño M (~30 min)
   - Tests primero: `core/data/src/jvmTest/.../repos/AuthRepositoryLicenciaServidorTest.kt`, con SQLite temporal,
