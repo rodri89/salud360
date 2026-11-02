@@ -27,6 +27,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,10 +87,26 @@ class AuthRepository(
     private val scopeRevocacion: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     /** Lo más que se deja trabajar a la revocación; pasado el límite se cancela, sin que nadie lo espere. */
     private val limite: Duration = 3.seconds,
+    /**
+     * Backends de las historias clínicas con API por código de especialidad. Los que llevan licencia dicen cómo está la
+     * del médico en el servidor ([decidirLicencia]); los demás contestan «sin dato» sin pedir nada.
+     */
+    private val backendsHc: Map<String, HcBackend> = emptyMap(),
+    /** Reloj (epoch millis) de la memoria de la última consulta de licencia. */
+    private val ahora: () -> Long = ::ahoraMillis,
+    /** Cuánto se espera la consulta de licencia al iniciar sesión y al restaurarla; pasado el tope es «sin dato». */
+    private val esperaLogin: Duration = 10.seconds,
+    private val esperaRestaurar: Duration = 5.seconds,
 ) {
+    private val log = Logger.withTag("Auth")
     private val importador = TurnosImportador(db)
     private val _sesion = MutableStateFlow<Sesion?>(null)
     val sesion: StateFlow<Sesion?> = _sesion.asStateFlow()
+
+    /** Lo último que contestó el servidor de la HC sobre la licencia, para no repetir el pedido dentro de un minuto. */
+    private class MemoriaLicencia(val token: String, val estado: EstadoLicenciaRemoto, val en: Long)
+
+    private var memoriaLicencia: MemoriaLicencia? = null
 
     val usuarioActual: Usuario? get() = _sesion.value?.usuario
 
@@ -182,6 +200,7 @@ class AuthRepository(
         api.token = null
         turnos.token = null
         hcClients.values.forEach { it.token = null }
+        memoriaLicencia = null
         _sesion.value = null
         if (token != null) revocarEnSegundoPlano(token)
     }
@@ -207,6 +226,50 @@ class AuthRepository(
             }
         }
     }
+
+    /**
+     * Decide si el médico queda afuera por la licencia: con conexión manda lo que contesta el servidor de su HC (la copia
+     * del dispositivo es solo respaldo), y la copia se pone al día con esa respuesta, siempre limpia (el dueño es el
+     * servidor). Sin respuesta concluyente decide la copia con la regla de siempre. Devuelve la sesión rearmada desde la
+     * copia y si queda bloqueada.
+     *
+     * No consulta nada al administrador, a la secretaria ni al médico sin HC con backend (decide la copia, como antes).
+     * Repite el pedido solo si pasó un minuto o cambió el token; el tope de espera es [tope].
+     */
+    internal suspend fun decidirLicencia(sesion: Sesion, tope: Duration): Pair<Sesion, Boolean> {
+        val medico = sesion.medico ?: return sesion to false
+        val backends = medico.especialidades.distinct().mapNotNull { backendsHc[it] }
+        if (backends.isEmpty()) return sesion to licenciaBloqueadaSegun(EstadoLicenciaRemoto.SinDato, sesion)
+
+        val memoria = memoriaLicencia
+        val estado = if (memoria != null && memoria.token == sesion.token && ahora() - memoria.en in 0 until REUSO_LICENCIA_MS) {
+            memoria.estado
+        } else {
+            val consultado = combinarEstadosDeLicencia(backends.map { consultarLicencia(it, tope) })
+            val previa = db.authQueries.licenciaPorMedico(medico.medicoId).uno { it.toModel() }
+            copiaDeLicencia(consultado, previa, medico.medicoId)?.let { db.authQueries.upsertLicencia(it.toRow(ahoraMillis(), dirty = false)) }
+            memoriaLicencia = MemoriaLicencia(sesion.token, consultado, ahora())
+            consultado
+        }
+        val rearmada = resolverPerfil(db, sesion.usuario)?.copy(token = sesion.token) ?: sesion
+        return rearmada to licenciaBloqueadaSegun(estado, rearmada)
+    }
+
+    /** Un pedido al backend con tope; todo lo que no sea una respuesta (tope, error) es «sin dato». La cancelación sigue. */
+    private suspend fun consultarLicencia(backend: HcBackend, tope: Duration): EstadoLicenciaRemoto =
+        withTimeoutOrNull(tope) {
+            try {
+                backend.licenciaDelServidor()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                log.w { "no se pudo consultar la licencia en ${backend.especialidad}: ${e::class.simpleName}" }
+                EstadoLicenciaRemoto.SinDato
+            }
+        } ?: EstadoLicenciaRemoto.SinDato
+
+    /** El ingreso queda bloqueado por la licencia: no queda sesión abierta ni guardada. */
+    private suspend fun cerrarPorLicencia() = logout()
 
     /**
      * Refresca el perfil (por ejemplo tras una sincronización que trajo nuevas especialidades).
@@ -247,6 +310,9 @@ class AuthRepository(
 
     private companion object {
         const val CLAVE_SESION = "auth.sesion"
+
+        /** Una respuesta del servidor sobre la licencia vale este tiempo; después se vuelve a preguntar. */
+        const val REUSO_LICENCIA_MS = 60_000L
     }
 }
 

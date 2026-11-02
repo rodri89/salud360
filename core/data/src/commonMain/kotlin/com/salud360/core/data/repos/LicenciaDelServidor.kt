@@ -37,6 +37,16 @@ fun licenciaBloqueadaSegun(estado: EstadoLicenciaRemoto, sesion: Sesion): Boolea
 }
 
 /**
+ * Junta lo que contestaron varias HC con licencia (hoy solo pediatría) en una sola respuesta: una vencida bloquea, si no
+ * manda la primera vigente, si no «sin licencia» y, si ninguna fue concluyente, [EstadoLicenciaRemoto.SinDato].
+ */
+fun combinarEstadosDeLicencia(estados: List<EstadoLicenciaRemoto>): EstadoLicenciaRemoto =
+    estados.firstOrNull { it == EstadoLicenciaRemoto.Vencida }
+        ?: estados.firstOrNull { it is EstadoLicenciaRemoto.Vigente }
+        ?: estados.firstOrNull { it == EstadoLicenciaRemoto.SinLicencia }
+        ?: EstadoLicenciaRemoto.SinDato
+
+/**
  * La fila de la copia local que hay que escribir para reflejar lo que contestó el servidor, o `null` si no hay nada que
  * escribir. Nunca pisa con vacíos: el importe, que el servidor no informa en esta respuesta, y el aviso que no vino se
  * conservan de la copia previa; sin respuesta concluyente o sin cambios no se reescribe.
