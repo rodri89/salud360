@@ -234,11 +234,18 @@ class AuthRepository(
     /**
      * Refresca el perfil (por ejemplo tras una sincronización que trajo nuevas especialidades).
      * Si en el camino la licencia dejó de estar vigente, cierra la sesión.
+     *
+     * La licencia la decide [decidirLicencia]: justo después de iniciar sesión o restaurar cae en la memoria de 60 s (sin
+     * pedido nuevo) y no se vuelve a comparar la fecha de la copia con el reloj del dispositivo.
      */
     suspend fun refrescarPerfil() {
         val s = _sesion.value ?: return
-        val nueva = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: return
-        if (nueva.licenciaBloqueada()) { logout(); return }
+        val local = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: return
+        val (nueva, bloqueada) = decidirLicencia(local, esperaLogin)
+        // La consulta puede tardar: si mientras tanto se cerró la sesión (o entró otra), este refresco ya no es de nadie y
+        // no debe volver a publicar la sesión cerrada ni cerrar la nueva.
+        if (_sesion.value?.token != s.token) return
+        if (bloqueada) { cerrarPorLicencia(); return }
         guardarSesion(nueva)
     }
 

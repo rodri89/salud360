@@ -76,7 +76,14 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
         )
     }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
-    single { AuthRepository(get(), get(), get(), get(), get<HcApiClients>().porEspecialidad) }
+    // `backendsHc`: los backends con API (hoy pediatría, la única HC con licencia) para que el ingreso consulte la licencia al
+    // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
+    single {
+        AuthRepository(
+            get(), get(), get(), get(), get<HcApiClients>().porEspecialidad,
+            backendsHc = get<HcBackends>().porEspecialidad,
+        )
+    }
     single { PacientesRepository(get()) }
     single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
     single { AgendaTurnosOnline(get(), get()) }
