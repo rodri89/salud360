@@ -4,6 +4,22 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
+## Traspaso 2026-11-02 (clínica en pausa, pediatría primero)
+- **Clínica (rama `hc-general`, 138 commits locales sin push; `origin/main` sigue en el publicado del 2026-09-29):** la entrega L de la
+  spec 002 (lectura) llega hasta E8.1 y E7.4. La lectura local quedó verificada: la app no escribió en clínica (se miró el log de
+  Apache). **Pendiente de clínica:** E8.3 (prueba manual formal), E8.4 (revisor), limpieza de los datos de prueba, E9 (producción, con
+  aprobación aparte) y la entrega E (escritura), que todavía no tiene spec. Ojo: esta rama NO debe publicarse tal cual, porque dos
+  commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
+  reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
+- **Limpieza pendiente en la base local de clínica (datos de prueba):** consulta 1989 de la web con sus 12 filas hijas;
+  `consulta_pdfs` 24 con su archivo; restaurar `medico_infos` id 6 a `consulta_id=1909`, `es_nueva_consulta=1`, `paciente_id=1285`.
+  De la spec 003: enfermedades «Prueba Salud360» 1/2/3 (ids 53-55), la lista vaciada del médico 9, los pacientes PRUEBA SALUD360 A-F, el
+  perfil 4 y `medico_enfermedades` del médico 9. Archivos de apoyo en `%TEMP%\opencode\{e31,e82,f37,lectura,respaldos}`.
+- **Pediatría primero:** el servidor de pediatría lo subió el usuario a mano (8 archivos, verificado por GET sin token). Pendientes:
+  licencias (revisar las fechas reales), `APP_DEBUG=false` en pediatría y en hclinica, 10 médicos sin alta, y el cambio de licencia
+  (la app debe leer la licencia del servidor al entrar, no la copia local), que va en una rama aparte (`pediatria-licencia-servidor`,
+  worktree `..\salud360-pediatria`, sobre `origin/main`).
+
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
   usuario. E7.4 hecha (2026-10-30, solo infraestructura):** `wasmJsDevelopmentExecutableCompileSync -Pentorno=dev` en 4 min 30 s (exit 0,
