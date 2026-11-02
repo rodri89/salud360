@@ -1,10 +1,12 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.data.lista
+import com.salud360.core.data.mappers.json
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.uno
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.Salud360Db
@@ -19,18 +21,25 @@ import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.RegistroClinico
+import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -39,10 +48,12 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Spec 004, T3: `AuthRepository.decidirLicencia` decide con lo que contesta el servidor de la HC y deja la copia local al
- * día. Todavía no está cableada a `login`/`restaurar`/`refrescarPerfil` (T4 a T6): se llama directo.
+ * día. T4: `restaurar` la usa antes de publicar la sesión. Todavía falta cablearla a `login` y `refrescarPerfil`
+ * (T5 y T6): se llama directo.
  *
- * SQLite temporal, turnos apuntado a un puerto cerrado (nunca el cliente por defecto, que apunta a producción) y un
- * backend falso programable. Ids, fechas (relativas a `hoy()`) y tokens inventados.
+ * SQLite temporal, turnos apuntado a un puerto cerrado (nunca el cliente por defecto, que apunta a producción; solo los
+ * tests de `refrescarPerfilRemoto` lo apuntan a un turnos falso en `127.0.0.1`) y un backend falso programable. Ids,
+ * fechas (relativas a `hoy()`) y tokens inventados.
  */
 class AuthRepositoryLicenciaServidorTest {
     private val ayer = hoy().minus(DatePeriod(days = 1)).toString()
@@ -378,9 +389,230 @@ class AuthRepositoryLicenciaServidorTest {
         assertTrue(e2.repo.decidirLicencia(e2.sesionMedico(), TOPE).second, "todo sin dato: decide la copia")
     }
 
+    // ---- restaurar (T4: RF-2, RF-5, RF-6, RF-7, RF-13, RF-15) ----
+
+    @Test
+    fun restaurar_con_servidor_vigente_y_copia_vencida_e_inactiva_entra_y_deja_la_copia_vigente() = runBlocking {
+        // El caso reportado: la copia del navegador quedó vieja y el servidor dice que la licencia está al día.
+        val e = escena().also { it.pediatria.responde(vigente) }
+        e.copia(vence = ayer, aviso = avisoViejo, importe = 9.5, activo = false)
+        e.guardarSesion()
+
+        val sesion = e.repo.restaurar()
+
+        assertNotNull(sesion)
+        assertEquals("tok-guardado", sesion.token)
+        assertEquals(lejos, sesion.medico?.licenciaVence)
+        assertEquals(true, sesion.medico?.licenciaActiva)
+        assertEquals(Licencia(MEDICO_ID, lejos, avisoYa, importe = 9.5, activo = true), e.copiaLocal())
+        assertTrue(e.dirty().isEmpty(), "la copia no queda pendiente de envío")
+        assertEquals(sesion, e.repo.sesion.value)
+        assertNotNull(e.sesionGuardada(), "la sesión sigue guardada")
+        assertEquals(1, e.pediatria.consultas.get())
+    }
+
+    @Test
+    fun restaurar_con_servidor_vencida_y_copia_vigente_no_entra_y_la_sesion_nunca_se_publica() = runBlocking {
+        val e = escena().also { it.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+        e.copia(vence = lejos, aviso = avisoYa, importe = 7.0)
+        e.guardarSesion()
+        val vistos = mutableListOf<Sesion?>()
+        val colector = launch(Dispatchers.Unconfined) { e.repo.sesion.collect { vistos += it } }
+
+        val sesion = e.repo.restaurar()
+        colector.cancel()
+
+        assertNull(sesion)
+        assertEquals(listOf<Sesion?>(null), vistos, "`sesion` nunca pasó por un valor no nulo")
+        assertNull(e.repo.sesion.value)
+        assertNull(e.sesionGuardada(), "la sesión guardada queda borrada")
+        assertNull(e.cliente.token, "los clientes de HC quedan sin token")
+        assertEquals(Licencia(MEDICO_ID, lejos, avisoYa, importe = 7.0, activo = false), e.copiaLocal())
+        assertTrue(e.dirty().isEmpty())
+    }
+
+    @Test
+    fun restaurar_consulta_con_el_token_de_la_sesion_guardada_y_antes_de_publicarla() = runBlocking {
+        val e = escena().also { it.pediatria.responde(vigente) }
+        e.guardarSesion()
+        var tokenAlConsultar: String? = null
+        var publicadaAlConsultar: Boolean? = null
+        e.pediatria.alConsultar = {
+            tokenAlConsultar = e.cliente.token
+            publicadaAlConsultar = e.repo.sesion.value != null
+        }
+
+        assertNotNull(e.repo.restaurar())
+
+        assertEquals("tok-guardado", tokenAlConsultar)
+        assertEquals(false, publicadaAlConsultar, "se decide antes de publicar la sesión")
+    }
+
+    @Test
+    fun restaurar_sin_dato_decide_la_copia_con_la_regla_de_hoy_y_no_la_toca() = runBlocking {
+        data class Caso(val vence: String?, val activa: Boolean, val entra: Boolean)
+        val sinRespuesta: List<Pair<String, suspend () -> EstadoLicenciaRemoto>> = listOf(
+            "sin dato" to { EstadoLicenciaRemoto.SinDato },
+            "el backend falla (5xx, 429, red)" to { throw IllegalStateException("se cayó") },
+        )
+        sinRespuesta.forEach { (nombre, respuesta) ->
+            listOf(
+                Caso(lejos, true, true), Caso(ayer, true, false), Caso(lejos, false, false), Caso(null, true, true),
+            ).forEach { caso ->
+                val e = escena().also { it.pediatria.respuesta = respuesta }
+                if (caso.vence != null) e.copia(vence = caso.vence, activo = caso.activa)
+                e.guardarSesion()
+                val antes = e.copiaLocal()
+
+                val sesion = e.repo.restaurar()
+
+                assertEquals(caso.entra, sesion != null, "$nombre, $caso")
+                assertEquals(antes, e.copiaLocal(), "$nombre, $caso: la copia no se toca")
+                assertTrue(e.dirty().isEmpty())
+                assertEquals(caso.entra, e.sesionGuardada() != null, "$nombre, $caso")
+            }
+        }
+    }
+
+    @Test
+    fun restaurar_sin_licencia_entra_aunque_la_copia_diga_vencida_o_inactiva_y_no_la_toca() = runBlocking {
+        listOf<suspend (Escena) -> Unit>({ it.copia(vence = ayer) }, { it.copia(vence = lejos, activo = false) }, {}).forEach { preparar ->
+            val e = escena().also { it.pediatria.responde(EstadoLicenciaRemoto.SinLicencia) }
+            preparar(e)
+            e.guardarSesion()
+            val antes = e.copiaLocal()
+
+            assertNotNull(e.repo.restaurar(), "P3: el médico sin fila entra a la app")
+
+            assertEquals(antes, e.copiaLocal())
+            assertTrue(e.dirty().isEmpty())
+            assertNotNull(e.sesionGuardada())
+        }
+    }
+
+    @Test
+    fun restaurar_el_administrador_y_la_secretaria_no_consultan_nada() = runBlocking {
+        val e = escena().also { it.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+        val admin = Sesion(Usuario("u-adm", "admin@ejemplo.test", "Admin", "Prueba", Rol.ADMIN), "tok-adm")
+        e.guardarSesion(admin)
+        assertEquals("tok-adm", e.repo.restaurar()?.token)
+
+        val secretaria = Sesion(
+            Usuario("u-sec", "secretaria@ejemplo.test", "Secre", "Prueba", Rol.SECRETARIA), "tok-sec",
+            secretaria = PerfilSecretaria("tobb-s1", listOf("c1"), listOf(MEDICO_ID)),
+        )
+        e.guardarSesion(secretaria)
+        assertEquals("tok-sec", e.repo.restaurar()?.token)
+
+        assertEquals(0, e.pediatria.consultas.get())
+    }
+
+    @Test
+    fun restaurar_el_medico_sin_hc_con_licencia_no_consulta_y_decide_la_copia_como_hoy() = runBlocking {
+        val e = escena(especialidades = listOf("clinica")).also { it.pediatria.responde(EstadoLicenciaRemoto.Vigente(lejos, "", false)) }
+        e.copia(vence = ayer)
+        e.guardarSesion()
+        assertNull(e.repo.restaurar())
+        assertEquals(0, e.pediatria.consultas.get())
+
+        val vigenteLocal = escena(especialidades = listOf("clinica"))
+        vigenteLocal.copia(vence = lejos)
+        vigenteLocal.guardarSesion()
+        assertTrue(vigenteLocal.repo.restaurar() != null)
+    }
+
+    @Test
+    fun restaurar_sin_sesion_guardada_devuelve_null_y_no_consulta() = runBlocking {
+        val e = escena().also { it.pediatria.responde(vigente) }
+        assertNull(e.repo.restaurar())
+        assertEquals(0, e.pediatria.consultas.get())
+    }
+
+    @Test
+    fun restaurar_con_un_servidor_que_no_contesta_termina_por_el_tope_de_restaurar_y_usa_la_copia() = runBlocking {
+        val compuerta = CompletableDeferred<EstadoLicenciaRemoto>()
+        try {
+            // El tope de iniciar sesión es largo a propósito: `restaurar` tiene que usar el suyo.
+            val vencida = escena(esperaRestaurar = 100.milliseconds, esperaLogin = 30.seconds)
+            vencida.pediatria.respuesta = { compuerta.await() }
+            vencida.copia(vence = ayer)
+            vencida.guardarSesion()
+            withTimeout(20.seconds) { assertNull(vencida.repo.restaurar(), "sin respuesta decide la copia vencida") }
+            assertEquals(1, vencida.pediatria.consultas.get())
+
+            val vigenteLocal = escena(esperaRestaurar = 100.milliseconds, esperaLogin = 30.seconds)
+            vigenteLocal.pediatria.respuesta = { compuerta.await() }
+            vigenteLocal.copia(vence = lejos)
+            vigenteLocal.guardarSesion()
+            withTimeout(20.seconds) { assertNotNull(vigenteLocal.repo.restaurar(), "sin respuesta decide la copia vigente") }
+            assertEquals(lejos, vigenteLocal.copiaLocal()?.fechaExpiracion, "la copia no se tocó")
+        } finally {
+            compuerta.complete(EstadoLicenciaRemoto.SinDato)
+        }
+    }
+
+    @Test
+    fun restaurar_hace_un_solo_pedido_y_la_memoria_de_60_segundos_evita_repetirlo() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            e.guardarSesion()
+
+            assertNotNull(e.repo.restaurar())
+            assertEquals(1, turnos.pedidos.get(), "restaurar refrescó el perfil con turnos")
+            assertEquals(1, e.pediatria.consultas.get(), "el refresco del perfil reutiliza la respuesta: un solo pedido")
+
+            // Otra recarga a los 30 s con el mismo token: tampoco pregunta de nuevo.
+            e.reloj.ahora = 30_000
+            assertNotNull(e.repo.restaurar())
+            assertEquals(2, turnos.pedidos.get())
+            assertEquals(1, e.pediatria.consultas.get())
+
+            // Pasado el minuto, sí.
+            e.reloj.ahora = 61_000
+            assertNotNull(e.repo.restaurar())
+            assertEquals(2, e.pediatria.consultas.get())
+        }
+    }
+
+    @Test
+    fun el_refresco_del_perfil_de_restaurar_usa_la_decision_del_servidor_y_no_la_regla_local() = runBlocking {
+        // Sin fila de licencia en el servidor y una copia vencida: el servidor dijo que no hay licencia que decidir (P3).
+        // Con la regla local, el refresco que sigue a la restauración le cerraría la sesión.
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(EstadoLicenciaRemoto.SinLicencia) }
+            e.copia(vence = ayer)
+            e.guardarSesion()
+
+            assertNotNull(e.repo.restaurar())
+
+            assertEquals(1, turnos.pedidos.get())
+            assertNotNull(e.repo.sesion.value, "la sesión sigue abierta")
+            assertNotNull(e.sesionGuardada())
+            assertEquals(1, e.pediatria.consultas.get())
+        }
+    }
+
+    @Test
+    fun el_refresco_del_perfil_de_restaurar_con_la_memoria_vencida_consulta_una_vez_mas_y_cierra_si_esta_vencida() = runBlocking {
+        TurnosFalso().use { turnos ->
+            val e = escena(turnosUrl = turnos.url).also { it.pediatria.responde(vigente) }
+            e.copia(vence = lejos)
+            e.guardarSesion()
+            // Turnos tarda más de un minuto y, mientras tanto, dan de baja la licencia.
+            turnos.alResponder = { e.reloj.ahora += 61_000; e.pediatria.responde(EstadoLicenciaRemoto.Vencida) }
+
+            assertNull(e.repo.restaurar())
+
+            assertEquals(2, e.pediatria.consultas.get())
+            assertNull(e.repo.sesion.value)
+            assertNull(e.sesionGuardada())
+            assertEquals(false, e.copiaLocal()?.activo)
+        }
+    }
+
     // ---- Armado ----
 
-    private class Reloj { var ahora = 0L }
+    private class Reloj { @Volatile var ahora = 0L }
 
     private inner class Escena(
         val db: Salud360Db,
@@ -388,9 +620,18 @@ class AuthRepositoryLicenciaServidorTest {
         val reloj: Reloj,
         val pediatria: HcFalso,
         val usuario: Usuario,
+        val cliente: HcApiClient,
     ) {
         /** La sesión del médico armada como la arma la app: desde la copia local, con el token que se le pasa. */
         suspend fun sesionMedico(token: String = "tok-a"): Sesion = resolverPerfil(db, usuario)!!.copy(token = token)
+
+        /** Deja guardada la sesión de un ingreso anterior, que es lo que `restaurar` lee al recargar la página. */
+        suspend fun guardarSesion(sesion: Sesion? = null) {
+            val s = sesion ?: sesionMedico("tok-guardado")
+            db.authQueries.guardarSesion(s.usuario.id, s.token, json.encodeToString(s), 1L)
+        }
+
+        suspend fun sesionGuardada() = db.authQueries.sesionActual().uno { it }
 
         /** Copia local de la licencia, ya limpia (`dirty = 0`) y con `updated_at = 1`. */
         suspend fun copia(vence: String, aviso: String = avisoYa, importe: Double = 0.0, activo: Boolean = true) {
@@ -406,6 +647,9 @@ class AuthRepositoryLicenciaServidorTest {
         especialidades: List<String> = listOf("pediatria"),
         conBackend: Boolean = true,
         otras: List<HcFalso> = emptyList(),
+        esperaLogin: Duration = 10.seconds,
+        esperaRestaurar: Duration = 5.seconds,
+        turnosUrl: String = "http://127.0.0.1:1",
     ): Escena {
         val archivo = File.createTempFile("salud360-auth-licencia", ".db").also { it.delete(); it.deleteOnExit() }
         val db = createDatabase(DriverFactory(archivo.absolutePath))
@@ -420,23 +664,58 @@ class AuthRepositoryLicenciaServidorTest {
             if (conBackend) put("pediatria", pediatria)
             otras.forEach { put(it.especialidad, it) }
         }
-        // Turnos y API propia a un puerto cerrado: si algo los llamara, fallaría rápido y no tocaría producción.
+        // Turnos y API propia a un puerto cerrado (salvo el turnos falso local): si algo los llamara, fallaría rápido y no
+        // tocaría producción. El cliente de HC también va a un puerto cerrado: solo se mira su token.
+        val cliente = HcApiClient("http://127.0.0.1:1", "pediatria")
         val repo = AuthRepository(
-            db, ApiClient("http://127.0.0.1:1"), TurnosOnlineClient("http://127.0.0.1:1"),
+            db, ApiClient("http://127.0.0.1:1"), TurnosOnlineClient(turnosUrl),
+            hcClients = mapOf("pediatria" to cliente),
             backendsHc = backends, ahora = { reloj.ahora },
+            esperaLogin = esperaLogin, esperaRestaurar = esperaRestaurar,
         )
-        return Escena(db, repo, reloj, pediatria, usuario)
+        return Escena(db, repo, reloj, pediatria, usuario, cliente)
+    }
+
+    /** turnos falso: contesta `auth/perfil` con el perfil del médico de la escena y cuenta cuántas veces se lo piden. */
+    private class TurnosFalso : AutoCloseable {
+        val pedidos = AtomicInteger()
+
+        /** Corre en el hilo del servidor, antes de contestar. */
+        @Volatile var alResponder: () -> Unit = {}
+        private val server = HttpServer.create(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0)
+        val url: String get() = "http://127.0.0.1:${server.address.port}"
+
+        init {
+            val cuerpo = """
+                {"ok":true,"perfil":{"usuario":{"id":12,"nombre":"Medico","email":"medico@ejemplo.test","tipo":2},"rol":"medico",
+                "medico":{"id":7,"nombre":"Medico","apellido":"Prueba","consultorio_id":0,"historias_clinicas":["pediatria"]}}}
+            """.trimIndent().toByteArray()
+            server.createContext("/") { x ->
+                pedidos.incrementAndGet()
+                alResponder()
+                x.responseHeaders.add("Content-Type", "application/json; charset=utf-8")
+                x.sendResponseHeaders(200, cuerpo.size.toLong())
+                x.responseBody.use { it.write(cuerpo) }
+            }
+            server.start()
+        }
+
+        override fun close() = server.stop(0)
     }
 
     /** Backend falso: cuenta las consultas de licencia y contesta lo que el test le programe. */
     private class HcFalso(override val especialidad: String) : HcBackend {
         val consultas = AtomicInteger()
-        var respuesta: suspend () -> EstadoLicenciaRemoto = { EstadoLicenciaRemoto.SinDato }
+        @Volatile var respuesta: suspend () -> EstadoLicenciaRemoto = { EstadoLicenciaRemoto.SinDato }
+
+        /** Corre al empezar cada consulta, antes de contestar. */
+        @Volatile var alConsultar: () -> Unit = {}
 
         fun responde(estado: EstadoLicenciaRemoto) { respuesta = { estado } }
 
         override suspend fun licenciaDelServidor(): EstadoLicenciaRemoto {
             consultas.incrementAndGet()
+            alConsultar()
             return respuesta()
         }
 
