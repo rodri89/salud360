@@ -101,8 +101,12 @@ class AuthRepository(
         hcClients.values.forEach { it.token = guardada.token }
         // El perfil se rearma desde la base: el administrador pudo dar de baja la licencia después del último ingreso,
         // y la copia guardada en JSON todavía la tendría vigente.
-        val s = resolverPerfilLocal(guardada.usuario)?.copy(token = guardada.token) ?: guardada
-        if (s.licenciaBloqueada()) { logout(); return null }
+        val local = resolverPerfilLocal(guardada.usuario)?.copy(token = guardada.token) ?: guardada
+        // La licencia la decide el servidor de la HC (con la copia como respaldo sin señal) y se decide ANTES de publicar la
+        // sesión: la app navega apenas `sesion` deja de ser null y arranca la sincronización de quien quedaría afuera.
+        // Los clientes de HC ya tienen el token de arriba.
+        val (s, bloqueada) = decidirLicencia(local, esperaRestaurar)
+        if (bloqueada) { cerrarPorLicencia(); return null }
         _sesion.value = s
         guardarSesion(s)
         refrescarPerfilRemoto(s)
@@ -112,8 +116,11 @@ class AuthRepository(
     private suspend fun refrescarPerfilRemoto(actual: Sesion) {
         val perfil = turnos.perfil() ?: return
         val usuario = importador.importar(perfil)
-        val nueva = resolverPerfil(db, usuario)?.copy(token = actual.token) ?: return
-        if (nueva.licenciaBloqueada()) { logout(); return }
+        val local = resolverPerfil(db, usuario)?.copy(token = actual.token) ?: return
+        // Pasa por la misma decisión: justo después de `restaurar` cae en la memoria de 60 s (sin pedido), y la regla local
+        // no le cierra la sesión a quien el servidor acaba de dejar entrar.
+        val (nueva, bloqueada) = decidirLicencia(local, esperaRestaurar)
+        if (bloqueada) { cerrarPorLicencia(); return }
         guardarSesion(nueva)
     }
 
