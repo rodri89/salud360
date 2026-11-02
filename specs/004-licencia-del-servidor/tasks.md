@@ -141,7 +141,7 @@ Reglas para todas:
     simultáneos pueden hacer dos pedidos (en los flujos de la app son secuenciales). (7) No hay guarda de «generación» contra un pedido que
     termina después de `logout`: la memoria está atada al token, y el siguiente ingreso trae otro token.
 
-- [ ] **T3b. El error de la API de HC conserva su cuerpo y el backend distingue «sin licencia».** RF-10, RF-21, RF-22 · tamaño M (~25 min) · depende de T2 (y va después de T3)
+- [x] **T3b. El error de la API de HC conserva su cuerpo y el backend distingue «sin licencia».** RF-10, RF-21, RF-22 · tamaño M (~25 min) · depende de T2 (y va después de T3)
   - Contexto: por P3 (solo la HC) el servidor contesta `403 licencia_vencida` con `licencia: null` (sin fila) o con
     `licencia: {vence, vencida: true}` (con fila vencida o baja), dentro del cuerpo JSON (verificado en `TobbAuthService.php` y
     `Salud360Api.php`, solo lectura). Hoy `HcApiClient.interpretar` descarta el cuerpo.
@@ -159,6 +159,39 @@ Reglas para todas:
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*HcApiClientErrorTest*' --tests '*HcPediatriaLicenciaServidorTest*'` en
     verde; `.\gradlew :core:data:jvmTest` completo en verde (nada existente cambió: ningún test previo se tocó); `git diff` de
     `ApiClient.kt` y `HcApiClient.kt` muestra solo el parámetro nuevo y su uso.
+  - **Hecho (2026-11-02, worktree, commit `4096bf7`).** Rojo previo en dos pasos: sin nada, los tests no compilaban (`cuerpo` no existía);
+    con solo el parámetro en `TobbException` (sin pasarlo ni leerlo), 5 de 50 fallaban (3 de `HcApiClientErrorTest`: el cuerpo trae el objeto,
+    `licencia` nula frente a ausente, el cuerpo en el 200 con `ok: false` y en el 401; y 2 de `SinLicencia`) y el resto, que fija lo que
+    no tiene que cambiar, ya pasaba. Verde: `HcApiClientErrorTest` 17/17, `HcPediatriaLicenciaServidorTest` 33/33 (eran 25) y
+    `:core:data:jvmTest --rerun` completo **120 tests, 0 fallas, 0 errores, 0 salteados** (95 + 17 + 8); `:core:data:compileKotlinWasmJs`
+    compila (`composeApp` no: T3b no lo pide, y el parámetro nuevo es opcional). Cuerpo real verificado en el servidor (solo lectura):
+    `Salud360Api::rechazo` hace `array_merge(['ok' => false, 'mensaje', 'codigo'], $extra)`; `TobbAuthService::conLicencia` pone
+    `extra = ['licencia' => null]` sin fila y `['licencia' => ['vence', 'vencida' => true]]` con fila vencida o de baja (en JSON, `null`
+    explícito). Cambios: `ApiClient.kt` (`TobbException(…, val cuerpo: JsonObject? = null)`, el import y una línea de KDoc), `HcApiClient.kt`
+    (`interpretar` pasa `obj`, una línea), `HcPediatriaBackend.kt` (el `catch (TobbException)` de `leerPerfilDeLicencia`); ningún
+    `TobbException(…)` existente cambió. Mapeo del 403 de `auth/perfil` (cuerpo → estado):
+    | Respuesta | Estado |
+    |---|---|
+    | 403 `licencia_vencida` y `licencia` **nula** (clave presente con `null`) | `SinLicencia` |
+    | 403 `licencia_vencida` y `licencia` con objeto `{vence, vencida}` (vencida o de baja) | `Vencida` |
+    | 403 `licencia_vencida` sin la clave `licencia`, o con otro tipo (`{}`, texto, `"null"`, `false`, `0`, lista) | `Vencida` (RF-21) |
+    | 403 `licencia_vencida` armado a mano sin cuerpo (`cuerpo == null`) | `Vencida` |
+    | 403 con otro código (`hc_no_habilitada`, `medico_no_vinculado`, `sin_permiso`) o sin `codigo`, aunque traiga `licencia: null` | `SinDato` |
+    | 401 `token`, 429, 5xx, 503 `tobb_caido`, red, cualquier otro status, aunque diga `licencia_vencida` con `licencia: null` | `SinDato` |
+    | 403 cuyo cuerpo **no es JSON** (HTML, texto) | `SinDato` (sin JSON no hay `codigo`) |
+    **Único test existente que se ajustó:** `HcPediatriaLicenciaServidorTest.en_esta_tarea_licencia_vencida_sin_licencia_en_el_cuerpo_tambien_es_vencida`
+    (T2) pedía `Vencida` para `licencia: null` y para «sin la clave»; su propio texto decía que T3b lo cambiaba. Pasó a
+    `licencia_vencida_con_licencia_nula_en_el_cuerpo_es_sin_licencia` (`SinLicencia`) y la mitad «sin la clave → `Vencida`» salió a su
+    propio test nuevo. Más el KDoc de la clase de test. Ningún otro test existente se tocó.
+    Decisiones que el texto no fijaba: (1) **«cuerpo que no es JSON → `Vencida`» (T3b, tests (2)) no se puede cumplir tal cual:** sin JSON
+    `HcApiClient` no tiene `codigo`, así que no hay forma de saber que era `licencia_vencida`, y `un_403_sin_codigo_es_sin_dato` (T2, sin
+    tocar) pide `SinDato`, que es además lo que manda RF-9 para cualquier 403 que no sea `licencia_vencida`. Quedó `SinDato` y un test que lo
+    fija; lo que sí es `Vencida` es el cuerpo JSON con `licencia_vencida` y `licencia` ausente o de otro tipo. El «cuerpo ilegible → `Vencida`»
+    de RF-21/D3 solo se alcanza armando la excepción a mano (`cuerpo == null`). (2) `cuerpo` es el objeto de cualquier respuesta con JSON
+    de objeto (también el 200 con `ok: false` y el 401), no solo del 403; un JSON que no es objeto (`null`, lista) da `cuerpo == null`.
+    (3) El 403 `licencia_vencida` sigue exigiendo status 403 **y** código (como en T2). (4) El cuerpo no entra en el mensaje ni en
+    `toString()` (hay un test con una fecha inventada), y el log sigue siendo solo `codigo ?: status`. (5) El diff de `ApiClient.kt` suma,
+    además del parámetro, el `import` de `JsonObject` y la línea `@param cuerpo` del KDoc.
 
 - [ ] **T4. `restaurar` consulta al servidor antes de publicar la sesión.** RF-2, RF-5, RF-6, RF-7, RF-13, RF-15 · tamaño M (~25 min)
   - Tests primero (en `AuthRepositoryLicenciaServidorTest`): sesión guardada de un médico +

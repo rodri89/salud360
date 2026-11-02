@@ -26,8 +26,11 @@ registros de personas): el repo es público.
   `HcPediatriaBackend` lee `auth/perfil` y el `403 licencia_vencida` → `Vencida`; `avisoDeLicencia` sobre la misma lectura; 25 tests
   con un `HttpServer` falso; `core:data` 68 tests en verde). **T3 hecha** (`98ef156`: `AuthRepository.decidirLicencia(sesion, tope)`
   `internal`, memoria de 60 s por token, copia sin `dirty`; 27 tests nuevos, `core:data` 95 en verde; sin cablear a `login`/`restaurar`/
-  `refrescarPerfil`; sin backend con licencia decide la copia como hoy, no `false` como decía el plan D6). Sigue T3b (`TobbException.cuerpo`;
-  separa `SinLicencia`: hoy todo `licencia_vencida` es `Vencida`), después T4 a T8. El árbol publicado tenía 43 tests en `core:data`.
+  `refrescarPerfil`; sin backend con licencia decide la copia como hoy, no `false`: el plan D6 ya está alineado). **T3b hecha** (`4096bf7`:
+  `TobbException.cuerpo: JsonObject? = null` opcional, `HcApiClient.interpretar` lo pasa; el `403 licencia_vencida` con `licencia: null`
+  explícito → `SinLicencia`, todo otro `licencia_vencida` → `Vencida`; `HcApiClientErrorTest` 17 + 8 tests nuevos en
+  `HcPediatriaLicenciaServidorTest`; `core:data` 120 en verde; un test de T2 se ajustó a `SinLicencia`). Ojo: un 403 con cuerpo no JSON es
+  `SinDato` (sin JSON no hay `codigo`), no `Vencida` como decía el texto de T3b. Sigue T4 a T8. El árbol publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el

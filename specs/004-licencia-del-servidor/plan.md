@@ -82,8 +82,13 @@ Todas las rutas y líneas son del **worktree `C:\Users\flor\rebonline\salud360-p
     la previa → `null` (no se reescribe). `Vigente` con `vence` en blanco: `null` (no es concluyente, RF-12).
   La fila se identifica con `Sesion.medico.medicoId` (el mismo `tobb-m<n>` que usa `resolverPerfil:190`).
 - **D6. Un solo punto de decisión en `AuthRepository`:** una función privada
-  `decidirLicencia(sesion: Sesion, tope: Duration): Pair<Sesion, Boolean>` que (1) si el médico no tiene HC con
-  backend que lleve licencia, devuelve la sesión y `false` sin pedir nada (RF-4); (2) obtiene el estado, de la
+  `decidirLicencia(sesion: Sesion, tope: Duration): Pair<Sesion, Boolean>` que (1) si no es un médico (administrador,
+  secretaria) devuelve la sesión y `false`; y si es un médico **sin** HC con backend que lleve licencia, no pide nada
+  (RF-4) y decide por la copia local con la regla de hoy, `licenciaBloqueadaSegun(SinDato, sesion)`, sin escribirla
+  (RF-7); no queda en `false` fijo, porque eso cambiaría el comportamiento actual en dos casos: el médico de pediatría
+  cuyo backend no está registrado (p. ej. sin URL de HC en el entorno) y el médico con una fila de licencia vencida pero
+  sin ninguna HC que lleve licencia, que hoy quedan bloqueados por la copia y dejarían de estarlo (sin copia da lo mismo:
+  `false`); (2) obtiene el estado, de la
   **memoria** si tiene menos de 60 s y es del mismo token, o consultando con `withTimeoutOrNull(tope)`; (3) escribe la
   copia; (4) rearma la sesión con `resolverPerfil` (para que `PerfilMedico` muestre lo que quedó en la copia) y (5)
   devuelve la sesión y la decisión de `licenciaBloqueadaSegun`. La memoria (`token`, estado, instante) se guarda
