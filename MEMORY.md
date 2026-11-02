@@ -32,8 +32,12 @@ registros de personas): el repo es público.
   `HcPediatriaLicenciaServidorTest`; `core:data` 120 en verde; un test de T2 se ajustó a `SinLicencia`). Ojo: un 403 con cuerpo no JSON es
   `SinDato` (sin JSON no hay `codigo`), no `Vencida` como decía el texto de T3b: RF-21 y la tabla D3 se aclararon el 2026-11-02 (`doc:`
   `d1a5176`). **T4 hecha** (`3de1538`: `restaurar` y `refrescarPerfilRemoto` pasan por `decidirLicencia(…, 5 s)` antes de publicar `sesion`;
-  12 tests nuevos, `core:data` 132 en verde, wasm de `core:data` compila; ningún test existente cambió). Sigue T5 a T8 (T6 ya no toca
-  `refrescarPerfilRemoto`, solo `refrescarPerfil` y `DataModule`). El árbol publicado tenía 43 tests en `core:data`.
+  12 tests nuevos, `core:data` 132 en verde, wasm de `core:data` compila; ningún test existente cambió). **T5 hecha** (`e3817c6`: `login`
+  online da el token a los clientes de HC, consulta con `decidirLicencia(…, 10 s)` y bloquea antes de `guardarSesion`; el ingreso sin
+  conexión con turnos sigue con la copia, sin consulta; 15 tests nuevos, `core:data` 147 en verde, wasm de `core:data` compila; ningún test
+  existente cambió). **No publicar T5 sin T6:** `LoginViewModel` llama `refrescarPerfil()` tras el login y hoy usa la regla local (le
+  cerraría la sesión al médico `SinLicencia` con copia vencida). Sigue T6 (solo `refrescarPerfil` y `DataModule`), T7, T8. El árbol
+  publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el

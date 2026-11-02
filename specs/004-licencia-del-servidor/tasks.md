@@ -238,7 +238,7 @@ Reglas para todas:
     (5) Los tests no usan `Settings` (no hay `MapSettings` en las dependencias de prueba): la sesión guardada se mira en la base.
     (6) Se esperan hasta 5 s por la licencia más lo que ya esperaba el refresco de turnos; no se tocó nada de eso.
 
-- [ ] **T5. `login` consulta al servidor antes de guardar la sesión.** RF-1, RF-5, RF-6, RF-13, RF-14, RF-15 · tamaño M (~30 min)
+- [x] **T5. `login` consulta al servidor antes de guardar la sesión.** RF-1, RF-5, RF-6, RF-13, RF-14, RF-15 · tamaño M (~30 min)
   - Tests primero (mismo archivo): la parte de `login` posterior a turnos expuesta como función `internal` (como
     `borrarCopiaEnfermedadesAlEntrar` de `hc-general`) con un `TobbPerfil` mínimo copiado del estilo de
     `core/data/src/commonTest/.../network/tobb/TobbPerfilTest.kt`; si armarlo cuesta más de lo razonable, un turnos falso con
@@ -252,6 +252,40 @@ Reglas para todas:
     a turnos no se toca.
   - Hecho cuando: `.\gradlew :core:data:jvmTest --tests '*AuthRepositoryLicenciaServidorTest*'` en verde;
     `git diff` muestra que el bloqueo sigue antes de `guardarSesion` y que el camino «Error» de turnos no cambió.
+  - **Hecho (2026-11-02, worktree, commit `e3817c6`).** Rojo previo: con los tests y el código viejo, 9 de 54 fallaban (el caso reportado, el
+    token en el cliente de HC al consultar, servidor vencida con copia vigente [y sin copia], sin licencia con copia vencida/inactiva, sin
+    copia + vigente, un solo pedido, el tope de 10 s y la cancelación); los 39 anteriores y 6 nuevos que fijan «lo que no cambia» (sin dato,
+    administrador/secretaria, médico sin HC con licencia, credenciales inválidas, turnos caído, ingreso sin conexión con sesión previa) ya
+    pasaban. Verde: `AuthRepositoryLicenciaServidorTest` 54/54 y `:core:data:jvmTest --rerun` completo **147 tests, 0 fallas, 0 errores, 0
+    salteados** (132 + 15); `:core:data:compileKotlinWasmJs` y `:features:auth:compileKotlinJvm` compilan (`composeApp` no: T5 no lo pide y no se
+    tocó). Un primer intento del rojo se colgó 15 min (el test de cancelación esperaba una consulta que el código viejo nunca hace): ahora esa
+    espera lleva `withTimeout(20 s)` para que falle en vez de colgarse.
+    Cambios: `AuthRepository.kt` solo en la rama online de `login` (+ un comentario en la rama sin conexión; `git diff`: 15 líneas). Los
+    tests: 15 nuevos y el turnos falso (`TurnosFalso`) ahora también contesta `auth/login` (`tok-login`) y se le programa `rol`, `historias` y
+    el rechazo del login. Ningún test existente cambió; `LoginViewModel` y `features/*` sin tocar.
+    Nuevo flujo de `login` (rama online, orden de las llamadas): `turnos.login` → `importador.importar` → `resolverPerfil(...).copy(token)` →
+    **token a `hcClients`** → `decidirLicencia(sesion, esperaLogin = 10 s)` → si bloquea: `cerrarPorLicencia()` (= `logout()`) y
+    `LicenciaVencida(sesión rearmada)`, **sin** `guardarSesion`; si no: `guardarSesion(sesión rearmada)` y `Ok`.
+    | Entrada (login online a turnos + servidor de la HC) | Resultado | `sesion` / base | Copia local |
+    |---|---|---|---|
+    | médico, `Vigente`, copia vencida/inactiva/ausente | `Ok` | publicada y guardada una vez, después de decidir | pasa a vigente (importe previo, 0.0 sin copia), sin `dirty` |
+    | médico, `Vencida`, copia vigente o ausente | `LicenciaVencida` | nunca no nula; sin sesión guardada; clientes de HC sin token | si estaba activa, `activo = false`; sin copia no se crea |
+    | médico, `SinLicencia` (P3), copia vencida/inactiva/ausente | `Ok` | publicada y guardada | no se toca |
+    | médico, `SinDato` (red, tope de 10 s, 5xx, backend que lanza) | la copia decide con la regla de hoy (vigente/sin copia `Ok`; vencida/inactiva `LicenciaVencida`) | según la copia | no se toca |
+    | administrador, secretaria; médico sin HC con backend de licencia | `Ok` (el médico sin HC: regla de hoy sobre la copia); sin pedido | publicada | — |
+    | credenciales inválidas / turnos caído sin sesión previa | `CredencialesInvalidas` / `SinConexionYSinSesionPrevia`, sin pedido | nunca; clientes sin token | — |
+    | turnos caído con sesión previa del mismo usuario (**no cambió**) | la copia decide (`Ok(offline = true)` / `LicenciaVencida`), **0 pedidos** al servidor de la HC | según la copia | no se toca |
+    Un solo pedido por ingreso: la memoria de 60 s queda armada con el token nuevo, y el `refrescarPerfil` que lanza `LoginViewModel` (T6) la
+    reutilizará.
+    Decisiones que el texto no fijaba: (1) **ingreso sin conexión con sesión previa: sigue con la copia, sin consulta** (D9 lo deja sin tocar, la
+    spec lo fija en el caso límite 11 y RF-7; «turnos caído» no dice que pediatría también lo esté, pero la spec elige no mezclar): dos tests
+    lo fijan, con el backend falso diciendo lo contrario de la copia. (2) **Si `decidirLicencia` se cancela o lanza, los clientes de HC vuelven a
+    quedar sin token** (un `try/catch` que relanza): el texto de D9 solo limpia al bloquear, pero un `login` cancelado dejaría el token suelto sin
+    sesión; hay un test. (3) `LicenciaVencida` lleva la sesión **rearmada** por `decidirLicencia` (con la copia ya al día), no la de antes de
+    consultar; su forma no cambia y `LoginViewModel` solo usa el email. (4) `LoginViewModel`: verificado, no hace falta tocarlo
+    (`guardarEmailSiCorresponde` y `licenciaVencida = true`). **Ojo con T6 (hasta que se haga):** `LoginViewModel` lanza `auth.refrescarPerfil()`
+    tras un login online y hoy esa función aún decide con la regla local; un médico `SinLicencia` con copia vencida/inactiva (P3), o con
+    reloj corrido, **entra al `login` y ese refresco le cierra la sesión**. T6 lo corrige; no publicar T5 sin T6.
 
 - [ ] **T6. `refrescarPerfil` y el armado de Koin.** RF-3, RF-14 · tamaño S (~20 min)
   - Tests primero (mismo archivo): `refrescarPerfil()` justo después de entrar no hace consultas nuevas y no cierra la
