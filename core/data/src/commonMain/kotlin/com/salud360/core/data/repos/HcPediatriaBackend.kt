@@ -43,6 +43,7 @@ import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.pacientes.PacienteExtra
 import com.salud360.core.model.pacientes.Sexo
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.CancellationException
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -509,14 +510,39 @@ class HcPediatriaBackend(
      * la vencida no llega nunca hasta acá: ese pedido lo rechaza el middleware.
      */
     override suspend fun avisoDeLicencia(): AvisoLicencia? {
-        val perfil = runCatching { api.leerOpcional(HcPerfilRemoto.serializer(), api.get("auth/perfil"), "perfil") }
-            .getOrElse {
-                log.w(it) { "no se pudo preguntar por la licencia" }
-                null
-            }
-        val licencia = perfil?.licencia ?: return null
-        if (!licencia.porVencer || licencia.vence.isBlank()) return null
+        val licencia = leerPerfilDeLicencia() as? EstadoLicenciaRemoto.Vigente ?: return null
+        if (!licencia.porVencer) return null
         return AvisoLicencia(especialidad, licencia.vence)
+    }
+
+    /** Lo que dice el servidor ahora mismo, no la copia del dispositivo. Un solo pedido, sin reintento. */
+    override suspend fun licenciaDelServidor(): EstadoLicenciaRemoto = leerPerfilDeLicencia()
+
+    /**
+     * Pregunta por `auth/perfil` y traduce la respuesta: con licencia es [EstadoLicenciaRemoto.Vigente]; el `403
+     * licencia_vencida` es [EstadoLicenciaRemoto.Vencida]; todo lo demás (sin red, 5xx, 429, `tobb_caido`, otro 401 o
+     * 403, un 200 sin licencia) es [EstadoLicenciaRemoto.SinDato]: el servidor no opinó y decide la copia local.
+     *
+     * Solo lee. Loguea el código del error y nunca el token ni las fechas. La cancelación se relanza, no es un error.
+     *
+     * T3b: el `403 licencia_vencida` con `licencia: null` (el médico no tiene fila) tiene que dar `SinLicencia`, y eso
+     * hay que sacarlo del cuerpo del error, que hoy `HcApiClient` descarta. Hasta entonces todo `licencia_vencida` es `Vencida`.
+     */
+    private suspend fun leerPerfilDeLicencia(): EstadoLicenciaRemoto {
+        val respuesta = try {
+            api.get("auth/perfil")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TobbException) {
+            log.w { "no se pudo preguntar por la licencia: ${e.codigo ?: e.status}" }
+            return if (e.status == 403 && e.codigo == CODIGO_LICENCIA_VENCIDA) EstadoLicenciaRemoto.Vencida else EstadoLicenciaRemoto.SinDato
+        } catch (e: Throwable) {
+            log.w { "no se pudo preguntar por la licencia: ${e::class.simpleName}" }
+            return EstadoLicenciaRemoto.SinDato
+        }
+        val licencia = api.leerOpcional(HcPerfilRemoto.serializer(), respuesta, "perfil")?.licencia
+        if (licencia == null || licencia.vence.isBlank()) return EstadoLicenciaRemoto.SinDato
+        return EstadoLicenciaRemoto.Vigente(licencia.vence, licencia.avisoDesde, licencia.porVencer)
     }
 
     /**
@@ -596,6 +622,9 @@ class HcPediatriaBackend(
 
         /** Cuántos pacientes por pedido al traer la cartera; el que más tiene ronda los novecientos. */
         const val PAGINA_PACIENTES = 300L
+
+        /** Código con el que el servidor rechaza al médico cuya licencia está vencida o dada de baja. */
+        private const val CODIGO_LICENCIA_VENCIDA = "licencia_vencida"
 
         /** Listas cuyas filas aceptan adjuntos: la foto cuelga de la fila, no de la consulta. */
         val TIPOS_DE_REGISTRO = setOf("examen_complementario", "internacion")

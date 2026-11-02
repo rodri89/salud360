@@ -81,6 +81,13 @@ interface HcBackend {
     suspend fun avisoDeLicencia(): AvisoLicencia? = null
 
     /**
+     * Lo que contesta el servidor de esta historia clínica sobre la licencia del que está usando la app, para que
+     * entre o no con lo que dice el dueño del dato y no con la copia del dispositivo. Solo lee. [EstadoLicenciaRemoto.SinDato]
+     * si esta historia clínica no lleva licencia o no se pudo saber.
+     */
+    suspend fun licenciaDelServidor(): EstadoLicenciaRemoto = EstadoLicenciaRemoto.SinDato
+
+    /**
      * Trae la cartera del médico en esta historia clínica y la deja en la base del dispositivo.
      * Devuelve cuántos pacientes llegaron.
      *
