@@ -130,11 +130,21 @@ class AuthRepository(
         when (val r = turnos.login(email, credenciales.password)) {
             is TurnosOnlineClient.ResultadoLogin.Ok -> {
                 val usuario = importador.importar(r.perfil)
-                val sesion = resolverPerfil(db, usuario)?.copy(token = r.token)
+                val local = resolverPerfil(db, usuario)?.copy(token = r.token)
                     ?: return ResultadoLogin.Error("El usuario no tiene perfil asignado")
+                // La licencia la decide el servidor de la HC, y para preguntarle los clientes de HC necesitan el token nuevo:
+                // `guardarSesion` los asigna, pero corre después (publica en `sesion`). Se les da acá, sin publicar nada.
+                hcClients.values.forEach { it.token = r.token }
+                val (sesion, bloqueada) = try {
+                    decidirLicencia(local, esperaLogin)
+                } catch (e: Throwable) {
+                    // Cancelado (o roto) a mitad de la consulta: sin sesión no queda un token suelto en los clientes de HC.
+                    hcClients.values.forEach { it.token = null }
+                    throw e
+                }
                 // El bloqueo va ANTES de guardar: `guardarSesion` publica en `sesion`, y la app navega al shell
                 // apenas deja de ser null, sin darle tiempo a la pantalla de ingreso a mostrar el aviso.
-                if (sesion.licenciaBloqueada()) { logout(); return ResultadoLogin.LicenciaVencida(sesion) }
+                if (bloqueada) { cerrarPorLicencia(); return ResultadoLogin.LicenciaVencida(sesion) }
                 guardarSesion(sesion)
                 return ResultadoLogin.Ok(sesion)
             }
@@ -147,6 +157,7 @@ class AuthRepository(
                     if (s != null && s.usuario.email.equals(email, ignoreCase = true)) {
                         // Se rearma el perfil desde la base local por si cambió (especialidades, consultorios, licencia)
                         val actualizada = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: s
+                        // Sin conexión con turnos no se consulta la licencia al servidor de la HC: decide la copia, como siempre.
                         if (actualizada.licenciaBloqueada()) { logout(); return ResultadoLogin.LicenciaVencida(actualizada) }
                         _sesion.value = actualizada
                         api.token = actualizada.token
