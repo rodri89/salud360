@@ -48,6 +48,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonNull
 
 /**
  * Historia clínica de pediatría contra su propia API (`hc_pediatria`).
@@ -520,13 +521,12 @@ class HcPediatriaBackend(
 
     /**
      * Pregunta por `auth/perfil` y traduce la respuesta: con licencia es [EstadoLicenciaRemoto.Vigente]; el `403
-     * licencia_vencida` es [EstadoLicenciaRemoto.Vencida]; todo lo demás (sin red, 5xx, 429, `tobb_caido`, otro 401 o
+     * licencia_vencida` es [EstadoLicenciaRemoto.Vencida], salvo que su cuerpo traiga `licencia` **explícitamente nula**
+     * (el médico no tiene ninguna fila): entonces es [EstadoLicenciaRemoto.SinLicencia]. Sin la clave, con otro tipo o sin
+     * cuerpo es `Vencida` (ante la duda se bloquea, RF-21). Todo lo demás (sin red, 5xx, 429, `tobb_caido`, otro 401 o
      * 403, un 200 sin licencia) es [EstadoLicenciaRemoto.SinDato]: el servidor no opinó y decide la copia local.
      *
-     * Solo lee. Loguea el código del error y nunca el token ni las fechas. La cancelación se relanza, no es un error.
-     *
-     * T3b: el `403 licencia_vencida` con `licencia: null` (el médico no tiene fila) tiene que dar `SinLicencia`, y eso
-     * hay que sacarlo del cuerpo del error, que hoy `HcApiClient` descarta. Hasta entonces todo `licencia_vencida` es `Vencida`.
+     * Solo lee. Loguea el código del error y nunca el token, las fechas ni el cuerpo. La cancelación se relanza, no es un error.
      */
     private suspend fun leerPerfilDeLicencia(): EstadoLicenciaRemoto {
         val respuesta = try {
@@ -535,7 +535,9 @@ class HcPediatriaBackend(
             throw e
         } catch (e: TobbException) {
             log.w { "no se pudo preguntar por la licencia: ${e.codigo ?: e.status}" }
-            return if (e.status == 403 && e.codigo == CODIGO_LICENCIA_VENCIDA) EstadoLicenciaRemoto.Vencida else EstadoLicenciaRemoto.SinDato
+            if (e.status != 403 || e.codigo != CODIGO_LICENCIA_VENCIDA) return EstadoLicenciaRemoto.SinDato
+            // Solo el `licencia: null` explícito dice que no hay fila; sin la clave, con otro tipo o sin cuerpo se bloquea (RF-21).
+            return if (e.cuerpo?.get("licencia") is JsonNull) EstadoLicenciaRemoto.SinLicencia else EstadoLicenciaRemoto.Vencida
         } catch (e: Throwable) {
             log.w { "no se pudo preguntar por la licencia: ${e::class.simpleName}" }
             return EstadoLicenciaRemoto.SinDato

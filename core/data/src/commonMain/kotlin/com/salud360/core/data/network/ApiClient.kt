@@ -29,6 +29,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
 
@@ -36,8 +37,9 @@ class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
  * Error devuelto por turnosonlinebb (ver [com.salud360.core.data.network.TurnosOnlineClient.tobb]).
  * @param status HTTP (409 para rechazos de agenda, 401 si el token venció).
  * @param codigo código de la API (`ocupado`, `mismo_dia`, `cupo_primer_control`, `dia_con_turnos`, ...).
+ * @param cuerpo el objeto JSON de la respuesta cuando lo había (hoy solo lo llena `HcApiClient`); `null` si no. No va en el mensaje.
  */
-class TobbException(val status: Int, val codigo: String?, mensaje: String) : Exception(mensaje)
+class TobbException(val status: Int, val codigo: String?, mensaje: String, val cuerpo: JsonObject? = null) : Exception(mensaje)
 
 @Serializable
 data class CrearUsuarioRequest(val nombre: String, val apellido: String, val email: String, val password: String, val rol: Rol)

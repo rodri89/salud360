@@ -110,7 +110,7 @@ class HcApiClient(
             val mensaje = obj?.get("mensaje")?.jsonPrimitive?.contentOrNull
                 ?: obj?.get("message")?.jsonPrimitive?.contentOrNull
                 ?: texto.ifBlank { "La historia clínica de $especialidad respondió ${r.status.value}" }
-            throw TobbException(r.status.value, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje)
+            throw TobbException(r.status.value, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, obj)
         }
         return obj
     }

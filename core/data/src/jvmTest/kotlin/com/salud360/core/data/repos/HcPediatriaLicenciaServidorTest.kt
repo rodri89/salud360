@@ -38,7 +38,8 @@ import kotlin.test.assertNull
  * trae la `licencia`) y el `403 licencia_vencida`. Un servidor falso en `127.0.0.1` contesta lo que dice cada caso;
  * no hay red real ni datos reales (ids y fechas inventados, las fechas relativas a `hoy()`).
  *
- * En esta tarea todo `licencia_vencida` es `Vencida`; separar el caso `licencia: null` (`SinLicencia`) es de T3b.
+ * T3b: el `403 licencia_vencida` es `SinLicencia` si el cuerpo trae `licencia` **explícitamente nula** (el médico no tiene
+ * ninguna fila) y `Vencida` en cualquier otro caso (RF-21).
  */
 class HcPediatriaLicenciaServidorTest {
     private val ayer = hoy().minus(DatePeriod(days = 1)).toString()
@@ -96,16 +97,93 @@ class HcPediatriaLicenciaServidorTest {
     }
 
     /**
-     * Hoy todo `licencia_vencida` es `Vencida`, también el de `licencia: null` (sin fila). T3b conserva el cuerpo del
-     * error y separa ese caso en `SinLicencia`: entonces este test pasa a pedir `SinLicencia` para `licencia: null`.
+     * T3b (RF-10, P3): el médico sin ninguna fila de licencia. El servidor lo rechaza con `licencia_vencida` y
+     * `licencia: null`; no hay licencia que decidir, así que no es `Vencida`. (Este test es el de T2
+     * `en_esta_tarea_licencia_vencida_sin_licencia_en_el_cuerpo_tambien_es_vencida`, que pedía `Vencida` y decía que T3b
+     * lo cambiaba; la parte de «sin la clave» pasó a su propio test.)
      */
     @Test
-    fun en_esta_tarea_licencia_vencida_sin_licencia_en_el_cuerpo_tambien_es_vencida() {
+    fun licencia_vencida_con_licencia_nula_en_el_cuerpo_es_sin_licencia() {
         assertEquals(
-            EstadoLicenciaRemoto.Vencida,
+            EstadoLicenciaRemoto.SinLicencia,
             estadoPara(Respuesta(403, rechazo("licencia_vencida", """"licencia":null"""))),
         )
+    }
+
+    @Test
+    fun el_cuerpo_real_del_servidor_sin_fila_es_sin_licencia() {
+        // Tal cual lo arma `Salud360Api::rechazo` con `extra = ['licencia' => null]` (con otro orden de claves da igual).
+        val cuerpo = """{"ok":false,"mensaje":"Tu licencia de la historia clínica está vencida. Avisale al administrador.","codigo":"licencia_vencida","licencia":null}"""
+        assertEquals(EstadoLicenciaRemoto.SinLicencia, estadoPara(Respuesta(403, cuerpo)))
+        val otroOrden = """{"licencia":null,"codigo":"licencia_vencida","mensaje":"x","ok":false}"""
+        assertEquals(EstadoLicenciaRemoto.SinLicencia, estadoPara(Respuesta(403, otroOrden)))
+    }
+
+    @Test
+    fun licencia_vencida_con_fecha_en_el_cuerpo_sigue_siendo_vencida() {
+        val cuerpo = rechazo("licencia_vencida", """"licencia":{"vence":"$ayer","vencida":true}""")
+        assertEquals(EstadoLicenciaRemoto.Vencida, estadoPara(Respuesta(403, cuerpo)))
+        // Una fila dada de baja: mismo cuerpo, con una fecha que todavía no pasó.
+        val deBaja = rechazo("licencia_vencida", """"licencia":{"vence":"$lejos","vencida":true}""")
+        assertEquals(EstadoLicenciaRemoto.Vencida, estadoPara(Respuesta(403, deBaja)))
+    }
+
+    @Test
+    fun licencia_vencida_sin_la_clave_licencia_es_vencida() {
+        // RF-21: ante la duda se bloquea.
         assertEquals(EstadoLicenciaRemoto.Vencida, estadoPara(Respuesta(403, rechazo("licencia_vencida"))))
+    }
+
+    @Test
+    fun licencia_vencida_con_una_licencia_que_no_es_nula_ni_un_objeto_es_vencida() {
+        // Solo el `null` explícito dice «sin fila»: cualquier otra cosa en esa clave se trata como una licencia cargada.
+        for (licencia in listOf("{}", "\"\"", "\"null\"", "false", "0", "[]", "[\"x\"]", "{\"vence\":null}")) {
+            assertEquals(
+                EstadoLicenciaRemoto.Vencida,
+                estadoPara(Respuesta(403, rechazo("licencia_vencida", """"licencia":$licencia"""))),
+                "licencia = $licencia",
+            )
+        }
+    }
+
+    @Test
+    fun el_null_de_licencia_solo_cuenta_en_un_403_licencia_vencida() {
+        // `licencia: null` en cualquier otro rechazo no dice nada sobre la licencia: sin dato, decide la copia.
+        for (codigo in listOf("hc_no_habilitada", "medico_no_vinculado", "sin_permiso", "tobb_caido", "token", "otro")) {
+            assertEquals(
+                EstadoLicenciaRemoto.SinDato,
+                estadoPara(Respuesta(403, rechazo(codigo, """"licencia":null"""))),
+                codigo,
+            )
+        }
+        for (status in listOf(401, 429, 500, 503)) {
+            assertEquals(
+                EstadoLicenciaRemoto.SinDato,
+                estadoPara(Respuesta(status, rechazo("licencia_vencida", """"licencia":null"""))),
+                "status $status",
+            )
+        }
+        assertEquals(EstadoLicenciaRemoto.SinDato, estadoPara(Respuesta(403, """{"ok":false,"mensaje":"m","licencia":null}""")))
+    }
+
+    @Test
+    fun un_200_con_ok_falso_y_licencia_nula_es_sin_dato() {
+        assertEquals(
+            EstadoLicenciaRemoto.SinDato,
+            estadoPara(Respuesta(200, rechazo("licencia_vencida", """"licencia":null"""))),
+        )
+    }
+
+    @Test
+    fun un_403_licencia_vencida_cuyo_cuerpo_no_es_json_es_sin_dato() {
+        // Sin JSON no hay `codigo`: no se puede saber que es una licencia vencida, y RF-9 manda «sin respuesta
+        // concluyente» para cualquier otro 403. No cambia respecto de T2.
+        assertEquals(EstadoLicenciaRemoto.SinDato, estadoPara(Respuesta(403, "licencia_vencida", "text/plain")))
+    }
+
+    @Test
+    fun sin_licencia_no_da_aviso() {
+        assertNull(avisoPara(Respuesta(403, rechazo("licencia_vencida", """"licencia":null"""))))
     }
 
     // ---- Sin respuesta concluyente ----
@@ -177,6 +255,7 @@ class HcPediatriaLicenciaServidorTest {
         val casos = listOf(
             perfil(licencia = """{"vence":"$lejos","aviso_desde":"$avisoYa","por_vencer":false}"""),
             Respuesta(403, rechazo("licencia_vencida", """"licencia":{"vence":"$ayer","vencida":true}""")),
+            Respuesta(403, rechazo("licencia_vencida", """"licencia":null""")),
             Respuesta(429, """{"message":"Too Many Attempts."}"""),
             Respuesta(500, "<html>Error</html>", "text/html"),
             Respuesta(503, rechazo("tobb_caido")),
