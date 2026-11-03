@@ -1524,14 +1524,34 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     como los frenones ya conocidos de esta máquina) y la repetición salió verde. Token: el de la prueba local, sin revocar (no hace falta
     para una copia local; vencido, lo regenera el usuario).
 
-- [ ] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
+- [x] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
   - Con una base del dispositivo que tenga consultas viejas de la HC general sucias (la de pruebas anteriores del
     usuario o una armada): abrir historias y consultas en el `devWeb` contra la copia local con `suma.sql` antes y
     después; contar las filas sucias del dispositivo antes y después; revisar el registro de accesos.
   - Hecho cuando: `suma.sql` antes = después; las filas sucias del dispositivo son las mismas; el registro de accesos
     no tiene ningún método distinto de `GET` hacia `clinica` en la sesión; resultado anotado en esta tarea.
+  - **Hecho (2026-11-03), con salvedades.** Medido con el `devWeb` de la rama `hc-general` en http://localhost:8080 contra la
+    copia local (turnos y clínica en el XAMPP). **Servidor:** `suma.sql` (32 tablas de datos que leen las rutas) antes = después;
+    `CHECKSUM` y conteos de las 68 tablas de `hc_clinica` iguales salvo `salud360_token_cache` (1 → 3 filas: la escribe el
+    middleware al validar el token y `auth/salir`; no es un dato clínico). Dos corridas seguidas del «antes» dieron lo mismo
+    (medición estable). **Registro de accesos de Apache:** 274 líneas nuevas (16:44 a 18:02); hacia clínica, 36 pedidos entre las
+    17:02 y las 17:06: 21 `GET` con 200, 15 `OPTIONS` con 204 y 1 `POST auth/salir` (200). Rutas: `config`, `config/asignaciones`,
+    `config/catalogo`, `config/perfiles`, `consultas` ×2, `consultas/{n}` ×1 (un solo id), `pacientes` ×2, `pacientes/{n}/historia`
+    ×2, `enfermedades/pacientes/{n}` ×3. Ningún `PUT`, `PATCH` ni `DELETE`, ningún 4xx/5xx hacia clínica y sin entradas nuevas en
+    los `laravel*.log` de la copia de clínica.
+    - **Excepción al texto «ningún método distinto de `GET`»:** el `POST auth/salir` es el cierre de sesión; solo vacía el token
+      en `salud360_token_cache`, no escribe datos (coherente con la nota de E4.4 sobre el middleware). Con esa excepción, el
+      «Hecho cuando» se da por cumplido en lo del servidor (`suma.sql` y registro de accesos).
+    - **Salvedades:** (a) la cobertura de uso fue acotada: 2 historias y 1 consulta pedida por id, no las tres consultas del plan.
+      (b) Las filas `dirty` del dispositivo **NO se pudieron contar**: viven en la base del navegador, que no se lee desde acá, así
+      que esa parte del «Hecho cuando» **no está verificada**. Lo único que hay es indirecto: el `sync/push` a turnos salió ~1 por
+      minuto (137 en el rango, todos 404 esperados), lo que indica que el dispositivo tiene filas sucias, sin saber cuántas ni de qué
+      HC; tampoco se pudo confirmar que se haya creado la consulta local de prueba. (c) El `devWeb` de pediatría que ocupaba el
+      puerto 8080 se cerró para esta prueba (el servidor de clínica quedó en el 8080). (d) Antes de levantar clínica hubo 3 pedidos
+      a pediatría con 503 (`POST pacientes/resolver` ×2 y `PUT licencias/42`), no aceptados, ajenos a esta tarea.
+    - Archivos de apoyo, fuera del repo, en `%TEMP%\opencode\e44` (`*-e82-antes.txt`, `*-e82-despues.txt`, `e82-rows.xml`).
 
-- [ ] **E8.3. Prueba manual del usuario en `devWeb`.** RF-38 a RF-46, RF-49, RF-56, RF-62, RF-63 — **S** — Toca API Laravel: no
+- [x] **E8.3. Prueba manual del usuario en `devWeb`.** RF-38 a RF-46, RF-49, RF-56, RF-62, RF-63 — **S** — Toca API Laravel: no — **cerrada por decisión del usuario, con excepciones; NO verificada paso a paso, y con la limpieza de datos de prueba pendiente (ver la nota al final de esta tarea)**
   - Pasos (copia local, médico de prueba con el perfil equivalente al de la web, Q10; el paciente "PRUEBA SALUD360"):
     1. Abrir la historia del paciente: ve las consultas (a), (b) y (c) de E3.1, con origen; no ve (d), (e), (g); ve la línea de
        consultas de tipos no mostrables.
@@ -1555,6 +1575,18 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     8. En una consulta local, no se puede borrar una carga de laboratorio ni resolver un pendiente que vino de la web.
     9. `suma.sql` antes y después de toda la prueba: igual.
   - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar.sql` aplicado y token revocado.
+  - **Cerrada por decisión del usuario el 2026-11-03** (pidió cerrar la E8). Es una **cerrada con excepciones**: el «Hecho
+    cuando» de arriba (cada paso confirmado o con su falla anotada, `limpiar.sql` aplicado y token revocado) **no se cumplió**. La
+    marca `[x]` no significa que la prueba manual se haya hecho entera.
+    - **Lo que hubo:** el usuario recorrió la lectura en `devWeb`. Lo único que se ve de eso es el registro de accesos de E8.2:
+      2 historias abiertas, 1 consulta pedida por id y «Actualizar». **No hay confirmación del usuario, paso por paso, de ninguno de
+      los 9 pasos del plan**; no se deben dar por verificados.
+    - **SIN verificar:** la comparación lado a lado del paso 2; el paso 3 (salvo lo que haya coincidido con lo recorrido); los pasos 4
+      a 8 y el 5b. El paso 9 (`suma.sql` antes y después) quedó medido en E8.2, con las salvedades de esa nota.
+    - **Lo que sí respalda la spec sin esa prueba manual:** los tests automáticos, `HcClinicaLecturaE2ETest` (E8.1) contra la copia
+      local y la verificación de E8.2. No reemplaza la prueba manual de lo anterior.
+    - **LIMPIEZA DE DATOS DE PRUEBA PENDIENTE** (deuda explícita, no un olvido): `limpiar.sql` **no se aplicó** y el token **no se
+      revocó**. El detalle está en `MEMORY.md`.
 
 - [ ] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no
   - RF por RF: qué test lo cubre y el resultado (plan.md, "Estrategia de tests"); lista de los candados con su test;

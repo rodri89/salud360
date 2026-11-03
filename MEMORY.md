@@ -4,10 +4,16 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
-## Traspaso 2026-11-02 (clínica en pausa, pediatría primero)
+## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
+- **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
+  E8.4 (revisor) y la limpieza siguen pendientes; la entrega E (escritura) entra en fase de spec.
+- **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
+  clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
+  sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
+  a M10 sigue pendiente).
 - **Clínica (rama `hc-general`, 138 commits locales sin push; `origin/main` sigue en el publicado del 2026-09-29):** la entrega L de la
   spec 002 (lectura) llega hasta E8.1 y E7.4. La lectura local quedó verificada: la app no escribió en clínica (se miró el log de
-  Apache). **Pendiente de clínica:** E8.3 (prueba manual formal), E8.4 (revisor), limpieza de los datos de prueba, E9 (producción, con
+  Apache). **Pendiente de clínica:** E8.4 (revisor), limpieza de los datos de prueba, E9 (producción, con
   aprobación aparte) y la entrega E (escritura), que todavía no tiene spec. Ojo: esta rama NO debe publicarse tal cual, porque dos
   commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
   reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
