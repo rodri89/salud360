@@ -6,7 +6,8 @@ siguiente (la E2, app, se genera después de validar la E1).
 
 **Parte 2, entrega L (solo lectura): tandas E3 a E9, abajo, aprobadas por el usuario el 2026-10-28** (plan en
 `plan.md`; Q15 = nunca borrar; la tanda S, E3 y E4, puede empezar; E9, producción, requiere aprobación aparte). La
-entrega E (escritura) es borrador sin aprobar y no tiene tareas.
+entrega E (escritura) ya no se sigue acá: se especifica en `specs/005-hc-clinica-escritura/spec.md` (borrador, sin
+aprobar, sin plan ni tareas).
 
 Reglas para todas:
 - Commits locales como `rodri89` (ya configurado), uno por tarea, **sin push** en ningún repo. Subir a producción
@@ -332,6 +333,9 @@ vínculo lo cubren el E2E (`HcClinicaPacientesE2ETest`) y los tests del reposito
 *(Nota 2026-10-28: en la **entrega L** estos dos puntos se cubren con los candados de E5, que impiden todo envío de la
 HC general y dejan lo viejo sin tocar. Su resolución definitiva —filtrar `activo = 0`, decidir qué hacer con lo viejo
 sin enviar— es de la **entrega E**.)*
+*(Nota 2026-11-03: ya están decididos en la spec 005: los antecedentes `activo = 0` no se envían nunca (RF-9) y lo viejo sin
+enviar no sale solo, sino con un botón «Enviar a la web» consulta por consulta y con confirmación; sin lote ni «marcar como
+resuelto» (D2, RF-7 a RF-10).)*
 
 Anotados el 2026-10-27 por el cierre de la tanda D de la 001 (T54, hallazgo H2 del reviewer). **No se implementan en la parte 1.**
 Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC general):
@@ -1635,11 +1639,12 @@ producción (AGENTS.md): todo se hace a mano, con la app corrida en esta máquin
   - `MEMORY.md` y la tabla de `specs/README.md` actualizados; decisión del usuario sobre la entrega E.
   - Hecho cuando: el usuario aprueba el cierre de la L.
 
-## Entrega E (escritura) — pendiente, sin tareas
-Crear, editar y cerrar desde la app; laboratorio y pendientes con id de la web (`9.sqm`, **REQUIERE aprobación
-explícita**); filtro de antecedentes `activo = 0`; qué hacer con lo viejo sin enviar; `tabaquismo` (Q13) y el mapa
-al revés; adjuntos; aviso de licencia; sin conexión. Antes: respaldo probado de producción y limpieza de lo que dejen
-las pruebas. Se planifica después de ver funcionar la L.
+## Entrega E (escritura) — ahora en la spec 005
+Ya no se sigue acá. Se especifica en `specs/005-hc-clinica-escritura/spec.md` (borrador con las decisiones D1 a D15 del
+2026-11-03; sin plan ni tareas): crear, editar y cerrar solo lo que la app creó; laboratorio y pendientes con id de la web
+(`9.sqm`, aprobada en D8 para cuando llegue E3); filtro de antecedentes `activo = 0`; lo viejo sin enviar (D2);
+`tabaquismo` (Q13) y el mapa al revés (D9); adjuntos; licencia; sin conexión. Antes: limpieza de la deuda de pruebas y
+respaldo probado (D4). Las tareas se generan en la spec 005 después de su aprobación.
 
 ## Contradicciones, riesgos y lo no verificado
 Ver `plan.md` ("Contradicciones", "Riesgos de la entrega L" y "No verificado"). Lo que más pesa: H2 (E5), el esquema
