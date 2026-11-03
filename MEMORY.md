@@ -6,21 +6,29 @@ registros de personas): el repo es público.
 
 ## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
-  E8.4 (revisor) y la limpieza siguen pendientes; la entrega E (escritura) entra en fase de spec.
+  E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
+- **Spec 005 (escritura de la HC general), borrador:** decisiones D1 a D15 tomadas el 2026-11-03 (D1 crear nuevas y editar solo las
+  propias; D2 «Enviar a la web» por consulta; D3 el usuario autorizó las rutas de escritura de hclinica, primero solo en la copia local,
+  producción con aprobación aparte; D8 `9.sqm` aprobada para E3, número a reservar mirando todas las ramas). En clarificación.
+  Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
+  y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
   a M10 sigue pendiente).
-- **Clínica (rama `hc-general`, 138 commits locales sin push; `origin/main` sigue en el publicado del 2026-09-29):** la entrega L de la
+- **Clínica (rama `hc-general`, más de 150 commits locales sin push, ver `git log origin/main..hc-general`; `origin/main` ya no está en el
+  publicado de septiembre: contiene el PR #1, SDD y guía, y la licencia del servidor T1 a T7):** la entrega L de la
   spec 002 (lectura) llega hasta E8.1 y E7.4. La lectura local quedó verificada: la app no escribió en clínica (se miró el log de
-  Apache). **Pendiente de clínica:** E8.4 (revisor), limpieza de los datos de prueba, E9 (producción, con
-  aprobación aparte) y la entrega E (escritura), que todavía no tiene spec. Ojo: esta rama NO debe publicarse tal cual, porque dos
+  Apache). **Pendiente de clínica:** limpieza de los datos de prueba, E9 (producción, con
+  aprobación aparte) y la entrega E (escritura), que se especifica en la spec 005. Ojo: esta rama NO debe publicarse tal cual, porque dos
   commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
   reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
-- **Limpieza pendiente en la base local de clínica (datos de prueba):** consulta 1989 de la web con sus 12 filas hijas;
-  `consulta_pdfs` 24 con su archivo; restaurar `medico_infos` id 6 a `consulta_id=1909`, `es_nueva_consulta=1`, `paciente_id=1285`.
-  De la spec 003: enfermedades «Prueba Salud360» 1/2/3 (ids 53-55), la lista vaciada del médico 9, los pacientes PRUEBA SALUD360 A-F, el
-  perfil 4 y `medico_enfermedades` del médico 9. Archivos de apoyo en `%TEMP%\opencode\{e31,e82,f37,lectura,respaldos}`.
+- **Limpieza pendiente en la base local de clínica (datos de prueba):** la consulta de la web y sus filas hijas que creó E8.2, el PDF
+  de esa consulta (con su archivo) y la fila de `medico_infos` que hay que restaurar. Ids en
+  `%TEMP%\opencode\limpieza-ids-clinica.txt` (la línea base de `medico_infos` también está en `e82\linea-base-pre-web-filas.txt`).
+  De la spec 003: enfermedades «Prueba Salud360» 1/2/3, la lista vaciada del médico de prueba, los pacientes PRUEBA SALUD360 A-F, el
+  perfil de prueba y sus `medico_enfermedades`: ver los archivos de apoyo en `%TEMP%\opencode` (`f37\ids-y-limpieza.txt`,
+  `f37\lista-medico9-antes.txt`; también `e31`, `e82`, `lectura`, `respaldos`).
 - **Pediatría primero:** el servidor de pediatría lo subió el usuario a mano (8 archivos, verificado por GET sin token). Pendientes:
   licencias (revisar las fechas reales), `APP_DEBUG=false` en pediatría y en hclinica, 10 médicos sin alta, y el cambio de licencia
   (la app debe leer la licencia del servidor al entrar, no la copia local), que va en una rama aparte (`pediatria-licencia-servidor`,
@@ -259,7 +267,7 @@ registros de personas): el repo es público.
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); E7.4 hecha (el `devWeb` sirve el build nuevo). E8.1 (E2E de lectura contra la copia local) hecha; faltan E8.2 a E8.4.
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); E7.4 hecha (el `devWeb` sirve el build nuevo). E8 cerrada (E8.1 y E8.2 hechas, E8.3 cerrada con excepciones, E8.4 aprobada con observaciones); falta E9, con aprobación aparte.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.

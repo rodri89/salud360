@@ -1592,10 +1592,43 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     - **LIMPIEZA DE DATOS DE PRUEBA PENDIENTE** (deuda explícita, no un olvido): `limpiar.sql` **no se aplicó** y el token **no se
       revocó**. El detalle está en `MEMORY.md`.
 
-- [ ] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+- [x] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no — **APROBADO CON OBSERVACIONES (2026-11-03), ninguna bloqueante**
   - RF por RF: qué test lo cubre y el resultado (plan.md, "Estrategia de tests"); lista de los candados con su test;
     contradicciones y riesgos del plan resueltos o anotados; `MEMORY.md` actualizado (sin datos sensibles).
   - Hecho cuando: el reviewer aprueba o devuelve observaciones, y las observaciones quedan cerradas o anotadas.
+  - **Resultado (reviewer, 2026-11-03): aprobado con observaciones, ninguna bloqueante.**
+    - **Cómo validó:** solo lectura, sin ejecutar Gradle ni PHPUnit. `core:data` tiene 1161 `@Test` (igual al último verde anotado) y no
+      hay commits de código desde `20d7916` (2026-10-30), por lo que los verdes anotados siguen valiendo. Cubrió RF-1 a RF-4, RF-25 y
+      RF-38 a RF-63 con test o código, y 11 candados con su test (el de `ConsultaViewModel` solo por lectura, porque `features/*` no
+      tiene tests). Tanda S (servidor hclinica, rama `salud360-api`, HEAD `64849c9`): copia servida idéntica por SHA-256 en 9 archivos y
+      0 escrituras en el grep.
+    - **Observaciones:**
+      1. (media) RF-57 no se cumple con más de 50 consultas: `leerLista` pide hasta 20 páginas de 50 al abrir la historia (decisión de
+         E6.3 que no llegó a la spec); con el `throttle` de 60/min un paciente de 1000 consultas son 21 pedidos. Enmendar RF-57/RF-38
+         o limitar los pedidos antes de E9.
+      2. (media) RF-50, última cláusula inexacta: el middleware escribe `medico_licencias.activo = 0`, `salud360_vinculos_pendientes`,
+         el token cache y hace `Schema::create` de sus tablas. Editar RF-50 o aceptarlo por escrito; en E9.1 mirar el privilegio
+         `CREATE` de producción.
+      3. (media) Criterios de finalización de la L no cumplidos al pie de la letra: falta la prueba manual completa y una baja/texto
+         vaciado real contra la copia local (5b y E8.1 d son simulación); E9.3 no cubre los pasos 5b, 7 y 8. Hacerlos antes de E9 o
+         aceptarlo por escrito.
+      4. (media) Filas `dirty` reales del dispositivo sin medir: contarlas antes/después con una base conocida o aceptar el residuo por
+         escrito.
+      5. (baja, **obligatoria en la entrega E**) `archivosPendientesDeConsulta` recoge adjuntos por paciente sin mirar la HC: el envío
+         de pediatría puede recoger y marcar adjuntos de otra HC; está fijado como límite conocido en un test.
+      6. (media-baja) `SyncEngine` no pasa por el candado: hoy da 404, pero si turnos crea `sync/push|pull` saldría todo lo `dirty`; la
+         protección es solo documental. Excluir las tablas de HC con backend de solo lectura o apagar el motor antes de tocar turnos.
+      7. (baja) Tests que prueban menos de lo que dicen: `LecturaClinicaSinBorradoTest` revisa nombres con regex (el respaldo real es
+         `HcClinicaBackendAusentesTest`); los E2E se saltean sin propiedades.
+      8. (baja) RF-2, RF-3 y RF-59 sin evidencia propia (faltan `curl` de `hc_no_habilitada`, `medico_no_vinculado` y
+         `licencia_vencida`, y el 403 de administrador con token real).
+      9. (baja) `HcLicenciasE2ETest` no se corrió tras E5.3 (RF-61).
+      10. (baja) Documentación desactualizada (corregida en el mismo commit que esta nota: `MEMORY.md` y `specs/README.md`); además
+          `MEMORY.md` listaba ids de filas de la copia de producción (ahora van en un archivo de apoyo fuera del repo).
+      11. (baja) La barrera de publicar es solo humana: `release.hc.clinica` ya está en `gradle.properties`, así que un push a `main` que
+          toque `composeApp/`, `core/` o `features/` publicaría una app que da 404 en clínica hasta E9; no figura en `AGENTS.md`
+          (propuesta: sumar esa línea; no se editó).
+    - **Observaciones 1 a 4 a resolver o aceptar por escrito antes de pedir E9.**
 
 Al terminar la tanda: **el usuario decide si pasa a producción (E9)**. Sin aprobación explícita, la L queda validada
 solo en local.
