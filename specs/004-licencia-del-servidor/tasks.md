@@ -477,7 +477,7 @@ gradle.taskGraph.whenReady { graph ->
 }
 ```
 Comando que arma `levantar-8090.ps1` (PowerShell, desde el worktree; **no lo ejecuta el agente**: lo corre el usuario). Con `-m` (ensayo, no compila ni sirve) tiene
-que imprimir «sirve en el puerto 8090»; **verificado el 2026-11-03** (`BUILD SUCCESSFUL` en 14 s, `open antes=true, ahora=false`):
+que imprimir «sirve en el puerto 8090»; **verificado el 2026-11-03** (`BUILD SUCCESSFUL` en 1 min 15 s (la configuración tarda; `generarEntorno SKIPPED`), `open antes=true, ahora=false`):
 ```powershell
 cd C:\Users\flor\rebonline\salud360-pediatria
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
@@ -599,14 +599,24 @@ pediatría solo `GET auth/perfil`, `OPTIONS` y, del panel del administrador, `GE
 - [ ] **T9. Cherry-pick a `hc-general`.** Tamaño M (~30 min), aparte. Pasos y conflictos esperables en `plan.md`
   («Integración posterior»). Hecho cuando: `.\gradlew :core:data:jvmTest` completo y `:composeApp:compileKotlinWasmJs` en verde en
   `hc-general`; `cerrarPorLicencia` llama a `logout(token)` en `login`; `docs/hc-pediatria-estado-y-plan.md` actualizado; `MEMORY.md` al día.
-  - **Cuadro de conflictos esperables** (resumen de `plan.md`, «Integración posterior», que el revisor pidió dejar acá, 2026-11-03). Orden de cherry-pick: los commits
-    de la rama en orden (`920d206` a `4a26625`, uno por tarea; T6b va dentro de la serie), sobre `hc-general`, sin merge:
-    | Archivo | Conflicto | Cómo se resuelve |
-    |---|---|---|
-    | `AuthRepository.kt` | `hc-general` agregó `alCerrarSesion`, `revocar`, `scopeRevocacion` y `limite` al constructor y `logout(tokenARevocar)` con revocación en segundo plano | firma: los parámetros de D7 (`backendsHc`, `ahora`, `esperaLogin`/`esperaRestaurar`) van **después** de esos; `cerrarPorLicencia()` llama a `logout(token)` con el token recién emitido en `login` y a `logout()` en `restaurar`/`refrescarPerfil`; el resto de D9 no choca |
-    | `DataModule.kt` | el armado de `AuthRepository` de `hc-general` ya lleva `alCerrarSesion` y `revocar` | sumar `backendsHc = get<HcBackends>().porEspecialidad` por nombre; `HcBackends` de `hc-general` trae también `clinica` (solo lectura, `SinDato` por defecto: no consulta nada) |
-    | `HcBackend.kt`, `HcPediatriaBackend.kt` | corrimiento de líneas (`avisoDeLicencia` en `:89` y `:430`) y `HcPediatriaBackend` delega pacientes en otro archivo | debería aplicar con desplazamiento; la zona de licencias no cambió |
-    | `ApiClient.kt`, `HcApiClient.kt` (T3b) | un parámetro opcional (`cuerpo`) y una línea | conflicto trivial si otra tarea tocó esas líneas |
+  - **Cuadro de conflictos esperables, por tarea** (detalle de `plan.md`, «Integración posterior», que el revisor pidió dejar acá, 2026-11-03). Orden de cherry-pick: los 9 commits
+    de la rama en orden (`920d206`, `3fc1a24`, `98ef156`, `4096bf7`, `3de1538`, `e3817c6`, `0e4e266`, `a8b6f93`, `4a26625`; T6b va dentro de la serie), sobre `hc-general`, sin merge.
+    Sin conflicto esperado: T1, T4, T6b y T7:
+    | Tarea (commit) | Archivo | Conflicto | Cómo se resuelve |
+    |---|---|---|---|
+    | T1 (`920d206`) | `LicenciaDelServidor.kt` + test | archivos nuevos | **sin conflicto** |
+    | T2 (`3fc1a24`) | `HcBackend.kt` | la rama parte de `origin/main`, donde `HcBackend` todavía trae `traerPacientes(medicoId)` con valor por defecto `0`; `hc-general` lo sacó (vive en `HcPediatriaBackend` `:419`, delegado en otro archivo) | agregar **solo** `licenciaDelServidor()` con su default `SinDato`; **no reintroducir** `traerPacientes` por defecto |
+    | T2 (`3fc1a24`) | `HcPediatriaBackend.kt` | corrimiento de líneas (`avisoDeLicencia` en `:89` y `:430`) y pacientes delegados en otro archivo | aplica con desplazamiento; la zona de licencias no cambió. `HcClinicaBackend` (solo lectura) queda con el default `SinDato` |
+    | T3 (`98ef156`) | `AuthRepository.kt`, imports | `hc-general` ya importa lo de coroutines que usa `revocar`/`scopeRevocacion` | conservar los imports de coroutines de `hc-general` y **sumar** `Logger` y `CancellationException` |
+    | T3 (`98ef156`) | `AuthRepository.kt`, constructor | `hc-general` agregó `alCerrarSesion`, `revocar`, `scopeRevocacion` y `limite` | los 4 parámetros nuevos de esta spec (`backendsHc`, `ahora`, `esperaLogin`, `esperaRestaurar`) van **DESPUÉS** de `alCerrarSesion`, `revocar`, `scopeRevocacion` y `limite` |
+    | T3b (`4096bf7`) | `ApiClient.kt` (`TobbException`) y `HcApiClient.kt` (`interpretar`) | `TobbException` ya tiene `errores` y `candidatos` en `hc-general` | `cuerpo` va **sexto, al final**, y se pasa **por nombre** en `interpretar`; conflicto trivial |
+    | T4 (`3de1538`) | `AuthRepository.kt` (`restaurar`) | — | **sin conflicto** (revisar que llame a `logout()` sin token) |
+    | T5 (`e3817c6`) | `AuthRepository.kt` (`login`) | `hc-general` ya revoca con `logout(tokenARevocar)` (`:136` y `:149`) | `cerrarPorLicencia` debe llamar a `logout(r.token)` en `login` (el token recién emitido: con la revocación de `hc-general` el bloqueo lo borra de pediatría); en la rama sin conexión **conservar** `logout(actualizada.token)` |
+    | T6 (`0e4e266`) | `DataModule.kt` | el armado de `AuthRepository` de `hc-general` ya lleva `alCerrarSesion` y `revocar` | **conservar** ambos y sumar `backendsHc = get<HcBackends>().porEspecialidad` **por nombre**; `HcBackends` de `hc-general` trae también `clinica` (solo lectura, `SinDato`: no consulta nada) |
+    | T6 (`0e4e266`) | `AuthRepository.kt` (`refrescarPerfil`) | — | llama a `logout()` **sin token** (la sesión no es nueva) |
+    | T6b (`a8b6f93`) | `AuthRepository.kt` (`restaurar`) | — | **sin conflicto** |
+    | T7 (`4a26625`) | `HcLicenciasE2ETest.kt` | — | **sin conflicto** |
+    | transversal | `AuthRepository.kt` (`logout`) | `logout(tokenARevocar)` de `hc-general` | mantener `memoriaLicencia = null` dentro de `logout`; `restaurar` y `refrescarPerfil` llaman `logout()` sin token |
     | Tests de `AuthRepository` | los de `hc-general` (E12) arman `revocar` vacío y nunca el cliente de turnos de producción | los de esta spec arman backends falsos: no mezclar |
     | `docs/hc-pediatria-estado-y-plan.md` | no se toca en el worktree | actualizar «Las licencias»: el dispositivo ya no decide si hay conexión |
   - **Hallazgo H6 (revisor, 2026-11-03; va con esta integración, es de otro repo, no una tarea de la spec):** documentar el contrato en

@@ -53,7 +53,7 @@ registros de personas): el repo es público.
   **Checklist reescrita (2026-11-03, solo doc):** el revisor aprobó con observaciones (H1 a H5, M10 y H6 [documentar `licencia`/`licencia_vencida` en
   `API_SALUD360_PEDIATRIA.md`, con la integración]); `tasks.md` tiene M1 a M10 y el cuadro de conflictos de T9. Scripts fuera del repo en `%TEMP%\opencode\t9m`
   (`licencia.ps1` mueve solo la fila 2 de `medico_licencias` con respaldo y `RESTAURAR` verificado, `levantar-8090.ps1`, `verificar-entornos.ps1`,
-  `comparar-licencia.ps1` + línea base; el ensayo `-m` del puerto 8090 anda). Con la base local aprobada por el usuario para estas pruebas: al terminar,
+  `comparar-licencia.ps1` + línea base; el ensayo `-m` del puerto 8090 anda; ciclo de estados probado, las 55 tablas de pediatría quedaron idénticas por `CHECKSUM TABLE`). Con la base local aprobada por el usuario para estas pruebas: al terminar,
   `RESTAURAR`. Ojo: la pantalla de ingreso solo se ve sin sesión guardada, así que la M10 (ingreso sin señal con sesión previa) no se arma desde la interfaz; la cubren tests.
 
 ## Traspaso (2026-10-29)
