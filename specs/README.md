@@ -1,0 +1,25 @@
+# Specs
+
+Una carpeta por funcionalidad: `specs/NNN-nombre/` con `spec.md`, `plan.md` y `tasks.md`
+(flujo y plantillas en `.agents/skills/sdd/SKILL.md`). Se crean con `/sdd-spec NNN-nombre idea…`.
+
+## Numeración por historia clínica
+
+| Rango | Para qué |
+|---|---|
+| `0xx` | Transversal, clínica y pediatría (001 a 004 existentes; siguiente libre: 005) |
+| `1xx` | Odontología (101 en adelante) |
+| `2xx` | La próxima HC que se sume |
+
+Regla: cada HC usa solo su centena. Una spec que cruza varias HC se numera en `0xx` y se anuncia a las demás.
+
+Aclaración (2026-11-03): las specs 001 a 003 describen código de `hc-general` que todavía no está en `main`; la 004 (licencia del servidor) sí está en `main`.
+
+## Specs existentes
+
+| Spec | Estado |
+|---|---|
+| [001-hc-configurable](001-hc-configurable/spec.md) — Perfiles configurables de la HC general (hclinica) desde el admin | spec y plan aprobados; tandas A1, A2, B, C, C2 a C7 y D (hepatología pasa a ser un perfil de la HC general; T47 a T51, T53 y la tarea de cierre T54) completas; la D validada por el reviewer (aprobada con observaciones, cerradas en T54); la prueba manual del usuario de la tanda D (T52) se cerró con excepciones aceptadas el 2026-10-28 (confirmado: sin error de migración, una sola HC «Clínica» con el perfil Hepatología; sin comparar antes/después ni pasos 5 a 10); falta la prueba manual del usuario de las tandas C y C2 a C7 |
+| [002-hc-clinica](002-hc-clinica/spec.md) — La HC general lee y escribe la base de hclinica (depende de 001) | parte 1 (pacientes y cartera: RF-8 a RF-14, RF-35 a RF-37) y su plan (`plan-parte1.md`) aprobados el 2026-10-19 (PD1: también se corrige pediatría); `tasks.md` con la tanda E1 (servidor, 5/5, validada por el reviewer el 2026-10-20) y la tanda E2 (app, 8/8, validada por el reviewer el 2026-10-20): parte 1 completa y validada, falta la prueba manual del usuario (RF-10, RF-14 y la lista de E2.7); **parte 2, entrega L (solo lectura: la app muestra las consultas de la web; RF-38 a RF-63; plan en `plan.md`): spec, plan y tareas (E3 a E9) aprobados por el usuario el 2026-10-28**, con Q15 = nunca borrar (lo que la web deja de mandar se conserva y se marca) y Q1 a Q14, Q16 a Q18 como recomendó el planificador; la tanda S (servidor: E3 y E4) puede empezar, ninguna tarea hecha todavía; E9 (producción) requiere aprobación aparte; entrega E (escritura): borrador sin aprobar, sin tareas |
+| [003-hc-enfermedades](003-hc-enfermedades/spec.md) — Sección "Enfermedades" de la HC general contra la base de la web (depende de 001 y de la vinculación de pacientes y cartera de 002) | spec aprobada el 2026-10-19 (cambio del 2026-10-20: RF-10, RF-14, RF-30, RF-31, RF-57 y RF-59 nuevo); plan aprobado el 2026-10-20 (PD1-PD9 decididos); `tasks.md` con las tandas F1 (servidor), F2 (lógica y datos de la app) y F3 (pantallas) completas y validadas por el reviewer; **cerrada por decisión del usuario el 2026-10-28, con excepciones aceptadas**: F3.7 (prueba manual) quedó sin verificar en buena parte (M1 secretaria, crear enfermedades, M4 a M6 y M8, ver su nota) y la **limpieza de datos de prueba de la base local de hclinica está pendiente** |
+| [004-licencia-del-servidor](004-licencia-del-servidor/spec.md) — La app decide con la licencia que informa el servidor de pediatría, no con la copia local (arreglo de la app publicada; el código va en el worktree `..\salud360-pediatria`, rama `pediatria-licencia-servidor`) | spec, plan y tareas aprobados por el usuario el 2026-11-02 (P1 a P6 decididas; **P3 = solo se bloquea la HC de pediatría del médico sin fila de licencia**, lo que suma T3b); se implementan T1 a T8 en el worktree, sin push ni publicación; T9 (cherry-pick a `hc-general`) y publicar a `main` requieren pedido aparte; T1 hecha (reglas puras, 2026-11-02), T2 a T8 pendientes |
