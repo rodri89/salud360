@@ -46,10 +46,15 @@ registros de personas): el repo es público.
   `PUT` de licencia: se restauró con un `UPDATE` puntual; respaldos en `%TEMP%\opencode\t7`; «sin fila» (`SinLicencia`) quedó sin E2E, solo
   servidor falso y M9). **T8 hecha, parte técnica (2026-11-03, sin commit de código):** `core:data` 169 en verde, `features:auth` y `composeApp`
   wasm (klib, `-Pentorno=dev`) compilan, diff acotado a `core/data` (13 archivos, sin esquema, build ni servidores); `core:crecimiento:jvmTest`
-  no corrió (Gradle colgado en su `compileKotlinJvm`, sin relación con el diff). Falta el reviewer (corrida aparte), la prueba manual M1 a M9 y
+  no corrió (Gradle colgado en su `compileKotlinJvm`, sin relación con el diff). Falta el reviewer (corrida aparte), la prueba manual M1 a M10 y
   aprobación aparte para publicar. **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
-  borra esa base; usar otro puerto (script de Gradle en `%TEMP%\opencode\t8`, comando y M1 a M9 en `tasks.md`). En el árbol publicado nada lee
+  borra esa base; usar otro puerto (script de Gradle en `%TEMP%\opencode\t8`, comando y M1 a M10 en `tasks.md`). En el árbol publicado nada lee
   `local.properties`: las URLs locales van con `-P`. Médico de prueba con pediatría y licencia: el 1 de turnos. El árbol publicado tenía 43 tests en `core:data`.
+  **Checklist reescrita (2026-11-03, solo doc):** el revisor aprobó con observaciones (H1 a H5, M10 y H6 [documentar `licencia`/`licencia_vencida` en
+  `API_SALUD360_PEDIATRIA.md`, con la integración]); `tasks.md` tiene M1 a M10 y el cuadro de conflictos de T9. Scripts fuera del repo en `%TEMP%\opencode\t9m`
+  (`licencia.ps1` mueve solo la fila 2 de `medico_licencias` con respaldo y `RESTAURAR` verificado, `levantar-8090.ps1`, `verificar-entornos.ps1`,
+  `comparar-licencia.ps1` + línea base; el ensayo `-m` del puerto 8090 anda). Con la base local aprobada por el usuario para estas pruebas: al terminar,
+  `RESTAURAR`. Ojo: la pantalla de ingreso solo se ve sin sesión guardada, así que la M10 (ingreso sin señal con sesión previa) no se arma desde la interfaz; la cubren tests.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
