@@ -333,14 +333,25 @@ Reglas para todas:
     Decisiones que el texto no fijaba: (1) **guarda de sesión en `refrescarPerfil`**: con la consulta ahora puede esperar hasta 10 s, y si el
     médico cierra la sesión en ese lapso `guardarSesion` la habría vuelto a publicar y guardar; se compara el token de la sesión abierta
     antes y después y, si cambió, no hace nada (test con compuerta y mutación). (2) Tope = `esperaLogin` (10 s, como pedía D9), no el de
-    restaurar. (3) `refrescarPerfilRemoto` (T4) tiene el mismo riesgo en teoría (espera a turnos, hasta 30 s, más la licencia) y no se tocó: es
-    anterior y T6 no lo pide; queda como duda. (4) El test de Koin pisa `Settings` con un nodo de `java.util.prefs` aislado porque no hay
+    restaurar. (3) `refrescarPerfilRemoto` (T4) tenía el mismo riesgo (espera a turnos, hasta 30 s, más la licencia) y T6 no lo tocó (es
+    anterior y T6 no lo pide); **se resolvió aparte en T6b (`a8b6f93`, ver abajo)**. (4) El test de Koin pisa `Settings` con un nodo de `java.util.prefs` aislado porque no hay
     `MapSettings` en las dependencias de prueba (sin dependencias nuevas). (5) `restaurar` por Koin se prueba con un segundo grafo sobre la
     misma base (equivale a recargar la página).
+  - **T6b (2026-11-02, worktree, commit `a8b6f93`, una línea más su test; no es una tarea de la lista, cierra la duda (3) de T6).**
+    `refrescarPerfilRemoto` (el refresco que sigue a `restaurar`) espera a turnos (hasta 30 s) y a la licencia y después llamaba a
+    `guardarSesion` sin mirar si la sesión seguía siendo la misma: si el médico cerraba sesión en ese lapso, se volvía a publicar y a
+    guardar. Ahora, después de `decidirLicencia`, `if (_sesion.value?.token != actual.token) return` (la misma guarda que
+    `refrescarPerfil`; `AuthRepository.kt`: +2 líneas, una de comentario). Test nuevo con compuerta
+    (`el_refresco_del_perfil_de_restaurar_no_revive_una_sesion_que_se_cerro_mientras_esperaba`): el turnos falso retiene el perfil, el
+    médico hace `logout()` y al soltarlo no queda `sesion` publicada, ni guardada en la base, ni token en los clientes de HC. Rojo previo: sin
+    la línea falla esa aserción («la sesión cerrada no se vuelve a publicar»; la mutación es el propio rojo, porque la línea es lo único que
+    cambió); verde: `AuthRepositoryLicenciaServidorTest` 66/66 (65 + 1). Ojo (decisión del texto, no se amplió): la guarda va después de la
+    consulta de licencia, así que en ese caso la consulta igual se hace una vez más con el token ya cerrado (el servidor la rechaza o no
+    contesta: `SinDato`); no publica ni guarda nada. Si se quiere evitar ese pedido, una guarda más justo después de `turnos.perfil()`.
 
 ## Tanda B — Punta a punta y cierre
 
-- [ ] **T7. E2E contra la copia local de pediatría.** RF-5, RF-6, RF-11, RF-16 · tamaño M (~30 min)
+- [x] **T7. E2E contra la copia local de pediatría.** RF-5, RF-6, RF-11, RF-16 · tamaño M (~30 min)
   - Ampliar `HcLicenciasE2ETest.kt` (se saltea solo sin las propiedades, igual que hoy). Tres tests nuevos con el token de
     administrador para mover la licencia del médico y el token del médico para leerla; todos con `try/finally` que restaura la
     licencia original por `guardarLicencia(original)`:
@@ -357,6 +368,47 @@ Reglas para todas:
     -Psalud360.test.hc.token=<token médico de prueba> -Psalud360.test.hc.token.admin=<token admin de prueba>`
   - Hecho cuando: el comando anterior en verde (los tres nuevos y los dos de antes); `SELECT` de la fila de licencia del médico de prueba
     en la copia local de pediatría idéntico al de antes de correr (guardado fuera del repo); conteos de tablas sin cambios.
+  - **Hecho (2026-11-02, worktree, commit `4a26625`).** Solo contra `http://localhost/HCDPediatria-salud360/public/index.php` (base
+    `hc_pediatrica`); Apache y MySQL vivos, la copia contestó 401 sin token y los dos tokens de prueba (médico y administrador) servían.
+    Cambios: solo `HcLicenciasE2ETest.kt` (+184 líneas, 1 borrada: el KDoc de la clase). Los dos tests de antes no se tocaron; los tres
+    nuevos se saltean solos sin `.pediatria`, `.token.admin` y `.token` (el de «aviso» ya pedía las tres). Sin dependencias, sin
+    propiedades nuevas (`build.gradle.kts` sin tocar).
+    Tests (los tres con `try/finally` que restaura la licencia con `guardarLicencia(original)`, y pedidos espaciados 1,1 s):
+    1. `elServidorDiceSiLaLicenciaDelMedicoEstaVigenteOVencida`: licencia lejana → `Vigente(vence, aviso, porVencer = false)`; vencida
+       (ayer) → `Vencida`, y el servidor la dejó `activo = false` (se lee con `traerLicencias`); dada de baja con fecha lejana → `Vencida`;
+       restaurada → `Vigente` con las fechas originales.
+    2. `elMedicoConLaCopiaVencidaEntraSiElServidorDiceQueLaLicenciaEstaVigente` (**el caso reportado**): base temporal con la copia
+       inactiva y vencida (importe 12.5), sesión guardada del médico con su token, `AuthRepository` con `HcPediatriaBackend` real y turnos a
+       `127.0.0.1:1`; servidor vigente → `restaurar()` devuelve la sesión, queda publicada y guardada, la copia pasa a vigente conservando
+       el importe y sin `dirty`.
+    3. `elMedicoConLaCopiaVigenteNoEntraSiElServidorDiceQueLaLicenciaEstaVencida` (el inverso): copia vigente, servidor vencido →
+       `restaurar()` devuelve `null`, `sesion` nunca pasó por un valor no nulo (colector), sin sesión guardada, cliente de HC sin token,
+       copia inactiva y sin `dirty`.
+    Resultado: sin propiedades, `:core:data:jvmTest --rerun` completo **169 tests, 0 fallas, 0 errores** (165 + 1 de T6b + 3 de T7; los E2E
+    se saltean solos). Con las propiedades locales `--tests '*HcLicenciasE2ETest*' --rerun`: **5/5 en verde**, dos corridas seguidas, sin
+    intermitencias (unos 35 s la clase). Mutación temporal (revertida, `git diff` contra el respaldo vacío): «dada de baja → `Vigente`» falla
+    el test 1 («expected Vigente… but was Vencida») y `listOf(false, true)` en los valores vistos de `sesion` falla el test 3.
+    **Datos de la base local (`hc_pediatrica`, solo números):** `COUNT(*)` de las 55 tablas idéntico antes y después (`medico_licencias` 26,
+    `users` 26, `salud360_token_cache` 5, sin vaciarla) y `CHECKSUM TABLE` de las 55 idéntico. El médico de prueba es el usuario 2 de
+    pediatría (médico 1 de turnos), con **una** fila en `medico_licencias` (id 2: activo 1, `fecha_expiracion` y `fecha_aviso` = 2030-12-01,
+    importe 0, `created_at` NULL). `guardarLicencia(original)` la devuelve a los mismos valores pero el servidor escribe `updated_at` en
+    cada PUT: tras las corridas se restauró con un `UPDATE ... WHERE id = 2` puntual (más las columnas de la fila como guarda,
+    `ROW_COUNT = 1`) y el volcado completo de la tabla quedó byte a byte igual al de antes (hash). Ningún `DROP`, `DELETE` ni `INSERT`.
+    Respaldos fuera del repo: `%TEMP%\opencode\t7\` (`medico_licencias-antes.tsv`, `conteos-*.txt`, `checksum-*.txt`, `contar.sql`,
+    `checksum.sql`). Ningún token en el repo, el diff ni el commit (se comprobó que el texto de ninguno aparece en el diff); los mensajes de
+    aserción de los tests no imprimen la sesión (su `toString` lleva el token).
+    **Corrida (los tokens se leen del archivo local sin imprimirlos):** `.\gradlew :core:data:jvmTest --rerun --tests '*HcLicenciasE2ETest*'
+    -Psalud360.test.hc.pediatria=<url> -Psalud360.test.hc.token=<token médico> -Psalud360.test.hc.token.admin=<token admin>` (comando en el KDoc).
+    **Lo que quedó manual:** el caso «sin fila» (`403 licencia_vencida` con `licencia: null` → `SinLicencia`). T7 no lo pide y probarlo
+    contra el servidor real exige sacar la fila del médico de prueba (o crear un usuario ad hoc con su token sembrado); no se hizo. Lo cubren
+    los tests con servidor falso (T3b a T5, `DataModuleLicenciaTest`) y la prueba manual M9; la forma del cuerpo (`licencia: null`) se verificó
+    leyendo `TobbAuthService::conLicencia` (T3b), pero sigue sin verse en vivo.
+    Decisiones que el texto no fijaba: (1) las tres propiedades hacen falta para los tres tests nuevos (el administrador mueve y el
+    médico lee); los dos de antes siguen como estaban. (2) Se exige como precondición que la licencia de prueba esté vigente al empezar
+    (si una corrida anterior murió a medias el test falla pidiendo restaurarla a mano en vez de «restaurar» un estado malo). (3) «Vencida»
+    se prueba con la fecha de ayer y se comprueba además que el servidor la dejó inactiva (`TobbAuthService.php:195-197`), que es un
+    contrato del servidor y no de la app: si algún día cambia, esa aserción es la que avisa. (4) Los dos tests viejos tocan la fila 2
+    igual (el primero mueve «la primera licencia»): por eso se comparó la tabla entera y no solo la fila del médico.
 
 - [ ] **T8. Cierre: suite completa, compilación web, revisión y memoria.** RF-todos · tamaño S (~20 min)
   - `.\gradlew :core:data:jvmTest` completo, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest`, `:especialidades:clinica:jvmTest` (como

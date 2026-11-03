@@ -38,8 +38,13 @@ registros de personas): el repo es público.
   existente cambió). **T6 hecha** (`0e4e266`: `refrescarPerfil` pasa por `decidirLicencia(…, 10 s)` con guarda por si la sesión se cerró
   mientras esperaba, y `DataModule` pasa `backendsHc = HcBackends.porEspecialidad` (hoy solo pediatría) al `AuthRepository`; 11 tests de
   refrescarPerfil + `DataModuleLicenciaTest` (7, Koin real con servidores falsos); `core:data` 165 en verde; `features:auth` y `composeApp`
-  wasm compilan; ningún test existente cambió). Con T6 deja de haber un refresco que contradiga a `login` (el aviso de «no publicar T5 sin T6»); publicar sigue pidiendo T7, T8, la
-  prueba manual M1 a M9 y aprobación aparte. Sigue T7, T8. El árbol publicado tenía 43 tests en `core:data`.
+  wasm compilan; ningún test existente cambió). Con T6 deja de haber un refresco que contradiga a `login` (el aviso de «no publicar T5 sin T6»).
+  **T6b hecha** (`a8b6f93`: `refrescarPerfilRemoto` también comprueba que la sesión siga siendo la misma antes de guardarla; test con
+  compuerta). **T7 hecha** (`4a26625`: `HcLicenciasE2ETest` +3 tests contra la copia local de pediatría: `licenciaDelServidor()` vigente/vencida/
+  baja/restaurada, el caso reportado y el inverso con `restaurar()`; 5/5 en verde con las tres propiedades `-P`, `core:data` 169 en verde sin
+  ellas; la tabla `medico_licencias` y los conteos/checksums de las 55 tablas quedaron idénticos; el servidor escribe `updated_at` en cada
+  `PUT` de licencia: se restauró con un `UPDATE` puntual; respaldos en `%TEMP%\opencode\t7`; «sin fila» (`SinLicencia`) quedó sin E2E, solo
+  servidor falso y M9). Publicar sigue pidiendo T8, la prueba manual M1 a M9 y aprobación aparte. Sigue T8. El árbol publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el
