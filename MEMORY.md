@@ -44,7 +44,12 @@ registros de personas): el repo es público.
   baja/restaurada, el caso reportado y el inverso con `restaurar()`; 5/5 en verde con las tres propiedades `-P`, `core:data` 169 en verde sin
   ellas; la tabla `medico_licencias` y los conteos/checksums de las 55 tablas quedaron idénticos; el servidor escribe `updated_at` en cada
   `PUT` de licencia: se restauró con un `UPDATE` puntual; respaldos en `%TEMP%\opencode\t7`; «sin fila» (`SinLicencia`) quedó sin E2E, solo
-  servidor falso y M9). Publicar sigue pidiendo T8, la prueba manual M1 a M9 y aprobación aparte. Sigue T8. El árbol publicado tenía 43 tests en `core:data`.
+  servidor falso y M9). **T8 hecha, parte técnica (2026-11-03, sin commit de código):** `core:data` 169 en verde, `features:auth` y `composeApp`
+  wasm (klib, `-Pentorno=dev`) compilan, diff acotado a `core/data` (13 archivos, sin esquema, build ni servidores); `core:crecimiento:jvmTest`
+  no corrió (Gradle colgado en su `compileKotlinJvm`, sin relación con el diff). Falta el reviewer (corrida aparte), la prueba manual M1 a M9 y
+  aprobación aparte para publicar. **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
+  borra esa base; usar otro puerto (script de Gradle en `%TEMP%\opencode\t8`, comando y M1 a M9 en `tasks.md`). En el árbol publicado nada lee
+  `local.properties`: las URLs locales van con `-P`. Médico de prueba con pediatría y licencia: el 1 de turnos. El árbol publicado tenía 43 tests en `core:data`.
 
 ## Traspaso (2026-10-29)
 - **Siguiente paso: E8.2 (con la app real, necesita al usuario y el navegador), dentro de la entrega L de la spec 002, aprobada por el

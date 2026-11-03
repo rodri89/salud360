@@ -20,10 +20,10 @@ Reglas para todas:
 - No tocar servidores (pediatría, turnos, `hclinica`), ni `hc-general`/clínica, ni el esquema local (sin migraciones), ni
   `features/*`/`composeApp` salvo lo que diga la tarea.
 - `LicenciaTest` y todo lo que ya pasa tiene que seguir en verde; **prohibido avanzar con tests en rojo**.
-- Gradle: si falla por `JAVA_HOME`, `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`. El worktree **no
-  tiene `local.properties`** (no se versiona): para `devWeb` o para cualquier tarea que compile `composeApp`, copiar el de
-  `salud360` o pasar las URLs con `-P`; sin eso el build queda contra producción (`AGENTS.md`, «Entorno dev/release»).
-  No matar el `devWeb` que tenga abierto el usuario en el repo principal.
+- Gradle: si falla por `JAVA_HOME`, `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`. En este árbol (el publicado)
+  **ningún `build.gradle.kts` lee `local.properties`** (eso es de `hc-general`; corregido en T8): para `devWeb` o para cualquier tarea
+  que compile `composeApp` hay que pasar las URLs con `-P` y `-Pentorno=dev`; sin eso `dev` apunta al MAMP `:8888` y `release`, a producción
+  (`AGENTS.md`, «Entorno dev/release»). No matar el `devWeb` que tenga abierto el usuario en el repo principal.
 - E2E solo contra la **copia local** de pediatría (`http://localhost/HCDPediatria-salud360/public/index.php`), con
   tokens del archivo de pruebas; al terminar, restaurar la licencia de prueba. **No vaciar `salud360_token_cache` de
   pediatría**: guarda los tokens de prueba sembrados (`MEMORY.md`, E5.4).
@@ -410,7 +410,7 @@ Reglas para todas:
     contrato del servidor y no de la app: si algún día cambia, esa aserción es la que avisa. (4) Los dos tests viejos tocan la fila 2
     igual (el primero mueve «la primera licencia»): por eso se comparó la tabla entera y no solo la fila del médico.
 
-- [ ] **T8. Cierre: suite completa, compilación web, revisión y memoria.** RF-todos · tamaño S (~20 min)
+- [x] **T8. Cierre: suite completa, compilación web, revisión y memoria.** RF-todos · tamaño S (~20 min) — **parte técnica hecha; la validación del reviewer queda para una corrida aparte** (ver la nota «Hecho» abajo)
   - `.\gradlew :core:data:jvmTest` completo, `:core:crecimiento:jvmTest`, `:core:ui:jvmTest`, `:especialidades:clinica:jvmTest` (como
     pide `AGENTS.md`; en el árbol publicado correr los que existan), `.\gradlew :features:auth:compileKotlinJvm`, `.\gradlew
     :composeApp:compileKotlinWasmJs`.
@@ -419,11 +419,67 @@ Reglas para todas:
     permanente. **No** tocar `docs/hc-pediatria-estado-y-plan.md` en el worktree: va con la integración.
   - Hecho cuando: todo lo anterior en verde, `git log --oneline origin/main..HEAD` lista un commit por tarea, `git status` limpio, y el
     reviewer sin hallazgos mayores abiertos.
+  - **Hecho (2026-11-03, worktree, sin commit nuevo: T8 no cambia código; el último sigue siendo `4a26625`). Parte técnica; el reviewer
+    (RF por RF y el chequeo de D9) queda para una corrida aparte.** Resultados: `:core:data:jvmTest --rerun` completo **169 tests, 0 fallas,
+    0 errores** (13 clases; los E2E se saltean solos); `:features:auth:compileKotlinJvm` compila; `:composeApp:compileKotlinWasmJs
+    -Pentorno=dev` (klib, primera vez en frío en el worktree) compila en 2 min 35 s. `:core:ui:jvmTest` (1 test) en verde;
+    `:especialidades:clinica` no tiene tests en el árbol publicado; **`:core:crecimiento:jvmTest` no se pudo correr**: Gradle se colgó dos veces
+    en `:core:crecimiento:compileKotlinJvm` (sin CPU, con un daemon de Kotlin viejo); no es de esta spec (el diff solo toca `core:data`), pero
+    queda sin confirmar. No se corrió `devWeb` ni `wasmJsDevelopmentExecutableCompileSync` (van con el usuario).
+    Diff `origin/main..HEAD`: 13 archivos, +2816 −19; producción (7 archivos, `core/data/src/commonMain`): `LicenciaDelServidor.kt` nuevo,
+    `AuthRepository`, `HcPediatriaBackend`, `HcBackend`, `ApiClient` (un parámetro), `HcApiClient` (una línea), `DataModule`; el resto son 6
+    archivos de test. **No toca** `.sq`/`.sqm`, `gradle.properties`, ningún `build.gradle.kts`, `features/*`, `composeApp`, `:server`, clínica ni
+    hepatología; `LicenciaTest` sin cambios; ningún texto de interfaz nuevo ni cambiado (RF-18; solo comentarios y logs); los `log` solo
+    escriben el `codigo`/status o el nombre de la clase (RF-20); sin tokens, mails reales ni nombres (los fixtures usan `@ejemplo.test`,
+    `tok-…` y ids inventados); `git grep -i` del apellido que figura en la historia de `hc-general`: sin resultados en el worktree.
+    **Trazabilidad RF → dónde se cumple / qué test:** ver la tabla del informe de T8 (todos los RF de lógica tienen test; sin test propio:
+    RF-17 [no se tocó `AdminRepository`; lo cubre el E2E de antes] y RF-18 [no hay textos nuevos; se ve en M6]).
+    **Dos imprecisiones de esta spec/tarea que se corrigen acá** (no son requisitos nuevos): (1) en el árbol publicado **ningún
+    `build.gradle.kts` lee `local.properties`** (eso es de `hc-general`): el `local.properties` del worktree **no tiene ningún efecto**, y sin
+    `-P` el `devWeb` apunta al MAMP `:8888`, no al XAMPP; las URLs locales hay que pasarlas con `-P` (ver la prueba manual). (2) El worktree es
+    esquema **v6** (5 migraciones) y el navegador del usuario en `localhost:8080` guarda una **v9**: servir este build en el puerto 8080
+    **borraría** esa base local (el driver web descarta las tablas si la guardada es más nueva): hay que servirlo en **otro puerto**.
 
 ## Prueba manual del usuario (M1 a M9) — después de T8, antes de pensar en publicar
-Con `.\gradlew devWeb` **desde el worktree** (necesita su `local.properties`, ver arriba) contra el XAMPP local y la copia local de
-pediatría (que debe tener el `conLicencia` actual). Hace falta un navegador con una copia local de la licencia desactualizada **a
-propósito**, y el panel de DevTools → Network abierto. Se usa un médico de prueba con pediatría habilitada y un administrador de prueba.
+**Nunca en `http://localhost:8080`** (ahí vive la base v9 de `hc-general`; este build es v6 y la destruiría). Servir el worktree en otro puerto
+(otro origen = otra base del navegador) y con las URLs locales por `-P` (el `local.properties` no se lee en este árbol). Hace falta que
+Apache y MySQL del XAMPP estén vivos y la copia local de pediatría tenga el `conLicencia` actual.
+
+Script de Gradle fuera del repo (`%TEMP%\opencode\t8\puerto-web.init.gradle`; si no está, crearlo con este texto):
+```groovy
+gradle.taskGraph.whenReady { graph ->
+    def puerto = (gradle.startParameter.projectProperties['salud360.web.puerto'] ?: '8090') as Integer
+    graph.allTasks.each { t ->
+        if (t.class.name.contains('KotlinWebpack') && t.hasProperty('devServerProperty')) {
+            def ds = t.devServerProperty.getOrNull()
+            if (ds != null) {
+                ds.setPort(puerto)
+                try { ds.setOpen(false) } catch (Throwable e) { println "no se pudo desactivar open" }
+                println "Salud 360: ${t.path} sirve en el puerto ${ds.getPort()} (open=${ds.getOpen()})"
+            }
+        }
+    }
+}
+```
+Comando (PowerShell, desde el worktree; **no ejecutarlo hasta que el usuario lo decida**). Primero el ensayo `-m` (no compila ni sirve nada) y
+mirar que imprima «sirve en el puerto 8090»:
+```powershell
+cd C:\Users\flor\rebonline\salud360-pediatria
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+.\gradlew devWeb -m -I "$env:TEMP\opencode\t8\puerto-web.init.gradle" "-Psalud360.web.puerto=8090" "-Pentorno=dev" "-Psalud360.entorno.dev.turnos=http://localhost/TurnosOnlineBB-salud360/public/index.php" "-Psalud360.entorno.dev.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php"
+```
+Si imprime el puerto 8090, el mismo comando sin `-m` sirve la web en `http://localhost:8090`. Antes de abrir el navegador, comprobar
+`composeApp\build\generated\entorno\commonMain\kotlin\com\salud360\app\Entornos.kt` en el worktree: `ENTORNO = "dev"`, `TURNOS_URL` y
+`HC_URLS["pediatria"]` con `http://localhost/...-salud360/...` (y **ninguna** con `:8888` ni `https://`, y sin `{host}`). Si el ensayo
+no imprime el puerto, la alternativa sin tocar archivos versionados es un `composeApp/webpack.config.d/puerto.js` **sin versionar**
+(`config.devServer = Object.assign({}, config.devServer, { port: 8090, open: false });`) que se borra al terminar.
+No usar `-Pentorno=release` ni `build`/`releaseWeb` (quedan contra producción).
+
+Se necesita un navegador con una copia local de la licencia desactualizada **a propósito**, y el panel de DevTools → Network abierto. Se usa
+un médico de prueba con pediatría habilitada y un administrador de prueba. **Datos locales:** el único médico local de turnos con pediatría
+habilitada, usuario vinculado en `hc_pediatrica` y licencia vigente es el médico 1 de turnos (usuario 2 de pediatría, la fila 2 de
+`medico_licencias`, la misma del E2E de T7); el médico de prueba 38 tiene pediatría inactiva y no sirve sin preparar. Las contraseñas de prueba
+las da el usuario (no están en ningún archivo).
 
 Preparar la copia vieja en el navegador B (el del médico): entrar ahí como administrador, abrir Administración → Licencias (sincroniza la
 copia), y con el interruptor **dar de baja** la licencia del médico de prueba (queda baja en el servidor *y* en la copia de B). Después, en
@@ -453,6 +509,34 @@ servidor «vigente».
   cartel de licencia vencida); al abrir la HC de pediatría de un paciente aparece el rechazo del servidor («No se pudo traer la historia
   clínica…» con el texto de licencia vencida) y no se escribe nada; si tiene la HC general, esa se abre. Con F5 vuelve a la app. Después,
   cargar su licencia vencida (fila con fecha pasada): ahora **no entra** (texto de licencia vencida).
+
+### M1 a M9 adaptadas al setup local (T8, 2026-11-03)
+Origen **`http://localhost:8090`** (nunca el 8080). Cuentas: administrador de prueba (turnos usuario 2), médico de prueba = **médico 1 de turnos**
+(usuario 4; pediatría usuario 2, licencia = fila 2 de `medico_licencias`) y una secretaria de prueba (hay varias). Las contraseñas las da el usuario.
+El estado **del servidor** se mueve con SQL (`C:\xampp\mysql\bin\mysql.exe -uroot hc_pediatrica`, por stdin) sobre la fila 2; el de la **copia del
+navegador** se fija entrando como administrador a Administración → Licencias (esa pantalla copia lo que dice el servidor en ese momento).
+Valores originales de la fila 2 (restaurar al final): `activo=1`, `fecha_expiracion_licencia='2030-12-01'`, `fecha_aviso_expiracion='2030-12-01'`,
+`importe='0'`, `created_at=NULL`, `updated_at='2026-09-29 13:45:39'`; guardar antes un `SELECT *` de la fila (y de `medico_licencias` entera) fuera del repo.
+Estados (siempre `WHERE id = 2`; poner `updated_at = '2026-09-29 13:45:39'` para no ensuciar):
+- **VIGENTE:** `activo=1, fecha_expiracion_licencia='2030-12-01', fecha_aviso_expiracion='2030-12-01', medico_user_id=2`
+- **BAJA:** `activo=0` (fecha lejana). **VENCIDA:** `activo=1, fecha_expiracion_licencia='2026-11-02'` (el servidor además la deja `activo=0`).
+- **POR VENCER:** `activo=1, fecha_expiracion_licencia='2026-11-10', fecha_aviso_expiracion='2026-11-02'`.
+- **SIN FILA:** `medico_user_id=900002` (no hay FK; ningún usuario lo tiene; para devolverla, `medico_user_id=2`).
+**Dejar una copia vieja:** 1) servidor en el estado A; 2) entrar como administrador, abrir Administración → Licencias (la copia queda en A) y cerrar sesión;
+3) cambiar el servidor al estado B con SQL. Ahora copia = A, servidor = B. Abrir de nuevo el panel pisa la copia: hacerlo solo para verificar al final.
+| # | Copia / servidor | Qué hacer | Esperado |
+|---|---|---|---|
+| M1 | BAJA / VIGENTE | entrar como médico | entra (antes: «licencia vencida»); luego, el panel del administrador muestra la licencia vigente |
+| M2 | VIGENTE / VIGENTE, con sesión del médico ya abierta (tras M1) | F5; después poner el servidor en BAJA y F5 | el primer F5 vuelve a la app, no a la pantalla de ingreso, con «Abriendo Salud 360…» pocos segundos; el segundo F5 vuelve a la pantalla de ingreso (M3 con recarga). Ojo: «sesión del médico guardada + copia vieja» no se puede armar desde la interfaz en un solo navegador (el panel exige iniciar sesión como administrador, que reemplaza la sesión); ese caso lo cubren `restaurar_con_servidor_vigente_y_copia_vencida…` y el E2E de T7 |
+| M3 | VIGENTE / BAJA | entrar como médico; luego con sesión abierta previa a la baja, F5 | no entra, texto de licencia vencida, sin parpadeo de la app; el F5 vuelve a la pantalla de ingreso |
+| M4 | DevTools → Network → «Offline» | F5 con copia VIGENTE: entra; con copia BAJA: no entra | como antes; al volver la señal, M1/M3 |
+| M5 | bloquear la URL `*HCDPediatria-salud360*` en DevTools | entrar y F5 | decide la copia; sin esperar más de 10 s al entrar ni 5 s al recargar |
+| M6 | POR VENCER (copia da igual) | entrar como médico | sigue el cartel ámbar «Tu licencia está por vencer el <fecha>» |
+| M7 | cualquiera | filtrar `HCDPediatria` + `auth/perfil` en Network | al entrar, **dos** (consulta + aviso) y ninguno por el refresco; al recargar con sesión, uno más el aviso |
+| M8 | — | entrar como administrador y como secretaria | sin `auth/perfil` a pediatría al ingresar; el panel de Licencias lee y guarda |
+| M9 | SIN FILA | entrar como médico; abrir la HC de un paciente; F5; luego estado VENCIDA | entra a la app y a la agenda; la HC muestra el rechazo del servidor y no se escribe nada; con F5 sigue; con VENCIDA no entra |
+Al terminar: poner la fila 2 en **VIGENTE** con los valores originales (incluido `updated_at`) y comprobar con un `SELECT` idéntico al respaldo. No vaciar
+`salud360_token_cache` de pediatría. Quedan filas nuevas de las sesiones de prueba en `salud360_tokens` (turnos) y `salud360_token_cache` (pediatría): esperado.
 
 ## Integración en `hc-general` — NO hacer sin pedido del usuario
 - [ ] **T9. Cherry-pick a `hc-general`.** Tamaño M (~30 min), aparte. Pasos y conflictos esperables en `plan.md`
