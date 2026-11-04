@@ -1,6 +1,6 @@
 # Tareas 005 — La HC general escribe sus consultas (E0 y E1 detalladas; E2 a E5 en lista)
 
-Estado: **borrador del planificador (2026-11-04)**; se aprueba antes de implementar. Spec: `spec.md` (aprobada el 2026-11-04, RF-1 a
+Estado: **plan y tareas aprobados por el usuario el 2026-11-04**. Spec: `spec.md` (aprobada el 2026-11-04, RF-1 a
 RF-70). Plan: `plan.md`. Apoyo técnico: `notas-para-el-plan.md`.
 
 **Por qué solo E0 y E1 detalladas.** La skill pide proponer dividir si salen más de 10 tareas; esta spec ya está partida en
@@ -45,13 +45,17 @@ app que lo usa**.
 Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Preguntas previas al usuario en `plan.md`
 («Qué hay que preguntarle al usuario antes de empezar»).
 
-- [ ] **T1. Respaldo de `hc_clinica` local restaurado en una base descartable y verificado.** D4 — S — Toca API Laravel: no
+- [x] **T1. Respaldo de `hc_clinica` local restaurado en una base descartable y verificado.** D4 — S — Toca API Laravel: no
   (base local de pruebas)
   - Volcado de la base local con `mysqldump` (por stdin/archivo fuera del repo) y restauración **en otra base** (`hc_clinica_respaldo`,
     o la que indique el usuario), sin `DROP` de nada existente. Solo estructura y agregados; sin mostrar filas de pacientes.
   - Hecho cuando: `CHECKSUM TABLE` y `COUNT(*)` de las **68 tablas** de la base original y de la restaurada son idénticos (archivo
     `%TEMP%\opencode\e0\respaldo-verificacion.txt`); el volcado queda fuera del repo; anotado qué base descartable quedó y cómo
     borrarla.
+  - Resultado (2026-11-04): las 68 tablas (todas InnoDB, ~7,3 MB) dan conteo y `CHECKSUM TABLE` idénticos entre `hc_clinica` y la
+    restaurada, 68 iguales y 0 distintas. Volcado de 2.921.584 bytes, sin `CREATE DATABASE` ni `USE`. Quedó la base descartable
+    `hc_clinica_respaldo` (borrarla con `DROP DATABASE hc_clinica_respaldo;` cuando haga falta, no antes); volcado y
+    `respaldo-verificacion.txt` en `%TEMP%\opencode\e0\`, fuera del repo. Sin datos sensibles: solo estructura y agregados.
 - [ ] **T2. Saldar la deuda de limpieza de la copia local — datos de la L.** D4 — M — Toca API Laravel: no
   - La lista exacta está en `MEMORY.md` («Limpieza pendiente en la base local de clínica»): una consulta de la web con sus filas
     hijas, un PDF de consulta con su archivo en disco, y la restauración de una fila de `medico_infos` a sus valores originales. **Se
