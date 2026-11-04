@@ -221,7 +221,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     en el respaldo). Decisiones de contrato: se aplicó la firma del plan (con `dispositivo`, que se valida y se guarda); `registrar` toma
     `{remoto_id, consulta_id, respuesta}`; la clave es binaria (distingue mayúsculas); prefijos de clave `c r l p` (los de adjuntos, a definir en E4); dispositivo
     `[A-Za-z0-9._:-]{1,100}`; respuesta de hasta 65535 bytes; `registrar` fuera de transacción devuelve lo existente, dentro relanza el choque.
-- [ ] **T10. Crear la consulta: servicio, controlador y ruta.** RF-12, RF-14, RF-15, RF-52, RF-59 — M — Toca API Laravel: sí
+- [x] **T10. Crear la consulta: servicio, controlador y ruta.** RF-12, RF-14, RF-15, RF-52, RF-59 — M — Toca API Laravel: sí
   - Código: `EscrituraService::crear` (en `DB::transaction`; `medico_id` = el del token, tipo, `created_at` = la fecha clínica del
     cuerpo, `edad_mostrar`, `activo = 2`, relleno con `ColumnasLegacy::vacias`; registra en `salud360_envios`; devuelve `otras_abiertas`
     = consultas `activo = 2` del paciente de cualquier médico con su nombre), `ConsultaEscrituraController@store` con `soloMedico` +
@@ -231,6 +231,33 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     paciente fuera de cartera `403 fuera_de_cartera`; inexistente `404`; datos inválidos `422`; creación `201`; **la misma clave otra
     vez `200` con la misma consulta y una sola fila nueva en `consultas`**; `otras_abiertas` informa la abierta de otro médico del
     fixture; `suma.sql` solo cambia en `consultas` y `salud360_envios`; `medico_infos` idéntico; limpieza por id con los scripts de T4.
+  - **Resultado (2026-11-04): HECHA.** hclinica `6b3306f` (rama `salud360-api`, sin push): `ConsultaEscrituraController` + `EscrituraService` +
+    `POST consultas` en `routes/api.php` (grupo `salud360`, mismo middleware, CORS sin cambios; clave en el cuerpo) + `tests/Unit/EscrituraServicioTest.php`
+    (16) + sección «Escritura» de `md/API_SALUD360_CLINICA.md` (solo la creación). `ConsultaController`, `ConsultasService`, `ConsultasReglas` y la
+    base `Salud360Controller` **sin cambios** (grep de escrituras = 0). Copiado a la servida (idéntico por hash), `route:clear`. Contrato: cuerpo
+    `{clave "c:<id local>", dispositivo, paciente_id, tipo control|telemedicina, fecha AAAA-MM-DD, edad_mostrar?}` → `201 {ok, consulta (cabecera de la
+    lectura, propia true), creada: true, otras_abiertas [{id, medico_nombre}]}`; misma clave → `200` con `creada: false` y lo mismo; `401`, `403
+    sin_permiso|fuera_de_cartera`, `404 paciente_no_encontrado`, `422 datos_invalidos` (campo y motivo), `500 escritura` sin detalle. Orden: rol, cuerpo,
+    cartera, escritura. Escribe solo `consultas` y `salud360_envios` en una transacción; no `inicializarCampos` (T11 decide) ni `medico_infos`.
+  - **Pruebas.** (1) Base descartable `hc_clinica_t10` (estructura copiada con `LIKE`, datos inventados, columnas viejas `NOT NULL` extra y disparador para
+    demora/falla): script fuera del repo `%TEMP%\opencode\t10\crear-con-base.php`, 64 controles OK con `sql_mode` estricto y 64 sin él (servicio y
+    controlador: crear, reintento, claves y médicos independientes, rollback, roles, cartera, 422, `500` sin detalle, **carrera real de 3 procesos** → una
+    consulta y una fila de registro, tablas de la web y `medico_infos` con el mismo checksum); 6 mutaciones detectadas (incluida una que escribe
+    `medico_infos`). (2) HTTP contra la copia local (`hc_clinica`), médico 9, paciente «PRUEBA SALUD360» (1440, doc 99000900) cargado con
+    `cargar-prueba.sql`: `401 sin_token` y `401 token`; `422` ×7 (tipo, fecha, clave, dispositivo ×2, `paciente_id`, no-JSON); `404` inexistente; `403
+    fuera_de_cartera` (ficha de fixture fuera de la cartera); `201` ×5 y `200` ×5 (repetición: misma consulta, mismas `otras_abiertas`, 0 filas nuevas; con
+    otros datos devuelve la primera); 3 pares simultáneos → 1 consulta cada uno; `otras_abiertas` con la abierta del médico de prueba (cargada) y la del
+    médico de fixture (insertada a mano, abierta); la lectura (`GET consultas`, `consultas/{id}`) lee las creadas; preflight `OPTIONS` `204`. No se
+    pudo probar por HTTP administrador ni secretaria (no hay token): `sin_permiso` quedó probado en proceso (controlador) y el middleware ya rechaza a la
+    secretaria. Apache: 0 respuestas `5xx`, `error.log` sin entradas, `storage/logs` sin entradas nuevas; aparecieron 5 `POST …/TurnosOnlineBB-salud360/…/sync/push`
+    `404` del motor viejo de la app abierta del usuario (`SyncEngine`, ajeno a la tarea). (3) **Limpieza** con `escritura-limpiar.sql` (`PERMITIR_HC_CLINICA=1`), por
+    id (consultas 1990 a 1996, ficha 1440) y por clave (5): `escritura-suma.sql` y `suma.sql` de la lectura **idénticas a la línea base** salvo `salud360_envios`
+    (tabla nueva, vacía, checksum 0) y `salud360_token_cache`; `medico_infos` idéntico (3172558057); conteos iguales; autoincremento de `consultas` avanzó (1997).
+    `tests/Unit` completo: **766 en verde** (750 + 16). Pendiente de T14/T45: el contador de `salud360_envios` en `escritura-limpiar.sql` muestra 0 aunque borró
+    las 5 filas (`ROW_COUNT()` después de `DEALLOCATE`; arreglar con `SET @n = ROW_COUNT()` antes). La tabla `salud360_envios` queda creada y vacía en `hc_clinica`
+    local; `hc_clinica_t10` es otra base descartable (con `hc_clinica_t9`): `DROP DATABASE hc_clinica_t10;` para borrarla. T11 necesita un paciente de
+    prueba nuevo (la ficha 1440 se limpió). Decisiones de contrato para revisar: `otras_abiertas` solo `{id, medico_nombre}` y de cualquier médico (las que la
+    lectura mostraría); reintento con otros datos devuelve la primera; cartera antes que repetición; respuesta guardada sin `creada`; el `dispositivo` es obligatorio.
 - [ ] **T11. Verificación de RF-17: la web abre la consulta creada con cada perfil.** RF-17 — M — Toca API Laravel: no (verificación a mano)
   - **A mano, con el usuario** (las credenciales las pone él en la sesión). Con la consulta creada por la API (T10) y médicos locales con
     perfiles 1, 2, 3, 4 y 9: abrirla en la web local y comprobar que no hay errores y que las secciones del perfil aparecen vacías y
