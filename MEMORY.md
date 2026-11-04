@@ -17,7 +17,7 @@ registros de personas): el repo es público.
   `DROP DATABASE hc_clinica_t9;` cuando haga falta). T10 hecha (2026-11-04): `POST consultas` en hclinica `6b3306f`
   (`ConsultaEscrituraController` + `EscrituraService`; `tests/Unit` 766 en verde; probado en la descartable `hc_clinica_t10` y por HTTP contra la copia local, limpiado por id
   y por clave con las sumas iguales a la línea base; `salud360_envios` ya existe y está vacía en `hc_clinica` local; la ficha de prueba 1440 se limpió: T11 pide cargar otra);
-  sigue T11 (verificación de RF-17 con el usuario).** T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
+  T1 a T10 hechas; T11 diferida a la prueba general del usuario (datos de prueba P1–P5 siguen cargados; limpiar con `t11\limpiar-t11.cmd`); sigue T12.** T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
   HC general también lleva licencia, regla D25; sin código); falta avisar en `origin/main`. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
   tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). T9 de la 004 ya integrada en
   `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).

@@ -265,6 +265,10 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     esas filas vacías, se agrega a `EscrituraService::crear` con su test; si no, se deja afuera.
   - Hecho cuando: resultado por perfil anotado en esta tarea (sin datos de pacientes); la decisión de `inicializarCampos` registrada;
     si se agregó, T10 vuelve a pasar sus pruebas y `medico_infos` sigue idéntico.
+  - **DIFERIDA por decisión del usuario (2026-11-04) a la prueba general final;** preparada: instructivo y scripts en `%TEMP%\opencode\t11`; los
+    pacientes de prueba P1 a P5 (ids 1441–1445) y sus consultas 1997–2001 quedan en `hc_clinica` hasta esa prueba (se limpian con
+    `limpiar-t11.cmd`); la puerta RF-17 y la decisión de `inicializarCampos` siguen **PENDIENTES: E1 no se cierra sin ellas**; si la prueba muestra
+    que hace falta, se ajusta T10.
   - **Preparada el 2026-11-04** (NO hecha): instructivo y scripts en `%TEMP%\opencode\t11` (fuera del repo); a la espera del recorrido del
     usuario. Decisión del usuario: un solo médico, el de prueba (user 9), con `users.perfil` temporal 1, 2, 3, 4 y 9 y restauración exacta
     (original: 2). Datos en `hc_clinica` local: 5 pacientes inventados «PRUEBA SALUD360 P1 a P5» (documentos 99000901 a 99000905) en la cartera
