@@ -166,7 +166,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     igualar desde acá), así que «la 004 dice lo mismo en ambas ramas» queda abierto hasta que se haga con pedido.
 
 ## Servidor local de E1 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
-- [ ] **T8. Reglas puras de escritura y su test (phpunit).** RF-14, RF-20, RF-21, RF-22, RF-23, RF-34, RF-69 — M — Toca API Laravel: sí
+- [x] **T8. Reglas puras de escritura y su test (phpunit).** RF-14, RF-20, RF-21, RF-22, RF-23, RF-34, RF-69 — M — Toca API Laravel: sí
   - Tests primero: `tests/Unit/EscrituraReglasTest.php` (sin Laravel ni base): tipo `control`/`telemedicina` (1/4; otro → inválido);
     fecha `AAAA-MM-DD` válida y la fecha clínica como `created_at`; edad; secciones de texto permitidas (motivo, datos subjetivos y
     objetivos, conductas, nota, hábitos, diuresis y catarsis, somnia) y `desconocidas`; texto con tildes, ñ, emojis, saltos de línea;
@@ -176,6 +176,22 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - Código: `app/Services/Salud360/EscrituraReglas.php` (sin base; usa `MapaClinica::columnaWeb`).
   - Hecho cuando: el test en verde (antes, en rojo) en la copia servida; `php -l` limpio; buscar `fn (`, propiedades tipadas, `DB::` y
     `medico_infos` en el archivo no da resultados; `tests/Unit` completo sigue en verde (469 tests al cierre de la L).
+  - **Resultado (2026-11-04): HECHA.** hclinica `e35d8e7` (rama `salud360-api`, sin push; solo `EscrituraReglas.php` y `EscrituraReglasTest.php`),
+    copiados a `HClinica-salud360` (idénticos por hash) y `route:clear`. Primero rojo (215 errores, la clase no existía) y después verde:
+    `EscrituraReglasTest` **215 tests, 828 aserciones**; `tests/Unit` completo **684 tests en verde** (469 + 215). `php -l` limpio y sin
+    `fn (`, propiedades tipadas, `DB::`, `Schema::` ni `medico_infos` en el archivo; 9 mutaciones del código (fecha con `$`, `0.00`,
+    cierre sobre `activo` 0, recorte, baja que repite, propiedad de la consulta, médico del cuerpo, bytes, mayor id) las detecta el test. Reglas
+    (todas estáticas, sin base, red ni reloj; reutilizan `MapaClinica` y `ConsultasReglas`): tipo 1/4 (RF-14), fecha clínica `AAAA-MM-DD` y
+    `created_at` (RF-14, RF-22), edad (255), clave de repetibilidad `c:<id>` de hasta 191 (RF-15), texto a escribir con vaciado a propósito
+    (RF-20, RF-69), `secciones` solo con lo presente y `desconocidas` (RF-20, RF-34), fila destino `activo = 1` de mayor id, examen físico
+    con `MapaClinica::columnaWeb`, `0.00` = vacío y `0`/`0.0` datos (RF-21), `crear`/`consultaNueva` a nombre del médico del token (RF-14),
+    `cierre` y `filasQueConfirmaElCierre` (RF-22, RF-23), `esMedico`/`autorizarRol` (RF-52) y `autorizarConsulta` (404, 403 `consulta_no_propia`,
+    409 `consulta_cerrada`, repetir; RF-52, RF-53). **Decisiones de contrato para revisar** (el porqué está en el KDoc de la clase): sin
+    recortar los extremos de un texto con contenido; texto en blanco = vaciado; nulo o no texto = 422 (nunca un vaciado); números JSON
+    en el examen rechazados (un `0.00` llegaría como `0`); tope de 65535
+    bytes por texto; fecha entre 1970-01-02 y 2038-01-18 (`timestamp`), sin exigir que sea pasada; edad en blanco al cerrar = no cambia; baja
+    de una consulta dada de baja y cierre de una cerrada = repetir; escribir sobre una dada de baja = 409 `consulta_cerrada` (no 404);
+    `dispositivo` lo valida T9.
 - [ ] **T9. Registro de lo recibido (`salud360_envios`) y su test.** RF-15, RF-52 — M — Toca API Laravel: sí
   - Tests primero: `tests/Unit/EnviosRegistroTest.php` (parte pura: validación de la clave y del dispositivo, armado de la fila,
     «ya registrada → misma respuesta»). Con base (script contra la base descartable): crea la tabla sola con `Schema::create` (privilegio
