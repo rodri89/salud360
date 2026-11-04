@@ -192,7 +192,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     bytes por texto; fecha entre 1970-01-02 y 2038-01-18 (`timestamp`), sin exigir que sea pasada; edad en blanco al cerrar = no cambia; baja
     de una consulta dada de baja y cierre de una cerrada = repetir; escribir sobre una dada de baja = 409 `consulta_cerrada` (no 404);
     `dispositivo` lo valida T9.
-- [ ] **T9. Registro de lo recibido (`salud360_envios`) y su test.** RF-15, RF-52 — M — Toca API Laravel: sí
+- [x] **T9. Registro de lo recibido (`salud360_envios`) y su test.** RF-15, RF-52 — M — Toca API Laravel: sí
   - Tests primero: `tests/Unit/EnviosRegistroTest.php` (parte pura: validación de la clave y del dispositivo, armado de la fila,
     «ya registrada → misma respuesta»). Con base (script contra la base descartable): crea la tabla sola con `Schema::create` (privilegio
     `CREATE`), `UNIQUE (user_id, clave)`; dos registros simultáneos de la misma clave → uno solo y los dos reciben lo mismo;
@@ -200,6 +200,27 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - Código: `app/Services/Salud360/EnviosRegistro.php` (sin vencimiento ni limpieza automática). **No toca columnas de tablas de la web.**
   - Hecho cuando: phpunit en verde; el script de base descartable (modo estricto y sin él) pasa; la tabla creada una sola vez; el
     respaldo de la base la incluye (nota en el `.md`).
+  - **Resultado (2026-11-04): HECHA.** hclinica `9819292` (rama `salud360-api`, sin push; solo `EnviosRegistro.php` y `EnviosRegistroTest.php`),
+    copiados a `HClinica-salud360` (idénticos por hash) y `route:clear`. Tabla **`salud360_envios`** (InnoDB, utf8mb4; `Schema::create` fuera de
+    toda transacción, nunca se altera): `id` bigint, `user_id` int unsigned, `dispositivo` varchar(100), `clave` varchar(191) **binaria**
+    (`utf8mb4_bin`), `tipo` varchar(20), `remoto_id` bigint unsigned null, `consulta_id` int unsigned null, `respuesta_json` text null,
+    `created_at`, `updated_at`; **único `(user_id, clave)`** (`salud360_envios_user_id_clave_unique`) e índice `(user_id, consulta_id)`.
+    Sin datos clínicos (ids, estado y lo que se le contestó a la app). Servicio: puras estáticas (`validarClave`, `validarDispositivo`,
+    `validarTipo`, `filaNueva`, `resultadoDeFila`, `esClaveRepetida`) y con base `asegurarTabla`, `buscar`, `registrar`, **`conTransaccion`**
+    (la escritura y su registro en la misma transacción; carrera: el segundo revierte todo, incluida la escritura de la web, lee lo del primero
+    y contesta lo mismo), `consultaCreadaPorLaApp`, `consultasCreadasPorLaApp`. **Cómo lo usa T10:** `conTransaccion($medico, $dispositivo,
+    $clave, 'consulta', function () { …escribe en la web…; return ['consulta_id' => $id, 'respuesta' => […]]; })` → `{repetida, registro,
+    resultado}`; `repetida = true` contesta `200` con `registro.respuesta`. **Pruebas:** `EnviosRegistroTest` 66 tests y `tests/Unit` completo
+    **750 en verde** (684 + 66; `hc_clinica` sigue con 68 tablas y sin `salud360_envios` tras correr toda la suite). Con base: script fuera
+    del repo `%TEMP%\opencode\t9reg\envios-con-base.php` contra la base descartable **`hc_clinica_t9`** (guardas: aborta si la base no es esa;
+    no se editó ningún `.env`), 79 controles OK en modo estricto y 79 sin él (creación, reintento, claves y médicos independientes, carrera
+    simulada con otra conexión, **carrera real con un proceso hijo bloqueado en el candado**, rollback si falla la escritura o el registro,
+    DDL dentro de transacción rechazado, consultas creadas por la app, tabla testigo de la web intacta); las 8 mutaciones del servicio
+    (sin manejo de la carrera, sin único, clave no binaria, sin lectura previa, MyISAM…) las detectó el script. `escritura-limpiar.sql` (T4) usa
+    `user_id` y `clave`: coincide, no hubo que cambiarlo. Pendiente de T14: la nota en `md/API_SALUD360_CLINICA.md` (tabla propia, privilegio `CREATE`, entra
+    en el respaldo). Decisiones de contrato: se aplicó la firma del plan (con `dispositivo`, que se valida y se guarda); `registrar` toma
+    `{remoto_id, consulta_id, respuesta}`; la clave es binaria (distingue mayúsculas); prefijos de clave `c r l p` (los de adjuntos, a definir en E4); dispositivo
+    `[A-Za-z0-9._:-]{1,100}`; respuesta de hasta 65535 bytes; `registrar` fuera de transacción devuelve lo existente, dentro relanza el choque.
 - [ ] **T10. Crear la consulta: servicio, controlador y ruta.** RF-12, RF-14, RF-15, RF-52, RF-59 — M — Toca API Laravel: sí
   - Código: `EscrituraService::crear` (en `DB::transaction`; `medico_id` = el del token, tipo, `created_at` = la fecha clínica del
     cuerpo, `edad_mostrar`, `activo = 2`, relleno con `ColumnasLegacy::vacias`; registra en `salud360_envios`; devuelve `otras_abiertas`

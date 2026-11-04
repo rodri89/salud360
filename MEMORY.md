@@ -12,7 +12,9 @@ registros de personas): el repo es público.
   línea base en %TEMP%\opencode\e0\linea-base.txt. **E0 cerrada; T6 hecha (2026-11-04):** la licencia del servidor T1–T7 de la 004 está en
   `hc-general` (9 cherry-picks `ba679f5` a `6d2cf4d`, más 3 tests de la 004 adaptados); `core:data` 1305 tests en verde y composeApp/features:auth wasm
   compilan. **T1 a T7 hechas; T8 hecha (2026-11-04): reglas puras de escritura en hclinica `e35d8e7` (`EscrituraReglas`, 215 tests; `tests/Unit` 684
-  en verde; copiado a la servida); sigue T9 (`salud360_envios`).** T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
+  en verde; copiado a la servida). T9 hecha (2026-11-04): `EnviosRegistro` en hclinica `9819292` (tabla propia `salud360_envios`, único
+  `(user_id, clave)`, `conTransaccion`; 66 tests, `tests/Unit` 750 en verde; probado con base en la descartable `hc_clinica_t9`, que sigue creada: borrar con
+  `DROP DATABASE hc_clinica_t9;` cuando haga falta); sigue T10.** T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
   HC general también lleva licencia, regla D25; sin código); falta avisar en `origin/main`. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
   tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). T9 de la 004 ya integrada en
   `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
@@ -244,7 +246,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `e35d8e7`, 005 T8), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `9819292`, 005 T9), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
