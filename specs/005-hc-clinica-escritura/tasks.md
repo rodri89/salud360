@@ -139,13 +139,19 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
 
 ## Precondición: licencia del servidor en `hc-general` (D22)
 - [ ] **T6. T9 de la spec 004: cherry-pick de T1 a T7 desde `origin/main` a `hc-general`.** RF-58 (D22) — M — Toca API Laravel: no
-  - **ADVERTENCIA: la T9 requiere pedido aparte del usuario según la spec 004 («NO hacer sin pedido del usuario»). Esta tarea queda
-    bloqueada hasta que lo pida; el plan no la ejecuta por su cuenta.** Pasos y cuadro de conflictos: `specs/004-licencia-del-servidor/
+  - **La T9 requería pedido aparte del usuario según la spec 004; lo hizo el 2026-11-04** (el plan no la ejecuta por su cuenta). Pasos y cuadro de conflictos: `specs/004-licencia-del-servidor/
     tasks.md` («Integración en `hc-general`»): los 9 commits en orden, sin merge; `HcBackend` sin reintroducir `traerPacientes`;
     parámetros nuevos de `AuthRepository` **después** de los de `hc-general`; `TobbException.cuerpo` al final; `cerrarPorLicencia` llama a
     `logout(token)`.
   - Hecho cuando: `.\gradlew :core:data:jvmTest` completo y `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde en `hc-general`;
     `docs/hc-pediatria-estado-y-plan.md` («Las licencias») actualizado; `MEMORY.md` al día.
+  - **Resultado (2026-11-04): SIN MARCAR, falta que `:core:data:jvmTest` compile y pase.** Los 9 cherry-picks están en `hc-general`
+    (`ba679f5`, `ec5835a`, `a01bcb1`, `bd41e0c`, `022674c`, `313a2f6`, `66a4886`, `9b3eb0c`, `6d2cf4d`), con los conflictos del cuadro resueltos como
+    dice (detalle en la T9 de la 004). `:features:auth:compileKotlinWasmJs` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`: salida 0. `jvmTest`
+    completo: **no compila** por 2 errores en tests de la 004 que el cuadro no prevé (`DataModuleLicenciaTest` no pasa `nombresHc` a `dataModule`;
+    `HcApiClientErrorTest` pasa `cuerpo` posicional donde `hc-general` ya tiene `errores`). Con ambos arreglados de forma temporal (revertida):
+    1305 tests, 1304 pasan y 1 falla (`DataModuleLicenciaTest.el_modulo_registra_solo_pediatria…` espera solo `pediatria` en `HcBackends` y
+    `hc-general` registra también `clinica`). Nada de eso se corrigió: decide el usuario. T7 sigue sin pedido.
 - [ ] **T7. Enmienda de texto a la spec 004 (D22/D25).** RF-58 — S — Toca API Laravel: no
   - Con el mismo pedido de T6: aplicar a la spec 004 la lista de `notas-para-el-plan.md` §7 (definiciones, RF-1 a RF-5, RF-7 a RF-9, RF-14,
     RF-15, RF-17 a RF-19, HU-2, casos límite 2, 5, 7 y 14, caso 10 y «Fuera de alcance»), **donde se integre la T9** y **avisando en

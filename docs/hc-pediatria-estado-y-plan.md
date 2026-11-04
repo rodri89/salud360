@@ -828,6 +828,12 @@ la izquierda con la fecha. El estado viaja por los atributos del pedido y no pid
 contenedor desde el controlador: `TobbAuthService` no está registrado como singleton, así que allá
 llegaría otra instancia, sin nada resuelto.
 
+**Quién decide al entrar.** El dispositivo ya no decide si hay conexión: al iniciar sesión y al recargar, la licencia la
+decide el servidor de pediatría (`auth/perfil`), antes de mostrar la app. La copia local solo se usa cuando el servidor
+no contesta (sin señal, tope de espera, error) y se pone al día con lo que contestó. El médico que no tiene ninguna fila
+de licencia (`licencia: null`) entra y solo se le frena la historia clínica de pediatría. Detalle en
+`specs/004-licencia-del-servidor/`.
+
 **Antes de subirlo hay que mirar las fechas.** Al quedar en línea, los médicos ya vinculados con la
 licencia vencida dejan de entrar por la app en el mismo momento (hoy son cuatro, y otros cinco entre los
 que faltan dar de alta). Es la regla pedida, pero conviene renovarlas antes y no descubrirlo con el
