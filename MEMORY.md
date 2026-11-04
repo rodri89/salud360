@@ -8,8 +8,8 @@ registros de personas): el repo es público.
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
-  detalladas, 47 tareas; E2 a E5 en lista); E0 en curso (T1 hecha: respaldo en la base descartable hc_clinica_respaldo, volcado en
-  %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
+  detalladas, 47 tareas; E2 a E5 en lista); E0 en curso: T1 y T2 hechas; datos de la L saldados salvo el fixture de la tanda S, que se limpia en T45
+  (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
   aparte). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
@@ -24,10 +24,9 @@ registros de personas): el repo es público.
   aprobación aparte) y la entrega E (escritura), que se especifica en la spec 005. Ojo: esta rama NO debe publicarse tal cual, porque dos
   commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
   reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
-- **Limpieza pendiente en la base local de clínica (datos de prueba):** la consulta de la web y sus filas hijas que creó E8.2, el PDF
-  de esa consulta (con su archivo) y la fila de `medico_infos` que hay que restaurar. Ids en
-  `%TEMP%\opencode\limpieza-ids-clinica.txt` (la línea base de `medico_infos` también está en `e82\linea-base-pre-web-filas.txt`).
-  De la spec 003: enfermedades «Prueba Salud360» 1/2/3, la lista vaciada del médico de prueba, los pacientes PRUEBA SALUD360 A-F, el
+- **Limpieza pendiente en la base local de clínica (datos de prueba):** ~~la consulta de la web de E8.2 con sus filas hijas, su PDF
+  y la fila de `medico_infos`~~ saldado en la T2 de la spec 005 (2026-11-04). Queda lo de la spec 003 (ids en
+  `%TEMP%\opencode\limpieza-ids-clinica.txt`): enfermedades «Prueba Salud360» 1/2/3, la lista vaciada del médico de prueba, los pacientes PRUEBA SALUD360 A-F, el
   perfil de prueba y sus `medico_enfermedades`: ver los archivos de apoyo en `%TEMP%\opencode` (`f37\ids-y-limpieza.txt`,
   `f37\lista-medico9-antes.txt`; también `e31`, `e82`, `lectura`, `respaldos`).
 - **Pediatría primero:** el servidor de pediatría lo subió el usuario a mano (8 archivos, verificado por GET sin token). Pendientes:

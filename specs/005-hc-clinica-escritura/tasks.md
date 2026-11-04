@@ -56,7 +56,7 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
     restaurada, 68 iguales y 0 distintas. Volcado de 2.921.584 bytes, sin `CREATE DATABASE` ni `USE`. Quedó la base descartable
     `hc_clinica_respaldo` (borrarla con `DROP DATABASE hc_clinica_respaldo;` cuando haga falta, no antes); volcado y
     `respaldo-verificacion.txt` en `%TEMP%\opencode\e0\`, fuera del repo. Sin datos sensibles: solo estructura y agregados.
-- [ ] **T2. Saldar la deuda de limpieza de la copia local — datos de la L.** D4 — M — Toca API Laravel: no
+- [x] **T2. Saldar la deuda de limpieza de la copia local — datos de la L.** D4 — M — Toca API Laravel: no
   - La lista exacta está en `MEMORY.md` («Limpieza pendiente en la base local de clínica»): una consulta de la web con sus filas
     hijas, un PDF de consulta con su archivo en disco, y la restauración de una fila de `medico_infos` a sus valores originales. **Se
     confirma la lista con el usuario antes de borrar nada.**
@@ -65,6 +65,15 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
   - Hecho cuando: los ids de la lista dan `COUNT(*) = 0` (y la fila de `medico_infos` vuelve a sus valores); el archivo del PDF
     de prueba borrado del disco; los conteos y sumas de las 68 tablas igualan a los de T1 **salvo exactamente** las filas borradas
     (diferencia explicada fila por fila en el archivo de apoyo).
+  - Resultado (2026-11-04): lista confirmada por el usuario. Ensayo con `ROLLBACK` (InnoDB, las 68 tablas idénticas al respaldo
+    después) y ejecución real con `COMMIT`: 11 hijas en tablas de la web + 1 PDF de consulta (12 filas con `consulta_id` de la
+    consulta; el recorrido de las 41 tablas con esa columna no halló más), la consulta (1) y `medico_infos` restaurada (1 fila, solo
+    `consulta_id`, `es_nueva_consulta` y `paciente_id`). El archivo del PDF (2,8 MB, SHA-256 verificado antes) estaba en
+    `public/img/` de la copia servida y se borró; las carpetas quedan. Frente al respaldo difieren exactamente 14 de las 68 tablas
+    (las 13 con filas borradas, −1 cada una, y `medico_infos` en esas 3 columnas); las otras 54, incluida `salud360_token_cache`
+    (3 filas de E8.2, fuera de la lista), idénticas. Las 13 vuelven al conteo y checksum de la línea base previa a E8.2;
+    `medico_infos` no vuelve al checksum de esa línea base (el `UPDATE` pedido toca solo 3 columnas; el resto, probablemente `updated_at`, conserva lo que escribió la web). Fixture de la tanda S sin tocar. Detalle por tabla en
+    `%TEMP%\opencode\e0\t2-resultado.txt`, fuera del repo.
 - [ ] **T3. Saldar la deuda de limpieza de la copia local — datos de la spec 003.** D4 — M — Toca API Laravel: no
   - Enfermedades «Prueba Salud360», la lista vaciada del médico de prueba (restaurar sus filas inactivas con `UPDATE` puntual, según
     `%TEMP%\opencode\f37\limpieza.sql` y `estado-inicial.txt`), pacientes «PRUEBA SALUD360» A a F, el perfil de prueba y el vínculo
