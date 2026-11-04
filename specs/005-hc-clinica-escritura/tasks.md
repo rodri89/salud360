@@ -114,11 +114,21 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
     inexistente, lista mal formada y hija de otro paciente (sin borrar nada, salida con error); no toca `medico_infos` y deja la ficha si
     le queda algo colgado. Sobre `hc_clinica` solo se corrieron los de solo lectura: sin cambios. `limpiar` supone `user_id` y `clave` en
     `salud360_envios` (aún no existe): confirmar al llegar a T8/T40.
-- [ ] **T5. Línea base y cierre de E0.** D4 — S — Toca API Laravel: no
+- [x] **T5. Línea base y cierre de E0.** D4 — S — Toca API Laravel: no (hecha la línea base y la verificación del entorno; **el cierre de E0
+  sigue PENDIENTE de la confirmación del usuario**)
   - Línea base de conteos y sumas de las 68 tablas **antes** de E1; definir con el usuario el médico de prueba local y confirmar el
     documento libre del paciente «PRUEBA SALUD360» que usarán los E2E; `MEMORY.md` actualizado (sin datos sensibles).
   - Hecho cuando: archivo `%TEMP%\opencode\e0\linea-base.txt`; el usuario confirma E0 cerrada; la deuda de la L y de la 003 figura
     saldada en `MEMORY.md`.
+  - Resultado (2026-11-04): `%TEMP%\opencode\e0\linea-base.txt` (fuera del repo, solo lectura, sin datos de filas): filas y `CHECKSUM TABLE`
+    de las 68 tablas (23.643 filas), `escritura-suma.sql` y `lectura\suma.sql`, con las excepciones conocidas en la cabecera. Medido dos veces:
+    salidas idénticas byte a byte (también `salud360_token_cache`). Frente a `hc_clinica_respaldo` difieren 19 tablas (las de T2 y T3), sin
+    otras. Entorno de E1 verificado sin tocarlo: Apache y MySQL vivos; la copia servida de hclinica y el clon (`salud360-api`, HEAD
+    `64849c9`, sin cambios sin commitear) tienen los mismos 24 archivos de `Api/Salud360`, `Services/Salud360` y `routes` (SHA-256; la servida
+    no es un repo git); el médico de prueba existe en ambas bases, activo, con perfil de la app 2 y licencia vigente; el documento 99000900
+    está libre en ambas bases; conteos de médicos por `users.perfil` de la web para T11 anotados.
+  - **PENDIENTE (no dado por hecho):** (a) «el usuario confirma E0 cerrada»; (b) que el usuario confirme el médico de prueba y el documento
+    99000900 para los E2E (están verificados, no confirmados). E1 no empieza hasta (a); T6 (T9 de la 004) además requiere pedido aparte.
 
 ---
 

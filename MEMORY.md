@@ -8,7 +8,8 @@ registros de personas): el repo es público.
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
-  detalladas, 47 tareas; E2 a E5 en lista); E0 en curso: T1 a T4 hechas; datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
+  detalladas, 47 tareas; E2 a E5 en lista); E0: T1 a T5 hechas, a la espera de que el usuario confirme el cierre; línea base en
+  %TEMP%\opencode\e0\linea-base.txt; T6 (T9 de la 004) requiere pedido aparte. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
   tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
   aparte). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
