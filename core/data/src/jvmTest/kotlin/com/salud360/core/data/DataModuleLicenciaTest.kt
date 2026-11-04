@@ -5,6 +5,7 @@ import com.russhwolf.settings.Settings
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.repos.AuthRepository
+import com.salud360.core.data.repos.EstadoLicenciaRemoto
 import com.salud360.core.data.repos.HcBackends
 import com.salud360.core.data.repos.ResultadoLogin
 import com.salud360.core.data.repos.hoy
@@ -13,6 +14,7 @@ import com.salud360.core.database.Salud360Db
 import com.salud360.core.database.createDatabase
 import com.salud360.core.model.auth.Credenciales
 import com.salud360.core.model.auth.Licencia
+import com.salud360.core.model.especialidad.CodigosHc
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
@@ -55,12 +57,23 @@ class DataModuleLicenciaTest {
     private val vencida = """{"ok":false,"mensaje":"rechazo de prueba","codigo":"licencia_vencida","licencia":{"vence":"$ayer","vencida":true}}"""
 
     @Test
-    fun el_modulo_registra_solo_pediatria_como_backend_con_licencia_y_no_pide_nada_al_armarse() = runBlocking {
+    fun el_modulo_registra_pediatria_con_licencia_y_clinica_de_solo_lectura_y_no_pide_nada_al_armarse() = runBlocking {
         escena { e ->
             val app = e.koin()
-            assertEquals(setOf("pediatria"), app.get<HcBackends>().porEspecialidad.keys, "ni clínica ni ninguna otra HC")
+            val backends = app.get<HcBackends>().porEspecialidad
+            assertEquals(setOf("pediatria", "clinica"), backends.keys, "pediatría y la HC general; ninguna otra HC")
             assertNotNull(app.get<AuthRepository>())
             assertEquals(0, e.turnos.pedidos.get() + e.pediatria.pedidos.get() + e.clinica.pedidos.get(), "armar el grafo no pide nada a la red")
+
+            // Solo pediatría lleva licencia: clínica es de solo lectura y contesta «sin dato» sin pedir nada.
+            val clinica = backends.getValue("clinica")
+            assertTrue(clinica.soloLectura, "la HC general es de solo lectura")
+            assertEquals(EstadoLicenciaRemoto.SinDato, clinica.licenciaDelServidor())
+            assertEquals(0, e.clinica.pedidos.get(), "consultar la licencia de clínica no pide nada")
+
+            e.pediatria.cuerpo = vigente
+            assertIs<EstadoLicenciaRemoto.Vigente>(backends.getValue("pediatria").licenciaDelServidor())
+            assertEquals(1, e.pediatria.pedidos.get(), "pediatría sí consulta la licencia, con un solo pedido")
         }
     }
 
@@ -207,7 +220,7 @@ class DataModuleLicenciaTest {
 
         /** Un grafo de Koin nuevo sobre la misma base (como una app recién abierta): `AuthRepository` sin memoria. */
         fun koin(): Koin {
-            val app = koinApplication { modules(dataModule(db, config), module { single<Settings> { settings } }) }
+            val app = koinApplication { modules(dataModule(db, config, mapOf("pediatria" to "Pediatría", CodigosHc.GENERAL to "Clínica general")), module { single<Settings> { settings } }) }
             apps += app
             return app.koin
         }

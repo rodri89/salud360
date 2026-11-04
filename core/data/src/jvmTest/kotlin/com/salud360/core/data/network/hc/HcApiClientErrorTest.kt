@@ -169,7 +169,7 @@ class HcApiClientErrorTest {
         val cuerpo = JsonObject(mapOf("licencia" to JsonNull))
         val e = TobbException(403, "licencia_vencida", "m", cuerpo = cuerpo)
         assertEquals(cuerpo, e.cuerpo)
-        assertEquals(cuerpo, TobbException(403, "licencia_vencida", "m", cuerpo).cuerpo)
+        assertEquals(cuerpo, TobbException(403, "licencia_vencida", "m", cuerpo = cuerpo).cuerpo)
     }
 
     // ---- Armado ----
