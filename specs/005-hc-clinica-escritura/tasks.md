@@ -74,13 +74,28 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
     (3 filas de E8.2, fuera de la lista), idénticas. Las 13 vuelven al conteo y checksum de la línea base previa a E8.2;
     `medico_infos` no vuelve al checksum de esa línea base (el `UPDATE` pedido toca solo 3 columnas; el resto, probablemente `updated_at`, conserva lo que escribió la web). Fixture de la tanda S sin tocar. Detalle por tabla en
     `%TEMP%\opencode\e0\t2-resultado.txt`, fuera del repo.
-- [ ] **T3. Saldar la deuda de limpieza de la copia local — datos de la spec 003.** D4 — M — Toca API Laravel: no
+- [x] **T3. Saldar la deuda de limpieza de la copia local — datos de la spec 003.** D4 — M — Toca API Laravel: no
   - Enfermedades «Prueba Salud360», la lista vaciada del médico de prueba (restaurar sus filas inactivas con `UPDATE` puntual, según
     `%TEMP%\opencode\f37\limpieza.sql` y `estado-inicial.txt`), pacientes «PRUEBA SALUD360» A a F, el perfil de prueba y el vínculo
     del médico con él; antes, mirar en el registro de Apache a qué pacientes y enfermedades apuntan los `PUT enfermedades/…` de esas
     pruebas, para restaurar esas marcas. **Confirmar la lista con el usuario.**
   - Hecho cuando: los totales de las tablas de enfermedades, pacientes y `medico_enfermedades` vuelven al estado inicial anotado en
     `estado-inicial.txt`; `limpieza.sql` aplicado y archivado; conteos de las 68 tablas explicados contra T2.
+  - Resultado (2026-11-04), **hecha con excepciones al «Hecho cuando» por decisión del usuario del mismo día.** Alcance autorizado: solo
+    enfermedades, `medico_enfermedades`, pacientes y sus hijas. Antes de borrar se vio con el registro de Apache que los 9 `PUT
+    enfermedades/pacientes/…` del 26 y 27 de octubre apuntaban solo a 2 fichas de prueba (ningún paciente real): sus 4 marcas no existían
+    antes y se fueron con las fichas. Ensayo con `ROLLBACK` (las 68 tablas idénticas después) y ejecución real con `COMMIT`: 6
+    `medico_enfermedades` (las que creó la prueba; se borraron en vez de reactivarse, para volver al estado inicial), 4
+    `paciente_enfermedades`, 5 `medico_pacientes`, 5 pacientes de prueba y 3 enfermedades «Prueba Salud360»; cero consultas ni otras
+    hijas (recorridas las 47 tablas con `paciente_id`). Totales: `enfermedades` 29, `medico_enfermedades` 29, `paciente_enfermedades`
+    1925 activas y 30 inactivas, `pacientes` 1395 y `medico_pacientes` 1400 (= inicial + fixture de la tanda S, que no se tocó: 2
+    pacientes y 1 cartera). Frente al respaldo difieren 19 de las 68 tablas: las 14 de T2 y estas 5, −3, −6, −4, −5 y −5 filas; las otras 49,
+    incluidas `salud360_token_cache` y las de perfiles, idénticas. Detalle en `%TEMP%\opencode\e0\t3-resultado.txt`, fuera del repo.
+  - **Excepciones y lo NO saldado:** (1) el perfil de prueba 4 se **conservó** (con sus pestañas y secciones); (2) el médico de prueba
+    **sigue con el perfil 2** (el original era el 1); (3) el **perfil 2 (Hepatología) NO está como al inicio**: se editó el 26/10 con 2
+    `PUT` a `config/perfiles/2` y hoy no tiene las 17 secciones de la carga inicial (tiene 5); es reconstruible desde la carga inicial de
+    perfiles de hclinica y el usuario decidió no tocarlo: **NO SALDADO**; (4) los pacientes E y F de la prueba (en `turnosonlinebb`) no
+    se tocaron. Por eso los totales de perfiles (3 perfiles, 6 pestañas, 29 secciones) **no** vuelven al estado inicial (2, 4 y 29).
 - [ ] **T4. Scripts de la escritura: cargar, contar, sumar y limpiar por id.** D4, RF-15, RF-16 — M — Toca API Laravel: no
   - En `%TEMP%\opencode\e0\`: `escritura-contar.sql` (conteos de las tablas de consulta y de las hijas por `consulta_id` y por
     `paciente_id` de prueba, más `salud360_envios` si existe), `escritura-suma.sql` (`CHECKSUM TABLE` de las tablas que la escritura

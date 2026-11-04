@@ -8,8 +8,8 @@ registros de personas): el repo es público.
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
-  detalladas, 47 tareas; E2 a E5 en lista); E0 en curso: T1 y T2 hechas; datos de la L saldados salvo el fixture de la tanda S, que se limpia en T45
-  (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
+  detalladas, 47 tareas; E2 a E5 en lista); E0 en curso: T1 a T3 hechas; datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
+  tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
   aparte). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
@@ -24,11 +24,13 @@ registros de personas): el repo es público.
   aprobación aparte) y la entrega E (escritura), que se especifica en la spec 005. Ojo: esta rama NO debe publicarse tal cual, porque dos
   commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
   reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
-- **Limpieza pendiente en la base local de clínica (datos de prueba):** ~~la consulta de la web de E8.2 con sus filas hijas, su PDF
-  y la fila de `medico_infos`~~ saldado en la T2 de la spec 005 (2026-11-04). Queda lo de la spec 003 (ids en
-  `%TEMP%\opencode\limpieza-ids-clinica.txt`): enfermedades «Prueba Salud360» 1/2/3, la lista vaciada del médico de prueba, los pacientes PRUEBA SALUD360 A-F, el
-  perfil de prueba y sus `medico_enfermedades`: ver los archivos de apoyo en `%TEMP%\opencode` (`f37\ids-y-limpieza.txt`,
-  `f37\lista-medico9-antes.txt`; también `e31`, `e82`, `lectura`, `respaldos`).
+- **Limpieza pendiente en la base local de clínica (datos de prueba):** lo de la L (consulta de la web de E8.2) quedó saldado en la T2
+  y lo de la 003 (enfermedades «Prueba Salud360», lista del médico de prueba, fichas de prueba con sus carteras y marcas) en la T3 de la
+  spec 005 (2026-11-04; detalle en `%TEMP%\opencode\e0\t3-resultado.txt`). **NO saldado, por decisión del usuario:** (1) el perfil 2
+  (Hepatología) está alterado: se editó el 26/10 y tiene 5 secciones en vez de las 17 de la carga inicial (reconstruible desde la carga
+  inicial de perfiles de hclinica); (2) el perfil de prueba 4 se conserva; (3) el médico de prueba sigue asignado al perfil 2 (el original
+  era el 1); (4) los pacientes E y F de la prueba siguen en `turnosonlinebb`; (5) el fixture de la tanda S sigue cargado y se limpia en T45.
+  Por eso los totales de perfiles (3, 6 y 29) no son los iniciales (2, 4 y 29).
 - **Pediatría primero:** el servidor de pediatría lo subió el usuario a mano (8 archivos, verificado por GET sin token). Pendientes:
   licencias (revisar las fechas reales), `APP_DEBUG=false` en pediatría y en hclinica, 10 médicos sin alta, y el cambio de licencia
   (la app debe leer la licencia del servidor al entrar, no la copia local), que va en una rama aparte (`pediatria-licencia-servidor`,
@@ -201,14 +203,11 @@ registros de personas): el repo es público.
   crear enfermedades (M3: el log de Apache no tiene ningún `POST enfermedades`), M4 puntos 1, 3 y 4, M5, M6, M7 salvo la
   consulta cerrada y «Datos», y M8 (cierre de sesión con conteo de tokens). Confirmado por el usuario: M2 puntos 1 y 2 y
   M3 agregar, quitar y marcar. Detalle en la nota de F3.7.
-- **DEUDA, no un olvido: limpieza de datos de prueba de F3.7 sin hacer.** La base local `hc_clinica` no volvió al
-  estado inicial: enfermedades "Prueba Salud360 1/2/3", la lista del médico de prueba vaciada por `UPDATE` (6 filas
-  inactivas), marcas en el paciente de prueba A y en otros, pacientes "PRUEBA SALUD360 A" a "F", un perfil de prueba
-  (4), el médico de prueba con el perfil 2 (el original es el 1) y totales distintos de los iniciales. Archivos fuera
-  del repo en `%TEMP%\opencode\f37` (`estado-inicial.txt`, `ids-y-limpieza.txt`, `lista-medico9-antes.txt`,
-  `limpieza.sql`). Se hace al final y **antes** hay que mirar en el log de Apache a qué pacientes y enfermedades
-  apuntan los 9 `PUT enfermedades/pacientes/{n}/{n}` del 26 y 27 de octubre, para restaurar esas marcas. La tanda S
-  usa la misma base: no mezclar su fixture con estos datos.
+- **Limpieza de datos de prueba de F3.7: hecha en la T3 de la spec 005 (2026-11-04), con excepciones.** Enfermedades, lista del
+  médico de prueba, fichas, carteras y marcas están en los totales iniciales (los 9 `PUT` apuntaban solo a fichas de prueba). Quedan
+  sin saldar el perfil 2 alterado, el perfil de prueba conservado, la asignación del médico al perfil 2 y los pacientes E y F en turnos
+  (ver «Limpieza pendiente» arriba). Archivos de apoyo fuera del repo en `%TEMP%\opencode\f37` y `e0`. La tanda S usa la misma base:
+  no mezclar su fixture con estos datos.
 - **Spec 001 (perfiles configurables): completa.** T52 (prueba manual de la tanda D) cerrada con excepciones el
   2026-10-28: confirmado que no hay error de migración, que hay una sola HC «Clínica» con el perfil Hepatología y que una
   consulta creada con un perfil se ve al cambiar de perfil; sin comparar antes/después (la base ya estaba migrada al
