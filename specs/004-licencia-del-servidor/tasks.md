@@ -596,11 +596,10 @@ pediatría solo `GET auth/perfil`, `OPTIONS` y, del panel del administrador, `GE
 `salud360_token_cache`: esperado.
 
 ## Integración en `hc-general` — NO hacer sin pedido del usuario
-- [ ] **T9. Cherry-pick a `hc-general`.** Tamaño M (~30 min), aparte. Pasos y conflictos esperables en `plan.md`
+- [x] **T9. Cherry-pick a `hc-general`.** Tamaño M (~30 min), aparte. Pasos y conflictos esperables en `plan.md`
   («Integración posterior»). Hecho cuando: `.\gradlew :core:data:jvmTest` completo y `:composeApp:compileKotlinWasmJs` en verde en
   `hc-general`; `cerrarPorLicencia` llama a `logout(token)` en `login`; `docs/hc-pediatria-estado-y-plan.md` actualizado; `MEMORY.md` al día.
-  - **Resultado (2026-11-04, `hc-general`; pedido por el usuario el mismo día): cherry-picks hechos y compilaciones en verde, pero `:core:data:jvmTest`
-    NO está en verde, así que T9 sigue SIN marcar.** Los 9 commits entraron con `cherry-pick -x`, en orden y sin merge:
+  - **Resultado final (2026-11-04, `hc-general`; pedido y autorizado por el usuario el mismo día): HECHA.** Los 9 commits entraron con `cherry-pick -x`, en orden y sin merge:
     `920d206`→`ba679f5`, `3fc1a24`→`ec5835a`, `98ef156`→`a01bcb1`, `4096bf7`→`bd41e0c`, `3de1538`→`022674c`, `e3817c6`→`313a2f6`,
     `0e4e266`→`66a4886`, `a8b6f93`→`9b3eb0c`, `4a26625`→`6d2cf4d`. Comparados parche a parche con los originales (solo líneas `+`/`-`): las únicas
     diferencias están en los archivos del cuadro.
@@ -614,14 +613,16 @@ pediatría solo `GET auth/perfil`, `OPTIONS` y, del panel del administrador, `GE
       `HcPediatriaBackend.kt`. `restaurar`, `refrescarPerfilRemoto` y `refrescarPerfil` llaman `logout()` sin token (vía `cerrarPorLicencia()`),
       `logout` mantiene `memoriaLicencia = null`, `HcClinicaBackend` no cambió (solo lectura, default `SinDato`).
     - **Compilaciones (`-Pentorno=dev`, nunca `build`):** `:features:auth:compileKotlinWasmJs` salida 0; `:composeApp:compileKotlinWasmJs` salida 0.
-    - **Tests: `:core:data:jvmTest` no compila (`compileTestKotlinJvm`), por 2 errores en tests de ESTA spec que el cuadro no prevé:**
-      (1) `DataModuleLicenciaTest.kt:210`: `dataModule(db, config)` sin el parámetro `nombresHc` que `hc-general` agregó a `dataModule`;
-      (2) `HcApiClientErrorTest.kt:172`: `TobbException(403, "licencia_vencida", "m", cuerpo)` pasa `cuerpo` posicional como cuarto argumento, que en
-      `hc-general` es `errores`. Con ambos arreglados **solo en el árbol de trabajo y revertidos después, sin commit**
-      (`dataModule(db, config, emptyMap())` y `cuerpo = cuerpo`) corren **1305 tests: 1304 pasan, 1 falla, 0 salteados**. La que falla es
-      `DataModuleLicenciaTest.el_modulo_registra_solo_pediatria_como_backend_con_licencia_y_no_pide_nada_al_armarse` (pide `setOf("pediatria")` y `hc-general`
-      registra también `clinica`, de solo lectura, como anticipa el cuadro); no es un fallo de la regla (el test «login por Koin consulta a pediatría y
-      no a clínica» pasa). No se corrigió ningún test: queda decidir el arreglo de esos tres y volver a correr `jvmTest` completo antes de marcar T9.
+    - **Tests:** `:core:data:jvmTest` completo, con `-Pkotlin.compiler.execution.strategy=in-process`: **1305 tests, 1305 pasan, 0 fallan, 0 salteados** (87 clases;
+      los E2E se saltean solos sin propiedades). Al principio **no compilaba** por 2 tests de esta spec que el cuadro no preveía, y uno fallaba; se adaptaron
+      los tres, como cambio mínimo de integración que no debilita lo que prueban (commit `tests:` aparte): (1) `DataModuleLicenciaTest` pasa a `dataModule`
+      el parámetro `nombresHc` que agregó `hc-general`, con el mismo mapa de `DataModuleClinicaTest`; (2) `HcApiClientErrorTest` pasa `cuerpo = cuerpo` por
+      nombre (en `hc-general` `errores` y `candidatos` van antes); (3) `el_modulo_registra_solo_pediatria…` se reescribió como
+      `el_modulo_registra_pediatria_con_licencia_y_clinica_de_solo_lectura_y_no_pide_nada_al_armarse`: `HcBackends` ahora trae `pediatria` y `clinica`
+      (solo lectura, `soloLectura = true`), armar el módulo no hace ningún pedido, `clinica.licenciaDelServidor()` es `SinDato` sin pedir nada y
+      pediatría es la única que consulta (`Vigente`, un pedido). Ningún otro test ni código de producción se tocó.
+    - **Único añadido de la integración al código:** `cerrarPorLicencia` recibe el parámetro opcional `tokenARevocar` (default `null`) y llama a
+      `logout(tokenARevocar)`, para cumplir el cuadro (`login` pasa `r.token`; `restaurar` y `refrescarPerfil` no pasan token).
     - Gradle: la primera corrida se colgó 25 min en `:core:data:compileKotlinJvm` (daemon de Kotlin viejo, como en T8); se la cortó y se reintentó con
       `-Pkotlin.compiler.execution.strategy=in-process`, sin tocar el `devWeb` del usuario.
   - **Cuadro de conflictos esperables, por tarea** (detalle de `plan.md`, «Integración posterior», que el revisor pidió dejar acá, 2026-11-03). Orden de cherry-pick: los 9 commits

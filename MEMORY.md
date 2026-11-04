@@ -9,11 +9,11 @@ registros de personas): el repo es público.
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
   detalladas, 47 tareas; E2 a E5 en lista); **E0 cerrada por el usuario el 2026-11-04** (médico de prueba y documento libre confirmados);
-  línea base en %TEMP%\opencode\e0\linea-base.txt. **T6 a medias (2026-11-04):** los 9 commits de la licencia del servidor (T1 a T7 de
-  la 004) están cherry-pickeados en `hc-general` (`ba679f5` a `6d2cf4d`) y composeApp/features:auth wasm compilan, pero `:core:data:jvmTest`
-  no compila por 2 tests de la 004 que no encajan con `hc-general` (y 1 falla más): T6 sigue sin marcar hasta decidir ese arreglo; T7 después. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
-  tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). Antes de E1: T9 de la 004 (requiere pedido
-  aparte). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
+  línea base en %TEMP%\opencode\e0\linea-base.txt. **E0 cerrada; T6 hecha (2026-11-04):** la licencia del servidor T1–T7 de la 004 está en
+  `hc-general` (9 cherry-picks `ba679f5` a `6d2cf4d`, más 3 tests de la 004 adaptados); `core:data` 1305 tests en verde y composeApp/features:auth wasm
+  compilan. **Siguiente: T7** (enmienda de texto a la 004, con pedido). Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
+  tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). T9 de la 004 ya integrada en
+  `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
@@ -66,8 +66,7 @@ registros de personas): el repo es público.
   servidor falso y M9). **T8 hecha, parte técnica (2026-11-03, sin commit de código):** `core:data` 169 en verde, `features:auth` y `composeApp`
   wasm (klib, `-Pentorno=dev`) compilan, diff acotado a `core/data` (13 archivos, sin esquema, build ni servidores); `core:crecimiento:jvmTest`
   no corrió (Gradle colgado en su `compileKotlinJvm`, sin relación con el diff). Falta el reviewer (corrida aparte), la prueba manual M1 a M10 y
-  aprobación aparte para publicar. **T9 (cherry-pick a `hc-general`) hecha a medias el 2026-11-04:** commits y compilaciones listos, falta arreglar
-  los tests (ver la nota de T9 en `tasks.md`). **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
+  aprobación aparte para publicar. **T9 hecha en hc-general el 2026-11-04** (cherry-picks, 3 tests adaptados, `core:data` 1305 en verde; nota en `tasks.md`). **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
   borra esa base; usar otro puerto (script de Gradle en `%TEMP%\opencode\t8`, comando y M1 a M10 en `tasks.md`). En el árbol publicado nada lee
   `local.properties`: las URLs locales van con `-P`. Médico de prueba con pediatría y licencia: el 1 de turnos. El árbol publicado tenía 43 tests en `core:data`.
   **Checklist reescrita (2026-11-03, solo doc):** el revisor aprobó con observaciones (H1 a H5, M10 y H6 [documentar `licencia`/`licencia_vencida` en
@@ -322,7 +321,9 @@ registros de personas): el repo es público.
   servicio que `admin_hc_medico` (desactiva, no borra); el HC del médico queda sin `dirty`.
 
 ## Aprendizajes y errores a evitar
-- Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto.
+- Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto. Si se cuelga en un
+  `compileKotlinJvm` sin CPU (daemon de Kotlin viejo), cortar solo el cliente y el daemon propios (no el del `devWeb`) y reintentar con
+  `-Pkotlin.compiler.execution.strategy=in-process`.
 - Las URLs del entorno se pisan por máquina desde `local.properties` (no versionado), con las mismas claves que
   `gradle.properties`: precedencia `-P` > `local.properties` > `gradle.properties`. En esta compu apunta al XAMPP
   (turnos y HC clínica); en la Mac sigue mandando el MAMP `:8888` de `gradle.properties`. `release` no se altera.
