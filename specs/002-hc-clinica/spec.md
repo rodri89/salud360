@@ -307,7 +307,10 @@ Reparto de los RF que ya existían (ninguno se pierde):
   suma ninguna llamada de ese tipo.)
 - RF-50: CUANDO la web atiende un pedido de lectura de la app, EL SISTEMA no crea, no modifica ni borra ningún dato
   clínico ni de pacientes, ni lo que la web usa para saber qué paciente y qué consulta está mirando el médico en su
-  pantalla; lo único que se registra es la sesión.
+  pantalla. Además de la sesión, solo se registra lo que necesita el control de acceso y el propio servidor de la app: la caché
+  de sesiones, la baja de la licencia vencida, la lista de médicos sin vincular y las tablas propias de la API (incluido el
+  registro de lo recibido, cuando se escribe), sin tocar datos clínicos ni de pacientes. (Aprobado el 2026-11-04, spec 005 D17;
+  antes decía «lo único que se registra es la sesión».)
 - RF-51: EL SISTEMA responde las lecturas solo a médicos, solo de pacientes de su cartera; a un administrador, a una
   secretaria o por un paciente fuera de la cartera responde que no corresponde, sin devolver datos.
 

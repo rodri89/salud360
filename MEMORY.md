@@ -7,11 +7,9 @@ registros de personas): el repo es público.
 ## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
-- **Spec 005 (escritura de la HC general), borrador listo para aprobación (2026-11-04):** D1 a D27 decididas; dos clarificaciones del
-  reviewer hechas; D3 autoriza las rutas de escritura de hclinica solo en la copia local; migraciones nuevas aprobadas: marca de
-  histórico/propio en E1 y identificador de la web en laboratorio y pendiente en E3 (números a reservar mirando todas las ramas);
-  licencia de la HC general desde E1 (enmienda a la 004 propuesta, no aplicada); se publica recién con E1 a E3 cerradas. Pendiente:
-  aprobación de la spec por el usuario (dudas menores D17, D19, D24), luego plan y tareas.
+- **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan.md y tasks.md en borrador (E0 y E1
+  detalladas, 47 tareas; E2 a E5 en lista), a la espera de aprobación del usuario. Antes de E1: T9 de la 004 (requiere pedido
+  aparte). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de

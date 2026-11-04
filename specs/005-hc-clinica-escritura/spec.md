@@ -1,9 +1,9 @@
 # Spec 005 — La HC general escribe sus consultas en la base de la web (entrega E de la 002)
 
-Estado: **borrador, listo para la aprobación del usuario**: no queda ninguna duda bloqueante. Decisiones D1 a D15 (2026-11-03) y
-D16, D18, D20 a D23, D25 a D27 (2026-11-04); pasó dos clarificaciones y la última corrección. Quedan tres dudas menores con
-recomendación y alternativa (D17, D19, D24), que se pueden aprobar junto con la spec. Sin plan ni tareas. Lleva una **enmienda
-propuesta a la spec 004** (D22), no aplicada.
+Estado: **aprobada por el usuario el 2026-11-04**. Decisiones D1 a D15 (2026-11-03) y D16 a D27 (2026-11-04); pasó dos
+clarificaciones y la corrección final, y el usuario resolvió D17, D19 y D24 al aprobar: **no queda ninguna duda abierta**. El plan
+y las tareas están en borrador (`plan.md`, `tasks.md`). Lleva una **enmienda a la spec 004** (D22), todavía no aplicada a la 004:
+el plan la trata como tarea.
 Depende de la spec 002 (parte 1: pacientes y cartera; entrega L: lectura, implementada y validada en local, falta el reviewer
 y producción), de la 001 (qué secciones ve cada médico lo decide su perfil), de la 003 (el patrón de una sección que escribe
 contra la API de la web, el vínculo de pacientes y la pantalla de elegir ficha) y de la 004 (licencia que informa el servidor,
@@ -104,7 +104,7 @@ se publica recién con E1 a E3 cerradas** (D23); E4 y E5 pueden ir después. Pub
 | **E1** | Crear la consulta; textos; examen físico; cerrar, anular; el envío (diferido, sin conexión, sin duplicar, rechazo); histórico del dispositivo; candado por sección; la licencia de la HC general en el ingreso y el panel de licencias sin regresión (D22) | RF-1 a RF-34, RF-50 a RF-69 | **sí, chica: marca de histórico/propio (D26)** | crear, secciones, examen, cerrar, baja; registro de lo recibido (D21) |
 | **E2** | Formularios y listas sin migración: alimentación, antecedentes familiares, serologías, Child-Pugh, los 5 estudios, exámenes complementarios, interconsultas | RF-35 a RF-40, RF-70 | no | formularios y listas; baja de exámenes e interconsultas (capacidad nueva) |
 | **E3** | Laboratorio general y reducido, peso y pendientes | RF-41 a RF-43 | **sí: identificador de la web en laboratorio y pendiente (D8), distinta de la de E1** | laboratorio, peso, pendientes |
-| **E4** | Adjuntos (PDF y, si D24 lo confirma, fotos); es lo primero que se recorta (D12) | RF-44 a RF-46 | no | subir, bajar, borrar, límites del hosting |
+| **E4** | Adjuntos (PDF y fotos de exámenes complementarios, estas solo si se verifica que la web las muestra, D24); es lo primero que se recorta (D12) | RF-44 a RF-46 | no | subir, bajar, borrar, límites del hosting |
 | **E5** | Aviso de vencimiento y panel de licencias de la HC general (D11); el ingreso ya está en E1 (D22) | RF-47 a RF-49 | no (D11) | administración de licencias |
 
 Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partición:
@@ -382,7 +382,8 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
   adjunto a medias ni duplicado al reintentar (002 RF-30; D21). SI el archivo supera el límite —el menor entre el máximo que la web
   de hclinica ya acepta para sus PDF y el que acepta el hosting—, ENTONCES EL SISTEMA lo dice antes de subirlo y no lo da por
   enviado. El límite del hosting se mide en local; leerlo en producción solo se hace cuando el usuario apruebe la etapa de
-  producción de la escritura, y sin escribir allá (D12, D18). Las fotos de consulta entran solo si D24 lo confirma.
+  producción de la escritura, y sin escribir allá (D12, D18). Las fotos de exámenes complementarios entran solo si se verifica que la web las muestra; las demás fotos
+  quedan afuera (D24).
 - RF-45: CUANDO el médico abre una consulta con adjuntos cargados desde la web, EL SISTEMA los lista y permite abrirlos, bajándolos
   con la sesión del médico y nunca por un enlace público (002 RF-31); hoy la lectura solo avisa que existen.
 - RF-46: CUANDO el médico borra un adjunto propio ya subido, EL SISTEMA lo da de baja en la web y deja de mostrarlo en ambas;
@@ -633,32 +634,25 @@ Cada una con la alternativa descartada.
   plan. *Descartado:* que el vacío nunca se envíe (el médico no podría borrar un texto de la web desde la app). Es una acción
   deliberada, por lo que no contradice el punto 3 de la constitución.
 
-## Dudas abiertas
-Ninguna bloquea la aprobación. Cada una trae la recomendación del planificador y la alternativa.
+## Decididas al aprobar (2026-11-04, usuario)
+- **D17 — RF-50 de la 002.** Se enumera lo que el middleware escribe: la última cláusula del RF-50 de la 002 pasa a listar lo que
+  se registra además de la sesión —la caché de sesiones, la baja de la licencia vencida, la lista de médicos sin vincular y las
+  tablas propias de la API, incluido el registro de lo recibido—, sin tocar datos clínicos ni de pacientes. Aplicado en la 002.
+  *Descartado:* dejar la frase como estaba (inexacta) o aflojarla a «no escribe datos clínicos» sin enumerar (no verificable).
+- **D19 — Las cuatro propuestas, validadas.** (a) Una consulta propia cerrada con el cierre enviado queda solo para leer y no se
+  puede anular (RF-25, RF-26). *Descartado:* permitir editarla o anularla, que obligaría al servidor a aceptar escrituras sobre
+  consultas cerradas. (b) «Resuelto» no se ofrece en los pendientes que se envían (RF-43). *Descartado:* dejarlo como dato solo
+  local, un estado que la web no tiene y que el médico creería enviado. (c) «No se despliega» hasta cerrar la subentrega significa
+  hacia producción; todas las capacidades del servidor existen en la copia local desde el principio. *Descartado:* copiar cada ruta
+  a la copia local recién al empezar su subentrega. (d) Si una parte de una consulta es rechazada, la consulta no se cierra hasta
+  que el médico la corrija y reenvíe o decida descartarla («Descartado: no se envió a la web») (RF-30, RF-56). *Descartado:*
+  cerrar igual con lo que llegó, que dejaría en la web una consulta cerrada e incompleta sin aviso.
+- **D24 — Fotos.** E4 lleva PDF y fotos de exámenes complementarios; estas últimas **solo si se verifica que la web las muestra**
+  (la verificación es una tarea de E4). Las demás fotos de consulta quedan afuera. *Descartados:* solo PDF (deja afuera las fotos
+  de exámenes que la web sí usa) y todas las fotos sin verificar (se escribiría en tablas que la web quizá no muestra).
 
-- **D17 [NECESITA ACLARACIÓN, menor] — RF-50 de la 002** («lo único que se registra es la sesión»). *Recomendación:* reemplazar
-  su última cláusula por la lista exacta de lo que el middleware escribe —la caché de sesiones, la baja de la licencia vencida, la
-  lista de médicos sin vincular y las tablas propias de la API, incluido el registro de lo recibido cuando se escribe—, sin que
-  ninguna toque datos clínicos ni de pacientes: es verificable. Queda como **cambio propuesto a la 002 pendiente de aprobación**;
-  no se aplicó. *Alternativa:* dejar la frase como está (inexacta, ya marcada por el aviso de E4.4 de la L) o aflojarla a «no
-  escribe datos clínicos» sin enumerar (no verificable).
-- **D19 [NECESITA ACLARACIÓN, menor] — Propuestas del planificador que el usuario valida al aprobar:**
-  (a) una consulta propia cerrada con el cierre enviado queda solo para leer y no se puede anular (D1 + D13). *Recomendación:*
-  sí. *Alternativa:* permitir editar o anular una cerrada, que obligaría al servidor a aceptar escrituras sobre consultas
-  cerradas y contradice D13.
-  (b) «Resuelto» no se ofrece en pendientes que se envían (D10 + criterio de D9). *Recomendación:* no ofrecerlo. *Alternativa:*
-  dejarlo como dato solo local (un estado que la web no tiene y el médico creería enviado).
-  (c) «No se despliega» hasta cerrar la subentrega significa hacia producción, y todas las capacidades existen en la copia local
-  desde el principio (D3). *Recomendación:* esa lectura. *Alternativa:* copiar cada ruta a la copia local solo al empezar su
-  subentrega (más lento, y no se prueban juntas).
-  (d) Si una parte de una consulta es rechazada, la consulta no se cierra hasta que el médico la corrija y reenvíe o decida
-  descartarla (queda solo en el dispositivo, «Descartado: no se envió a la web»). *Recomendación:* esa regla. *Alternativa:*
-  cerrar igual con lo que llegó (la web vería una consulta cerrada e incompleta sin aviso).
-- **D24 [NECESITA ACLARACIÓN, menor; afecta solo E4] — Destino de las fotos en la HC general.** La web tiene tablas de fotos de
-  consulta y de fotos de exámenes, pero **no se verificó** que la web actual ofrezca una foto «común» de consulta (las de consulta
-  tipo foto son la HC digitalizada, fuera de alcance). *Recomendación:* E4 cubre PDF y las fotos de exámenes complementarios si la
-  web las muestra; las demás fotos entran solo si se verifica un flujo real. *Alternativas:* solo PDF (más chico, deja las
-  fotos de exámenes afuera) o todas las fotos sin verificar (se escribiría en tablas que la web quizá no muestra).
+## Dudas abiertas
+Ninguna.
 
 ## Hallazgos de la clarificación (2026-11-04) y cómo se resolvieron
 Numeración del reviewer. «Pasa al plan» = la spec fija el QUÉ y el plan resuelve el cómo.
@@ -726,5 +720,6 @@ La numeración A1 a A4 sigue el pedido de corrección; A2 y A3 se asignaron a D2
 - **Tabla de textos** → agregados «Enviando el cierre…», «Consulta en curso» y «Abierta en la web».
 - **RF-18 (otro tipo)** → no avisa por una consulta propia abierta de otro tipo.
 - **Notas §2 (`es_nueva_consulta`)** → la carga de laboratorio y de peso en la web también escribe el estado de «consulta nueva» del médico; anotado en las notas y en RF-16 y en la puerta bloqueante.
-- **Dudas D17, D19, D24** → cada una con recomendación y alternativa; D25 ya no es duda; D16 y D18 pasan a Decididas.
-- **Estado** → borrador, listo para la aprobación: ninguna duda bloqueante.
+- **Dudas D17, D19, D24** → cada una con recomendación y alternativa; D25 ya no es duda; D16 y D18 pasan a Decididas. Al aprobar, el
+  usuario resolvió D17, D19 y D24 (ver «Decididas al aprobar»).
+- **Estado** → aprobada el 2026-11-04, sin dudas abiertas.
