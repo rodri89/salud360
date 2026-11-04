@@ -265,6 +265,21 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     esas filas vacías, se agrega a `EscrituraService::crear` con su test; si no, se deja afuera.
   - Hecho cuando: resultado por perfil anotado en esta tarea (sin datos de pacientes); la decisión de `inicializarCampos` registrada;
     si se agregó, T10 vuelve a pasar sus pruebas y `medico_infos` sigue idéntico.
+  - **Preparada el 2026-11-04** (NO hecha): instructivo y scripts en `%TEMP%\opencode\t11` (fuera del repo); a la espera del recorrido del
+    usuario. Decisión del usuario: un solo médico, el de prueba (user 9), con `users.perfil` temporal 1, 2, 3, 4 y 9 y restauración exacta
+    (original: 2). Datos en `hc_clinica` local: 5 pacientes inventados «PRUEBA SALUD360 P1 a P5» (documentos 99000901 a 99000905) en la cartera
+    del médico 9 y una consulta abierta de la API en cada uno (`c:t11-p1` a `p5`), hoy sin tocar por la web; `medico_infos` idéntico a la línea
+    base. **Hallazgos del código de la web** (hclinica, sin ejecutar nada): (1) la web abre una consulta por `medico_infos` del médico
+    (`navegar_consulta_seleccionada` lee su `paciente_id` y `consulta_id`), y la web escribe esa fila al seleccionar paciente (Buscar,
+    `get_paciente_id`) y consulta (`guardar_consulta_medico_info`): que cambie al abrir una consulta de la API es esperable; lo que la API no debe
+    hacer es escribirla; (2) «Consultar» solo lista consultas cerradas (`activo = 1`); una abierta se alcanza por `paciente_consultas/{id}` (sin
+    enlace en el menú), que lista todas las consultas del paciente seleccionado; (3) `inicializarCampos` solo corre al crear en la web con perfil
+    2 y crea 6 filas vacías `activo = 1` (motivo con fecha, biopsia hepática, estudios cardiológicos, TC/RMN, ecografía abdominal y
+    videoendoscopía); los `guardar*` de la web buscan la fila y la crean si falta, y los `cargar*` contestan «no hay» sin error (la decisión
+    sobre `inicializarCampos` la confirma el recorrido); (4) con perfil 9 la lista de Buscar muestra la cartera del user 6 (no la del médico
+    de prueba): el paciente se elige antes de pasar a 9; (5) el GUARDAR final de la consulta la cierra (`establecer_activo`) y pasa por Home, que
+    consulta turnosonlinebb.com como en cada ingreso; (6) `users.perfil` se lee en cada pedido: no hay sesión ni caché que refrescar. Scripts
+    ensayados en `hc_clinica_respaldo` (queda idéntica: 68 tablas, sin diferencias) y `perfil`/`restaurar` probados en `hc_clinica` (perfil vuelve a 2).
 - [ ] **T12. Textos y examen físico: servicio, controlador y rutas.** RF-20, RF-21, RF-34, RF-69 — M — Toca API Laravel: sí
   - Código: `EscrituraService::secciones` y `::examen` (solo las claves presentes; fila `activo = 1` de mayor id o alta nueva;
     `""` se escribe como vaciado a propósito; el motivo lleva su `fecha`; `desconocidas` devuelve lo que no traduce) y las dos rutas.
