@@ -106,10 +106,10 @@ cualquier perfil, incluido el médico que trabaja solo con la historia clínica 
 - RF-18 [reemplazado por la 005, RF-36]: CUANDO el médico marca antecedentes familiares (con su detalle) o escribe antecedentes, EL SISTEMA los
   guarda donde la web los lee, y muestra los últimos cargados del paciente aunque vengan de otra consulta.
 - RF-19 [reemplazado por la 005, RF-35]: CUANDO el médico carga alimentación (hiposódica, diabetes, celíaco, otra, con detalle), EL SISTEMA la guarda.
-- RF-20 [reemplazado por la 005, RF-41; la carga queda pendiente de confirmar hasta el cierre]: CUANDO el médico carga laboratorio con una fecha, EL SISTEMA agrega esa carga a la tabla longitudinal del
+- RF-20 [reemplazado por la 005, RF-41; la carga es visible en la web apenas llega]: CUANDO el médico carga laboratorio con una fecha, EL SISTEMA agrega esa carga a la tabla longitudinal del
   paciente, visible en la app y en la web; CUANDO borra una carga, deja de verse en ambas.
 - RF-21 [reemplazado por la 005, RF-41]: SI una carga de laboratorio no tiene fecha, ENTONCES EL SISTEMA usa la fecha de la consulta.
-- RF-22 [reemplazado por la 005, RF-40 y RF-22; el laboratorio y el peso también quedan pendientes de confirmar]: CUANDO el médico pide un examen complementario o una interconsulta, EL SISTEMA los guarda como pendientes
+- RF-22 [reemplazado por la 005, RF-40 y RF-22; solo exámenes e interconsultas quedan pendientes de confirmar]: CUANDO el médico pide un examen complementario o una interconsulta, EL SISTEMA los guarda como pendientes
   de confirmar, y los confirma al cerrar la consulta, para que la web los muestre.
 - RF-23 [reemplazado por la 005, RF-43]: CUANDO el médico escribe pendientes del paciente, EL SISTEMA los guarda y la web los muestra.
 - RF-24 [reemplazado por la 005, RF-22 a RF-26; la web no tiene «reabrir»]: CUANDO el médico cierra la consulta, EL SISTEMA la marca cerrada en la web; CUANDO la reabre, vuelve a
@@ -226,7 +226,7 @@ Decidido por el usuario el 2026-10-28:
 | Entrega | Contenido | RF | Estado |
 |---|---|---|---|
 | **L** (lectura) | La app muestra las consultas de la web, sin escribir nada y sin borrar nada de lo ya traído | RF-1 a RF-4 en lo que toca a leer, RF-25 (solo lectura), RF-38 a RF-63 | Aprobada por el usuario el 2026-10-28 (incluye la tanda S del servidor) |
-| **E** (escritura) | Crear, editar, cerrar y enviar desde la app; adjuntos; aviso de licencia | RF-15 a RF-24, RF-26 a RF-34, RF-5 a RF-7 (**reemplazados por los RF-1 a RF-49 de la spec 005**) | **Se especifica en la spec 005** (`specs/005-hc-clinica-escritura/spec.md`): borrador con decisiones D1 a D15 del 2026-11-03, a la espera de clarificación y aprobación; sin plan ni tareas |
+| **E** (escritura) | Crear, editar, cerrar y enviar desde la app; adjuntos; aviso de licencia | RF-15 a RF-24, RF-26 a RF-34, RF-5 a RF-7 (**reemplazados por los RF-1 a RF-70 de la spec 005**) | **Se especifica en la spec 005** (`specs/005-hc-clinica-escritura/spec.md`): borrador con decisiones D1 a D15 del 2026-11-03, a la espera de clarificación y aprobación; sin plan ni tareas |
 
 Reparto de los RF que ya existían (ninguno se pierde):
 - **A la L**: RF-1 (mostrar las consultas de la web), RF-2 a RF-4 (habilitación, vínculo y licencia, que valen
@@ -476,7 +476,7 @@ aprobación aparte (decisión D3 de abajo).
   (No confundir con la «D6» del plan, que es otra decisión de diseño.)
 
 ## Para decidir
-- Nada en la Entrega L. Para la Entrega E: ver la spec 005 (decididas D1 a D15; dudas abiertas D16 a D19).
+- Nada en la Entrega L. Para la Entrega E: ver la spec 005 (decisiones en su sección «Decididas»; dudas en «Dudas abiertas»).
 
 ## Decididas (2026-10-28, usuario)
 El usuario aprobó **Q1 a Q14 y Q16 a Q18 con la opción recomendada** y decidió **Q15 = "Nunca borrar"** (la estricta).
@@ -535,4 +535,4 @@ Debajo de cada una, las opciones que se evaluaron.
   probar enseguida; C) probar antes sobre una copia de producción restaurada.
 
 ## Dudas abiertas
-Ninguna en la Entrega L. Las de la Entrega E están en la spec 005 (D16 a D19).
+Ninguna en la Entrega L. Las de la Entrega E están en la spec 005 (sección «Dudas abiertas»).
