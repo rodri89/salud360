@@ -249,7 +249,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `6b3306f`, 005 T10), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `37a0485`, 005 T12), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).

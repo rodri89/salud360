@@ -284,7 +284,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     de prueba): el paciente se elige antes de pasar a 9; (5) el GUARDAR final de la consulta la cierra (`establecer_activo`) y pasa por Home, que
     consulta turnosonlinebb.com como en cada ingreso; (6) `users.perfil` se lee en cada pedido: no hay sesión ni caché que refrescar. Scripts
     ensayados en `hc_clinica_respaldo` (queda idéntica: 68 tablas, sin diferencias) y `perfil`/`restaurar` probados en `hc_clinica` (perfil vuelve a 2).
-- [ ] **T12. Textos y examen físico: servicio, controlador y rutas.** RF-20, RF-21, RF-34, RF-69 — M — Toca API Laravel: sí
+- [x] **T12. Textos y examen físico: servicio, controlador y rutas.** RF-20, RF-21, RF-34, RF-69 — M — Toca API Laravel: sí
   - Código: `EscrituraService::secciones` y `::examen` (solo las claves presentes; fila `activo = 1` de mayor id o alta nueva;
     `""` se escribe como vaciado a propósito; el motivo lleva su `fecha`; `desconocidas` devuelve lo que no traduce) y las dos rutas.
     Última escritura gana por campo (la hora de llegada es la del servidor).
@@ -292,6 +292,42 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     ausente no cambia; `""` vacía el texto; el caso del ejemplo (la web cambió un campo a las 10:00, el dispositivo manda el suyo
     a las 10:05) deja el del dispositivo y un campo no enviado conserva el de la web; sobre una consulta cerrada, de la web, ajena o de otro
     médico → los códigos de RF-52/RF-53; `medico_infos` idéntico.
+  - **Resultado (2026-11-04): HECHA.** hclinica `37a0485` (rama `salud360-api`, sin push): `PUT consultas/{id}/secciones` y `PUT
+    consultas/{id}/examen` en `ConsultaEscrituraController` (mismo grupo y middleware; CORS sin cambios) + `EscrituraService::secciones/examen` +
+    `tests/Unit/EscrituraTextosTest.php` (23) + sección «Escritura» de `md/API_SALUD360_CLINICA.md` (solo lo de T12); copiado a la servida
+    (idéntico por hash), `route:clear`. `ConsultaController`, `ConsultasService`, `ConsultasReglas` y `Salud360Controller` sin cambios (grep de
+    escrituras = 0). **Contrato.** Secciones: cuerpo `{secciones: {<seccion>: {texto}}}` → `200 {ok, guardadas, desconocidas}`; examen: cuerpo
+    `{peso?, talla?, tension_arterial?, imc?, nota?}` (todo texto) → igual. Solo lo presente; `""` (o solo espacios) se escribe como vaciado; `texto`
+    nulo/número = `422`; textos con contenido tal cual, sin recortar; 65535 bytes por texto; `0.00` en peso, talla, tensión e IMC = vacío (`0` y
+    `0.0` datos; número JSON = `422`); desconocidas se informan sin fallar. Por tabla: se actualiza la fila `activo = 1` de mayor id o se agrega una
+    (las `activo` 2 y 0 no se tocan); el motivo lleva la fecha de la consulta; no crea ninguna fila de `inicializarCampos`. Todo en una transacción
+    con la consulta bloqueada (`FOR UPDATE`); repetible sin duplicar; última escritura gana por campo. Errores: `403 sin_permiso`, `403
+    fuera_de_cartera` / `404 paciente_no_encontrado`, `403 consulta_no_propia` (de otro médico o de la web), `404 consulta_no_encontrada`, `409
+    consulta_cerrada` (cerrada o de baja), `422 datos_invalidos`, `500 escritura`.
+  - **Pruebas.** (1) **Rojo primero:** `EscrituraTextosTest` 22 tests con 17 errores y 3 fallas (y 1 falla en `EscrituraServicioTest`) antes del código;
+    después verde. Más tarde, ya con HTTP, un test nuevo en rojo (1 falla) por el hallazgo de abajo y verde con el arreglo. `tests/Unit` completo: **789
+    en verde** (766 + 23). (2) Base descartable `hc_clinica_t10` (estructura copiada, datos inventados, con las 5 tablas de `inicializarCampos`):
+    `%TEMP%\opencode\t12\escribir-con-base.php`, 75 controles OK con `sql_mode` estricto y 75 sin él (texto y examen, límites 191/65535, vaciado,
+    clave ausente, desconocidas, mayor id, sin fila activa, RF-34, motivo con fecha, roles, consulta de la web/ajena/fuera de cartera/cerrada/baja,
+    422, rollback si falla una sección, carrera real de 2 procesos → una sola fila, `medico_infos` y tablas de la web iguales); 8 mutaciones detectadas
+    (alta siempre nueva, sin bloqueo, sin autorización, examen nuevo con `0.00`, escribe la pantalla del médico, vaciado no escrito, cartera sin
+    controlar, rol sin controlar). El script de T10 sigue con sus 63 controles OK; su control «solo existe la tabla propia» ya no aplica porque la
+    descartable ahora tiene las tablas de T12. (3) **HTTP contra la copia local** (`hc_clinica`) con datos propios (paciente 99000900, consulta de la
+    web de `cargar-prueba.sql` y 3 consultas propias `c:t12-1..3`; la cerrada y la de baja por SQL): 44 controles OK — `401` sin token y con token inventado;
+    éxito, lectura de vuelta con `GET consultas/{id}`, reintento idéntico con una sola fila, vaciado, clave ausente, desconocida, 191 caracteres, 65535 bytes,
+    65536 → `422` sin escribir nada, emoji/saltos/comillas (bytes UTF-8 exactos), RF-34 (gana el dispositivo y se conserva lo de la web), examen
+    (`0.00`, `0`, `0.0`, vaciado, desconocidas, número JSON `422`), `403 consulta_no_propia` sobre la consulta de la web propia y sobre las del fixture S
+    (1983 abierta de la web y 1982 de otro médico), `403 fuera_de_cartera`, `404`, `422` por id, `409` sobre la cerrada y la de baja, `405` en `DELETE`, dos
+    `PUT` simultáneos → una fila, ninguna fila de `inicializarCampos`, `medico_infos` con CHECKSUM 3172558057. Administrador y secretaria: sin token,
+    probado en proceso (controlador) y por el middleware. Apache: 0 respuestas `5xx`, `error.log` y `storage/logs` sin entradas nuevas. (4) **Limpieza** por id
+    y por clave con `escritura-limpiar.sql` (`PERMITIR_HC_CLINICA=1`) y `t11\snapshot.cmd t12-despues` + `t11\comparar.cmd base-antes t12-despues`: solo cambia
+    `salud360_token_cache`; P1–P5 (1441–1445), las consultas 1997–2001, las 5 filas `c:t11-p*` y `medico_infos` del user 9 (`1909/1/1285`) intactos.
+  - **Hallazgo (corregido):** `TrimStrings` y `ConvertEmptyStringsToNull` son globales en el Kernel y también alcanzan el cuerpo JSON: por HTTP `""` llegaba
+    como `null` (el vaciado daba `422`) y los textos perdían los espacios de los extremos. El script en proceso no lo veía porque llama al controlador sin
+    middleware. Las tres acciones (`crear` incluida) leen ahora el cuerpo crudo (`json_decode($request->getContent())`), con test.
+  - **Decisiones de contrato para revisar:** un vaciado sobre una sección sin fila crea una fila con texto vacío; un pedido sin nada que escribir
+    (o solo desconocidas) da `200` y no escribe, pero igual exige consulta propia y abierta; no se registra el pedido (no hay `yaRegistrada`), así que
+    repetir sobre una consulta que se cerró en el medio da `409`; la `consulta.updated_at` no se toca al escribir contenido; `DELETE` sigue sin ruta (T13).
 - [ ] **T13. Cerrar y dar de baja: servicio, controlador y rutas.** RF-22, RF-23, RF-26, RF-53 — M — Toca API Laravel: sí
   - Código: `EscrituraService::cerrar` (`activo = 1`, `created_at` = fecha clínica, edad; confirma **solo** exámenes complementarios e
     interconsultas con `activo = 2` de esa consulta; **no toca laboratorio ni peso**; repetir devuelve lo mismo) y `::baja` (`activo = 0`
