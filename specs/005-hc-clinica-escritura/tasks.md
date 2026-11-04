@@ -96,7 +96,7 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
     `PUT` a `config/perfiles/2` y hoy no tiene las 17 secciones de la carga inicial (tiene 5); es reconstruible desde la carga inicial de
     perfiles de hclinica y el usuario decidió no tocarlo: **NO SALDADO**; (4) los pacientes E y F de la prueba (en `turnosonlinebb`) no
     se tocaron. Por eso los totales de perfiles (3 perfiles, 6 pestañas, 29 secciones) **no** vuelven al estado inicial (2, 4 y 29).
-- [ ] **T4. Scripts de la escritura: cargar, contar, sumar y limpiar por id.** D4, RF-15, RF-16 — M — Toca API Laravel: no
+- [x] **T4. Scripts de la escritura: cargar, contar, sumar y limpiar por id.** D4, RF-15, RF-16 — M — Toca API Laravel: no
   - En `%TEMP%\opencode\e0\`: `escritura-contar.sql` (conteos de las tablas de consulta y de las hijas por `consulta_id` y por
     `paciente_id` de prueba, más `salud360_envios` si existe), `escritura-suma.sql` (`CHECKSUM TABLE` de las tablas que la escritura
     puede tocar **incluida `medico_infos`**), `escritura-limpiar.sql` (borra **por id** lo que cree la API: hijas →
@@ -105,6 +105,15 @@ Se hacen **antes** de cualquier tarea de E1 que escriba en la copia local. Pregu
     los E2E crean sus propios datos).
   - Hecho cuando: en la base descartable de T1, cargar → limpiar → cargar → limpiar deja las sumas idénticas a las de antes; `suma.sql`
     da lo mismo dos veces seguidas sin tocar nada; ningún dato real copiado.
+  - Resultado (2026-11-04): scripts en `%TEMP%\opencode\e0\` (fuera del repo; `README.md` ahí explica parámetros): `escritura-contar.sql`
+    y `escritura-suma.sql` (solo lectura; incluyen `medico_infos` y `salud360_envios` si existe, que hoy no), `cargar-prueba.sql`,
+    `escritura-limpiar.sql` (por id, todo o nada, con transacción) y `correr.cmd` (la base va como parámetro; se niega a cargar o
+    limpiar en `hc_clinica`) más `ensayo-t4.cmd`. Ensayo en `hc_clinica_respaldo`, con `STRICT_TRANS_TABLES` y sin él: cargar → limpiar →
+    cargar → limpiar deja idénticas la suma de escritura, la de la lectura y las 68 tablas (incluida `medico_infos`); el `AUTO_INCREMENT`
+    avanza y el `CHECKSUM TABLE` no depende de él. `limpiar` se negó con consulta ajena, propia+ajena, paciente real, documento
+    inexistente, lista mal formada y hija de otro paciente (sin borrar nada, salida con error); no toca `medico_infos` y deja la ficha si
+    le queda algo colgado. Sobre `hc_clinica` solo se corrieron los de solo lectura: sin cambios. `limpiar` supone `user_id` y `clave` en
+    `salud360_envios` (aún no existe): confirmar al llegar a T8/T40.
 - [ ] **T5. Línea base y cierre de E0.** D4 — S — Toca API Laravel: no
   - Línea base de conteos y sumas de las 68 tablas **antes** de E1; definir con el usuario el médico de prueba local y confirmar el
     documento libre del paciente «PRUEBA SALUD360» que usarán los E2E; `MEMORY.md` actualizado (sin datos sensibles).
