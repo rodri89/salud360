@@ -11,7 +11,8 @@ registros de personas): el repo es público.
   detalladas, 47 tareas; E2 a E5 en lista); **E0 cerrada por el usuario el 2026-11-04** (médico de prueba y documento libre confirmados);
   línea base en %TEMP%\opencode\e0\linea-base.txt. **E0 cerrada; T6 hecha (2026-11-04):** la licencia del servidor T1–T7 de la 004 está en
   `hc-general` (9 cherry-picks `ba679f5` a `6d2cf4d`, más 3 tests de la 004 adaptados); `core:data` 1305 tests en verde y composeApp/features:auth wasm
-  compilan. **Siguiente: T7** (enmienda de texto a la 004, con pedido). Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
+  compilan. **T1 a T7 hechas; E1 sigue por el servidor local (T8).** T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
+  HC general también lleva licencia, regla D25; sin código); falta avisar en `origin/main`. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
   tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). T9 de la 004 ya integrada en
   `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual

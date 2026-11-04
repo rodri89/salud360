@@ -7,6 +7,16 @@ tarea T9 (cherry-pick a `hc-general`) requieren pedido aparte. Es un arreglo de 
 `pediatria-licencia-servidor`) y recién después se trae a `hc-general`. Depende de la spec de licencias que ya
 existe en pediatría (`docs/hc-pediatria-estado-y-plan.md`, «Las licencias»), que ya está en producción.
 
+> **[enmendado por la 005, D22/D25, 2026-11-04] Enmienda de TEXTO.** La spec 005 (`specs/005-hc-clinica-escritura/`) extiende la
+> licencia del servidor a la HC general (clínica) desde su entrega E1 (D22) y fija la regla con dos HC (D25). El usuario aprobó
+> esta enmienda el 2026-11-04 al aprobar el plan y las tareas de la 005 (tarea T7). Esta spec solo cambia **de texto**: el
+> **código** de la licencia de clínica (`HcClinicaBackend.licenciaDelServidor()`, `decidirLicencia` por HC con la regla D25, el
+> texto «licencia vencida de <HC>») **no se implementa acá**: se implementa en las tareas de la 005 (T35 y relacionadas).
+> **Estado de la 004:** sus tareas **T1 a T9 ya están hechas** (T1 a T8 en el worktree el 2026-11-02 y 2026-11-03; T9, el
+> cherry-pick a `hc-general`, el 2026-11-04) y **no se agregan tareas nuevas a la 004**. Cada cambio de esta spec lleva la marca
+> «[enmendado por la 005, D22/D25, 2026-11-04]» y, donde la lectura lo necesita, conserva el texto original ~~tachado~~. Lo que
+> no lleva marca no cambia. Regla de combinación con dos HC (D25): ver RF-5, RF-6 y RF-10.
+
 ## Contexto y objetivo
 Para entrar a la historia clínica de pediatría un médico necesita una licencia vigente. La licencia vive en la base
 de pediatría (es ahí donde se cobra y donde la administra el panel), y el servidor de pediatría ya aplica la regla:
@@ -28,24 +38,35 @@ dice «vigente» cuando el servidor ya la dio de baja) deja entrar a la app a qu
 en ese momento**; la copia local pasa a ser solo un respaldo para cuando no hay señal (constitución #2: el dueño del
 dato manda; la base del dispositivo es caché y modo sin señal).
 
+**[enmendado por la 005, D22/D25, 2026-11-04]** Las HC que llevan licencia son **dos: pediatría y la HC general (clínica)**. Todo lo
+que esta spec dice de «la HC» o «el servidor de la HC» vale **por cada HC con licencia** del médico; la copia local, en cambio, sigue
+siendo solo de pediatría (D11: no hay copia local de clínica). Con dos HC rige la regla de combinación de RF-5, RF-6 y RF-10.
+
 ## Usuarios
-- **Médico con la HC de pediatría habilitada** (con o sin agenda): el único afectado. Hoy es la única HC con
-  licencia.
+- **Médico con la HC de pediatría habilitada** (con o sin agenda): el único afectado. ~~Hoy es la única HC con
+  licencia.~~ **[enmendado por la 005, D22/D25, 2026-11-04]** También el médico con la HC general (clínica) habilitada: pediatría y
+  HC general son las HC con licencia.
 - **Administrador**: no tiene licencia; no cambia nada para él. Sigue administrando licencias desde el panel.
 - **Secretaria**: no tiene licencia en la app; no cambia nada.
-- Médico **sin** ninguna HC que lleve licencia (solo agenda, o solo la HC general): no se le consulta nada.
+- Médico **sin** ninguna HC que lleve licencia (~~solo agenda, o solo la HC general~~ **[enmendado por la 005, D22/D25, 2026-11-04]**
+  solo agenda): no se le consulta nada.
 
 ## Historias de usuario
 - HU-1. Como médico, quiero que la app me deje entrar si mi licencia está vigente en pediatría, aunque la copia
   guardada en mi navegador esté vieja, para no quedar afuera por un dato desactualizado.
 - HU-2. Como administrador, quiero que un médico al que di de baja la licencia quede afuera en su próximo ingreso o
-  recarga, aunque su navegador tenga una copia vieja que diga «vigente».
+  recarga, aunque su navegador tenga una copia vieja que diga «vigente». **[enmendado por la 005, D22/D25, 2026-11-04]** Queda afuera
+  solo si **todas** las HC con licencia del médico están vencidas; si le queda una vigente, entra y la vencida queda frenada (D25).
 - HU-3. Como médico en un consultorio sin señal, quiero poder abrir la app con la última licencia conocida, para no
   perder la atención por una caída de internet.
 
 ## Definiciones
-- **Consulta de licencia**: un pedido de lectura al servidor de pediatría, con la sesión del médico, que informa
-  cómo está su licencia.
+**[enmendado por la 005, D22/D25, 2026-11-04]** «Consulta de licencia», «Respuesta concluyente» y «Sin respuesta concluyente» se
+evalúan **por HC con licencia** (pediatría y clínica): cada HC tiene su propia consulta y su propia respuesta. «Copia local» sigue
+siendo solo de pediatría (D11).
+
+- **Consulta de licencia**: un pedido de lectura al servidor ~~de pediatría~~ **de cada HC con licencia (pediatría, clínica)**, con la
+  sesión del médico, que informa cómo está su licencia.
 - **Respuesta concluyente**: el servidor contestó (a) *vigente*, con su fecha de vencimiento y su fecha de aviso,
   (b) *vencida* (rechazo `licencia_vencida` con una licencia cargada que está vencida o dada de baja: el cuerpo trae
   `licencia` con su fecha), o (c) *sin licencia* (rechazo `licencia_vencida` con `licencia` **nula** en el cuerpo: el
@@ -53,41 +74,64 @@ dato manda; la base del dispositivo es caché y modo sin señal).
 - **Sin respuesta concluyente**: todo lo demás. Sin conexión, tiempo agotado, error del servidor (5xx), límite de
   pedidos (429), `tobb_caido` (503), respuesta ilegible, otro rechazo 401/403 que no sea `licencia_vencida`, o una
   respuesta correcta que no trae licencia (servidor sin la mejora, o servidor en su gracia cuando turnos no responde).
-- **Copia local**: la licencia del médico guardada en el dispositivo.
+- **Copia local**: la licencia del médico guardada en el dispositivo. **[enmendado por la 005, D22/D25, 2026-11-04]** Solo existe
+  la de pediatría; clínica no tiene copia local (D11).
 - **Momento de entrada**: iniciar sesión, restaurar la sesión guardada (recargar la página o reabrir la app) y
   refrescar el perfil con la sesión abierta.
 
 ## Requisitos funcionales
 ### Cuándo se consulta
 - RF-1. CUANDO un médico con una HC que lleva licencia inicia sesión con conexión, EL SISTEMA consulta su licencia al
-  servidor de esa HC y decide con la respuesta, antes de dejarlo entrar.
+  servidor de esa HC y decide con la respuesta, antes de dejarlo entrar. **[enmendado por la 005, D22/D25, 2026-11-04]** La consulta
+  es a **cada HC con licencia** que el médico tenga (pediatría, clínica), y decide con las respuestas combinadas (RF-5, RF-6, RF-10).
 - RF-2. CUANDO se restaura una sesión guardada de un médico con una HC que lleva licencia, EL SISTEMA consulta su
-  licencia al servidor y decide con la respuesta, antes de mostrarle la app.
+  licencia al servidor y decide con la respuesta, antes de mostrarle la app. **[enmendado por la 005, D22/D25, 2026-11-04]** Al
+  servidor de **cada HC con licencia** del médico.
 - RF-3. CUANDO se refresca el perfil con la sesión abierta, EL SISTEMA decide con la consulta más reciente si tiene
-  menos de 60 segundos y, si no, consulta de nuevo.
+  menos de 60 segundos y, si no, consulta de nuevo. **[enmendado por la 005, D22/D25, 2026-11-04]** La memoria de 60 segundos es
+  **por HC y por token**.
 - RF-4. EL SISTEMA no consulta la licencia del administrador, de la secretaria ni del médico sin ninguna HC que lleve
-  licencia.
+  licencia. **[enmendado por la 005, D22/D25, 2026-11-04]** Cambia de alcance: la premisa «médico solo de la HC general = sin
+  licencia» **deja de valer**; el médico solo de clínica **ahora se consulta**. El administrador, la secretaria y el médico sin
+  ninguna HC con licencia (pediatría o clínica) siguen sin consulta.
 
 ### Quién decide
 - RF-5. CUANDO el servidor contesta *vencida* (rechazo `licencia_vencida` con una licencia cargada), EL SISTEMA no deja
   entrar al médico (o le cierra la sesión), con el texto de licencia vencida que ya existe, **aunque la copia local
-  diga vigente**.
+  diga vigente**. **[enmendado por la 005, D22/D25, 2026-11-04]** Se aplica por HC, con la regla de combinación (D25) de abajo: ~~no
+  deja entrar~~ **no deja entrar solo si TODAS las HC con licencia del médico contestan *vencida* con fecha**; si queda una vigente,
+  sin fila o sin respuesta concluyente, entra y la HC vencida queda frenada.
 - RF-6. CUANDO el servidor contesta *vigente*, EL SISTEMA deja entrar al médico, **aunque la copia local diga
   vencida, inactiva o no exista, y sin volver a comparar la fecha con el reloj del dispositivo**: manda el servidor.
+  **[enmendado por la 005, D22/D25, 2026-11-04]** Se aplica por HC; la copia local solo existe para pediatría.
 - RF-7. SI no hay respuesta concluyente, ENTONCES EL SISTEMA decide con la copia local, con la misma regla de hoy,
-  y no modifica la copia.
+  y no modifica la copia. **[enmendado por la 005, D22/D25, 2026-11-04]** La copia local aplica **solo a pediatría**; para clínica
+  no hay copia (D11) y rige RF-8 (sin copia, entra).
 - RF-8. SI no hay respuesta concluyente y no hay copia local, ENTONCES EL SISTEMA deja entrar al médico (la copia
-  ausente no es una licencia vencida; el servidor lo frena cuando haya señal). (P1, decidida.)
+  ausente no es una licencia vencida; el servidor lo frena cuando haya señal). (P1, decidida.) **[enmendado por la 005, D22/D25,
+  2026-11-04]** Es la regla que vale siempre para clínica.
 - RF-9. SI el servidor rechaza con 401 o 403 por un motivo que no es la licencia (HC no habilitada, médico no
   vinculado, sin permiso, sesión vencida), ENTONCES EL SISTEMA lo trata como «sin respuesta concluyente»: decide la
-  copia local (RF-7); ni bloquea ni cierra la sesión por eso por sí mismo. (P4, decidida.)
+  copia local (RF-7); ni bloquea ni cierra la sesión por eso por sí mismo. (P4, decidida.) **[enmendado por la 005, D22/D25,
+  2026-11-04]** Por HC; la «copia local» es solo la de pediatría (para clínica, RF-8: entra).
 - RF-10. SI el servidor rechaza con `licencia_vencida` y con `licencia` nula en el cuerpo (el médico no tiene ninguna
   licencia cargada en pediatría), ENTONCES EL SISTEMA **no bloquea el ingreso ni cierra la sesión** y no modifica la
   copia local: el médico entra a la app y a su agenda, y **solo la historia clínica de pediatría queda sin poder
   usarse**, porque el servidor sigue rechazando con 403 cada lectura de HC y la pantalla de HC muestra el error con el
   texto del servidor (hoy: «No se pudo traer la historia clínica…»). Esto vale **aunque la copia local diga vencida o
   inactiva**: el servidor dijo que no hay licencia que decidir. (P3, decidida: distinta de la recomendación del
-  planificador, que era bloquear toda la app.)
+  planificador, que era bloquear toda la app.) **[enmendado por la 005, D22/D25, 2026-11-04]** Se aplica **por HC**: «solo la
+  historia clínica de pediatría» pasa a ser «solo la HC de la que no hay fila» (pediatría o clínica); el texto del servidor que se
+  ve en la pantalla de esa HC es el de esa HC. Con dos HC rige la regla de abajo.
+- **Regla de combinación con dos HC con licencia [enmendado por la 005, D22/D25, 2026-11-04] (D25: decidida; defensiva, porque el
+  médico paga por el total y el caso no se espera).** Se consulta cada HC con licencia del médico, en paralelo (RF-1, RF-2, RF-15).
+  - El ingreso a toda la app se bloquea **solo si TODAS las HC con licencia contestan *vencida* con fecha** (RF-5).
+  - Si al menos una está vigente, sin fila (`licencia` nula) o sin respuesta concluyente, el médico **entra** y la HC vencida queda
+    sin poder usarse: el servidor sigue rechazando cada lectura y cada envío de esa HC, la pantalla de esa HC muestra el texto de
+    licencia vencida y lo pendiente de esa HC queda «En espera» (RF-6 de la 005).
+  - Médico **solo de clínica**: *vencida* con fecha → **no entra**; *sin fila* → **entra** con la HC frenada (RF-10, P3); *vigente* →
+    entra; *sin respuesta concluyente* → entra (no hay copia local de clínica: RF-8).
+  - Médico de **pediatría y clínica con una vencida y la otra vigente o sin fila**: entra; la vencida queda frenada.
 - RF-21. EL SISTEMA distingue «sin licencia» de «vencida» solo cuando el cuerpo del rechazo `licencia_vencida` (un 403
   con `codigo` en un cuerpo JSON) trae la clave `licencia` **explícitamente nula**. Si el rechazo es `licencia_vencida`
   y la clave `licencia` falta, o es de otro tipo (por ejemplo texto, número o lista) o es un objeto con fecha: es
@@ -98,16 +142,22 @@ dato manda; la base del dispositivo es caché y modo sin señal).
   cumplir: sin JSON no hay `codigo` y no se puede saber que el rechazo era `licencia_vencida`. No es un requisito
   nuevo: es lo que el código hace y lo único posible. «Ilegible → *vencida*» solo vale para un rechazo ya reconocido
   como `licencia_vencida` cuyo cuerpo no se conservó.)
+  **[enmendado por la 005, D22/D25, 2026-11-04]** La distinción «sin licencia» (`licencia` nula) frente a «vencida» ya vale para
+  el servidor de clínica: informa la licencia con el mismo formato del cuerpo.
 - RF-22. EL SISTEMA conserva el cuerpo de un error de la API de HC para poder leer esa clave, **sin cambiar** el
   código, el estado HTTP ni el mensaje de ningún error existente (ni la forma de construir `TobbException`).
+  **[enmendado por la 005, D22/D25, 2026-11-04]** Vale también para la API de HC de clínica (mismo formato del cuerpo).
 
 ### La copia local
 - RF-11. CUANDO hay respuesta concluyente, EL SISTEMA actualiza la copia local con lo que contestó el servidor: si
   es *vigente*, la fecha de vencimiento, la de aviso y la licencia como activa; si es *vencida*, la licencia como
   inactiva; si es *sin licencia*, la copia no se toca (no hay nada que informar: no se inventa una fecha ni se
   borra lo que hubiera). La copia nunca queda pendiente de envío (el dueño del dato es el servidor).
+  **[enmendado por la 005, D22/D25, 2026-11-04]** Solo para pediatría: clínica no tiene copia local (D11), así que nada de la
+  respuesta de clínica se guarda en el dispositivo.
 - RF-12. EL SISTEMA no pisa con vacíos lo que el servidor no informó: el importe y las fechas que el pedido no trae
   se conservan. Si no hay respuesta concluyente, la copia no se toca. Si la respuesta no cambia nada, no se reescribe.
+  **[enmendado por la 005, D22/D25, 2026-11-04]** Solo para pediatría (la copia local es solo de pediatría).
 
 ### Cuándo se bloquea
 - RF-13. CUANDO la licencia bloquea el ingreso, EL SISTEMA no deja la sesión abierta ni guardada en ningún momento:
@@ -116,20 +166,28 @@ dato manda; la base del dispositivo es caché y modo sin señal).
 ### Rendimiento y tiempos
 - RF-14. EL SISTEMA hace **a lo sumo un pedido adicional al servidor de la HC por cada inicio de sesión o
   restauración**, y el refresco de perfil que sigue al inicio de sesión reutiliza esa respuesta (RF-3). (El servidor
-  limita a 60 pedidos por minuto por dirección IP, y un consultorio comparte la IP.)
+  limita a 60 pedidos por minuto por dirección IP, y un consultorio comparte la IP.) **[enmendado por la 005, D22/D25,
+  2026-11-04]** Pasa a **un pedido por HC con licencia, como máximo dos** (uno a pediatría y uno a clínica) por inicio o
+  restauración; el límite por IP es por servidor y se revisa.
 - RF-15. EL SISTEMA espera la consulta como máximo 10 segundos al iniciar sesión y 5 al restaurar la sesión; pasado el
   tope es «sin respuesta concluyente» (RF-7). Recargar la página con mala señal no puede dejar la pantalla de carga
-  más tiempo que ese tope por la licencia. (P5, decidida: se espera antes de mostrar la app.)
+  más tiempo que ese tope por la licencia. (P5, decidida: se espera antes de mostrar la app.) **[enmendado por la 005, D22/D25,
+  2026-11-04]** Los topes de 10 s y 5 s valen para el **conjunto** de las consultas, que corren **en paralelo**, no para cada una
+  en serie.
 - RF-16. EL SISTEMA solo lee del servidor de la HC para esto: no le envía cambios de licencia.
 
 ### Lo que no cambia
 - RF-17. EL SISTEMA mantiene como hoy el panel del administrador: leer las licencias de la HC y guardarlas allá (la
-  copia queda limpia).
+  copia queda limpia). **[enmendado por la 005, D22/D25, 2026-11-04]** Sigue como hoy para pediatría; el panel de licencias de
+  clínica se hace en la spec 005 (E5).
 - RF-18. EL SISTEMA reutiliza los textos existentes («Tu licencia está vencida. Comunicate con el administrador para
-  renovarla.» y «Tu licencia está por vencer el <fecha>»); esta spec no agrega ninguno. El aviso por vencer se muestra
-  en las mismas condiciones que hoy.
+  renovarla.» y «Tu licencia está por vencer el <fecha>»); ~~esta spec no agrega ninguno~~. El aviso por vencer se muestra
+  en las mismas condiciones que hoy. **[enmendado por la 005, D22/D25, 2026-11-04]** La 005 (RF-6) exige un motivo «En espera» que
+  **nombra la HC**: se admite un texto parametrizado con el nombre de la HC (o reutilizar el existente con el nombre agregado,
+  p. ej. «licencia vencida de <HC>»); deja de valer «esta spec no agrega ninguno».
 - RF-19. EL SISTEMA sigue funcionando contra un servidor de HC que todavía no informa la licencia en el perfil (se
-  vuelve «sin respuesta concluyente», RF-7).
+  vuelve «sin respuesta concluyente», RF-7). **[enmendado por la 005, D22/D25, 2026-11-04]** El servidor de clínica ya informa la
+  licencia en el perfil.
 - RF-20. EL SISTEMA no escribe tokens ni fechas de licencia en sus registros.
 
 ## Requisitos no funcionales
@@ -141,28 +199,38 @@ dato manda; la base del dispositivo es caché y modo sin señal).
 - **Sin cambios en ningún servidor**: pediatría ya está arriba con lo que hace falta.
 
 ## Casos límite
+**[enmendado por la 005, D22/D25, 2026-11-04]** Los casos 1, 3, 4, 6, 8, 9, 11 a 13, 15 y 16 se leen **por HC** (con la copia local
+solo para pediatría). El 2, el 5, el 7, el 10 y el 14 cambian como se indica en cada uno.
+
 1. Médico con licencia vigente en el servidor y copia local vencida o dada de baja (el caso reportado): entra y la
    copia queda vigente.
-2. Médico con licencia vencida o dada de baja en el servidor y copia local vigente o inexistente: no entra / se le
-   cierra la sesión.
+2. Médico con licencia vencida o dada de baja en el servidor y copia local vigente o inexistente: ~~no entra / se le
+   cierra la sesión~~. **[enmendado por la 005, D22/D25, 2026-11-04]** No entra / se le cierra la sesión **solo si todas las HC con
+   licencia del médico están vencidas** (D25); si queda una vigente, entra y la vencida queda frenada.
 3. Médico que entra por primera vez en un dispositivo, sin copia y con la licencia vigente: entra y se crea la copia.
 4. Pediatría no responde pero turnos sí: entra o no según la copia (RF-7); sin copia entra (RF-8).
 5. El servidor de pediatría atiende con su gracia de 24 h porque turnos no le contesta: ese servidor no revisa la
    licencia en ese caso y contesta correcto **sin licencia**; para la app es «sin respuesta concluyente».
+   **[enmendado por la 005, D22/D25, 2026-11-04]** No aplica igual a clínica: su servidor **sí** mira la licencia durante la gracia.
 6. El servidor contesta `429` (demasiados pedidos): «sin respuesta concluyente»; no se reintenta en bucle.
-7. Médico que además es de otra HC sin licencia (p. ej. la HC general): esa HC no cuenta; solo se consultan las que
-   llevan licencia.
+7. ~~Médico que además es de otra HC sin licencia (p. ej. la HC general): esa HC no cuenta; solo se consultan las que
+   llevan licencia.~~ **[enmendado por la 005, D22/D25, 2026-11-04] Este caso deja de valer:** la HC general lleva licencia desde
+   la 005 (D22); se consultan pediatría y clínica, cada una con su regla (D25).
 8. Licencia que vence hoy: la decide el servidor (su reloj y su regla de fechas, que se revisa aparte).
 9. Dos médicos que comparten el mismo navegador: cada copia es de su médico; no se cruzan.
 10. Sesión abierta durante días: la licencia no se vuelve a consultar sola (fuera de alcance); si venció, las
-    pantallas de HC muestran el rechazo del servidor como hoy.
+    pantallas de HC muestran el rechazo del servidor como hoy. **[enmendado por la 005, D22/D25, 2026-11-04]** Una excepción: un
+    `403 licencia_vencida` que llega **durante un envío de la HC general** no se muestra solo como rechazo: lo pendiente queda «En
+    espera» con el motivo que nombra la HC (RF-6 de la 005). En las demás pantallas de HC sigue como hoy.
 11. Ingreso sin conexión a turnos (el camino «sin señal» del inicio de sesión): no se consulta nada y se usa la copia,
     como hoy (RF-7).
 12. Respuesta *vigente* con la fecha de vencimiento en blanco: no es concluyente.
 13. Reloj del dispositivo corrido: con respuesta concluyente no importa; sin ella decide la copia con el reloj, como hoy.
 14. **Médico con pediatría habilitada y sin ninguna fila de licencia en pediatría** (el servidor contesta `403
     licencia_vencida` con `licencia: null`): entra a la app y a su agenda (RF-10); la copia local no se crea ni se
-    modifica; la HC de pediatría muestra el rechazo del servidor. Si además tiene HC general, esa funciona.
+    modifica; la HC de pediatría muestra el rechazo del servidor. ~~Si además tiene HC general, esa funciona.~~
+    **[enmendado por la 005, D22/D25, 2026-11-04]** Si además tiene HC general, esa funciona **si su licencia está vigente**; con
+    clínica sin fila o vencida queda frenada.
 15. Médico sin fila de licencia **y con una copia local vencida o inactiva** (p. ej. de otro tiempo): entra igual
     (RF-10); manda lo que dijo el servidor, no la copia.
 16. Rechazo `licencia_vencida` cuyo cuerpo JSON no trae la clave `licencia` o la trae de otro tipo: se trata como
@@ -170,7 +238,9 @@ dato manda; la base del dispositivo es caché y modo sin señal).
     decide la copia local (aclaración 2026-11-02, T3b).
 
 ## Fuera de alcance
-- Cambios en los servidores (pediatría, turnos, `hclinica`) y en la rama `hc-general`/clínica.
+- Cambios en los servidores (pediatría, turnos, `hclinica`) y en la rama `hc-general`/clínica. **[enmendado por la 005, D22/D25,
+  2026-11-04]** Deja de valer para lo de clínica: no hay cambios de servidor (ya informa la licencia) y la integración a
+  `hc-general` (T9) pasa a ser requisito de la enmienda (ya cumplido el 2026-11-04). Para pediatría sigue fuera de alcance.
 - Migraciones o columnas nuevas en la base local.
 - La regla del servidor que decide quién tiene licencia (`conLicencia`) y sus diferencias con la web: `activo = 0`
   dentro de la ventana de aviso, hora UTC contra hora de Buenos Aires, varias filas por médico. Se evalúan aparte.
@@ -178,7 +248,9 @@ dato manda; la base del dispositivo es caché y modo sin señal).
 - Bloquear desde la app la HC de pediatría del médico sin fila o mostrarle un texto propio: lo único que se ve es el
   rechazo del servidor que ya sale hoy.
 - Volver a consultar la licencia durante una sesión larga (reloj periódico) y reaccionar a un `licencia_vencida` que
-  llegue desde cualquier otra pantalla de HC.
+  llegue desde cualquier otra pantalla de HC. **[enmendado por la 005, D22/D25, 2026-11-04]** Reaccionar a un `licencia_vencida`
+  se acota a «desde cualquier otra pantalla de HC», **excepto el camino de envío de la HC general** (RF-6 de la 005: lo pendiente
+  pasa a «En espera»); el reloj periódico sigue fuera de alcance.
 - Ahorrar el pedido del aviso por vencer que hace la pantalla principal (P6).
 - Un límite de antigüedad de la copia sin señal (P2).
 - Mostrar un mensaje específico al médico que pierde la sesión al recargar (hoy vuelve a la pantalla de ingreso sin

@@ -4,6 +4,10 @@ Estado: **aprobado por el usuario el 2026-11-02** (P1 a P6 decididas, ver al fin
 tarea T3b). Se implementan T1 a T8 en el worktree, encadenadas, sin push ni publicación; T9 y la publicación a `main` solo con
 pedido aparte. Orden: T1, T2, T3, T3b, T4, T5, T6, T7, T8.
 
+> **[enmendado por la 005, D22/D25, 2026-11-04]** Las tareas **T1 a T9 ya están hechas** y **no se agregan tareas nuevas a la 004**.
+> La spec 004 fue enmendada **solo en su texto** por la 005 (la HC general también lleva licencia; ver el encabezado de `spec.md`);
+> el código de la licencia de clínica se implementa en las tareas de la 005 (T35 y relacionadas), no acá.
+
 Plan: `plan.md`. Spec: `spec.md`. Una tarea por vez, **tests primero (en rojo), después el código, tests en verde,
 marcar la tarea y parar**. Máximo 20-30 minutos cada una.
 

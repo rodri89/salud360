@@ -152,11 +152,18 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     `:composeApp:compileKotlinWasmJs -Pentorno=dev`: salida 0. Hubo que adaptar tres tests de la 004 al código de `hc-general` (commit `tests:` aparte:
     `nombresHc` en `DataModuleLicenciaTest`, `cuerpo` por nombre en `HcApiClientErrorTest` y el test de `HcBackends`, que ahora dice que pediatría lleva la
     licencia y `clinica` es de solo lectura y contesta `SinDato` sin pedir nada). T7 sigue sin pedido.
-- [ ] **T7. Enmienda de texto a la spec 004 (D22/D25).** RF-58 — S — Toca API Laravel: no
+- [x] **T7. Enmienda de texto a la spec 004 (D22/D25).** RF-58 — S — Toca API Laravel: no
   - Con el mismo pedido de T6: aplicar a la spec 004 la lista de `notas-para-el-plan.md` §7 (definiciones, RF-1 a RF-5, RF-7 a RF-9, RF-14,
     RF-15, RF-17 a RF-19, HU-2, casos límite 2, 5, 7 y 14, caso 10 y «Fuera de alcance»), **donde se integre la T9** y **avisando en
     las dos ramas** (`origin/main` y `hc-general`).
   - Hecho cuando: la 004 dice lo mismo en ambas ramas; el usuario aprueba el cambio; nota en `MEMORY.md`.
+  - **Resultado (2026-11-04): HECHA en `hc-general`** (el usuario aprobó la enmienda al aprobar el plan y las tareas). Solo texto, ningún
+    código. `specs/004-licencia-del-servidor/spec.md` con marca «[enmendado por la 005, D22/D25, 2026-11-04]» y lo original tachado donde
+    hace falta: aclaración inicial (es TEXTO; el código de clínica va en T35 y relacionadas; T1 a T9 de la 004 hechas, sin tareas nuevas),
+    contexto, usuarios, HU-2, definiciones (por HC), RF-1 a RF-10 (con la regla D25 de combinación), RF-11, RF-12, RF-14, RF-15, RF-17 a
+    RF-19, RF-21, RF-22, casos límite 2, 5, 7 (deja de valer), 10 y 14 (los demás se leen por HC), «Fuera de alcance»; `tasks.md` de la 004
+    con el mismo aviso de estado. **Pendiente: avisar en `origin/main`** (la 004 allí sigue con el texto de antes; sin push no se puede
+    igualar desde acá), así que «la 004 dice lo mismo en ambas ramas» queda abierto hasta que se haga con pedido.
 
 ## Servidor local de E1 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
 - [ ] **T8. Reglas puras de escritura y su test (phpunit).** RF-14, RF-20, RF-21, RF-22, RF-23, RF-34, RF-69 — M — Toca API Laravel: sí
