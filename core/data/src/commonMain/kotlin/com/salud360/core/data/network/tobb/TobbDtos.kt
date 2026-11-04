@@ -200,7 +200,110 @@ data class TobbObraSocial(val id: Long, val nombre: String = "")
 
 /** Parte de `GET catalogos` que usa la app (el resto se ignora). */
 @Serializable
-data class TobbCatalogosResponse(@SerialName("obras_sociales") val obrasSociales: List<TobbObraSocial> = emptyList())
+data class TobbCatalogosResponse(
+    @SerialName("obras_sociales") val obrasSociales: List<TobbObraSocial> = emptyList(),
+    val medicos: List<TobbMedicoCatalogo> = emptyList(),
+    val consultorios: List<TobbConsultorio> = emptyList(),
+    val especialidades: List<TobbEspecialidad> = emptyList(),
+)
+
+/** Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. */
+@Serializable
+data class TobbMedicoCatalogo(
+    val id: Long,
+    val nombre: String = "",
+    val apellido: String = "",
+    val mail: String = "",
+    val telefono: String = "",
+    val sexo: String? = null,
+    val foto: String? = null,
+    @SerialName("especialidad_id") val especialidadId: Long = 0,
+    @SerialName("consultorio_id") val consultorioId: Long = 0,
+    /**
+     * Si atiende por agenda. No alcanza con el consultorio: turnos lo exige siempre, así que el
+     * médico que solo usa historia clínica también tiene uno. Lo que lo distingue es no tener ningún
+     * horario cargado. Por omisión 1, para no esconderle la agenda a nadie si el servidor todavía no
+     * informa el dato.
+     */
+    @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+    val activo: Int = 1,
+)
+
+@Serializable
+data class TobbConsultorio(val id: Long, val nombre: String = "", val direccion: String = "", val telefono: String = "")
+
+@Serializable
+data class TobbEspecialidad(val id: Long, val nombre: String = "", val color: String? = null)
+
+/** Fila de `GET usuarios`: quién puede entrar. En turnosonlinebb los pacientes no están acá. */
+@Serializable
+data class TobbUsuario(
+    val id: Long,
+    val nombre: String = "",
+    val email: String = "",
+    val rol: String = "",
+    @SerialName("medico_id") val medicoId: Long? = null,
+    @SerialName("secretaria_id") val secretariaId: Long? = null,
+    val activo: Int = 1,
+)
+
+/** Fila de `GET secretarias`, con los consultorios que atiende. */
+@Serializable
+data class TobbSecretaria(
+    val id: Long,
+    val nombre: String = "",
+    val apellido: String = "",
+    @SerialName("user_id") val userId: Long = 0,
+    val email: String = "",
+    val consultorios: List<Long> = emptyList(),
+)
+
+@Serializable
+data class TobbUsuariosResponse(val usuarios: List<TobbUsuario> = emptyList())
+
+@Serializable
+data class TobbSecretariasResponse(val secretarias: List<TobbSecretaria> = emptyList())
+
+/**
+ * Cuerpo de `POST usuarios`: el alta de un médico o una secretaria.
+ *
+ * La contraseña es la única que esa persona usa, porque la identidad de toda la app es de
+ * turnosonlinebb. La especialidad y el consultorio son obligatorios para el médico: las dos columnas
+ * lo son del otro lado, y el consultorio es dónde figura, no dónde atiende.
+ */
+@Serializable
+data class TobbAltaUsuario(
+    val nombre: String,
+    val apellido: String,
+    val email: String,
+    val password: String,
+    /** `medico`, `secretaria` o `admin`. */
+    val rol: String,
+    @SerialName("especialidad_id") val especialidadId: Long? = null,
+    @SerialName("consultorio_id") val consultorioId: Long? = null,
+    val telefono: String = "",
+    val sexo: String = "",
+    /** Si aparece en las listas donde el paciente elige a quién pedirle turno. */
+    @SerialName("mostrar_en_turnos") val mostrarEnTurnos: Boolean = false,
+    /** Historias clínicas que va a poder abrir desde la app. */
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+)
+
+/** El usuario recién creado, con los números que le asignó turnos. */
+@Serializable
+data class TobbUsuarioCreado(
+    val id: Long,
+    val nombre: String = "",
+    val apellido: String = "",
+    val email: String = "",
+    val rol: String = "",
+    @SerialName("medico_id") val medicoId: Long? = null,
+    @SerialName("secretaria_id") val secretariaId: Long? = null,
+)
+
+@Serializable
+data class TobbAltaUsuarioResponse(val usuario: TobbUsuarioCreado)
 
 /** Fila de `GET obras-sociales?medico_id` (`obra_social_medicos` + nombre). */
 @Serializable

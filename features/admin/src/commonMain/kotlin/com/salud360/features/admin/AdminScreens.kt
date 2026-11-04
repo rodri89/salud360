@@ -99,8 +99,19 @@ private fun UsuariosTab(vm: AdminViewModel) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var rol by remember { mutableStateOf(Rol.MEDICO) }
+    val consultorios by vm.consultorios.collectAsState()
+    val especialidades by vm.especialidades.collectAsState()
+    var consultorioId by remember { mutableStateOf<String?>(null) }
+    var especialidadId by remember { mutableStateOf<String?>(null) }
+    // Por defecto no se publica: el que se da de alta desde acá suele ser el que solo usa historia
+    // clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    var mostrarEnTurnos by remember { mutableStateOf(false) }
+    var hcElegidas by remember { mutableStateOf(emptySet<String>()) }
+    val esMedico = rol == Rol.MEDICO
+    val completo = nombre.isNotBlank() && apellido.isNotBlank() && email.contains('@') && password.length >= 6 &&
+        (!esMedico || (consultorioId != null && especialidadId != null))
     SectionCard("Nuevo usuario", collapsible = false) {
-        Text("El médico no elige especialidad al ingresar: se le asignan desde la solapa Médicos y la app la reconoce por su mail.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("El alta se hace en turnos, que es donde vive la contraseña con la que se entra a la app y a la historia clínica.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TextField("Nombre", nombre, { nombre = it }, Modifier.weight(1f))
             TextField("Apellido", apellido, { apellido = it }, Modifier.weight(1f))
@@ -110,9 +121,28 @@ private fun UsuariosTab(vm: AdminViewModel) {
             androidx.compose.material3.OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.weight(1f))
         }
         RadioGroupField("Rol", rol.etiqueta(), Rol.entries.map { it.etiqueta() }, { v -> rol = Rol.entries.first { it.etiqueta() == v } })
+        if (esMedico) {
+            // Las dos son obligatorias del otro lado. El consultorio es dónde figura, no dónde
+            // atiende: el que solo usa historia clínica no tiene horarios en ninguno.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SelectField("Especialidad (turnos)", especialidades.firstOrNull { it.id == especialidadId }?.nombre, especialidades.map { it.nombre },
+                    { v -> especialidadId = especialidades.firstOrNull { it.nombre == v }?.id }, Modifier.weight(1f))
+                SelectField("Consultorio", consultorios.firstOrNull { it.id == consultorioId }?.nombre, consultorios.map { it.nombre },
+                    { v -> consultorioId = consultorios.firstOrNull { it.nombre == v }?.id }, Modifier.weight(1f))
+            }
+            Text("Historias clínicas habilitadas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                vm.especialidadesHc.forEach { (codigo, nombreHc) ->
+                    CheckboxField(nombreHc, codigo in hcElegidas, { marcada -> hcElegidas = if (marcada) hcElegidas + codigo else hcElegidas - codigo })
+                }
+            }
+            CheckboxField("Mostrar para pedir turno", mostrarEnTurnos, { mostrarEnTurnos = it })
+        }
         ActionRow {
-            PillButton("Crear usuario", enabled = nombre.isNotBlank() && apellido.isNotBlank() && email.contains('@') && password.length >= 6, onClick = {
-                vm.crearUsuario(nombre, apellido, email, password, rol); nombre = ""; apellido = ""; email = ""; password = ""
+            PillButton("Crear usuario", enabled = completo, onClick = {
+                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList())
+                nombre = ""; apellido = ""; email = ""; password = ""
+                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet()
             })
         }
     }
@@ -259,19 +289,37 @@ private fun FeriadosTab(vm: AdminViewModel) {
 private fun LicenciasTab(vm: AdminViewModel) {
     val medicos by vm.medicos.collectAsState()
     val licencias by vm.licencias.collectAsState()
+    // La licencia es el permiso para entrar a una historia clínica, así que solo tiene sentido para
+    // los médicos que tienen alguna habilitada. Al resto no se les cobra ni se les vence nada.
+    val conHc = medicos.filter { it.especialidadesHc.isNotEmpty() }
     Text("La licencia controla el acceso del médico a la historia clínica (vencida = no puede ingresar; aviso = se le muestra un recordatorio).", style = MaterialTheme.typography.bodyMedium)
-    medicos.forEach { m ->
-        val l = licencias.firstOrNull { it.medicoId == m.id } ?: Licencia(m.id, hoy().toString(), hoy().toString())
+    if (conHc.isEmpty()) {
+        Text("Ningún médico tiene historia clínica habilitada.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    conHc.forEach { m ->
+        val l = licencias.firstOrNull { it.medicoId == m.id }
         PlainCard {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(220.dp))
-                DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
-                DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
-                var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
-                NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
-                Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
-                val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
-                StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                if (l == null) {
+                    // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como
+                    // si la licencia venciera hoy. La licencia vive en la base de la historia clínica
+                    // y la app todavía no la trae.
+                    Text("Sin licencia cargada", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    // Sin licencia el médico no entra a la historia clínica, así que darla de alta es
+                    // parte de habilitarlo y tiene que poder hacerse desde acá.
+                    TextButton(onClick = { vm.nuevaLicencia(m.id) }) { Text("Cargar licencia") }
+                    StatusChip("Sin dato", Salud360Colors.Grey)
+                } else {
+                    DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
+                    DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
+                    var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
+                    NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
+                    Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
+                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
+                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                }
             }
         }
     }

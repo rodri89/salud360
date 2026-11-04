@@ -38,6 +38,12 @@ data class Secretaria(
     val activo: Boolean = true,
 )
 
+/**
+ * La licencia del médico que entró está por vencer. Lo informa la historia clínica al validar la
+ * sesión, porque la fecha vive en su base; la app solo la muestra.
+ */
+data class AvisoLicencia(val especialidad: String, val vence: String)
+
 @Serializable
 data class Licencia(
     val medicoId: Id,

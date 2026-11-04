@@ -1,0 +1,111 @@
+package com.salud360.core.data.repos
+
+import com.salud360.core.model.Id
+import com.salud360.core.model.auth.AvisoLicencia
+import com.salud360.core.model.auth.Licencia
+import com.salud360.core.model.hc.Archivo
+import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.hc.RegistroClinico
+import kotlinx.datetime.LocalDate
+
+/**
+ * API propia de una historia clínica (hc_pediatria, hclinica, ...).
+ *
+ * `HcRepository` es genérico y no conoce la red: recibe un mapa de backends por código de especialidad.
+ * Una especialidad sin backend sigue funcionando exactamente como hoy, solo contra la base del dispositivo.
+ *
+ * Todo el guardado es **primero en el dispositivo y después el envío**: el autoguardado de la consulta
+ * dispara cada pocos cientos de milisegundos mientras el médico escribe, así que estas operaciones las
+ * llama un motor que junta los cambios pendientes, no la pantalla.
+ */
+/**
+ * Backends de historia clínica por código de especialidad.
+ * Envuelto en un tipo propio por la misma razón que [com.salud360.core.data.network.hc.HcApiClients].
+ */
+class HcBackends(val porEspecialidad: Map<String, HcBackend>)
+
+interface HcBackend {
+    /** Código de la especialidad que atiende este backend (ej. "pediatria"). */
+    val especialidad: String
+
+    /**
+     * Id de la consulta en la API, creándola allá si todavía no existía.
+     * Devuelve null si no se pudo (por ejemplo, el paciente no tiene documento válido).
+     */
+    suspend fun asegurarConsulta(consulta: Consulta): String?
+
+    /** Manda las secciones de texto pendientes de una consulta ya creada en la API. */
+    suspend fun enviarSecciones(remotoId: String, secciones: Map<String, Map<String, String>>)
+
+    /** Manda el examen físico de una consulta ya creada en la API. */
+    suspend fun enviarExamen(remotoId: String, campos: Map<String, String>)
+
+    /**
+     * Manda las filas pendientes de las listas (screening, internaciones, interconsultas, exámenes
+     * complementarios). Devuelve, por cada id local, el id con el que quedó en la API: hay que
+     * guardarlo o el próximo envío la duplica.
+     */
+    suspend fun enviarRegistros(remotoId: String, registros: List<RegistroClinico>): Map<Id, String>
+
+    /** Refleja en la API el cierre, la reapertura o la anulación de la consulta. */
+    suspend fun enviarEstado(consulta: Consulta, remotoId: String)
+
+    /**
+     * Sube un adjunto que todavía no está en la API y devuelve el id con el que quedó, o null si esa
+     * sección no acepta adjuntos del otro lado. Hay que guardarlo o el próximo envío lo sube de nuevo.
+     *
+     * Va de a uno: la foto se saca en el consultorio, donde la señal es mala, y si se corta a la
+     * mitad conviene reintentar esa sola y no las diez de la consulta.
+     */
+    suspend fun subirArchivo(remotoId: String, archivo: Archivo, bytes: ByteArray): String?
+
+    /** Da de baja en la API un adjunto ya subido. */
+    suspend fun borrarArchivo(remotoId: String, archivo: Archivo)
+
+    /** Baja de la API un adjunto que no está en el dispositivo (lo subió otro, o se reinstaló la app). */
+    suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray?
+
+    /**
+     * Licencias de la historia clínica: el permiso del médico para entrar. Viven en la base de la
+     * especialidad, no en turnos, y solo las ve el administrador. Vacío si el que pregunta no lo es.
+     */
+    suspend fun traerLicencias(): List<Licencia> = emptyList()
+
+    /** Guarda una licencia en la API de la especialidad. false si no se pudo. */
+    suspend fun guardarLicencia(licencia: Licencia): Boolean = false
+
+    /**
+     * La licencia del que está usando la app está por vencer, con la fecha en la que vence. Null si
+     * no lo está, si no tiene licencia (el administrador) o si no se pudo preguntar.
+     */
+    suspend fun avisoDeLicencia(): AvisoLicencia? = null
+
+    /**
+     * Lo que contesta el servidor de esta historia clínica sobre la licencia del que está usando la app, para que
+     * entre o no con lo que dice el dueño del dato y no con la copia del dispositivo. Solo lee. [EstadoLicenciaRemoto.SinDato]
+     * si esta historia clínica no lleva licencia o no se pudo saber.
+     */
+    suspend fun licenciaDelServidor(): EstadoLicenciaRemoto = EstadoLicenciaRemoto.SinDato
+
+    /**
+     * Trae la cartera del médico en esta historia clínica y la deja en la base del dispositivo.
+     * Devuelve cuántos pacientes llegaron.
+     *
+     * Hace falta para el médico que **solo** usa la historia clínica: el resto recibe sus pacientes
+     * desde turnos, por los turnos que le dieron, y el que no atiende por agenda no tiene ninguno
+     * ahí. Sin esto la lista le queda vacía aunque del otro lado tenga cientos.
+     */
+    suspend fun traerPacientes(medicoId: Id): Int = 0
+
+    /** Trae de la API las consultas del paciente y las deja en la base del dispositivo. */
+    suspend fun traerConsultas(pacienteId: Id, medicoId: Id): List<Consulta>
+
+    /**
+     * Trae el contenido de una consulta y lo deja en la base del dispositivo, **sin pisar lo que el
+     * médico haya escrito y todavía no se haya enviado**.
+     */
+    suspend fun traerConsulta(consultaLocalId: Id, remotoId: String)
+
+    /** Fecha con la que la API identifica una consulta, para armar los cuerpos. */
+    fun fechaTexto(fecha: LocalDate): String = fecha.toString()
+}

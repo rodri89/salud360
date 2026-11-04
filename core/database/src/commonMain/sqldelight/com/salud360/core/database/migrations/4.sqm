@@ -1,0 +1,5 @@
+-- v4 -> v5: id del registro en la API de la especialidad (hc_pediatria, ...).
+-- Mismo criterio que `consulta.remoto_id`: las listas (screening, internaciones, interconsultas y
+-- exámenes complementarios) se cargan en el dispositivo aunque no haya señal, y cuando se envían la
+-- API devuelve el id con el que quedaron allá. Sin ese vínculo, el segundo envío duplicaría la fila.
+ALTER TABLE registro_clinico ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';

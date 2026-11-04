@@ -55,7 +55,8 @@ import kotlinx.datetime.LocalDate
  * Registros repetibles (interconsultas, exámenes complementarios, internaciones, estudios,
  * screenings, hermanos...). Con más de un registro se muestran de a uno, deslizando hacia la derecha,
  * con "n - total" y flechas; diálogo de alta/edición y adjuntos opcionales.
- * En lectura solo se muestran los registros de esta consulta (o del paciente, si son por paciente).
+ * En lectura solo se muestran los de esta consulta; editando, también los de otras consultas del
+ * paciente, marcados "Anterior", porque un estudio se pide una vez y el resultado llega después.
  */
 @Composable
 fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
@@ -96,7 +97,7 @@ fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
 /**
  * Un registro por página, deslizable hacia la derecha, con "n - total" y flechas para avanzar y retroceder.
  * Con un solo registro no hay controles. Cada par es (registro, esActual): los que no son de esta consulta
- * se marcan "Anterior" y no se editan. Al agregar un registro el pager salta a él.
+ * se marcan "Anterior" y se pueden completar, pero no quitar. Al agregar un registro el pager salta a él.
  */
 @Composable
 private fun RegistrosPaginados(
@@ -106,7 +107,7 @@ private fun RegistrosPaginados(
     if (items.isEmpty()) return
     if (items.size == 1) {
         val (r, esActual) = items.single()
-        RegistroFila(r, campos, esActual, soloLectura || !esActual, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
+        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
         return
     }
     val pager = rememberPagerState { items.size }
@@ -130,7 +131,7 @@ private fun RegistrosPaginados(
     }
     HorizontalPager(pager, Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, pageSpacing = 12.dp) { i ->
         val (r, esActual) = items[i]
-        RegistroFila(r, campos, esActual, soloLectura || !esActual, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
+        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
     }
 }
 
@@ -149,9 +150,17 @@ private fun RegistroFila(
                 }
             }
             if (!esActual) StatusChip("Anterior", Salud360Colors.Grey)
-            if (!soloLectura) { LinkButton("Editar", onEditar); LinkButton("Quitar", onBorrar) }
+            // Un registro de otra consulta se puede completar pero no quitar: el estudio se pide una vez
+            // y el resultado llega después, así que cargarlo es parte del trabajo; borrar lo que pidió
+            // otra consulta, no. Al guardarlo, pediatría anota en qué consulta se cargó la respuesta.
+            if (!soloLectura) {
+                LinkButton("Editar", onEditar)
+                if (esActual) LinkButton("Quitar", onBorrar)
+            }
         }
-        if (conArchivos) ArchivosInline(seccion = "registro", ctx = ctx, registroId = r.id, soloLectura = soloLectura || !esActual)
+        // Los adjuntos sí se permiten en los anteriores: la foto del resultado es justamente lo que
+        // llega tarde. Del otro lado la foto cuelga del estudio, no de la consulta.
+        if (conArchivos) ArchivosInline(seccion = "registro", ctx = ctx, registroId = r.id, soloLectura = soloLectura)
         if (conDivider) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
     }
 }

@@ -105,7 +105,9 @@ fun ArchivoMiniatura(a: Archivo, ctx: SeccionContext, onAbrir: () -> Unit, onBor
             }
         }
         Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (a.subido) Icons.Default.CloudDone else Icons.Default.CloudOff, contentDescription = null, tint = if (a.subido) Salud360Colors.Success else Salud360Colors.Warning, modifier = Modifier.size(16.dp))
+            // Está a salvo tanto si llegó al servidor propio como si llegó a la API de la especialidad.
+            val guardado = a.subido || a.remotoId.isNotBlank()
+            Icon(if (guardado) Icons.Default.CloudDone else Icons.Default.CloudOff, contentDescription = null, tint = if (guardado) Salud360Colors.Success else Salud360Colors.Warning, modifier = Modifier.size(16.dp))
             Text(a.nombre, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 4.dp))
             if (onBorrar != null) IconButton(onClick = onBorrar, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, contentDescription = "Eliminar", modifier = Modifier.size(16.dp)) }
         }

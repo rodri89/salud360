@@ -22,7 +22,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
@@ -130,6 +133,12 @@ fun DateField(
     onValueChange: (LocalDate?) -> Unit,
     modifier: Modifier = Modifier,
     readOnly: Boolean = false,
+    /**
+     * El campo va sobre el panel de marca, que es oscuro. Sin esto el texto sale con el color de
+     * siempre, pensado para fondo claro, y no se lee. `OutlinedTextField` ignora `LocalContentColor`,
+     * así que hay que decírselo con sus propios colores.
+     */
+    sobreMarca: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     OutlinedTextField(
@@ -139,9 +148,19 @@ fun DateField(
         label = { Text(label) },
         trailingIcon = {
             IconButton(onClick = { if (!readOnly) open = true }) {
-                Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha")
+                Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha", tint = if (sobreMarca) Color.White else LocalContentColor.current)
             }
         },
+        colors = if (!sobreMarca) OutlinedTextFieldDefaults.colors() else OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            disabledTextColor = Color.White,
+            focusedLabelColor = Color.White,
+            unfocusedLabelColor = Color.White.copy(alpha = 0.85f),
+            focusedBorderColor = Color.White,
+            unfocusedBorderColor = Color.White.copy(alpha = 0.6f),
+            cursorColor = Color.White,
+        ),
         modifier = modifier.fillMaxWidth().clickable(enabled = !readOnly) { open = true },
     )
     // Calendario propio (ver CalendarioDialog): el DatePicker de Material 3 en web mostraba el mes corrido.

@@ -2,12 +2,17 @@ package com.salud360.core.data
 
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.HcApiClient
+import com.salud360.core.data.network.hc.HcApiClients
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
+import com.salud360.core.data.repos.HcBackends
+import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.Salud360Db
 import com.russhwolf.settings.Settings
@@ -51,10 +56,37 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
         val id = settings.getStringOrNull("dispositivo_id") ?: newId().also { settings.putString("dispositivo_id", it) }
         SyncEngine(get(), get(), get(), id)
     }
-    single { AuthRepository(get(), get(), get(), get()) }
+    // Clientes de las historias clínicas que ya tienen API propia (`salud360.entorno.*.hc.<codigo>`).
+    // Las que no están configuradas siguen guardando solo en el dispositivo, sin cambiar nada.
+    single {
+        HcApiClients(
+            config.hcUrls.mapNotNull { (codigo, url) ->
+                url.takeIf { it.isNotBlank() }?.let { codigo to HcApiClient(it, codigo) }
+            }.toMap(),
+        )
+    }
+    single {
+        HcBackends(
+            get<HcApiClients>().porEspecialidad.mapNotNull { (codigo, cliente) ->
+                when (codigo) {
+                    "pediatria" -> codigo to HcPediatriaBackend(get(), cliente)
+                    else -> null
+                }
+            }.toMap(),
+        )
+    }
+    single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
+    // `backendsHc`: los backends con API (hoy pediatría, la única HC con licencia) para que el ingreso consulte la licencia al
+    // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
+    single {
+        AuthRepository(
+            get(), get(), get(), get(), get<HcApiClients>().porEspecialidad,
+            backendsHc = get<HcBackends>().porEspecialidad,
+        )
+    }
     single { PacientesRepository(get()) }
-    single { HcRepository(get()) }
+    single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
-    single { AdminRepository(get(), get()) }
+    single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }
 }

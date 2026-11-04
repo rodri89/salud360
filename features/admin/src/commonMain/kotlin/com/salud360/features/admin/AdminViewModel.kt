@@ -3,9 +3,12 @@ package com.salud360.features.admin
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
+import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
+import com.salud360.core.model.TobbIds
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
@@ -20,7 +23,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 
 /** Panel del administrador: usuarios, médicos, secretarias, consultorios, especialidades, feriados y licencias. */
 class AdminViewModel(
@@ -39,9 +45,51 @@ class AdminViewModel(
     val licencias: StateFlow<List<Licencia>> = admin.observarLicencias().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val mensaje = MutableStateFlow<String?>(null)
 
-    fun crearUsuario(nombre: String, apellido: String, email: String, password: String, rol: Rol) = viewModelScope.launch {
-        runCatching { admin.crearUsuario(nombre, apellido, email, password, rol) }
-            .onSuccess { mensaje.value = "Usuario ${it.email} creado"; launch { sync.sincronizar() } }
+    init {
+        // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
+        // su dueño. Se traen al abrir el panel y quedan en la base del dispositivo; las listas se
+        // observan de ahí, así que aparecen solas. Antes esto lo llenaba el servidor propio de
+        // Salud 360, que no está desplegado, y el panel se veía vacío.
+        viewModelScope.launch {
+            runCatching { turnos.sincronizarAdministracion() }
+                .onFailure { mensaje.value = "No se pudo traer la administración de turnos: ${it.message ?: "sin conexión"}" }
+        }
+        // Las licencias son de la historia clínica, no de turnos: las trae su propia API y solo las
+        // informa al administrador. Un médico no ve ninguna y la pestaña se comporta como antes.
+        viewModelScope.launch {
+            runCatching { admin.sincronizarLicencias() }
+                .onFailure { mensaje.value = "No se pudieron traer las licencias: ${it.message ?: "sin conexión"}" }
+        }
+    }
+
+    /**
+     * Da de alta a quien va a usar la app. Va a turnosonlinebb, que es el dueño de la identidad: es
+     * la contraseña con la que se entra, y la historia clínica valida la sesión contra ese sistema.
+     *
+     * El médico que solo usa historia clínica se crea con [mostrarEnTurnos] en false: queda activo,
+     * que es lo que le permite entrar, pero no aparece en las listas para pedirle turno.
+     */
+    fun crearUsuario(
+        nombre: String,
+        apellido: String,
+        email: String,
+        password: String,
+        rol: Rol,
+        especialidadId: Id? = null,
+        consultorioId: Id? = null,
+        mostrarEnTurnos: Boolean = false,
+        historiasClinicas: List<String> = emptyList(),
+    ) = viewModelScope.launch {
+        val alta = TobbAltaUsuario(
+            nombre = nombre.trim(), apellido = apellido.trim(), email = email.trim().lowercase(), password = password,
+            rol = rol.name.lowercase(),
+            especialidadId = TobbIds.numero(especialidadId),
+            consultorioId = TobbIds.numero(consultorioId),
+            mostrarEnTurnos = mostrarEnTurnos,
+            historiasClinicas = historiasClinicas,
+        )
+        runCatching { turnos.crearUsuario(alta) }
+            .onSuccess { mensaje.value = "Usuario ${it.email} creado" }
             .onFailure { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}" }
     }
 
@@ -55,6 +103,24 @@ class AdminViewModel(
     fun nuevaEspecialidad(nombre: String, codigoHc: String?) = guardarEspecialidad(EspecialidadTurnos(newId(), nombre, codigoHc))
     fun agregarFeriado(fecha: LocalDate, descripcion: String) = viewModelScope.launch { turnos.guardarFeriado(Feriado(newId(), fecha, descripcion)) }
     fun eliminarFeriado(f: Feriado) = viewModelScope.launch { turnos.eliminarFeriado(f) }
-    fun guardarLicencia(l: Licencia) = viewModelScope.launch { admin.guardarLicencia(l) }
+    /**
+     * La licencia manda sobre el ingreso del médico a la historia clínica, así que el guardado que
+     * importa es el de allá: si no llegó, se avisa en vez de dejar la pantalla como si hubiera andado.
+     */
+    fun guardarLicencia(l: Licencia) = viewModelScope.launch {
+        runCatching { admin.guardarLicencia(l) }
+            .onSuccess { if (!it) mensaje.value = "La licencia quedó guardada en este dispositivo, pero la historia clínica no la aceptó." }
+            .onFailure { mensaje.value = "No se pudo guardar la licencia: ${it.message ?: "sin conexión"}" }
+    }
+
+    /**
+     * Da de alta la licencia de un médico que no tenía ninguna. Sin licencia no entra a la historia
+     * clínica, así que cargarla es el paso de habilitarlo: un año, con aviso el último mes.
+     */
+    fun nuevaLicencia(medicoId: Id) {
+        val vence = hoy().plus(DatePeriod(years = 1))
+        guardarLicencia(Licencia(medicoId, vence.toString(), vence.minus(DatePeriod(months = 1)).toString()))
+    }
+
     fun sincronizar() = viewModelScope.launch { mensaje.value = if (sync.sincronizar()) "Sincronizado" else "No se pudo sincronizar" }
 }
