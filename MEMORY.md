@@ -252,6 +252,15 @@ registros de personas): el repo es público.
   `PUT medicos/{id}/activo` ya está subido a producción de turnos (2026-11-05).
   **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
   agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
+- Rama `feature/pacientes-del-medico` (sobre `main`, sin commit): el buscador de la pestaña Pacientes del médico ya no es global
+  (`PacientesListViewModel` filtra solo su cartera `medico_paciente`; el de la agenda para dar turnos sigue global). El alta ya
+  no duplica: `POST pacientes` con `creado=false` (el DNI ya existía en turnos) reemplaza la ficha local por la de turnos y repunta
+  todo lo que la referenciaba (`PacientesRepository.reemplazarPorRemoto`, reglas puras en `FusionDePacientes.kt`; 11 tablas) y
+  avisa «Ese paciente ya existía en el sistema: se asoció a tu lista». `guardar` ya no pisa la ficha de un DNI que el
+  dispositivo tenía. Se agregaron queries `repuntar*` a `Pacientes.sq` (sin cambios de esquema ni migración).
+  **Dependencia:** antes de publicar tienen que estar subidos a turnos `pacientes/vinculados` en unión (médico ∪ con turnos)
+  y el `store` que no pisa datos de pacientes ajenos. Pendiente: endurecer `show`/`update`/`buscar` en turnos; los dispositivos
+  con duplicados viejos no se limpian solos; `verificarDni()` sigue sin conectarse; el alta por `pacienteTobbId` (agenda) no fusiona.
 - Rama `feature/licencias-renovar` (sobre `main`, sin commit): pestaña Licencias del admin con snackbar en cada actualización
   (éxito, «la historia clínica no la aceptó» o error con el motivo), botón «Renovar» (+1 mes calendario a «Vence» y «Aviso
   desde», `RenovacionDeLicencia.kt`, un solo guardado) y tarjeta reordenada (fechas e importe con wrap; debajo Renovar + «Activa»).

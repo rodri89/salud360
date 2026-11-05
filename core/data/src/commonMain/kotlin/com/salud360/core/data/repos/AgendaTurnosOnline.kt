@@ -107,6 +107,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     private val q get() = db.turnosQueries
     private val pq get() = db.pacientesQueries
     private val aq get() = db.authQueries
+    private val pacientes = PacientesRepository(db)
 
     /** Feriados informados por la API en las consultas de agenda (la tabla local no tiene los de la web). */
     private val feriados = mutableMapOf<LocalDate, Boolean>()
@@ -700,6 +701,18 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
 
     /** Da de alta el paciente en la web (por DNI: si ya existe se reutiliza) y recuerda el vínculo en `paciente_extra`. */
     private suspend fun altaPacienteRemoto(pacienteId: Id, medicoId: Id, consultorioId: Id?): Long {
+        val r = enviarAltaPaciente(pacienteId, medicoId, consultorioId)
+        anotarIdTobb(pacienteId, r.paciente.id)
+        return r.paciente.id
+    }
+
+    /** dirty = true: el vínculo viaja por la sincronización normal a los demás dispositivos. */
+    private suspend fun anotarIdTobb(pacienteId: Id, idTobb: Long) {
+        pq.upsertPacienteExtra(PacienteExtra(pacienteId, EXTRA_TURNOS, EXTRA_TOBB_ID, idTobb.toString()).toRow(ahoraMillis(), dirty = true))
+    }
+
+    /** `POST pacientes` con la ficha local. Turnos contesta la ficha final y si la creó (`creado`) o ya existía por DNI. */
+    private suspend fun enviarAltaPaciente(pacienteId: Id, medicoId: Id, consultorioId: Id?): TobbPacienteResponse {
         val (p, dni) = pacienteConDni(pacienteId)
         val cuerpo = TobbNuevoPaciente(
             medicoId = numeroMedico(medicoId), consultorioId = consultorioId?.let { TobbIds.numero(it) }, dni = dni, nombre = p.nombre, apellido = p.apellido,
@@ -708,19 +721,41 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             obraSocial = p.obraSocial.ifBlank { null }, numeroAfiliado = p.numeroAfiliado.ifBlank { null }, obraSocialPlan = p.obraSocialPlan.ifBlank { null },
             nota = p.nota.ifBlank { null },
         )
-        val r = decodificar(TobbPacienteResponse.serializer(), turnos.tobbPost("pacientes", cuerpo(TobbNuevoPaciente.serializer(), cuerpo)))
-        // dirty = true: el vínculo viaja por la sincronización normal a los demás dispositivos
-        pq.upsertPacienteExtra(PacienteExtra(pacienteId, EXTRA_TURNOS, EXTRA_TOBB_ID, r.paciente.id.toString()).toRow(ahoraMillis(), dirty = true))
-        return r.paciente.id
+        return decodificar(TobbPacienteResponse.serializer(), turnos.tobbPost("pacientes", cuerpo(TobbNuevoPaciente.serializer(), cuerpo)))
+    }
+
+    /**
+     * Alta de un paciente nuevo del médico: el `POST pacientes` lo crea en turnos o, si el DNI ya existía, solo lo
+     * asocia al médico y devuelve la ficha que turnos ya tenía. Según lo que conteste (ver [decidirTrasAlta]) la ficha
+     * local se conserva o se reemplaza por la de turnos, de modo que nunca queden dos filas con el mismo DNI.
+     */
+    private suspend fun altaPacienteConFusion(pacienteId: Id, medicoId: Id, consultorioId: Id?): PacienteGuardado {
+        val r = enviarAltaPaciente(pacienteId, medicoId, consultorioId)
+        val remoto = r.paciente.toPaciente()
+        val remotaYaEnElDispositivo = remoto.id != pacienteId && pq.pacientePorId(remoto.id).uno { it } != null
+        val decision = decidirTrasAlta(pacienteId, remoto.id, r.creado, remotaYaEnElDispositivo)
+        val ficha = when (decision.accion) {
+            AccionTrasAlta.ANOTAR_ID_REMOTO -> {
+                anotarIdTobb(pacienteId, r.paciente.id)
+                pq.pacientePorId(pacienteId).uno { it.toModel() } ?: remoto
+            }
+            AccionTrasAlta.ACTUALIZAR_LOCAL, AccionTrasAlta.REEMPLAZAR_LOCAL -> pacientes.reemplazarPorRemoto(pacienteId, remoto)
+        }
+        return PacienteGuardado(ficha, decision.yaExistia)
     }
 
     /**
      * Guarda en turnosonlinebb la ficha que se acaba de editar en la app. Si el paciente ya existe allá se
      * actualiza (`PUT pacientes/{id}`, que solo pisa los campos enviados); si no, se lo da de alta.
      * Sin esto, lo que se edita en la app se pierde en cuanto la web vuelve a informar al paciente.
+     *
+     * [esAlta] fuerza el `POST` aunque la ficha ya tenga id de turnos: es un alta del médico sobre un DNI que el
+     * dispositivo ya tenía de turnos, y lo que asocia al médico es el `POST` (un `PUT` pisaría datos ajenos).
+     * Devuelve la ficha que quedó en el dispositivo y si el paciente ya existía en el sistema.
      */
-    suspend fun guardarPacienteRemoto(pacienteId: Id, medicoId: Id, consultorioId: Id?) {
-        val id = idTobbConocido(pacienteId) ?: run { altaPacienteRemoto(pacienteId, medicoId, consultorioId); return }
+    suspend fun guardarPacienteRemoto(pacienteId: Id, medicoId: Id, consultorioId: Id?, esAlta: Boolean = false): PacienteGuardado {
+        val id = idTobbConocido(pacienteId)
+        if (id == null || esAlta) return altaPacienteConFusion(pacienteId, medicoId, consultorioId)
         val (p, dni) = pacienteConDni(pacienteId)
         val cuerpo = TobbPacienteEdicion(
             dni = dni, nombre = p.nombre, apellido = p.apellido, telefono = p.telefono, mail = p.mail,
@@ -729,6 +764,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             fechaNacimiento = p.fechaNacimiento?.toString(),
         )
         turnos.tobbPut("pacientes/$id", cuerpo(TobbPacienteEdicion.serializer(), cuerpo))
+        return PacienteGuardado(p, yaExistia = false)
     }
 
     private suspend fun pacienteBloqueo(): Long {
@@ -790,17 +826,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     /** Actualiza la ficha local conservando lo que la web no informa (datos de la historia clínica, etc.). */
     private suspend fun guardarPacienteLocal(nuevo: Paciente, ahora: Long) {
         val existente = pq.pacientePorId(nuevo.id).uno { it.toModel() }
-        val fusionado = if (existente == null) nuevo else existente.copy(
-            dni = nuevo.dni.ifBlank { existente.dni }, nombre = nuevo.nombre.ifBlank { existente.nombre }, apellido = nuevo.apellido.ifBlank { existente.apellido },
-            telefono = nuevo.telefono.ifBlank { existente.telefono }, mail = nuevo.mail.ifBlank { existente.mail },
-            domicilio = nuevo.domicilio.ifBlank { existente.domicilio }, localidad = nuevo.localidad.ifBlank { existente.localidad },
-            fechaNacimiento = nuevo.fechaNacimiento ?: existente.fechaNacimiento,
-            obraSocial = nuevo.obraSocial.ifBlank { existente.obraSocial }, numeroAfiliado = nuevo.numeroAfiliado.ifBlank { existente.numeroAfiliado },
-            obraSocialPlan = nuevo.obraSocialPlan.ifBlank { existente.obraSocialPlan },
-            // La nota llega vacía mientras la web no exponga la columna: en ese caso se conserva la local.
-            nota = nuevo.nota.ifBlank { existente.nota },
-        )
-        pq.upsertPaciente(fusionado.toRow(ahora, dirty = false))
+        pq.upsertPaciente(fusionarFicha(existente, nuevo).toRow(ahora, dirty = false))
     }
 
     private suspend fun modulos(medicoId: Id): Set<ModuloTurnos> =

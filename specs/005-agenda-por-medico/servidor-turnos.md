@@ -7,7 +7,7 @@ Todo en español: código, mensajes, docs y commits. Este archivo es público: n
 ## Qué se busca
 Hoy el panel de administración de la app tiene dos interruptores por médico, «Tiene agenda de turnos» y «Visible para pacientes en la web», que solo cambian la copia local del dispositivo. Para que sean reales, turnos tiene que:
 
-1. Guardar **«tiene agenda»** en una columna propia (decisión del usuario: no se reutiliza la que decide la visibilidad).
+1. Guardar **«tiene agenda»** en una columna propia (decisión del usuausa erio: no se reutiliza la que decide la visibilidad).
 2. Seguir usando `medicos.castigo_automatico` ("Mostrar Medico", `1` = se muestra) como **«visible para pacientes»**. Esa columna ya decide qué médicos ve el paciente en la web; no se cambia su significado ni la web antigua.
 3. Dejar que el **administrador** cambie los dos desde la API de Salud 360.
 4. **Informar** los dos en `catalogos` y en `auth/perfil`.
