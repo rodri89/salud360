@@ -328,13 +328,51 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - **Decisiones de contrato para revisar:** un vaciado sobre una sección sin fila crea una fila con texto vacío; un pedido sin nada que escribir
     (o solo desconocidas) da `200` y no escribe, pero igual exige consulta propia y abierta; no se registra el pedido (no hay `yaRegistrada`), así que
     repetir sobre una consulta que se cerró en el medio da `409`; la `consulta.updated_at` no se toca al escribir contenido; `DELETE` sigue sin ruta (T13).
-- [ ] **T13. Cerrar y dar de baja: servicio, controlador y rutas.** RF-22, RF-23, RF-26, RF-53 — M — Toca API Laravel: sí
+- [x] **T13. Cerrar y dar de baja: servicio, controlador y rutas.** RF-22, RF-23, RF-26, RF-53 — M — Toca API Laravel: sí
   - Código: `EscrituraService::cerrar` (`activo = 1`, `created_at` = fecha clínica, edad; confirma **solo** exámenes complementarios e
     interconsultas con `activo = 2` de esa consulta; **no toca laboratorio ni peso**; repetir devuelve lo mismo) y `::baja` (`activo = 0`
     solo si está abierta y la creó la app; nunca `DELETE` físico), y las rutas.
   - Hecho cuando: PHP-base: un examen dado de baja (`activo = 0`) **no reaparece** al cerrar; un examen y una interconsulta pendientes
     pasan a `activo = 1`; laboratorio y peso quedan como estaban; cerrar dos veces = una; baja de una cerrada → `409 consulta_cerrada`;
     escritura posterior sobre una cerrada o dada de baja → `409`, salvo repetir una ya registrada (misma respuesta).
+  - **Resultado (2026-11-04): HECHA.** hclinica `ed0bb61` (rama `salud360-api`, sin push): `POST consultas/{id}/cerrar` y `DELETE consultas/{id}` en
+    `ConsultaEscrituraController` (mismo grupo y middleware; CORS sin cambios) + `EscrituraService::cerrar/baja` + `tests/Unit/EscrituraCierreTest.php` (16) +
+    sección «Escritura» de `md/API_SALUD360_CLINICA.md` (solo lo de T13); copiado a la servida (idéntico por hash), `route:clear`. `ConsultaController`,
+    `ConsultasService`, `ConsultasReglas` y `Salud360Controller` sin cambios (grep de escrituras = 0). **Contrato.** Cerrar: cuerpo `{clave, dispositivo, fecha,
+    edad_mostrar?}` → `200 {ok, consulta (cabecera ya CERRADA), cerrada: true}`: `activo = 1`, `created_at` = la fecha clínica, la edad si vino (sin edad, la que
+    tenía), `updated_at`; confirma (`activo = 1`) SOLO las filas `activo = 2` de exámenes complementarios e interconsultas de esa consulta y esa paciente; las de
+    `activo = 0` no reaparecen y no se toca laboratorio, peso, pendientes de texto ni lo de otras consultas. Baja: `DELETE` con cuerpo JSON `{clave, dispositivo}`
+    → `200 {ok, baja: true, consulta_id}` (sin cabecera: la lectura ya no muestra una baja); `activo = 0`, la fila y lo que colgaba quedan, nunca `DELETE` físico.
+    Las dos: solo médico (`403 sin_permiso`), cartera como la lectura (`403 fuera_de_cartera` / `404`), `403 consulta_no_propia` (de otro médico o de la web), `404
+    consulta_no_encontrada`, `422` (id, clave, dispositivo, fecha, edad), `500 escritura` sin detalle; en una transacción con la consulta bloqueada (`FOR UPDATE`),
+    junto con el registro en `salud360_envios` (tipos propios `cierre` y `baja`, que `consultasCreadasPorLaApp` no cuenta). Repetible: la misma clave devuelve la
+    misma respuesta sin escribir (aunque la consulta ya esté cerrada o haya llegado otro pendiente); cerrar una cerrada o dar de baja una dada de baja con OTRA
+    clave es `200` y no cambia nada (cerrar dos veces = una). **Resuelto: baja de una cerrada = `409 consulta_cerrada`** (el «Hecho cuando» de T13; el plan se
+    contradecía con `404`, que queda para la lectura de una baja); cerrar una dada de baja = `409`; escribir textos o examen sobre una cerrada o de baja = `409`.
+  - **Pruebas.** (1) **Rojo primero:** `EscrituraCierreTest` 15 tests con 9 errores y 4 fallas y `EscrituraTextosTest` 1 falla antes del código; verde después (16 con
+    un test más). `tests/Unit` completo: **805 en verde** (789 + 16). (2) Base descartable `hc_clinica_t10` (estructura copiada, datos inventados): `%TEMP%\opencode\t13\cerrar-con-base.php`,
+    70 controles OK con `sql_mode` estricto y 70 sin él (cierre con examenes 2/2/0/1 e interconsulta 2/0 → solo los pendientes pasan a 1; laboratorio general, reducido,
+    peso y pendiente de texto con los mismos estados y el mismo CHECKSUM; pendiente de otra consulta intacto; repetir con la misma clave sin escribir; cerrar dos veces;
+    sin edad; baja sin DELETE; 409 en cerrar-baja, baja-cerrada y textos/examen; roles, propiedad, cartera, 404, 422; claves de otra operación/consulta → `422
+    clave_en_uso`; rollback si falla confirmar un examen; **carrera real**: dos cierres con la misma clave → los dos 200 con la misma respuesta y una sola fila de
+    registro, y un cierre contra una baja → gana el cierre y la baja recibe 409); 8 mutaciones detectadas (confirmar también las de baja, tocar laboratorio, sin bloqueo,
+    baja con DELETE, sin guarda de clave, sin fecha clínica, escribir la pantalla del médico, sin controlar la propiedad). (3) **HTTP contra la copia local** (`hc_clinica`) con datos
+    propios (paciente 99000900, la consulta de la web de `cargar-prueba.sql` y 4 consultas propias `c:t13-1..4`, la 3 cerrada por SQL, con hijas sembradas por un script):
+    58 controles OK + el de `token inventado` repetido a mano (ver abajo): `401`; cerrar (`200`, estado y fecha, `created_at`, examenes `1101`, interconsulta `10`, laboratorio/peso
+    `210|20|210|2` con CHECKSUM igual); la lectura la ve `CERRADA`; repetir idéntico; otros datos con la misma clave; otra clave; `409` en texto, examen y baja sobre la cerrada;
+    baja `200` (la fila sigue, `GET` → `404`, ya no figura en la lista), repetir, otra clave, `409` al cerrar o escribir; `403 consulta_no_propia` sobre la consulta de la web y sobre las
+    del fixture S (1983, 1982) en cerrar y en baja con CHECKSUM de `consultas`, `medico_infos`, examenes e interconsultas igual; `403 fuera_de_cartera`; `404`; `422`; `clave_en_uso`; `405` en
+    `PUT consultas/{id}`; dos cierres simultáneos → una fila de registro; `medico_infos` CHECKSUM 3172558057. (4) **Limpieza** por id y por clave (10) con `escritura-limpiar.sql`
+    (`PERMITIR_HC_CLINICA=1`) y `t11\snapshot.cmd t13-despues` + `t11\comparar.cmd base-antes t13-despues`: solo cambia `salud360_token_cache`; P1–P5 (1441–1445), las consultas
+    1997–2001, las 5 claves `c:t11-p*` y `medico_infos` del user 9 (`1909/1/1285`) intactos. Apache: 1 respuesta `5xx` (un `503 tobb_caido`, ver abajo), `error.log` sin entradas de PHP, `storage/logs` con
+    una sola entrada, la de ese `503`.
+  - **Incidente del entorno (al retomar):** MySQL y Apache del XAMPP estaban caídos (la máquina se reinició; el reloj saltó de ~16:00 a ~21:30); los levanté con
+    `mysqld --standalone` y `httpd.exe` (recuperación de InnoDB normal, los datos y el CHECKSUM de `medico_infos` intactos, la foto idéntica a `base-antes`). Con el arranque en
+    frío, el primer pedido con un token inventado tardó más de 8 s en turnos y dio `503 tobb_caido` (un `WARNING` en `laravel-2026-11-05.log`); repetido a mano dio `401 token`.
+    También quedó en el clon un borrador de T13 sin tests (guardado en `%TEMP%\opencode\t13\borrador-t13.patch`): se revirtió y se rehízo tests primero.
+  - **Decisiones de contrato para revisar:** la clave del cierre y de la baja son del app y tienen que ser distintas de la de crear (el registro devuelve `422 clave_en_uso`
+    si se reutiliza una clave de otra operación o de otra consulta); `DELETE` lleva cuerpo JSON (`clave`, `dispositivo`); la baja contesta sin cabecera; cerrar y dar de
+    baja con otra clave sobre algo ya cerrado/dado de baja se registran y dan `200` (repetir); `updated_at` de la consulta se actualiza al cerrar y dar de baja (como la web).
 - [ ] **T14. Prueba de punta a punta del servidor de E1 y documentación.** RF-15, RF-16, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
   - Pasada completa con curl espaciado (~1,3 s): todos los códigos de las tareas T10 a T13 en un solo recorrido, `403` por rol y por
     consulta de la web/otro médico, repetición, 422, estricto/no estricto; `suma.sql` antes y después (solo cambian las tablas esperadas
