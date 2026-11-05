@@ -252,6 +252,10 @@ registros de personas): el repo es público.
   `PUT medicos/{id}/activo` ya está subido a producción de turnos (2026-11-05).
   **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
   agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
+- Rama `feature/licencias-renovar` (sobre `main`, sin commit): pestaña Licencias del admin con snackbar en cada actualización
+  (éxito, «la historia clínica no la aceptó» o error con el motivo), botón «Renovar» (+1 mes calendario a «Vence» y «Aviso
+  desde», `RenovacionDeLicencia.kt`, un solo guardado) y tarjeta reordenada (fechas e importe con wrap; debajo Renovar + «Activa»).
+  El importe se guarda ~800 ms después de la última tecla (`AdminViewModel.guardarImporte`), no en cada tecla.
 - Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
   C a C7 (admin de perfiles, HC del médico, estudios con historial, filas de laboratorio, varias cargas, serologías
   SI/NO, Child-Pugh, motivo con consultas previas): todas hechas, ver `specs/001-hc-configurable/tasks.md`.

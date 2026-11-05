@@ -9,6 +9,11 @@ import com.salud360.core.data.repos.EstadoAgenda
 import com.salud360.core.data.repos.MOTIVO_SIN_MEDICO_DEL_USUARIO
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.avisoDeAgendaGuardada
+import com.salud360.core.data.repos.avisoDeLicenciaConFechaInvalida
+import com.salud360.core.data.repos.avisoDeLicenciaGuardada
+import com.salud360.core.data.repos.avisoDeLicenciaNoAceptada
+import com.salud360.core.data.repos.avisoDeLicenciaNoGuardada
+import com.salud360.core.data.repos.avisoDeLicenciaRenovada
 import com.salud360.core.data.repos.avisoDeMedicoActivoGuardado
 import com.salud360.core.data.repos.avisoDeMedicoActivoNoGuardado
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasGuardadas
@@ -19,6 +24,7 @@ import com.salud360.core.data.repos.licenciasVisiblesEnElPanel
 import com.salud360.core.data.repos.medicosVisiblesEnElPanel
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
 import com.salud360.core.data.repos.nuevasHistoriasClinicas
+import com.salud360.core.data.repos.renovarLicencia as renovarLicenciaPura
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
@@ -31,6 +37,8 @@ import com.salud360.core.model.newId
 import com.salud360.core.model.turnos.Consultorio
 import com.salud360.core.model.turnos.EspecialidadTurnos
 import com.salud360.core.model.turnos.Feriado
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -99,6 +107,13 @@ class AdminViewModel(
 
     /** Usuarios (por id de usuario) cuyo «activo» se está guardando en turnos ahora mismo: su botón queda deshabilitado. */
     val guardandoUsuarios: StateFlow<Set<Id>> = _guardandoUsuarios
+
+    // Guardados de licencia en vuelo por médico (un contador, porque un cambio de fechas y uno de importe pueden solaparse).
+    private val _enVueloPorLicencia = mutableMapOf<Id, Int>()
+    private val _guardandoLicencias = MutableStateFlow<Set<Id>>(emptySet())
+
+    /** Médicos (por id de médico) cuya licencia se está guardando ahora mismo: el botón «Renovar» queda deshabilitado. */
+    val guardandoLicencias: StateFlow<Set<Id>> = _guardandoLicencias
 
     init {
         // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
@@ -245,11 +260,20 @@ class AdminViewModel(
     /**
      * La licencia manda sobre el ingreso del médico a la historia clínica, así que el guardado que
      * importa es el de allá: si no llegó, se avisa en vez de dejar la pantalla como si hubiera andado.
+     * Toda actualización avisa por [mensaje]: [avisoDeExito] si la historia clínica la aceptó, error si no o si falló.
      */
-    fun guardarLicencia(l: Licencia) = viewModelScope.launch {
-        runCatching { admin.guardarLicencia(l) }
-            .onSuccess { if (!it) avisarError("La licencia quedó guardada en este dispositivo, pero la historia clínica no la aceptó.") }
-            .onFailure { avisarError("No se pudo guardar la licencia: ${it.message ?: "sin conexión"}") }
+    fun guardarLicencia(l: Licencia, avisoDeExito: String = avisoDeLicenciaGuardada()) = viewModelScope.launch {
+        _enVueloPorLicencia[l.medicoId] = (_enVueloPorLicencia[l.medicoId] ?: 0) + 1
+        _guardandoLicencias.value = _enVueloPorLicencia.keys.toSet()
+        try {
+            runCatching { admin.guardarLicencia(l) }
+                .onSuccess { if (it) avisar(avisoDeExito) else avisarError(avisoDeLicenciaNoAceptada()) }
+                .onFailure { avisarError(avisoDeLicenciaNoGuardada(it.message)) }
+        } finally {
+            val quedan = (_enVueloPorLicencia[l.medicoId] ?: 1) - 1
+            if (quedan <= 0) _enVueloPorLicencia.remove(l.medicoId) else _enVueloPorLicencia[l.medicoId] = quedan
+            _guardandoLicencias.value = _enVueloPorLicencia.keys.toSet()
+        }
     }
 
     /**
@@ -258,11 +282,42 @@ class AdminViewModel(
      */
     fun nuevaLicencia(medicoId: Id) {
         val vence = hoy().plus(DatePeriod(years = 1))
-        guardarLicencia(Licencia(medicoId, vence.toString(), vence.minus(DatePeriod(months = 1)).toString()))
+        guardarLicencia(Licencia(medicoId, vence.toString(), vence.minus(DatePeriod(months = 1)).toString()), avisoDeExito = "Licencia cargada")
     }
+
+    /**
+     * Renueva la licencia un mes (RenovacionDeLicencia.kt): «Vence» y «Aviso desde» se guardan juntos, en un solo
+     * guardado, por el mismo camino que [guardarLicencia]. Si una de las dos fechas no se puede leer no se toca nada.
+     */
+    fun renovarLicencia(l: Licencia) {
+        val renovada = renovarLicenciaPura(l)
+        if (renovada == null) avisarError(avisoDeLicenciaConFechaInvalida()) else guardarLicencia(renovada, avisoDeLicenciaRenovada())
+    }
+
+    /**
+     * El importe se guarda cuando el administrador deja de tipear, no en cada tecla (cada guardado es un aviso y un
+     * envío a la historia clínica). Cada tecla reinicia la espera de [PAUSA_DEL_IMPORTE_MS]; vive acá y no en la pantalla
+     * para que un cambio de solapa no se lleve el guardado pendiente. Al vencer la espera se parte de la licencia que hay
+     * guardada, no de la copia de la pantalla, así no pisa una fecha cambiada mientras tanto; y si el importe ya es ese, no guarda.
+     */
+    fun guardarImporte(medicoId: Id, importe: Double) {
+        importesPendientes.remove(medicoId)?.cancel()
+        importesPendientes[medicoId] = viewModelScope.launch {
+            delay(PAUSA_DEL_IMPORTE_MS)
+            val actual = admin.observarLicencias().first().firstOrNull { it.medicoId == medicoId }
+            importesPendientes.remove(medicoId)
+            // El guardado va en otra corrutina (guardarLicencia): una tecla nueva no cancela uno que ya salió.
+            if (actual != null && actual.importe != importe) guardarLicencia(actual.copy(importe = importe))
+        }
+    }
+
+    private val importesPendientes = mutableMapOf<Id, Job>()
 
     fun sincronizar() = viewModelScope.launch { if (sync.sincronizar()) avisar("Sincronizado") else avisarError("No se pudo sincronizar") }
 }
+
+/** Cuánto espera el campo «Importe» de la licencia después de la última tecla antes de guardar. */
+private const val PAUSA_DEL_IMPORTE_MS = 800L
 
 /** Aviso del panel de administración: [esError] lo muestra con el color de error en lugar del de éxito. */
 data class Aviso(val texto: String, val esError: Boolean = false)

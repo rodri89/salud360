@@ -41,12 +41,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.importeEscrito
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
 import com.salud360.core.data.repos.puedeCambiarActivoDelUsuario
 import com.salud360.core.data.repos.puedeCambiarVisible
 import com.salud360.core.data.repos.puedeMarcarMostrarEnElAlta
 import com.salud360.core.data.repos.puedeVerConfigDeAgenda
 import com.salud360.core.data.repos.puedeVerHorarios
+import com.salud360.core.data.repos.textoDelImporte
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
@@ -347,6 +349,7 @@ private fun FeriadosTab(vm: AdminViewModel) {
 private fun LicenciasTab(vm: AdminViewModel) {
     val medicos by vm.medicosActivos.collectAsState()
     val licencias by vm.licenciasVisibles.collectAsState()
+    val guardandoLicencias by vm.guardandoLicencias.collectAsState()
     // La licencia es el permiso para entrar a una historia clínica, así que solo tiene sentido para
     // los médicos que tienen alguna habilitada. Al resto no se les cobra ni se les vence nada.
     val conHc = medicos.filter { it.especialidadesHc.isNotEmpty() }
@@ -358,25 +361,40 @@ private fun LicenciasTab(vm: AdminViewModel) {
     conHc.forEach { m ->
         val l = licencias.firstOrNull { it.medicoId == m.id }
         PlainCard {
+            // Primera línea: quién es y cómo está. Los controles van debajo, así ninguno pisa a otro en un ancho angosto.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(220.dp))
+                Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (l == null) {
-                    // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como
-                    // si la licencia venciera hoy. La licencia vive en la base de la historia clínica
-                    // y la app todavía no la trae.
+                    StatusChip("Sin dato", Salud360Colors.Grey)
+                } else {
+                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
+                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                }
+            }
+            if (l == null) {
+                // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como si la licencia
+                // venciera hoy. La licencia vive en la base de la historia clínica y la app todavía no la trae.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sin licencia cargada", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     // Sin licencia el médico no entra a la historia clínica, así que darla de alta es
                     // parte de habilitarlo y tiene que poder hacerse desde acá.
                     TextButton(onClick = { vm.nuevaLicencia(m.id) }) { Text("Cargar licencia") }
-                    StatusChip("Sin dato", Salud360Colors.Grey)
-                } else {
+                }
+            } else {
+                // Cada cambio se guarda y avisa por el snackbar del panel. El importe se guarda cuando se deja de tipear
+                // (AdminViewModel.guardarImporte), no en cada tecla.
+                var importe by remember { mutableStateOf(textoDelImporte(l.importe, "")) }
+                LaunchedEffect(l.importe) { importe = textoDelImporte(l.importe, importe) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
                     DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
-                    var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
-                    NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
+                    NumberField("Importe", importe, { importe = it; importeEscrito(it)?.let { v -> vm.guardarImporte(m.id, v) } }, Modifier.width(140.dp), suffix = "$")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Suma un mes a «Vence» y a «Aviso desde»; queda quieto mientras se guarda esta licencia.
+                    PillButton("Renovar", onClick = { vm.renovarLicencia(l) }, enabled = m.id !in guardandoLicencias)
                     Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
-                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
-                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                    Text("Activa")
                 }
             }
         }
