@@ -29,7 +29,7 @@ Guía para una persona o una IA que arranca o retoma **una** historia clínica (
 ### Specs: una centena por HC
 | Rango | Para qué |
 |---|---|
-| `0xx` | Transversal, clínica y pediatría (001 a 004 existentes; siguiente libre: 005) |
+| `0xx` | Transversal, clínica y pediatría (001 a 004 existentes; siguiente libre: 006) |
 | `1xx` | Odontología (101 en adelante) |
 | `2xx` | La próxima HC que se sume |
 

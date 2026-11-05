@@ -76,6 +76,11 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
 - Identidad: turnosonlinebb es el único proveedor (login `/api/salud360/auth/login`). Las APIs de HC (Laravel de
   cada especialidad, repo aparte) no emiten tokens: aceptan el de turnos. El dueño de cada dato manda (agenda y
   usuarios → turnos; HC y licencias → base de la especialidad); la base local es caché/offline.
+- Agenda del médico (spec 005): se decide con `tiene_agenda` de turnos, que escribe el administrador con
+  `PUT medicos/{id}/agenda` (`AgendaTurnosOnline.guardarAgenda`; la copia local cambia recién con la respuesta). `Medico.tieneTurnos`
+  guarda ese dato (no «tiene horarios»); `tiene_horarios` es solo respaldo si el servidor no informa `tiene_agenda`. Las reglas de
+  quién ve qué están en `AgendaDelMedico` (`core/data`). El resto de los campos de la tarjeta del admin (consultorio, especialidad,
+  teléfono, mail, historias clínicas) siguen siendo solo locales.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.
 - Los datos cuyo dueño es remoto no deben quedar `dirty` en el dispositivo (ese fue un bug real en licencias).
