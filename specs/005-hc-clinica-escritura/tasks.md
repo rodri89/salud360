@@ -413,7 +413,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     vuelve a validarse contra turnos; (d) para E9 (producción): respaldo, privilegio `CREATE` y la tabla `salud360_envios` en el respaldo, `APP_DEBUG=false`.
 
 ## App: modelo y base
-- [ ] **T15. Migración de la marca de histórico/propio (`consulta.propia`).** RF-8 (D26) — M — Toca API Laravel: no — **Migración: pregunta
+- [x] **T15. Migración de la marca de histórico/propio (`consulta.propia`).** RF-8 (D26) — M — Toca API Laravel: no — **Migración: pregunta
   antes: ya aprobada en D26; reservar el número justo antes (plan.md); si otra rama lo tomó, volver a preguntar**
   - Tests primero: `core/data/src/jvmTest/.../repos/MigracionMarcaTest.kt` (como `MigracionHepatologiaTest`): una base de la versión
     anterior (v9) con consultas de clínica sucias, de pediatría y de la web, migrada por el driver: **todas las existentes quedan en 0
@@ -422,6 +422,24 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     **al final** de `consulta`, `Consulta.propia` en `core/model` y `toRow`/`toModel` en `Mappers.kt`, y `marcarPropia(id)`.
   - Hecho cuando: el test en verde (antes, en rojo); `.\gradlew :core:data:jvmTest` completo en verde (ninguno existente cambia);
     `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; anotado en `MEMORY.md` el número reservado y que no hay vuelta atrás.
+  - Resultado (2026-11-04, `89e62d8`): **número reservado: `9.sqm` (esquema v10)**, con la autorización expresa del usuario del mismo día. Ramas
+    revisadas con `git ls-tree` de la carpeta de migraciones: `hc-general` (1 a 8), `main` y `origin/main` (1 a 5), `hc-pediatria-fase-2` y su remota (1 a 5),
+    `pediatria-licencia-servidor` (1 a 5), `docs/sdd-y-guia-por-hc` y su remota (1 a 5) y `origin/hc_odontologia` (1 a 2); ninguna tiene `9.sqm`.
+    Rojo: `MigracionMarcaTest` (9 tests) no compilaba (`Consulta.propia` y `marcarPropia` no existían). Verde: `9.sqm` (`ALTER TABLE consulta ADD COLUMN propia
+    INTEGER NOT NULL DEFAULT 0`), `propia` al final de `consulta` en `HistoriaClinica.sq`, `Consulta.propia = false` en `core/model`, `toRow`/`toModel` y la
+    consulta `marcarPropia(id)` (solo pone `propia = 1`: no toca `dirty` ni `updated_at`; todavía nadie la llama, T16 la usa). Cubre: consultas de clínica sucias y
+    limpias, de pediatría y de la web quedan en 0 con `dirty`, `updated_at` y las demás columnas y tablas idénticas fila por fila; la columna queda igual
+    (nombre, tipo, `NOT NULL`, defecto) que en una base nueva; una nueva con `propia = true` queda en 1; `copy` + `toRow` conserva la marca; el driver deja
+    `user_version` en 10 y reabrir no cambia nada; el camino de la web (`migrate(9, 10)` sobre el mismo driver) da lo mismo. `DriverFactory.wasmJs` no cambia: la
+    versión sale de `Salud360Db.Schema.version`, que SQLDelight deriva de las migraciones, y migra si la guardada es más vieja.
+  - **Cambios en tests existentes (no en lo que prueban):** (1) cuatro tests que simulan una base vieja (`PRAGMA user_version = 6/7/8` sobre una base creada con
+    el esquema actual) ahora le quitan antes la columna con `ALTER TABLE consulta DROP COLUMN propia`, porque el driver reaplica las migraciones y `ADD COLUMN` chocaría con la
+    existente (`ConfigHcRepositoryTest`, `CopiaEnfermedadesTest`, `MigracionHepatologiaTest`, `HcApiSyncBaseMigradaTest`); (2) las aserciones de versión de esquema pasan de 9 a 10
+    (`Schema.version` y `user_version`). **Regla para las próximas migraciones de columna (T-E3, `10.sqm`):** esos tests tendrán que quitar también esa columna; y el `CREATE TABLE`
+    del `.sq` no puede llevar comentarios entre las últimas columnas, porque `DROP COLUMN` de SQLite no reescribe bien una tabla con comentarios pegados a la columna que se quita.
+  - Totales: `core:data:jvmTest` 1314 (1305 + 9 nuevos; 0 fallos, 0 salteados); `core:crecimiento` 6, `core:ui` 17 y `especialidades:clinica` 33, todos en verde.
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` y `:features:auth:compileKotlinWasmJs -Pentorno=dev` terminan con código 0 (también `:server:compileKotlin`, que usa `core.database`).
+    **Sin vuelta atrás:** una app más vieja (v9) sobre una base v10 descarta los datos del navegador; para probar, servir esta rama en otro puerto que el `devWeb` de :8080.
 - [ ] **T16. Origen de la consulta, lista y «Nueva consulta» con la marca.** RF-8, RF-11, RF-62, RF-64, RF-65 — M — Toca API Laravel: no
   - Tests primero: common `OrigenDeConsultaTest` (propia / histórico / de la web; una propia abierta ya enviada es «Consulta en curso»
     y no «Abierta en la web»; una propia que otro dispositivo creó es «de la web», RF-64/RF-65); jvm `HcRepositoryTest` ampliado:

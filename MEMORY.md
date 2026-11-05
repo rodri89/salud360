@@ -23,6 +23,11 @@ registros de personas): el repo es público.
   `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
+- **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
+  (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
+  main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
+  navegador en la web). `core:data` 1314 tests en verde. La próxima migración (E3, `remoto_id`) sería la `10.sqm`: volver a mirar las ramas
+  antes de crearla. Falta: T16 usa `marcarPropia` y `Consulta.propia` (nadie los llama todavía).
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
@@ -272,7 +277,7 @@ registros de personas): el repo es público.
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003 (cerrada con excepciones, ver el traspaso): servidor en hclinica (`EnfermedadesReglas`, `EnfermedadesService`,
   `EnfermedadController`, 5 rutas, `auth/salir` en hclinica y pediatría); en la app `hcgeneral/*Enfermedad*`,
-  `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v9 por `8.sqm`), `repos/EnfermedadesRepository`
+  `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v10 por `8.sqm` y `9.sqm`), `repos/EnfermedadesRepository`
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
@@ -341,6 +346,11 @@ registros de personas): el repo es público.
   `https://clinica.hclinicadigital.com`. Su API va con `throttle:60,1` por IP. Commits como rodri89.
 - PowerShell no distingue mayúsculas en variables (`$t` pisa `$T`): un logout falló así; tokens de turnos en
   `salud360_tokens` (revocar = borrar la fila). Quedan filas viejas de pruebas anteriores sin revocar.
+- Migración que agrega una columna: los tests que simulan una base vieja (`PRAGMA user_version = N` sobre una base creada con el esquema
+  actual) tienen que quitar antes esa columna con `ALTER TABLE … DROP COLUMN` (el driver reaplica las migraciones y `ADD COLUMN` choca con
+  la existente), y las aserciones de `Schema.version`/`user_version` suben. El `CREATE TABLE` del `.sq` no lleva comentarios pegados a las
+  últimas columnas: SQLite no reescribe bien la tabla en `DROP COLUMN`. Hoy son cuatro: `ConfigHcRepositoryTest`, `CopiaEnfermedadesTest`,
+  `MigracionHepatologiaTest`, `HcApiSyncBaseMigradaTest`.
 - SQLDelight con `generateAsync`: los `INSERT`/`DELETE` generados son `suspend` (los helpers que escriben también). Un
   test que simula una base de versión anterior tiene que borrar todas las tablas que crean las migraciones siguientes
   (si no, `CREATE TABLE` falla con "already exists").
