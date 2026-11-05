@@ -272,21 +272,26 @@ registros de personas): el repo es público.
 - Tras el logout, hclinica aceptaba el token por `salud360_token_cache`: vaciarla en las pruebas (desde F1.7
   `POST auth/salir` también la vacía). Su throttle es por IP y cuenta todo el grupo `api` (~1,1 s entre pedidos).
 
-- Spec 005 (agenda por médico), rama `hc-pediatria-improve-functionality-1` (sobre `main`, sin commit ni push): **implementada, falta la prueba manual (T9)**.
-  T1 a T8, T10 (cierre) y T11 (hallazgos 2 y 3 del reviewer) hechas; la T9 (M1 a M12 de `plan.md`) la hace el usuario contra producción (la app aún no la usa nadie más); M5 y M12 (servidor
-  viejo) ya no se pueden probar a mano y los cubren `AgendaTurnosOnlineAgendaTest` y `TurnosImportadorAgendaTest`. Suites del cierre (T10): `core:data` 238, `core:crecimiento` 6,
-  `core:ui` 1 (`especialidades:clinica` no tiene tests en esta rama); `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila. Tras T11: `core:data` 240 tests, 0 fallas.
-  Los hallazgos 1 y 4 del reviewer **quedan pendientes** (no se tocaron). T11: los fixtures de error de `AgendaTurnosOnlineAgendaTest` usan los códigos reales del servidor
-  (`sin_permiso` 403, `no_encontrado` 404) y la regla «`mostrar_en_turnos` solo con agenda» del alta vive en `AgendaDelMedico` (`mostrarEnTurnosEnElAlta`, `puedeMarcarMostrarEnElAlta`), no en `AdminScreens`/`AdminViewModel`.
+- Spec 005 (agenda por médico): **implementada y probada a mano (2026-11-05)**; publicada en `main` (`8767561`, `70c8cee`, `6107fac`) con el servidor de turnos ya en producción. T1 a T11 hechas.
+  T9: el usuario probó contra producción M1 a M4 y M6 a M11, todo ok; M5 y M12 (servidor viejo) no se pueden probar a mano y los cubren `AgendaTurnosOnlineAgendaTest` y `TurnosImportadorAgendaTest`
+  (`core:data` 240 tests, 0 fallas; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `especialidades:clinica` no tiene tests en esta rama).
   - **Qué hace:** el administrador decide `tiene_agenda` y `visible_en_turnos` (independientes) con `PUT medicos/{id}/agenda`; la copia local cambia recién con la respuesta
     (`dirty = false`). `Medico.tieneTurnos` guarda `tiene_agenda` (no «tiene horarios»); `tiene_horarios` es respaldo si el servidor no informa. Todas las reglas de quién ve qué
     están en `AgendaDelMedico` (`core/data`); `MainShell` las usa en menús, secciones de Config y rutas (`SoloConAgenda`). Sin migración ni cambios en `core/database`.
-  - **Servidor (turnosonlinebb):** hecho por el usuario y ya en producción (2026-11-05). La copia de MAMP de esta Mac es un repo git sincronizado con producción (ya no «vieja ni sin git»).
+    La regla «`mostrar_en_turnos` solo con agenda» del alta vive en `AgendaDelMedico` (`mostrarEnTurnosEnElAlta`, `puedeMarcarMostrarEnElAlta`); los errores de turnos usan los códigos reales (`sin_permiso` 403, `no_encontrado` 404).
   - **Aprendizajes:** `AuthRepository.refrescarPerfil()` no consulta a turnos: el estado nuevo del médico entra por `login` y `restaurar`. El defecto de origen era que
     `sincronizarAdministracion` pisaba `visibleEnTurnos` con `true` en cada sincronización. `tobbJson` tiene `encodeDefaults = false`: un `Boolean? = null` no viaja y un `false` explícito sí.
-  - **Pendientes anotados (no implementados, fuera de la spec):** (1) el resto de la tarjeta del médico en el panel (consultorio, especialidad, teléfono, mail) sigue **solo local** con
-    `dirty = true` y turnos lo pisa en la próxima sincronización; (2) `AdminRepository.setEspecialidadHc` (historias clínicas del médico) también sigue solo local; (3) `sincronizarAdministracion`
-    guarda el consultorio `tobb-c0` para el médico sin consultorio (turnos manda `0`): `tieneConsultorio` lo trata como «sin consultorio» pero la fila queda con ese id.
+  - **Pendientes (no implementados, fuera de la spec):** (1) hallazgos 1 y 4 del reviewer: cierre por ruta de `CONFIG_AGENDA` y de las rutas de administración, y `guardarAgenda` marca limpia la fila con ediciones locales pendientes;
+    (2) el resto de la tarjeta del médico (consultorio, especialidad, teléfono, mail) sigue **solo local** (las historias clínicas ya se guardan en turnos, ver el feature de abajo) (`dirty = true`, turnos lo pisa en la próxima sincronización);
+    (3) `sincronizarAdministracion` guarda el consultorio `tobb-c0` para el médico sin consultorio (turnos manda `0`): `tieneConsultorio` lo trata como «sin consultorio» pero la fila queda con ese id;
+    (4) el conteo de RF-17 en producción quedó **sin confirmar** (en la base local dio 40 = 40).
+- Feature `/feature` sin spec (rama `feature/ajustes-agenda`, **sin commit**): las historias clínicas habilitadas de la tarjeta del médico (Administración → Médicos)
+  ahora se guardan en turnos con `PUT medicos/{id}/historias-clinicas` (lista exacta, `[]` = ninguna) vía `AgendaTurnosOnline.guardarHistoriasClinicas` /
+  `TurnosRepository.guardarHistoriasClinicas`; antes solo escribían en el dispositivo y turnos las pisaba al volver a entrar. Sin cambio optimista: la copia local toma la lista
+  que informa turnos recién con la respuesta (`dirty = false`). Reglas puras en `HistoriasClinicasDelMedico.kt`. El panel de administración muestra sus avisos (éxito y error) como
+  snackbar (`AdminViewModel.mensaje` ahora es `Aviso`). `AdminRepository.setEspecialidadHc` se eliminó. **El endpoint de turnos todavía no está en producción** (patch en el backup):
+  hasta subirlo, la app contesta «todavía no permite cambiar las historias clínicas de un médico desde la app (falta actualizar turnosonlinebb)». Ojo al volver a `hc-general`:
+  su T26 (spec 001) pide el mismo `TurnosRepository.guardarHistoriasClinicas` y `setEspecialidadHc` del ViewModel; hay que reconciliarlos en la unión.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del

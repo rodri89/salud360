@@ -79,8 +79,10 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
 - Agenda del médico (spec 005): se decide con `tiene_agenda` de turnos, que escribe el administrador con
   `PUT medicos/{id}/agenda` (`AgendaTurnosOnline.guardarAgenda`; la copia local cambia recién con la respuesta). `Medico.tieneTurnos`
   guarda ese dato (no «tiene horarios»); `tiene_horarios` es solo respaldo si el servidor no informa `tiene_agenda`. Las reglas de
-  quién ve qué están en `AgendaDelMedico` (`core/data`). El resto de los campos de la tarjeta del admin (consultorio, especialidad,
-  teléfono, mail, historias clínicas) siguen siendo solo locales.
+  quién ve qué están en `AgendaDelMedico` (`core/data`). Las historias clínicas habilitadas también se guardan en turnos, con
+  `PUT medicos/{id}/historias-clinicas` (lista exacta; `AgendaTurnosOnline.guardarHistoriasClinicas`, misma regla: la copia local
+  cambia recién con la respuesta). El resto de los campos de la tarjeta del admin (consultorio, especialidad, teléfono, mail)
+  siguen siendo solo locales.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.
 - Los datos cuyo dueño es remoto no deben quedar `dirty` en el dispositivo (ese fue un bug real en licencias).

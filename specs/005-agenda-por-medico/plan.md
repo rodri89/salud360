@@ -1,6 +1,6 @@
 # Plan 005 — Agenda por médico
 
-Estado: **aprobado por el usuario el 2026-11-04; implementada, falta la prueba manual (T9).** Spec: `spec.md` (aprobada el 2026-11-04, D1 a D3 resueltas; RF-10 aclarado el mismo día por decisión Q1 del usuario, y Q2 decidida: los campos van también en `secretaria.medicos[]`).
+Estado: **aprobado por el usuario el 2026-11-04; implementada (2026-11-05), probada a mano.** Los hallazgos 1 y 4 del reviewer (cierre por ruta de `CONFIG_AGENDA` y de las rutas de administración; `guardarAgenda` marca limpia la fila con ediciones locales pendientes) quedan como pendientes menores. Spec: `spec.md` (aprobada el 2026-11-04, D1 a D3 resueltas; RF-10 aclarado el mismo día por decisión Q1 del usuario, y Q2 decidida: los campos van también en `secretaria.medicos[]`).
 Servidor: `servidor-turnos.md` (lo hace el usuario en la otra PC; es dependencia, este repo no lo implementa).
 
 Rama `hc-pediatria-improve-functionality-1`, sobre `main`. Las rutas y líneas de abajo son de ese árbol (`main` llega a `5.sqm`, esquema v6;
@@ -204,6 +204,7 @@ Tests existentes que se amplían: `TobbPerfilTest`, `TobbAltaUsuarioTest`. Los q
 No hay tests en `features/*` ni `composeApp`: la lógica nueva está toda en `core/data` y la interfaz se verifica a mano (el cierre compila `:composeApp` para web).
 
 ### Verificación a mano (`devWeb` contra el turnos local con el servidor nuevo; nunca producción)
+Resultado (2026-11-05): M1 a M4 y M6 a M11 ok, probados por el usuario contra producción; M5 y M12 cubiertos por tests; conteo de RF-17 en producción sin confirmar (detalle en T9 de `tasks.md`).
 Actualización 2026-11-05: el servidor nuevo ya está pusheado y subido a **producción**, y la copia de MAMP de esta Mac es un repo git sincronizado con producción y con los cambios de la spec. Por decisión del usuario, M1 a M11 las hace él contra producción (la app aún no la usa nadie más); M5 y M12 (servidor viejo) ya no se pueden probar a mano y quedan cubiertos por `AgendaTurnosOnlineAgendaTest` y `TurnosImportadorAgendaTest`. Necesita un administrador, un médico solo con HC, un médico con agenda y una secretaria de prueba, con credenciales fuera del repo.
 - M1 (RF-2, 5, 6, 9): administrador apaga «Tiene agenda» de un médico con agenda → el interruptor queda apagado recién tras la respuesta, «Visible» queda apagado y deshabilitado, y desaparecen «Módulos y configuración» y «Horarios».
 - M2 (RF-7, 16): ese médico entra de nuevo → sin Agenda ni Recetas; «Config» solo ofrece «Secciones de la historia clínica» (sin «Horarios de atención»); sus HC siguen abriendo.

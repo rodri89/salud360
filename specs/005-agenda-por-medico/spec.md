@@ -1,6 +1,6 @@
 # Spec 005 — Agenda por médico: quién tiene turnos y quién se ve para pedirlos
 
-Estado: aprobada por el usuario el 2026-11-04 (D1 a D3 resueltas); implementada, falta la prueba manual (T9)
+Estado: aprobada por el usuario el 2026-11-04 (D1 a D3 resueltas); implementada (2026-11-05), probada a mano (los hallazgos 1 y 4 del reviewer —cierre por ruta de `CONFIG_AGENDA` y de las rutas de administración; `guardarAgenda` marca limpia la fila con ediciones locales pendientes— quedan como pendientes menores)
 
 ## Contexto y objetivo
 El panel de administración tiene, por médico, dos interruptores: «Tiene agenda de turnos» y «Visible para pacientes en la web». Hoy solo cambian la copia del dispositivo del administrador: turnosonlinebb (dueño de la agenda) no se entera, y la próxima vez que la app trae el catálogo los pisa. Además, lo que la app considera «tiene agenda» se deduce de si el médico tiene horarios cargados, no de una decisión del administrador, y «visible para pacientes» ni siquiera se lee del servidor.
