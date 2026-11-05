@@ -199,10 +199,10 @@ fun Rol.etiqueta() = when (this) { Rol.ADMIN -> "Administrador"; Rol.MEDICO -> "
 
 @Composable
 private fun MedicosTab(vm: AdminViewModel, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
-    val medicos by vm.medicos.collectAsState()
+    val medicos by vm.medicosActivos.collectAsState()
     val consultorios by vm.consultorios.collectAsState()
     val especialidades by vm.especialidades.collectAsState()
-    if (medicos.isEmpty()) EmptyState("Todavía no hay médicos. Creá un usuario con rol Médico.")
+    if (medicos.isEmpty()) EmptyState("No hay médicos activos. Creá un usuario con rol Médico.")
     medicos.forEach { m -> MedicoCard(m, vm, consultorios.map { it.id to it.nombre }, especialidades.map { it.id to it.nombre }, onConfig, onHorarios) }
 }
 
@@ -338,8 +338,8 @@ private fun FeriadosTab(vm: AdminViewModel) {
 
 @Composable
 private fun LicenciasTab(vm: AdminViewModel) {
-    val medicos by vm.medicos.collectAsState()
-    val licencias by vm.licencias.collectAsState()
+    val medicos by vm.medicosActivos.collectAsState()
+    val licencias by vm.licenciasVisibles.collectAsState()
     // La licencia es el permiso para entrar a una historia clínica, así que solo tiene sentido para
     // los médicos que tienen alguna habilitada. Al resto no se les cobra ni se les vence nada.
     val conHc = medicos.filter { it.especialidadesHc.isNotEmpty() }

@@ -12,6 +12,8 @@ import com.salud360.core.data.repos.avisoDeHistoriasClinicasGuardadas
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasNoGuardadas
 import com.salud360.core.data.repos.cambioDeAgenda
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.licenciasVisiblesEnElPanel
+import com.salud360.core.data.repos.medicosVisiblesEnElPanel
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
 import com.salud360.core.data.repos.nuevasHistoriasClinicas
 import com.salud360.core.data.sync.SyncEngine
@@ -29,6 +31,7 @@ import com.salud360.core.model.turnos.Feriado
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
@@ -51,6 +54,17 @@ class AdminViewModel(
     val especialidades: StateFlow<List<EspecialidadTurnos>> = admin.observarEspecialidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val feriados: StateFlow<List<Feriado>> = turnos.observarFeriados().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val licencias: StateFlow<List<Licencia>> = admin.observarLicencias().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Médicos que muestran las pestañas «Médicos» y «Licencias»: sin los desactivados (el médico o su usuario). La
+     * pestaña «Secretarias» sigue usando [medicos], para que una secretaria con un médico inactivo tildado pueda destildarlo.
+     */
+    val medicosActivos: StateFlow<List<Medico>> = combine(admin.observarMedicos(), admin.observarUsuarios(), ::medicosVisiblesEnElPanel)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Licencias de [medicosActivos]. */
+    val licenciasVisibles: StateFlow<List<Licencia>> = combine(admin.observarLicencias(), medicosActivos, ::licenciasVisiblesEnElPanel)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
      * Último aviso para el administrador. La pantalla lo muestra en un snackbar y lo limpia al mostrarlo, así el mismo
