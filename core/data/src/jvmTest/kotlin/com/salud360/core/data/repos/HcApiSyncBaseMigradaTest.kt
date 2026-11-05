@@ -137,6 +137,8 @@ class HcApiSyncBaseMigradaTest {
                 val v8 = DriverFactory(archivo.absolutePath).createDriver()
                 val suciasV8 = try {
                     sembrarV8(v8)
+                    // Sin la columna de la `9.sqm`, que el driver agrega al migrar (si no, `ADD COLUMN` chocaría con la existente).
+                    ejecutar(v8, "ALTER TABLE consulta DROP COLUMN propia")
                     ejecutar(v8, "PRAGMA user_version = 8")
                     tablasDeDatos.associateWith { sucias(v8, it) }
                 } finally {
@@ -294,7 +296,7 @@ class HcApiSyncBaseMigradaTest {
     @Test
     fun la_base_de_partida_esta_migrada_y_todo_lo_de_hepatologia_sigue_sucio() = conBaseMigrada { base ->
         val d = base.driver
-        assertEquals(9L, numero(d, "PRAGMA user_version"))
+        assertEquals(10L, numero(d, "PRAGMA user_version"))
         for (tabla in listOf("consulta", "registro_clinico", "laboratorio", "antecedente")) {
             assertEquals(0L, numero(d, "SELECT COUNT(*) FROM $tabla WHERE especialidad = 'hepatologia'"), "tabla $tabla")
         }

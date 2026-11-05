@@ -31,6 +31,11 @@ data class Consulta(
      * devuelve su id y se guarda acá. El id local no cambia nunca.
      */
     val remotoId: String = "",
+    /**
+     * `true` si la consulta es propia de la app (HC general, creada con el envío habilitado, RF-8); `false` si es del
+     * histórico del dispositivo o viene de la web. Persiste en la base: sobrevive a cerrar la app y a actualizarla.
+     */
+    val propia: Boolean = false,
 )
 
 @Serializable

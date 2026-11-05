@@ -163,11 +163,11 @@ fun MedicoPaciente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boole
 
 fun ConsultaRow.toModel() = Consulta(
     id, paciente_id, medico_id, especialidad, tipo, LocalDate.parse(fecha), EstadoConsulta.valueOf(estado), edad_mostrar,
-    Instant.fromEpochMilliseconds(updated_at), remoto_id,
+    Instant.fromEpochMilliseconds(updated_at), remoto_id, propia != 0L,
 )
-// Posicional: `remotoId` va último porque es la última columna de la tabla (ver HistoriaClinica.sq).
+// Posicional: `propia` va último porque es la última columna de la tabla (ver HistoriaClinica.sq).
 fun Consulta.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l(), remotoId)
+    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l(), remotoId, propia.l())
 
 fun SeccionValorRow.toModel() = SeccionValor(consulta_id, seccion, campo, valor)
 fun SeccionValor.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =

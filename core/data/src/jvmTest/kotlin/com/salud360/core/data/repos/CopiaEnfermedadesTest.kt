@@ -430,8 +430,8 @@ class CopiaEnfermedadesTest {
 
     @Test
     fun el_esquema_es_de_la_version_8_y_migrate_7_a_8_crea_la_tabla() {
-        // El esquema actual es el de la versión 9 (8.sqm, tanda D de la spec 001, solo mueve datos); acá se prueba la 7.sqm.
-        assertEquals(9L, Salud360Db.Schema.version)
+        // El esquema actual es el de la versión 10 (8.sqm solo mueve datos y 9.sqm agrega la marca de consulta propia); acá se prueba la 7.sqm.
+        assertEquals(10L, Salud360Db.Schema.version)
         val archivo = File.createTempFile("salud360-migracion", ".db").also { it.delete() }
         try {
             runBlocking {
@@ -461,6 +461,8 @@ class CopiaEnfermedadesTest {
                 // Base como la dejó la versión anterior de la app: sin la tabla y con user_version 7, y con datos.
                 DriverFactory(archivo.absolutePath).createDriver().apply {
                     execute(null, "DROP TABLE hc_enfermedades", 0)
+                    // Sin la columna de la `9.sqm`, que el driver agrega al migrar.
+                    execute(null, "ALTER TABLE consulta DROP COLUMN propia", 0)
                     execute(null, "PRAGMA user_version = 7", 0)
                     execute(null, "INSERT INTO hc_config(medico_id, hc_codigo, config_json, recibida_en) VALUES ('$medico', 'general', 'null', 5)", 0)
                     execute(null, "INSERT INTO sync_estado(tabla, ultima_version, ultima_sync) VALUES ('paciente', 3, 0)", 0)
@@ -468,7 +470,7 @@ class CopiaEnfermedadesTest {
                 }
                 val driver = DriverFactory(archivo.absolutePath).createDriver()
                 val db = Salud360Db(driver)
-                assertEquals(9L, consultar(driver, "PRAGMA user_version"))
+                assertEquals(10L, consultar(driver, "PRAGMA user_version"))
                 // Lo que ya había en la base sigue ahí.
                 assertEquals(1L, consultar(driver, "SELECT count(*) FROM hc_config WHERE medico_id = '$medico' AND recibida_en = 5"))
                 assertEquals(3L, consultar(driver, "SELECT ultima_version FROM sync_estado WHERE tabla = 'paciente'"))

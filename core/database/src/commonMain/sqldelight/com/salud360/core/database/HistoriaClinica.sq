@@ -1,3 +1,7 @@
+-- `propia` (última columna, por el upsert posicional; ver migración 9.sqm): marca de histórico/propio de la consulta
+-- (spec 005, RF-8). 0 = histórico o de la web, 1 = propia de la app. Sin comentarios dentro del CREATE TABLE después de
+-- `remoto_id`: los tests quitan la columna con DROP COLUMN para simular una base de la versión anterior y SQLite no
+-- reescribe bien la tabla si la columna a quitar tiene comentarios pegados.
 CREATE TABLE consulta (
     id TEXT NOT NULL PRIMARY KEY,
     paciente_id TEXT NOT NULL,
@@ -14,7 +18,8 @@ CREATE TABLE consulta (
     -- la consulta se abre en el dispositivo aunque no haya señal y se reconcilia después, y así el id
     -- local nunca cambia y nada que lo referencie se rompe. Va última porque el upsert es posicional
     -- (ver migración 3.sqm).
-    remoto_id TEXT NOT NULL DEFAULT ''
+    remoto_id TEXT NOT NULL DEFAULT '',
+    propia INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX consulta_paciente ON consulta(paciente_id, especialidad, fecha);
 
@@ -32,6 +37,8 @@ consultasDirty: SELECT * FROM consulta WHERE dirty = 1;
 limpiarConsulta: UPDATE consulta SET dirty = 0 WHERE id = ?;
 -- Vínculo con la API de la especialidad, una vez que la consulta se pudo crear allá.
 guardarRemotoId: UPDATE consulta SET remoto_id = ? WHERE id = ?;
+-- Marca la consulta como propia de la app (RF-8). Solo la marca: no toca `dirty` ni `updated_at`.
+marcarPropia: UPDATE consulta SET propia = 1 WHERE id = ?;
 consultaPorRemotoId: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = ? AND deleted = 0;
 consultasSinEnviar: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = '' AND deleted = 0;
 
