@@ -373,7 +373,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - **Decisiones de contrato para revisar:** la clave del cierre y de la baja son del app y tienen que ser distintas de la de crear (el registro devuelve `422 clave_en_uso`
     si se reutiliza una clave de otra operación o de otra consulta); `DELETE` lleva cuerpo JSON (`clave`, `dispositivo`); la baja contesta sin cabecera; cerrar y dar de
     baja con otra clave sobre algo ya cerrado/dado de baja se registran y dan `200` (repetir); `updated_at` de la consulta se actualiza al cerrar y dar de baja (como la web).
-- [ ] **T14. Prueba de punta a punta del servidor de E1 y documentación.** RF-15, RF-16, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
+- [x] **T14. Prueba de punta a punta del servidor de E1 y documentación.** RF-15, RF-16, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
   - Pasada completa con curl espaciado (~1,3 s): todos los códigos de las tareas T10 a T13 en un solo recorrido, `403` por rol y por
     consulta de la web/otro médico, repetición, 422, estricto/no estricto; `suma.sql` antes y después (solo cambian las tablas esperadas
     y `salud360_envios`); **`medico_infos` idéntico**, también tras crear, escribir y cerrar; grep estático (con `\b`) de `medico_infos`,
@@ -382,6 +382,35 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     el privilegio `CREATE`), sin tokens ni nombres; tabla «Código» y «Lo que viene» actualizadas.
   - Hecho cuando: phpunit completo en verde (el runner propio si el printer se cae); la copia servida igual al clon (comparación de
     contenido); cero escrituras de `medico_infos`; el registro de Apache sin métodos inesperados; `salud360_token_cache` vaciada.
+  - **Resultado (2026-11-04): HECHA — el servidor de E1 (T8 a T14) queda completo en la copia local; T11 sigue diferida.** hclinica `5ebb410` (rama `salud360-api`, sin
+    push): **solo la documentación** (`md/API_SALUD360_CLINICA.md`); la pasada no encontró nada que corregir en el código. Sección «Escritura (E1)» completa (las cinco rutas
+    y sus cuerpos, reglas comunes —rol, cartera, consulta propia/creada por la app/abierta, orden de los controles, **claves distintas por operación**, **`DELETE` con
+    cuerpo**, cuerpo leído crudo, repetibilidad—, qué NO hace, la tabla `salud360_envios` y el privilegio `CREATE`, y los códigos de cada ruta), tabla «Código» con los 4
+    archivos de escritura y los 5 tests nuevos, apartado de tests y «Lo que viene» reescrito; sin tokens ni nombres reales.
+  - **Pruebas.** (1) **Pasada por HTTP** contra la copia local (`hc_clinica`) con datos propios (paciente 99000900, la consulta de la web de `cargar-prueba.sql`, 8 consultas
+    propias `c:t14-N`; pedidos espaciados ~1,3 s), `%TEMP%\opencode\t14\http-t14.ps1`: **111 controles OK, 0 fallas** — autenticación y CORS 9 (`401`, preflight `204` de
+    `POST`/`PUT`/`DELETE`), crear 18, textos 25, examen 6, cerrar 33, baja 11, concurrencia 3 (dos crear, dos cerrar y dos textos simultáneos con una sola fila),
+    `medico_infos` y límites 6. Cubre crear (`201`, reenviar `200`, otros datos, telemedicina, el cuerpo no manda el médico), `422` de todos los campos, `404`, `403
+    fuera_de_cartera`, textos y examen (lectura de vuelta, repetir, vaciado, vacío no tocado, desconocidas, 191 caracteres, 65535 bytes ok y 65536 `422`, emoji, RF-34, `0.00`/`0`/`0.0`,
+    número JSON `422`), `403 consulta_no_propia` sobre la de la web y sobre las del fixture S (1982, 1983) sin modificarlas, cerrar (pendientes `1101|10`, laboratorio y peso con el
+    mismo CHECKSUM, repetir sin escribir, otra clave, `409` en textos, examen y baja), baja (`200`, la lectura da `404` y no la lista, repetir, `409` al cerrar o escribir),
+    `clave_en_uso` y `405`. Administrador y secretaria: no hay token; `sin_permiso` en proceso (los scripts siguientes). (2) **Descartable `hc_clinica_t10`**, estricto y sin él, los tres
+    scripts: T10 64, T12 75 y T13 70 controles = **209 OK por modo, 0 fallas** (el de T10 se ajustó para rehacer la descartable entera). (3) **Sumas.** `escritura-suma.sql` y la de la
+    lectura, antes y después de la pasada (51 y 32 tablas): cambian solo `consultas`, las ocho tablas de texto tocadas, `examen_fisicos`, `salud360_envios` y las tablas que sembré
+    a mano (exámenes, interconsultas, laboratorio, peso, pendientes; sus estados no los cambió la API: CHECKSUM igual) más `salud360_token_cache`; **`medico_infos` idéntico
+    (CHECKSUM 3172558057) tras crear, escribir, cerrar y al final**. (4) **Greps** (con `\b`, sin comentarios) sobre los 4 archivos de escritura: `medico_infos` **0**; `DELETE`/`delete(`
+    físico **0** (los 3 `DELETE` que aparecen son el verbo HTTP en comentarios; la ruta `Route::delete` es la baja lógica); `Schema::` fuera de `EnviosRegistro` **0** (dentro: solo
+    `hasTable` y `create`; ningún `table/drop/rename`); `inicializarCampos` 0; `fn (` 0; `DB::statement/raw` 0. Lectura (5 archivos): `insert|update|delete` **0**, y **0 cambios** desde la
+    lectura (`64849c9`). (5) **`tests/Unit`: 805 en verde.** Copia servida **idéntica al clon: 0 de 2398 archivos versionados distintos**. Apache: pedidos solo `GET`/`POST`/`PUT`/`DELETE`/`OPTIONS`
+    sobre rutas previstas, 0 `5xx` en 139 pedidos desde las 21:46 (el `503 tobb_caido` de T13 fue antes); `error.log` sin entradas de PHP y `storage/logs` sin entradas nuevas.
+    (6) **Limpieza** por id (consultas 2007 a 2015, ficha 1447) y por las 15 claves `c:t14-*` con `escritura-limpiar.sql` (`PERMITIR_HC_CLINICA=1`) y **`salud360_token_cache` vaciada**
+    (`DELETE` de sus 4 filas): `t11\snapshot.cmd t14-despues` + `t11\comparar.cmd base-antes t14-despues` muestra **solo `salud360_token_cache` (4 → 0)**; P1–P5 (1441–1445), las
+    consultas 1997–2001, las 5 claves `c:t11-p*` y `medico_infos` (`1909/1/1285`) intactos; el perfil del médico de prueba sigue en 2.
+  - **Hallazgo de T13 resuelto:** el contador del paso `salud360_envios por clave` de `escritura-limpiar.sql` (en `%TEMP%\opencode\e0`, fuera del repo) mostraba 0 aunque borraba las filas
+    (`ROW_COUNT()` se leía después del `DEALLOCATE`); ahora se guarda en `@n_envios` antes y la limpieza informó **15**. Copia del script anterior: `escritura-limpiar.sql.antes-de-t14`.
+  - **Para revisar:** (a) los `403` por rol (administrador, secretaria) no se probaron por HTTP porque no hay token de ninguno de los dos; (b) la pasada por HTTP corre con el modo estricto
+    de la conexión de Laravel (`strict = true` de `config/database.php`); el no estricto se prueba en los scripts con base; (c) al borrar la caché de tokens, el primer pedido de cada token
+    vuelve a validarse contra turnos; (d) para E9 (producción): respaldo, privilegio `CREATE` y la tabla `salud360_envios` en el respaldo, `APP_DEBUG=false`.
 
 ## App: modelo y base
 - [ ] **T15. Migración de la marca de histórico/propio (`consulta.propia`).** RF-8 (D26) — M — Toca API Laravel: no — **Migración: pregunta
