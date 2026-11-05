@@ -244,12 +244,12 @@ registros de personas): el repo es público.
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
 - Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
   `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
-  ya commiteado). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Sin commit en esta rama:** el botón
-  Desactivar/Activar de la pestaña Usuarios ahora se guarda en turnos (`AgendaTurnosOnline.guardarActivoMedico`, `PUT
+  commit `19e4e2c`). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Commits hechos** (`19e4e2c` ocultar
+  médicos y licencias de desactivados; `c231e84` activar/desactivar médico guardado en turnos), pendientes de publicar en `main`:
+  el botón Desactivar/Activar de la pestaña Usuarios ahora se guarda en turnos (`AgendaTurnosOnline.guardarActivoMedico`, `PUT
   medicos/{id}/activo`, solo médicos; `ActivoDelUsuario.kt`, `AdminViewModel.cambiarActivoUsuario`). `catalogos` no trae a los
-  desactivados: `sincronizarAdministracion` los deja inactivos con lo que informa `usuarios`. **Pendiente:** subir el endpoint a
-  producción de turnos (patch en `/Users/rodrigobanegas/salud360-turnos-backup-2026-11-05/medico-activo.patch`); mientras tanto
-  la app contesta «todavía no permite activar o desactivar a un médico».
+  desactivados: `sincronizarAdministracion` los deja inactivos con lo que informa `usuarios`. El endpoint de turnos
+  `PUT medicos/{id}/activo` ya está subido a producción de turnos (2026-11-05).
   **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
   agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
 - Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
