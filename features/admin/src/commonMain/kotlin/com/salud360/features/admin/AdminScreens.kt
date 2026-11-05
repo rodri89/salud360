@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
+import com.salud360.core.data.repos.puedeCambiarActivoDelUsuario
 import com.salud360.core.data.repos.puedeCambiarVisible
 import com.salud360.core.data.repos.puedeMarcarMostrarEnElAlta
 import com.salud360.core.data.repos.puedeVerConfigDeAgenda
@@ -133,6 +134,7 @@ private class AvisoVisible(override val message: String, val esError: Boolean) :
 @Composable
 private fun UsuariosTab(vm: AdminViewModel) {
     val usuarios by vm.usuarios.collectAsState()
+    val guardandoUsuarios by vm.guardandoUsuarios.collectAsState()
     var nombre by remember { mutableStateOf("") }
     var apellido by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -191,7 +193,12 @@ private fun UsuariosTab(vm: AdminViewModel) {
     DataTable(
         columns = listOf(TableColumn("Apellido y nombre", 240.dp), TableColumn("Mail", 260.dp), TableColumn("Rol", 110.dp), TableColumn("Activo", 80.dp)),
         rows = usuarios, cells = { u -> listOf(u.nombreCompleto, u.email, u.rol.etiqueta(), if (u.activo) "Sí" else "No") },
-        trailing = { u -> LinkButton(if (u.activo) "Desactivar" else "Activar", onClick = { vm.guardarUsuario(u.copy(activo = !u.activo)) }) },
+        // Solo el médico tiene «activo» en turnos (el de secretarias y administradores es siempre 1): para ellos no hay botón.
+        trailing = { u ->
+            if (puedeCambiarActivoDelUsuario(u.rol)) {
+                LinkButton(if (u.activo) "Desactivar" else "Activar", onClick = { vm.cambiarActivoUsuario(u, !u.activo) }, enabled = u.id !in guardandoUsuarios)
+            }
+        },
     )
 }
 

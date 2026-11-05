@@ -346,6 +346,23 @@ data class TobbHistoriasClinicasResponse(
     @SerialName("historias_clinicas") val historiasClinicas: List<String>,
 )
 
+/**
+ * Cuerpo de `PUT medicos/{id}/activo` (solo administrador): activar (`true`) o desactivar (`false`) a un médico. Sin
+ * valor por omisión a propósito: con `encodeDefaults = false` un `false` por omisión no viajaría.
+ */
+@Serializable
+data class TobbMedicoActivoRequest(val activo: Boolean)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/activo`: el estado final del médico tal como quedó en turnos. Sin valor por
+ * omisión: una respuesta que no lo traiga no confirma nada y no se toma por buena.
+ */
+@Serializable
+data class TobbMedicoActivoResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    val activo: Boolean,
+)
+
 /** El usuario recién creado, con los números que le asignó turnos. */
 @Serializable
 data class TobbUsuarioCreado(

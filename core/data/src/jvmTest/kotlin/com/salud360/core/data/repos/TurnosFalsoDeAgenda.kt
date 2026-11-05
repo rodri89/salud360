@@ -10,7 +10,9 @@ import java.net.InetSocketAddress
  *
  * Escucha en `127.0.0.1` con un puerto libre y anota cada pedido (método, ruta, token y cuerpo) para que los tests
  * puedan comprobar qué sale hacia turnos. Contesta `GET catalogos`, `GET usuarios` y `GET secretarias` con datos
- * inventados y deja configurables el `PUT medicos/{n}/agenda` (T5) y el `PUT medicos/{n}/historias-clinicas`.
+ * inventados y deja configurables el `PUT medicos/{n}/agenda` (T5), el `PUT medicos/{n}/historias-clinicas` y el
+ * `PUT medicos/{n}/activo`. Un médico con `activo = 0` sale en `GET usuarios` (con su `medico_id` y `activo:0`) pero
+ * no en `GET catalogos`, igual que en turnos.
  *
  * Nunca se usa el `TurnosOnlineClient()` por omisión: ese apunta a producción.
  */
@@ -42,6 +44,10 @@ class TurnosFalsoDeAgenda : AutoCloseable {
     /** Respuesta del `PUT medicos/{n}/historias-clinicas`: `(estado, cuerpo)`. */
     @Volatile
     var respuestaDeHistoriasClinicas: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de las historias clínicas no está en el servidor falso"}"""
+
+    /** Respuesta del `PUT medicos/{n}/activo`: `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeActivo: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de activo no está en el servidor falso"}"""
 
     private val anotados = mutableListOf<Pedido>()
 
@@ -76,6 +82,8 @@ class TurnosFalsoDeAgenda : AutoCloseable {
                 responder(x, respuestaDeAgenda.first, respuestaDeAgenda.second)
             x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/historias-clinicas") ->
                 responder(x, respuestaDeHistoriasClinicas.first, respuestaDeHistoriasClinicas.second)
+            x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/activo") ->
+                responder(x, respuestaDeActivo.first, respuestaDeActivo.second)
             else -> responder(x, 404, """{"ok":false,"mensaje":"la ruta $ruta no está en el servidor falso"}""")
         }
     }
@@ -88,7 +96,8 @@ class TurnosFalsoDeAgenda : AutoCloseable {
     }
 
     private fun catalogos(): String {
-        val lista = medicos.joinToString(",") { medicoJson(it) }
+        // Como el servidor real: `GET catalogos` no trae a los médicos con `activo = 0` (`GET usuarios` sí los informa).
+        val lista = medicos.filter { it.activo == 1 }.joinToString(",") { medicoJson(it) }
         val consultorio = """{"id":5,"nombre":"Consultorio de prueba"}"""
         return """{"medicos":[$lista],"consultorios":[$consultorio],"especialidades":[],"obras_sociales":[]}"""
     }
@@ -98,7 +107,7 @@ class TurnosFalsoDeAgenda : AutoCloseable {
 
     private fun usuarioJson(m: MedicoFalso): String {
         val mail = "medico${m.id}@ejemplo.test"
-        return """{"id":${1000 + m.id},"nombre":"${m.nombre} ${m.apellido}","email":"$mail","rol":"medico","medico_id":${m.id},"activo":1}"""
+        return """{"id":${1000 + m.id},"nombre":"${m.nombre} ${m.apellido}","email":"$mail","rol":"medico","medico_id":${m.id},"activo":${m.activo}}"""
     }
 
     /** El médico tal como lo manda el catálogo; los campos en `null` se omiten a propósito. */

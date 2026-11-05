@@ -100,8 +100,8 @@ fun BackButton(text: String = "Volver", onClick: () -> Unit, modifier: Modifier 
 
 /** Botón de texto plano para acciones secundarias dentro de tablas y tarjetas. */
 @Composable
-fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.secondary) {
-    TextButton(onClick = onClick, modifier = modifier) {
+fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.secondary, enabled: Boolean = true) {
+    TextButton(onClick = onClick, modifier = modifier, enabled = enabled) {
         Text(text, color = color)
     }
 }

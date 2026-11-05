@@ -242,10 +242,16 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
-- Rama `feature/admin-ocultar-inactivos` (sin commit): el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
-  `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`).
-  «Secretarias» NO filtra (para poder destildar un médico inactivo). **Pendiente:** el botón Desactivar/Activar de la pestaña
-  Usuarios solo guarda en el dispositivo (no escribe en turnos), así que se pisa en la próxima sincronización del panel.
+- Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
+  `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
+  ya commiteado). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Sin commit en esta rama:** el botón
+  Desactivar/Activar de la pestaña Usuarios ahora se guarda en turnos (`AgendaTurnosOnline.guardarActivoMedico`, `PUT
+  medicos/{id}/activo`, solo médicos; `ActivoDelUsuario.kt`, `AdminViewModel.cambiarActivoUsuario`). `catalogos` no trae a los
+  desactivados: `sincronizarAdministracion` los deja inactivos con lo que informa `usuarios`. **Pendiente:** subir el endpoint a
+  producción de turnos (patch en `/Users/rodrigobanegas/salud360-turnos-backup-2026-11-05/medico-activo.patch`); mientras tanto
+  la app contesta «todavía no permite activar o desactivar a un médico».
+  **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
+  agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
 - Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
   C a C7 (admin de perfiles, HC del médico, estudios con historial, filas de laboratorio, varias cargas, serologías
   SI/NO, Child-Pugh, motivo con consultas previas): todas hechas, ver `specs/001-hc-configurable/tasks.md`.

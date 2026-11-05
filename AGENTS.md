@@ -81,7 +81,10 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
   guarda ese dato (no «tiene horarios»); `tiene_horarios` es solo respaldo si el servidor no informa `tiene_agenda`. Las reglas de
   quién ve qué están en `AgendaDelMedico` (`core/data`). Las historias clínicas habilitadas también se guardan en turnos, con
   `PUT medicos/{id}/historias-clinicas` (lista exacta; `AgendaTurnosOnline.guardarHistoriasClinicas`, misma regla: la copia local
-  cambia recién con la respuesta). El resto de los campos de la tarjeta del admin (consultorio, especialidad, teléfono, mail)
+  cambia recién con la respuesta). Activar/desactivar a un médico también se guarda en turnos, con `PUT medicos/{id}/activo`
+  (`AgendaTurnosOnline.guardarActivoMedico`): en turnos el «activo» del usuario es el del médico y secretaria/admin no tienen
+  (siempre 1), por eso el botón de la pestaña Usuarios solo existe para médicos. `catalogos` no trae a los desactivados:
+  se recuperan de `usuarios` (`medico_id`) para poder reactivarlos. El resto de los campos de la tarjeta del admin (consultorio, especialidad, teléfono, mail)
   siguen siendo solo locales.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.

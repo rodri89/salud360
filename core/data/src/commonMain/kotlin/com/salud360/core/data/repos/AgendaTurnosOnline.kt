@@ -22,6 +22,8 @@ import com.salud360.core.data.network.tobb.TobbDiasAtencion
 import com.salud360.core.data.network.tobb.TobbObrasSocialesMedicoResponse
 import com.salud360.core.data.network.tobb.TobbFechas
 import com.salud360.core.data.network.tobb.TobbHorariosResponse
+import com.salud360.core.data.network.tobb.TobbMedicoActivoRequest
+import com.salud360.core.data.network.tobb.TobbMedicoActivoResponse
 import com.salud360.core.data.network.tobb.TobbMensajesResponse
 import com.salud360.core.data.network.tobb.TobbNuevoPaciente
 import com.salud360.core.data.network.tobb.TobbNuevoTurno
@@ -448,16 +450,32 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                     ).toRow(ahora, dirty = false),
                 )
             }
+            // `catalogos` no trae a los médicos desactivados pero `usuarios` sí (con su `medico_id`): se los deja en el
+            // dispositivo, inactivos, para que el administrador pueda reactivarlos desde la pestaña Usuarios.
+            val enCatalogo = catalogo.medicos.map { it.id }.toSet()
+            usuarios.forEach { u ->
+                val n = u.medicoId?.takeIf { it !in enCatalogo } ?: return@forEach
+                val id = TobbIds.medico(n)
+                val usuarioId = TobbIds.usuario(u.id)
+                val previo = previos[id]
+                val inactivo = if (previo != null) {
+                    previo.copy(usuarioId = usuarioId, activo = false)
+                } else {
+                    val partes = partirNombre(u.nombre)
+                    Medico(id = id, usuarioId = usuarioId, nombre = partes.first, apellido = partes.second, activo = false)
+                }
+                aq.upsertMedico(inactivo.toRow(ahora, dirty = false))
+            }
             usuarios.forEach { u ->
                 val rol = runCatching { Rol.valueOf(u.rol.uppercase()) }.getOrNull() ?: return@forEach
                 // Turnos guarda un nombre solo; se parte para mostrarlo como el resto de la app.
-                val partes = u.nombre.trim().split(" ", limit = 2)
+                val partes = partirNombre(u.nombre)
                 aq.upsertUsuario(
                     Usuario(
                         id = TobbIds.usuario(u.id),
                         email = u.email,
-                        nombre = partes.firstOrNull().orEmpty(),
-                        apellido = partes.getOrNull(1).orEmpty(),
+                        nombre = partes.first,
+                        apellido = partes.second,
                         rol = rol,
                         activo = u.activo == 1,
                     ).toRow(ahora, dirty = false),
@@ -478,6 +496,44 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             "Panel: ${catalogo.medicos.size} médicos, ${catalogo.consultorios.size} consultorios, " +
                 "${catalogo.especialidades.size} especialidades, ${usuarios.size} usuarios, ${secretarias.size} secretarias"
         }
+    }
+
+    /** Turnos guarda un nombre solo: la primera palabra es el nombre y el resto el apellido (como se muestra en el resto de la app). */
+    private fun partirNombre(completo: String): Pair<String, String> {
+        val partes = completo.trim().split(" ", limit = 2)
+        return partes.firstOrNull().orEmpty() to partes.getOrNull(1).orEmpty()
+    }
+
+    /**
+     * Activa o desactiva a un médico en turnos (`PUT medicos/{n}/activo`, solo administrador) y recién después de la
+     * confirmación escribe la copia del dispositivo con el estado final que informó turnos, sin `dirty` (el dueño del
+     * dato es turnos). En turnos el «activo» del usuario es el del médico, así que se actualizan los dos: el
+     * [Medico.activo] y el [Usuario.activo] del usuario vinculado ([Medico.usuarioId]), tocando solo ese campo.
+     *
+     * Si el médico o su usuario no están en el dispositivo no se inventa ninguna ficha y se devuelve igual el estado.
+     * Un `200` que no informa en qué quedó el médico no se toma como confirmación.
+     */
+    suspend fun guardarActivoMedico(medicoId: Id, activo: Boolean): Boolean {
+        val n = numeroMedico(medicoId)
+        val r = sinRutaEnLaWeb("activar o desactivar a un médico") {
+            val obj = turnos.tobbPut("medicos/$n/activo", cuerpo(TobbMedicoActivoRequest.serializer(), TobbMedicoActivoRequest(activo)))
+            try {
+                decodificar(TobbMedicoActivoResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb confirmó el cambio pero no informó si el médico quedó activo.")
+            }
+        }
+        val previo = aq.medicoPorId(TobbIds.medico(n)).uno { it.toModel() }
+        if (previo != null) {
+            val usuario = previo.usuarioId.takeIf { it.isNotBlank() }?.let { aq.usuarioPorId(it).uno { fila -> fila.toModel() } }
+            val ahora = ahoraMillis()
+            db.transaction {
+                aq.upsertMedico(previo.copy(activo = r.activo).toRow(ahora, dirty = false))
+                usuario?.let { aq.upsertUsuario(it.copy(activo = r.activo).toRow(ahora, dirty = false)) }
+            }
+        }
+        log.d { "Médico $medicoId en turnos: activo ${r.activo}" }
+        return r.activo
     }
 
     /**

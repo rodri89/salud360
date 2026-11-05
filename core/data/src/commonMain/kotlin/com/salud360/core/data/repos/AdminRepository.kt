@@ -90,9 +90,11 @@ class AdminRepository(
     // `TurnosRepository.crearUsuario`. La que había pegaba contra el servidor propio de Salud 360,
     // que no está desplegado, y el botón del panel respondía 404 sin explicación.
 
-    suspend fun guardarUsuario(u: Usuario) = q.upsertUsuario(u.toRow(ahoraMillis()))
     suspend fun guardarMedico(m: Medico) = q.upsertMedico(m.toRow(ahoraMillis()))
     suspend fun guardarSecretaria(s: Secretaria) = q.upsertSecretaria(s.toRow(ahoraMillis()))
+
+    // Tampoco está el «activo» de un usuario: lo guarda turnos (el del usuario médico es el del médico) por
+    // `TurnosRepository.guardarActivoMedico`. La que había solo escribía en el dispositivo y la próxima sincronización lo pisaba.
 
     // Las historias clínicas habilitadas de un médico tampoco están acá: las guarda turnos, que es su dueño, por
     // `TurnosRepository.guardarHistoriasClinicas`. La que había solo escribía en el dispositivo y al volver a entrar

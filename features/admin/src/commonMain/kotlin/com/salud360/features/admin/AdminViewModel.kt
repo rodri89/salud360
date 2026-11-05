@@ -6,8 +6,11 @@ import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.repos.CambioDeAgenda
 import com.salud360.core.data.repos.EstadoAgenda
+import com.salud360.core.data.repos.MOTIVO_SIN_MEDICO_DEL_USUARIO
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.avisoDeAgendaGuardada
+import com.salud360.core.data.repos.avisoDeMedicoActivoGuardado
+import com.salud360.core.data.repos.avisoDeMedicoActivoNoGuardado
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasGuardadas
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasNoGuardadas
 import com.salud360.core.data.repos.cambioDeAgenda
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
@@ -90,6 +94,11 @@ class AdminViewModel(
      * mientras espera, para no mandar dos listas pisadas una sobre la otra.
      */
     val guardandoHc: StateFlow<Set<Id>> = _guardandoHc
+
+    private val _guardandoUsuarios = MutableStateFlow<Set<Id>>(emptySet())
+
+    /** Usuarios (por id de usuario) cuyo «activo» se está guardando en turnos ahora mismo: su botón queda deshabilitado. */
+    val guardandoUsuarios: StateFlow<Set<Id>> = _guardandoUsuarios
 
     init {
         // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
@@ -182,7 +191,29 @@ class AdminViewModel(
         }
     }
 
-    fun guardarUsuario(u: Usuario) = viewModelScope.launch { admin.guardarUsuario(u) }
+    /**
+     * Activa o desactiva a un usuario médico desde la pestaña Usuarios. El dueño del dato es turnos (donde el «activo»
+     * del usuario es el del médico): se pide con `PUT medicos/{id}/activo` y no hay cambio optimista, la tabla sigue
+     * mostrando lo que hay en la base local, que el repositorio escribe recién con la confirmación. Mientras espera,
+     * el botón de ese usuario queda quieto ([guardandoUsuarios]) y un segundo pedido del mismo usuario se ignora.
+     * Éxito o error se avisan por [mensaje]. Quién puede cambiarlo lo decide `puedeCambiarActivoDelUsuario`.
+     */
+    fun cambiarActivoUsuario(u: Usuario, activo: Boolean) = viewModelScope.launch {
+        if (u.id in _guardandoUsuarios.value) return@launch
+        _guardandoUsuarios.value = _guardandoUsuarios.value + u.id
+        try {
+            runCatching {
+                val medico = admin.observarMedicos().first().firstOrNull { it.usuarioId == u.id }
+                    ?: throw IllegalStateException(MOTIVO_SIN_MEDICO_DEL_USUARIO)
+                turnos.guardarActivoMedico(medico.id, activo)
+            }
+                .onSuccess { avisar(avisoDeMedicoActivoGuardado(it)) }
+                .onFailure { avisarError(avisoDeMedicoActivoNoGuardado(it.message)) }
+        } finally {
+            _guardandoUsuarios.value = _guardandoUsuarios.value - u.id
+        }
+    }
+
     fun guardarMedico(m: Medico) = viewModelScope.launch { admin.guardarMedico(m) }
 
     /**
