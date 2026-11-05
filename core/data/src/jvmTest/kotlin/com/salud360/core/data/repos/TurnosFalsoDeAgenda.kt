@@ -10,7 +10,7 @@ import java.net.InetSocketAddress
  *
  * Escucha en `127.0.0.1` con un puerto libre y anota cada pedido (método, ruta, token y cuerpo) para que los tests
  * puedan comprobar qué sale hacia turnos. Contesta `GET catalogos`, `GET usuarios` y `GET secretarias` con datos
- * inventados y deja configurable el `PUT medicos/{n}/agenda` que usa T5.
+ * inventados y deja configurables el `PUT medicos/{n}/agenda` (T5) y el `PUT medicos/{n}/historias-clinicas`.
  *
  * Nunca se usa el `TurnosOnlineClient()` por omisión: ese apunta a producción.
  */
@@ -38,6 +38,10 @@ class TurnosFalsoDeAgenda : AutoCloseable {
     /** Respuesta del `PUT medicos/{n}/agenda` (T5): `(estado, cuerpo)`. */
     @Volatile
     var respuestaDeAgenda: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de la agenda no está en el servidor falso"}"""
+
+    /** Respuesta del `PUT medicos/{n}/historias-clinicas`: `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeHistoriasClinicas: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de las historias clínicas no está en el servidor falso"}"""
 
     private val anotados = mutableListOf<Pedido>()
 
@@ -70,6 +74,8 @@ class TurnosFalsoDeAgenda : AutoCloseable {
             x.requestMethod == "GET" && ruta == "secretarias" -> responder(x, 200, """{"secretarias":[]}""")
             x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/agenda") ->
                 responder(x, respuestaDeAgenda.first, respuestaDeAgenda.second)
+            x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/historias-clinicas") ->
+                responder(x, respuestaDeHistoriasClinicas.first, respuestaDeHistoriasClinicas.second)
             else -> responder(x, 404, """{"ok":false,"mensaje":"la ruta $ruta no está en el servidor falso"}""")
         }
     }

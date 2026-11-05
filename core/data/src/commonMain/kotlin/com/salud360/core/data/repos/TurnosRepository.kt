@@ -130,6 +130,15 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
         online?.guardarAgenda(medicoId, tieneAgenda, visible)
             ?: throw IllegalStateException("Cambiar la agenda necesita conexión con turnos.")
 
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/historias-clinicas`) la lista exacta de historias clínicas habilitadas de un
+     * médico y devuelve la que informa turnos. Exige conexión (el dueño del dato es turnos): sin `online` no hay dónde
+     * guardarlo y la copia local no se toca. La lista nueva la arma `nuevasHistoriasClinicas`.
+     */
+    suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> =
+        online?.guardarHistoriasClinicas(medicoId, codigos)
+            ?: throw IllegalStateException("Cambiar las historias clínicas necesita conexión con turnos.")
+
     /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
     suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {
         val r = remota(o.medicoId)?.takeIf { TobbIds.esTobb(o.obraSocialId) }

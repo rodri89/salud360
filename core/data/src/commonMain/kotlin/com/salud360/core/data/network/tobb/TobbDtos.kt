@@ -326,6 +326,26 @@ data class TobbAgendaResponse(
     @SerialName("turnos_futuros") val turnosFuturos: Int = 0,
 )
 
+/**
+ * Cuerpo de `PUT medicos/{id}/historias-clinicas` (solo administrador): la lista EXACTA de historias clínicas que debe
+ * quedar habilitada (`[]` = ninguna). La lista no tiene valor por omisión a propósito: con `encodeDefaults = false` un
+ * `emptyList()` por omisión no viajaría, y «ninguna» es un pedido válido.
+ */
+@Serializable
+data class TobbHistoriasClinicasRequest(
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>,
+)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/historias-clinicas`: la lista final tal como quedó en turnos (en el orden de su
+ * catálogo, que puede diferir de lo pedido). Sin valor por omisión: una respuesta que no la traiga no confirma nada.
+ */
+@Serializable
+data class TobbHistoriasClinicasResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>,
+)
+
 /** El usuario recién creado, con los números que le asignó turnos. */
 @Serializable
 data class TobbUsuarioCreado(

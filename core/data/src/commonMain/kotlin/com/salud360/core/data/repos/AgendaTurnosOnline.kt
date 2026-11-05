@@ -12,6 +12,8 @@ import com.salud360.core.data.network.tobb.TobbAgendaDia
 import com.salud360.core.data.network.tobb.TobbAgendaRequest
 import com.salud360.core.data.network.tobb.TobbAgendaResponse
 import com.salud360.core.data.network.tobb.TobbAgendaSemana
+import com.salud360.core.data.network.tobb.TobbHistoriasClinicasRequest
+import com.salud360.core.data.network.tobb.TobbHistoriasClinicasResponse
 import com.salud360.core.data.network.tobb.TobbAltaResponse
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.network.tobb.TobbAltaUsuarioResponse
@@ -509,6 +511,33 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         }
         log.d { "Agenda de $medicoId en turnos: agenda ${r.tieneAgenda}, visible ${r.visibleEnTurnos}, ${r.turnosFuturos} turnos futuros" }
         return AgendaGuardada(tieneAgenda = r.tieneAgenda, visible = r.visibleEnTurnos, turnosFuturos = r.turnosFuturos)
+    }
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/historias-clinicas`, solo administrador) la lista EXACTA de historias clínicas
+     * habilitadas de un médico (`[]` = ninguna) y recién después de la confirmación escribe la copia del dispositivo.
+     * Antes solo se escribía en el dispositivo: turnos no se enteraba y al volver a entrar pisaba el cambio.
+     *
+     * La copia toma la lista que informó turnos (puede venir en otro orden o distinta de la pedida), sin `dirty`, y no
+     * toca ningún otro campo del médico. Si el médico local no está, no se inventa la ficha y se devuelve igual la lista.
+     * Un `200` que no informa la lista no se toma como confirmación.
+     */
+    suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> {
+        val n = numeroMedico(medicoId)
+        val r = sinRutaEnLaWeb("cambiar las historias clínicas de un médico") {
+            val obj = turnos.tobbPut("medicos/$n/historias-clinicas", cuerpo(TobbHistoriasClinicasRequest.serializer(), TobbHistoriasClinicasRequest(codigos)))
+            try {
+                decodificar(TobbHistoriasClinicasResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb confirmó el cambio pero no informó qué historias clínicas quedaron habilitadas.")
+            }
+        }
+        val previo = aq.medicoPorId(TobbIds.medico(n)).uno { it.toModel() }
+        if (previo != null) {
+            aq.upsertMedico(previo.copy(especialidadesHc = r.historiasClinicas).toRow(ahoraMillis(), dirty = false))
+        }
+        log.d { "Historias clínicas de $medicoId en turnos: ${r.historiasClinicas}" }
+        return r.historiasClinicas
     }
 
     // ------------------------------------------------------------------
