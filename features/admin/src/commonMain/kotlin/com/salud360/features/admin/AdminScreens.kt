@@ -1,6 +1,7 @@
 package com.salud360.features.admin
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -15,11 +16,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,6 +69,8 @@ import com.salud360.core.ui.components.TableColumn
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -71,29 +80,54 @@ private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorio
 @Composable
 fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios: (medicoId: String, consultorioId: String) -> Unit, vm: AdminViewModel = koinViewModel()) {
     var solapa by remember { mutableIntStateOf(0) }
-    val mensaje by vm.mensaje.collectAsState()
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ScreenTitle("Administración", modifier = Modifier.weight(1f))
-            LinkButton("Sincronizar ahora", onClick = vm::sincronizar)
-        }
-        mensaje?.let { Text(it, color = Salud360Colors.Indigo, fontWeight = FontWeight.SemiBold) }
-        ScrollableTabRow(selectedTabIndex = solapa, edgePadding = 0.dp, containerColor = Color.Transparent) {
-            SOLAPAS.forEachIndexed { i, t -> Tab(selected = solapa == i, onClick = { solapa = i }, text = { Text(t) }) }
-        }
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            when (solapa) {
-                0 -> UsuariosTab(vm)
-                1 -> MedicosTab(vm, onAbrirConfigMedico, onAbrirHorarios)
-                2 -> SecretariasTab(vm)
-                3 -> ConsultoriosTab(vm)
-                4 -> EspecialidadesTab(vm)
-                5 -> FeriadosTab(vm)
-                6 -> LicenciasTab(vm)
-            }
-            Spacer(Modifier.height(24.dp))
+    val snackbar = remember { SnackbarHostState() }
+    // Cada aviso del ViewModel se muestra una vez como snackbar y se limpia al tomarlo: el mismo texto repetido vuelve a
+    // verse, y uno nuevo reemplaza al que está en pantalla.
+    LaunchedEffect(vm) {
+        vm.mensaje.filterNotNull().collectLatest { aviso ->
+            vm.mensaje.value = null
+            snackbar.showSnackbar(AvisoVisible(aviso.texto, aviso.esError))
         }
     }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ScreenTitle("Administración", modifier = Modifier.weight(1f))
+                LinkButton("Sincronizar ahora", onClick = vm::sincronizar)
+            }
+            ScrollableTabRow(selectedTabIndex = solapa, edgePadding = 0.dp, containerColor = Color.Transparent) {
+                SOLAPAS.forEachIndexed { i, t -> Tab(selected = solapa == i, onClick = { solapa = i }, text = { Text(t) }) }
+            }
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (solapa) {
+                    0 -> UsuariosTab(vm)
+                    1 -> MedicosTab(vm, onAbrirConfigMedico, onAbrirHorarios)
+                    2 -> SecretariasTab(vm)
+                    3 -> ConsultoriosTab(vm)
+                    4 -> EspecialidadesTab(vm)
+                    5 -> FeriadosTab(vm)
+                    6 -> LicenciasTab(vm)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp)) { data ->
+            val esError = (data.visuals as? AvisoVisible)?.esError == true
+            Snackbar(
+                data,
+                containerColor = if (esError) MaterialTheme.colorScheme.error else Salud360Colors.SuccessDark,
+                contentColor = Color.White,
+                dismissActionContentColor = Color.White,
+            )
+        }
+    }
+}
+
+/** El aviso tal como lo muestra el snackbar: los errores duran más y se pueden cerrar a mano. */
+private class AvisoVisible(override val message: String, val esError: Boolean) : SnackbarVisuals {
+    override val actionLabel: String? = null
+    override val withDismissAction: Boolean = esError
+    override val duration: SnackbarDuration = if (esError) SnackbarDuration.Long else SnackbarDuration.Short
 }
 
 @Composable
@@ -175,6 +209,7 @@ private fun MedicosTab(vm: AdminViewModel, onConfig: (String) -> Unit, onHorario
 @Composable
 private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<String, String>>, especialidades: List<Pair<String, String>>, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
     val guardandoAgenda by vm.guardandoAgenda.collectAsState()
+    val guardandoHc by vm.guardandoHc.collectAsState()
     SectionCard(m.nombreCompleto, initiallyExpanded = false, trailing = {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (m.tieneTurnos) StatusChip("Turnos", Salud360Colors.TealStart)
@@ -182,9 +217,11 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
         }
     }) {
         Text("Historias clínicas habilitadas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Se guardan en turnos (el dueño del dato): la casilla muestra lo guardado y vuelve sola si turnos no confirma.
+        // Quietas mientras su pedido está en vuelo, para no mandar dos listas pisadas.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             vm.especialidadesHc.forEach { (codigo, nombre) ->
-                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) })
+                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) }, enabled = m.id !in guardandoHc)
             }
         }
         HorizontalDivider()

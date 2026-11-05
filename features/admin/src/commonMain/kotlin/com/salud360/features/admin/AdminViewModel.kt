@@ -8,9 +8,12 @@ import com.salud360.core.data.repos.CambioDeAgenda
 import com.salud360.core.data.repos.EstadoAgenda
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.avisoDeAgendaGuardada
+import com.salud360.core.data.repos.avisoDeHistoriasClinicasGuardadas
+import com.salud360.core.data.repos.avisoDeHistoriasClinicasNoGuardadas
 import com.salud360.core.data.repos.cambioDeAgenda
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
+import com.salud360.core.data.repos.nuevasHistoriasClinicas
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
@@ -48,7 +51,15 @@ class AdminViewModel(
     val especialidades: StateFlow<List<EspecialidadTurnos>> = admin.observarEspecialidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val feriados: StateFlow<List<Feriado>> = turnos.observarFeriados().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val licencias: StateFlow<List<Licencia>> = admin.observarLicencias().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val mensaje = MutableStateFlow<String?>(null)
+
+    /**
+     * Último aviso para el administrador. La pantalla lo muestra en un snackbar y lo limpia al mostrarlo, así el mismo
+     * texto repetido se vuelve a mostrar. Se publica con [avisar] y [avisarError].
+     */
+    val mensaje = MutableStateFlow<Aviso?>(null)
+
+    private fun avisar(texto: String) { mensaje.value = Aviso(texto) }
+    private fun avisarError(texto: String) { mensaje.value = Aviso(texto, esError = true) }
 
     private val _guardandoAgenda = MutableStateFlow<Set<Id>>(emptySet())
 
@@ -58,6 +69,14 @@ class AdminViewModel(
      */
     val guardandoAgenda: StateFlow<Set<Id>> = _guardandoAgenda
 
+    private val _guardandoHc = MutableStateFlow<Set<Id>>(emptySet())
+
+    /**
+     * Médicos cuyas historias clínicas se están guardando en turnos ahora mismo: la tarjeta deshabilita sus casillas
+     * mientras espera, para no mandar dos listas pisadas una sobre la otra.
+     */
+    val guardandoHc: StateFlow<Set<Id>> = _guardandoHc
+
     init {
         // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
         // su dueño. Se traen al abrir el panel y quedan en la base del dispositivo; las listas se
@@ -65,13 +84,13 @@ class AdminViewModel(
         // Salud 360, que no está desplegado, y el panel se veía vacío.
         viewModelScope.launch {
             runCatching { turnos.sincronizarAdministracion() }
-                .onFailure { mensaje.value = "No se pudo traer la administración de turnos: ${it.message ?: "sin conexión"}" }
+                .onFailure { avisarError("No se pudo traer la administración de turnos: ${it.message ?: "sin conexión"}") }
         }
         // Las licencias son de la historia clínica, no de turnos: las trae su propia API y solo las
         // informa al administrador. Un médico no ve ninguna y la pestaña se comporta como antes.
         viewModelScope.launch {
             runCatching { admin.sincronizarLicencias() }
-                .onFailure { mensaje.value = "No se pudieron traer las licencias: ${it.message ?: "sin conexión"}" }
+                .onFailure { avisarError("No se pudieron traer las licencias: ${it.message ?: "sin conexión"}") }
         }
     }
 
@@ -110,8 +129,8 @@ class AdminViewModel(
             historiasClinicas = historiasClinicas,
         )
         runCatching { turnos.crearUsuario(alta) }
-            .onSuccess { mensaje.value = "Usuario ${it.email} creado" }
-            .onFailure { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}" }
+            .onSuccess { avisar("Usuario ${it.email} creado") }
+            .onFailure { avisarError("No se pudo crear el usuario: ${it.message ?: "sin conexión"}") }
     }
 
     /**
@@ -131,7 +150,7 @@ class AdminViewModel(
         val antes = EstadoAgenda(tieneAgenda = m.tieneTurnos, visible = m.visibleEnTurnos)
         val cambio = when (val pedido = cambioDeAgenda(antes, tieneAgenda = tieneAgenda, visible = visible)) {
             is CambioDeAgenda.Rechazado -> {
-                mensaje.value = pedido.motivo
+                avisarError(pedido.motivo)
                 return@launch
             }
             is CambioDeAgenda.Enviar -> pedido
@@ -141,9 +160,9 @@ class AdminViewModel(
             runCatching { turnos.guardarAgenda(m.id, tieneAgenda = cambio.tieneAgenda, visible = cambio.visible) }
                 .onSuccess { guardada ->
                     // RF-18: si la agenda se apagó y el médico tiene turnos futuros, se avisa cuántos (no se cancelan).
-                    mensaje.value = avisoDeAgendaGuardada(antes, guardada) ?: "Agenda guardada en turnos"
+                    avisar(avisoDeAgendaGuardada(antes, guardada) ?: "Agenda guardada en turnos")
                 }
-                .onFailure { mensaje.value = "No se pudo guardar la agenda: ${it.message ?: "sin conexión"}" }
+                .onFailure { avisarError("No se pudo guardar la agenda: ${it.message ?: "sin conexión"}") }
         } finally {
             _guardandoAgenda.value = _guardandoAgenda.value - m.id
         }
@@ -151,7 +170,26 @@ class AdminViewModel(
 
     fun guardarUsuario(u: Usuario) = viewModelScope.launch { admin.guardarUsuario(u) }
     fun guardarMedico(m: Medico) = viewModelScope.launch { admin.guardarMedico(m) }
-    fun setEspecialidadHc(m: Medico, codigo: String, habilitada: Boolean) = viewModelScope.launch { admin.setEspecialidadHc(m.id, codigo, habilitada) }
+
+    /**
+     * Habilita o quita una historia clínica del médico. El dueño del dato es turnos: se manda la lista exacta que debe
+     * quedar y no hay cambio optimista; la casilla sigue mostrando lo guardado hasta que turnos confirma (la copia del
+     * dispositivo la escribe el repositorio recién con esa respuesta). Mientras espera, las casillas de ese médico
+     * quedan quietas ([guardandoHc]). Éxito o error se avisan por [mensaje].
+     */
+    fun setEspecialidadHc(m: Medico, codigo: String, habilitada: Boolean) = viewModelScope.launch {
+        if (m.id in _guardandoHc.value) return@launch
+        val lista = nuevasHistoriasClinicas(m.especialidadesHc, codigo, habilitada)
+        _guardandoHc.value = _guardandoHc.value + m.id
+        try {
+            runCatching { turnos.guardarHistoriasClinicas(m.id, lista) }
+                .onSuccess { avisar(avisoDeHistoriasClinicasGuardadas()) }
+                .onFailure { avisarError(avisoDeHistoriasClinicasNoGuardadas(it.message)) }
+        } finally {
+            _guardandoHc.value = _guardandoHc.value - m.id
+        }
+    }
+
     fun guardarSecretaria(s: Secretaria) = viewModelScope.launch { admin.guardarSecretaria(s) }
     fun guardarConsultorio(c: Consultorio) = viewModelScope.launch { turnos.guardarConsultorio(c) }
     fun nuevoConsultorio(nombre: String, direccion: String, telefono: String) = guardarConsultorio(Consultorio(newId(), nombre, direccion, telefono))
@@ -165,8 +203,8 @@ class AdminViewModel(
      */
     fun guardarLicencia(l: Licencia) = viewModelScope.launch {
         runCatching { admin.guardarLicencia(l) }
-            .onSuccess { if (!it) mensaje.value = "La licencia quedó guardada en este dispositivo, pero la historia clínica no la aceptó." }
-            .onFailure { mensaje.value = "No se pudo guardar la licencia: ${it.message ?: "sin conexión"}" }
+            .onSuccess { if (!it) avisarError("La licencia quedó guardada en este dispositivo, pero la historia clínica no la aceptó.") }
+            .onFailure { avisarError("No se pudo guardar la licencia: ${it.message ?: "sin conexión"}") }
     }
 
     /**
@@ -178,5 +216,8 @@ class AdminViewModel(
         guardarLicencia(Licencia(medicoId, vence.toString(), vence.minus(DatePeriod(months = 1)).toString()))
     }
 
-    fun sincronizar() = viewModelScope.launch { mensaje.value = if (sync.sincronizar()) "Sincronizado" else "No se pudo sincronizar" }
+    fun sincronizar() = viewModelScope.launch { if (sync.sincronizar()) avisar("Sincronizado") else avisarError("No se pudo sincronizar") }
 }
+
+/** Aviso del panel de administración: [esError] lo muestra con el color de error en lugar del de éxito. */
+data class Aviso(val texto: String, val esError: Boolean = false)
