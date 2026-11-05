@@ -3,8 +3,10 @@ package com.salud360.features.pacientes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.PacienteGuardado
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.avisoDePacienteYaExistia
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.newId
@@ -13,12 +15,9 @@ import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -32,10 +31,11 @@ import kotlinx.coroutines.launch
  * Listado y búsqueda de pacientes. Si se indica `medicoId` se limita a su cartera (médico o
  * secretaria operando para un médico); si es null muestra todos (administrador).
  *
- * Si el médico es de turnosonlinebb: al abrir la pantalla se trae de una vez toda su cartera
- * (`pacientes/vinculados`) y se guarda vinculada localmente, así la lista aparece cargada sin
- * tener que escribir. Además, la búsqueda (2+ caracteres) también consulta la web en vivo —igual
- * que al asignar un turno—, para encontrar cualquier paciente aunque todavía no tenga turno acá.
+ * La cartera son los pacientes asociados al médico (`medico_paciente`): los que dio de alta o tienen
+ * turno con él. Si el médico es de turnosonlinebb, al abrir la pantalla se trae de una vez toda su
+ * cartera (`pacientes/vinculados`) y se guarda vinculada localmente, así la lista aparece cargada sin
+ * tener que escribir. La búsqueda filtra solo dentro de esa cartera: no consulta la web (un paciente
+ * ajeno entra a la lista dándolo de alta con su DNI o dándole un turno, no buscándolo acá).
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class PacientesListViewModel(
@@ -46,7 +46,6 @@ class PacientesListViewModel(
 ) : ViewModel() {
     val busqueda = MutableStateFlow("")
     private val remota = medicoId != null && turnos.esRemota(medicoId)
-    private val remotos = MutableStateFlow<List<Paciente>?>(null)
     private val _cargandoCartera = MutableStateFlow(false)
     val cargandoCartera: StateFlow<Boolean> = _cargandoCartera
 
@@ -61,12 +60,9 @@ class PacientesListViewModel(
     private val limite = MutableStateFlow(PAGINA)
     private val filtro = busqueda.debounce(200).map { it.trim() }.distinctUntilChanged()
 
-    private val locales: Flow<List<Paciente>> = combine(filtro, limite) { q, lim -> q to lim }
+    val lista: StateFlow<List<Paciente>> = combine(filtro, limite) { q, lim -> q to lim }
         .flatMapLatest { (q, lim) -> pacientes.observarPagina(medicoId, q, lim) }
-
-    val lista: StateFlow<List<Paciente>> = combine(locales, remotos) { locales, remotos ->
-        if (remotos.isNullOrEmpty()) locales else (remotos + locales).distinctBy { it.id }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Total que cumple el filtro (para el título y para saber si hay más páginas). */
     val total: StateFlow<Long> = filtro.flatMapLatest { q -> pacientes.observarTotal(medicoId, q) }
@@ -97,42 +93,6 @@ class PacientesListViewModel(
                 _cargandoCartera.value = false
             }
         }
-        if (remota) {
-            viewModelScope.launch {
-                busqueda.collectLatest { q ->
-                    val t = q.trim()
-                    // Se limpia apenas cambia lo tecleado, antes de esperar: si no, mientras vuelve la
-                    // búsqueda nueva se sigue viendo el resultado de la anterior, que es más ancho, y
-                    // parece que el filtro se perdió.
-                    remotos.value = null
-                    if (t.length < 2) return@collectLatest
-                    delay(300)
-                    remotos.value = runCatching { turnos.buscarPacientesRemotos(medicoId!!, t) }
-                        .getOrNull()?.filter { coincide(it, t) }
-                }
-            }
-        }
-    }
-
-    /**
-     * El mismo criterio que la consulta local, aplicado a lo que devuelve turnos.
-     *
-     * Lo remoto se agrega arriba de la lista para que el médico pueda encontrar y vincular a un paciente
-     * que todavía no es suyo. Pero si viene más ancho que lo que se tecleó —y el buscador de turnos
-     * matchea más suelto—, la lista filtrada se ensancha sola unos cientos de milisegundos después y
-     * parece que el filtro se perdió. Por eso se lo filtra igual que en SQL antes de mostrarlo.
-     */
-    private fun coincide(p: Paciente, q: String): Boolean {
-        val t = q.lowercase()
-        return p.dni.startsWith(q) || p.apellido.lowercase().contains(t) || p.nombre.lowercase().contains(t)
-    }
-
-    /** Búsqueda global por DNI en toda la base (para vincular un paciente ya existente de otro médico). */
-    suspend fun buscarGlobal(dni: String): Paciente? = pacientes.porDni(dni)
-
-    fun vincular(pacienteId: Id) {
-        val m = medicoId ?: return
-        viewModelScope.launch { pacientes.vincular(m, pacienteId) }
     }
 
     private companion object {
@@ -149,6 +109,11 @@ data class PacienteFormState(
     val existente: Paciente? = null,
     /** La ficha se guardó en el dispositivo pero no se pudo actualizar turnosonlinebb (sin conexión, etc.). */
     val avisoRemoto: String? = null,
+    /**
+     * El DNI ya existía en el sistema: no se creó otro paciente, se lo asoció al médico y [paciente] es la ficha que
+     * ya tenía el sistema (no la que se escribió). Null si fue un alta nueva o una edición.
+     */
+    val avisoExistente: String? = null,
 )
 
 /** Alta / edición de la ficha del paciente (formulario compartido por médico y secretaria). */
@@ -160,6 +125,9 @@ class PacienteFormViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(PacienteFormState(Paciente(newId(), "", "", "")))
     val state: StateFlow<PacienteFormState> = _state.asStateFlowCompat()
+
+    /** El DNI ya estaba en el dispositivo y falta que turnos asocie al médico (el `POST` de alta lo hace). */
+    private var asociarEnTurnos = false
 
     init {
         if (pacienteId != null) viewModelScope.launch {
@@ -194,31 +162,44 @@ class PacienteFormViewModel(
             else if (p.dni.any { !it.isDigit() }) put("dni", "Solo números")
         }
         if (errores.isNotEmpty()) { _state.value = _state.value.copy(errores = errores); return }
-        _state.value = _state.value.copy(guardando = true, errores = emptyMap(), avisoRemoto = null)
+        _state.value = _state.value.copy(guardando = true, errores = emptyMap(), avisoRemoto = null, avisoExistente = null)
         viewModelScope.launch {
             // Primero el dispositivo, que no depende de la red; después turnosonlinebb.
             val guardado = pacientes.guardar(p, vincularA)
-            val aviso = guardarEnTurnosOnline(guardado.id)
-            _state.value = _state.value.copy(paciente = guardado, guardando = false, guardado = true, avisoRemoto = aviso)
-            onOk(guardado)
+            // Un id distinto es que el DNI ya estaba en el dispositivo con otra ficha: se la asoció sin pisarla.
+            val duplicadoLocal = guardado.id != p.id
+            // Si turnos no llegó a asociarlo, el reintento tiene que volver a ser un alta (un PUT no asocia).
+            if (duplicadoLocal) asociarEnTurnos = true
+            val remoto = guardarEnTurnosOnline(guardado.id, esAlta = asociarEnTurnos)
+            if (remoto.aviso == null) asociarEnTurnos = false
+            val ficha = remoto.guardado?.paciente ?: guardado
+            val yaExistia = duplicadoLocal || remoto.guardado?.yaExistia == true
+            _state.value = _state.value.copy(
+                paciente = ficha, guardando = false, guardado = true, avisoRemoto = remoto.aviso,
+                avisoExistente = if (yaExistia) avisoDePacienteYaExistia() else null,
+            )
+            // Si ya existía no se navega solo: el aviso tiene que leerse, y la pantalla ofrece «Ver ficha».
+            if (!yaExistia) onOk(ficha)
         }
     }
 
+    /** Lo que pasó al mandar la ficha a turnosonlinebb: lo que devolvió (null si no correspondía o falló) y el aviso si falló. */
+    private class ResultadoRemoto(val guardado: PacienteGuardado? = null, val aviso: String? = null)
+
     /**
-     * Manda la ficha a turnosonlinebb cuando el médico es de la web (la da de alta si todavía no existe allá).
-     * Sin esto lo editado se pierde en cuanto la web vuelve a informar al paciente. Devuelve el aviso a mostrar
-     * si no se pudo, o null si salió bien o no correspondía.
+     * Manda la ficha a turnosonlinebb cuando el médico es de la web (la da de alta si todavía no existe allá; si el DNI
+     * ya existía allá, la ficha local se reemplaza por la de turnos y no quedan dos). Sin esto lo editado se pierde en
+     * cuanto la web vuelve a informar al paciente. Si no se pudo, el resultado trae el aviso a mostrar.
      */
-    private suspend fun guardarEnTurnosOnline(pacienteId: Id): String? {
-        val medicoId = vincularA ?: return null
-        if (!turnos.esRemota(medicoId)) return null
+    private suspend fun guardarEnTurnosOnline(pacienteId: Id, esAlta: Boolean): ResultadoRemoto {
+        val medicoId = vincularA ?: return ResultadoRemoto()
+        if (!turnos.esRemota(medicoId)) return ResultadoRemoto()
         return try {
-            turnos.guardarPacienteRemoto(medicoId, pacienteId, consultorioId = null)
-            null
+            ResultadoRemoto(guardado = turnos.guardarPacienteRemoto(medicoId, pacienteId, consultorioId = null, esAlta = esAlta))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            "Se guardó en este dispositivo, pero no se pudo actualizar turnosonlinebb: ${e.message ?: "sin conexión"}. Volvé a guardar para reintentar."
+            ResultadoRemoto(aviso = "Se guardó en este dispositivo, pero no se pudo actualizar turnosonlinebb: ${e.message ?: "sin conexión"}. Volvé a guardar para reintentar.")
         }
     }
 }

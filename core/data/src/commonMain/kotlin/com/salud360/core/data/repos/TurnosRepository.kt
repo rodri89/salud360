@@ -82,11 +82,13 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     suspend fun sincronizarPacientesVinculados(medicoId: Id): List<Paciente>? = remota(medicoId)?.pacientesVinculados(medicoId)
 
     /**
-     * Guarda en turnosonlinebb la ficha editada en la app (la da de alta si todavía no existe allá).
-     * Null si el médico es local, en cuyo caso la ficha vive solo en la base propia.
+     * Guarda en turnosonlinebb la ficha editada en la app (la da de alta si todavía no existe allá; si el DNI ya existía
+     * allá, la ficha local se reemplaza por la de turnos y el paciente queda asociado al médico). Devuelve la ficha que
+     * quedó en el dispositivo y si ya existía en el sistema, o null si el médico es local, en cuyo caso la ficha vive
+     * solo en la base propia. `esAlta`: ver [AgendaTurnosOnline.guardarPacienteRemoto].
      */
-    suspend fun guardarPacienteRemoto(medicoId: Id, pacienteId: Id, consultorioId: Id?): Unit? =
-        remota(medicoId)?.guardarPacienteRemoto(pacienteId, medicoId, consultorioId)
+    suspend fun guardarPacienteRemoto(medicoId: Id, pacienteId: Id, consultorioId: Id?, esAlta: Boolean = false): PacienteGuardado? =
+        remota(medicoId)?.guardarPacienteRemoto(pacienteId, medicoId, consultorioId, esAlta)
 
     // ---- consultorios / catálogos ----
 
