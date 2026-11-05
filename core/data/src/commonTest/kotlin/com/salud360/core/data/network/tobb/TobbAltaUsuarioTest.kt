@@ -54,4 +54,35 @@ class TobbAltaUsuarioTest {
         assertTrue("consultorio_id" !in cuerpo)
         assertEquals("secretaria", cuerpo["rol"]?.jsonPrimitive?.content)
     }
+
+    private fun medicoConAgenda(tieneAgenda: Boolean?) = TobbAltaUsuario(
+        nombre = "Ana", apellido = "Vera", email = "av@ejemplo.com", password = "secreta1",
+        rol = "medico", especialidadId = 1, consultorioId = 2, tieneAgenda = tieneAgenda,
+    )
+
+    @Test
+    fun tieneAgendaViajaConTrueYTambienConFalse() {
+        // Con `encodeDefaults = false` solo se omite el valor por omisión (`null`): un `false` explícito viaja,
+        // y es lo que distingue «sin agenda» de «el alta no dijo nada» (turnos toma entonces `mostrar_en_turnos`).
+        assertEquals("true", jsonDe(medicoConAgenda(true))["tiene_agenda"]?.jsonPrimitive?.content)
+        assertEquals("false", jsonDe(medicoConAgenda(false))["tiene_agenda"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun tieneAgendaNoViajaSiEsNull() {
+        assertTrue("tiene_agenda" !in jsonDe(medicoConAgenda(null)))
+        val secretaria = jsonDe(
+            TobbAltaUsuario(nombre = "Ana", apellido = "Gomez", email = "a@ejemplo.com", password = "secreta1", rol = "secretaria"),
+        )
+        assertTrue("tiene_agenda" !in secretaria, "la secretaria no lleva el campo")
+    }
+
+    @Test
+    fun mostrarEnTurnosSigueComoHoyConLaAgenda() {
+        val conAgendaVisible = jsonDe(medicoConAgenda(true).copy(mostrarEnTurnos = true))
+        assertEquals("true", conAgendaVisible["tiene_agenda"]?.jsonPrimitive?.content)
+        assertEquals("true", conAgendaVisible["mostrar_en_turnos"]?.jsonPrimitive?.content)
+        val sinAgenda = jsonDe(medicoConAgenda(false))
+        assertTrue("mostrar_en_turnos" !in sinAgenda, "false es el valor por omisión y no se manda")
+    }
 }

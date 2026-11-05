@@ -9,6 +9,8 @@ import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.network.tobb.TOBB_DNI_BLOQUEO
 import com.salud360.core.data.network.tobb.TobbAgendaDia
+import com.salud360.core.data.network.tobb.TobbAgendaRequest
+import com.salud360.core.data.network.tobb.TobbAgendaResponse
 import com.salud360.core.data.network.tobb.TobbAgendaSemana
 import com.salud360.core.data.network.tobb.TobbAltaResponse
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
@@ -73,6 +75,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.isoDayNumber
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
@@ -413,6 +416,9 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
 
         // El usuario de cada médico, para no dejar el vínculo vacío: el catálogo no lo informa.
         val usuarioDeMedico = usuarios.filter { it.medicoId != null }.associate { it.medicoId!! to it.id }
+        // La copia del panel se reescribe entera: para lo que turnos no informa hay que partir del estado que ya tenía
+        // el dispositivo (si no, «visible» vuelve a `true` en cada sincronización y el interruptor no se queda).
+        val previos = aq.medicos().lista { it.toModel() }.associateBy { it.id }
 
         db.transaction {
             catalogo.consultorios.forEach {
@@ -422,17 +428,20 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                 aq.upsertEspecialidad(EspecialidadTurnos(TobbIds.especialidad(it.id), it.nombre, it.color).toRow(ahora, dirty = false))
             }
             catalogo.medicos.forEach { m ->
+                val id = TobbIds.medico(m.id)
                 aq.upsertMedico(
                     Medico(
-                        id = TobbIds.medico(m.id),
+                        id = id,
                         usuarioId = usuarioDeMedico[m.id]?.let { TobbIds.usuario(it) }.orEmpty(),
                         nombre = m.nombre, apellido = m.apellido, telefono = m.telefono, mail = m.mail,
                         sexo = m.sexo.orEmpty(), foto = m.foto,
                         consultorioId = TobbIds.consultorio(m.consultorioId),
                         especialidadId = TobbIds.especialidad(m.especialidadId),
                         especialidadesHc = m.historiasClinicas,
-                        // Solo el que tiene horarios cargados: ver la nota en `TurnosImportador`.
-                        tieneTurnos = m.tieneHorarios == 1,
+                        // Tiene agenda y es visible lo que informa turnos (decisión del administrador); sin esos
+                        // campos rige `tiene_horarios` y el valor previo del dispositivo. Ver `AgendaDelMedico`.
+                        tieneTurnos = tieneAgendaDe(m.tieneAgenda, m.tieneHorarios),
+                        visibleEnTurnos = visibleDe(m.visibleEnTurnos, previos[id]?.visibleEnTurnos),
                         activo = m.activo == 1,
                     ).toRow(ahora, dirty = false),
                 )
@@ -467,6 +476,39 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             "Panel: ${catalogo.medicos.size} médicos, ${catalogo.consultorios.size} consultorios, " +
                 "${catalogo.especialidades.size} especialidades, ${usuarios.size} usuarios, ${secretarias.size} secretarias"
         }
+    }
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/agenda`, solo administrador) la agenda y/o la visibilidad de un médico, y recién
+     * después de la confirmación escribe la copia del dispositivo con el estado final que informó turnos, sin `dirty`
+     * (el dueño del dato es turnos: `SyncEngine` no tiene que empujarlo). [tieneAgenda] y [visible] son lo que se toca;
+     * `null` = no se manda, así un administrador no pisa con un valor viejo el campo que cambió el otro.
+     *
+     * Lo que decide qué sale (apagar la agenda apaga «visible», encender «visible» exige agenda) está en
+     * `AgendaDelMedico.cambioDeAgenda`; acá solo se envía y se confirma. Si el médico local no está, no se escribe nada
+     * y se devuelve igual lo que contestó turnos. No toca las historias clínicas del médico ni su licencia (RF-16).
+     *
+     * Devuelve el estado final con los `turnos_futuros` que cuenta turnos (para el aviso de RF-18). Un `200` que no
+     * informa en qué quedó la agenda no se toma como confirmación.
+     */
+    suspend fun guardarAgenda(medicoId: Id, tieneAgenda: Boolean?, visible: Boolean?): AgendaGuardada {
+        val n = numeroMedico(medicoId)
+        val r = sinRutaEnLaWeb("cambiar la agenda de un médico") {
+            val pedido = TobbAgendaRequest(tieneAgenda = tieneAgenda, visibleEnTurnos = visible)
+            val obj = turnos.tobbPut("medicos/$n/agenda", cuerpo(TobbAgendaRequest.serializer(), pedido))
+            try {
+                decodificar(TobbAgendaResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb confirmó el cambio pero no informó cómo quedó la agenda del médico.")
+            }
+        }
+        val id = TobbIds.medico(n)
+        val previo = aq.medicoPorId(id).uno { it.toModel() }
+        if (previo != null) {
+            aq.upsertMedico(previo.copy(tieneTurnos = r.tieneAgenda, visibleEnTurnos = r.visibleEnTurnos).toRow(ahoraMillis(), dirty = false))
+        }
+        log.d { "Agenda de $medicoId en turnos: agenda ${r.tieneAgenda}, visible ${r.visibleEnTurnos}, ${r.turnosFuturos} turnos futuros" }
+        return AgendaGuardada(tieneAgenda = r.tieneAgenda, visible = r.visibleEnTurnos, turnosFuturos = r.turnosFuturos)
     }
 
     // ------------------------------------------------------------------

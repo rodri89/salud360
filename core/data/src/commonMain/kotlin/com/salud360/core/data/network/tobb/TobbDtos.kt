@@ -207,7 +207,11 @@ data class TobbCatalogosResponse(
     val especialidades: List<TobbEspecialidad> = emptyList(),
 )
 
-/** Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. */
+/**
+ * Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. La agenda la deciden
+ * [tieneAgenda] y [visibleEnTurnos] (los escribe el administrador con `PUT medicos/{id}/agenda`); [tieneHorarios] es
+ * solo el respaldo si el servidor no los informa.
+ */
 @Serializable
 data class TobbMedicoCatalogo(
     val id: Long,
@@ -220,12 +224,15 @@ data class TobbMedicoCatalogo(
     @SerialName("especialidad_id") val especialidadId: Long = 0,
     @SerialName("consultorio_id") val consultorioId: Long = 0,
     /**
-     * Si atiende por agenda. No alcanza con el consultorio: turnos lo exige siempre, así que el
-     * médico que solo usa historia clínica también tiene uno. Lo que lo distingue es no tener ningún
-     * horario cargado. Por omisión 1, para no esconderle la agenda a nadie si el servidor todavía no
-     * informa el dato.
+     * Tiene horarios cargados. Es solo el respaldo: cuando el servidor todavía no informa [tieneAgenda] se
+     * decide con esto (el consultorio no alcanza, turnos lo exige siempre y el médico que solo usa historia
+     * clínica también tiene uno). Por omisión 1, para no esconderle la agenda a nadie.
      */
     @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
+    /** Si el administrador le dio agenda de turnos (`0`/`1`). `null` = el servidor no lo informa (no es `0`). */
+    @SerialName("tiene_agenda") val tieneAgenda: Int? = null,
+    /** Si figura para que el paciente pida turno (`0`/`1`). `null` = el servidor no lo informa. */
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Int? = null,
     @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
     val activo: Int = 1,
 )
@@ -286,8 +293,37 @@ data class TobbAltaUsuario(
     val sexo: String = "",
     /** Si aparece en las listas donde el paciente elige a quién pedirle turno. */
     @SerialName("mostrar_en_turnos") val mostrarEnTurnos: Boolean = false,
+    /**
+     * Si el médico tiene agenda de turnos. El alta de médico lo manda siempre (`true` o `false`); secretaria y
+     * administrador lo dejan en `null` y no viaja. Con `encodeDefaults = false` el `null` se omite y el `false` no.
+     */
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean? = null,
     /** Historias clínicas que va a poder abrir desde la app. */
     @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+)
+
+/**
+ * Cuerpo de `PUT medicos/{id}/agenda` (solo administrador). Solo viaja lo que se tocó (`null` no viaja, `false` sí):
+ * así un administrador no pisa con un valor viejo el campo que el otro cambió.
+ */
+@Serializable
+data class TobbAgendaRequest(
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean? = null,
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Boolean? = null,
+)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/agenda`: el estado final de los dos datos, tal como quedó en turnos, y
+ * los turnos vigentes de hoy en adelante (`turnos_futuros`, para avisar al apagar la agenda).
+ *
+ * Los dos booleanos no tienen valor por omisión: una respuesta que no los traiga no confirma nada y no se toma por buena.
+ */
+@Serializable
+data class TobbAgendaResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean,
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Boolean,
+    @SerialName("turnos_futuros") val turnosFuturos: Int = 0,
 )
 
 /** El usuario recién creado, con los números que le asignó turnos. */

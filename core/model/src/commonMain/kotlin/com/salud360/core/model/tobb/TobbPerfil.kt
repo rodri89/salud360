@@ -24,6 +24,11 @@ data class TobbConsultorio(val id: Long, val nombre: String = "", val direccion:
 @Serializable
 data class TobbCupoPrimerControl(val id: Long = 0, val dia: Int, val consultorio: Long = 0, val cantidad: Int)
 
+/**
+ * Médico como lo informa `GET auth/perfil` (`medico` y cada elemento de `secretaria.medicos[]`). La agenda la deciden
+ * [tieneAgenda] y [visibleEnTurnos] (los escribe el administrador con `PUT medicos/{id}/agenda`); [tieneHorarios] es
+ * solo el respaldo si el servidor no los informa.
+ */
 @Serializable
 data class TobbMedico(
     val id: Long,
@@ -37,8 +42,18 @@ data class TobbMedico(
     val especialidad: String? = null,
     @SerialName("consultorio_id") val consultorioId: Long? = null,
     val activo: Int = 1,
-    /** Si atiende por agenda: tiene horarios cargados. Ver [com.salud360.core.data.network.tobb.TobbMedicoCatalogo]. */
+    /**
+     * Tiene horarios cargados. Es solo el respaldo: cuando turnos no informa [tieneAgenda] (servidor sin actualizar)
+     * la agenda del médico se decide con este dato. Ver [com.salud360.core.data.network.tobb.TobbMedicoCatalogo].
+     */
     @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
+    /**
+     * Si el administrador le dio agenda de turnos (`0`/`1`). `null` = el servidor no lo informa: no es lo mismo
+     * que `0`, y por eso no lleva valor por omisión `1` como [tieneHorarios].
+     */
+    @SerialName("tiene_agenda") val tieneAgenda: Int? = null,
+    /** Si figura para que el paciente pida turno (`0`/`1`). `null` = el servidor no lo informa. */
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Int? = null,
     val consultorio: TobbConsultorio? = null,
     val modulos: List<Int> = emptyList(),
     @SerialName("ventana_dias") val ventanaDias: Int = 180,

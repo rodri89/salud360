@@ -121,6 +121,15 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     suspend fun crearUsuario(alta: TobbAltaUsuario): Usuario =
         online?.crearUsuario(alta) ?: throw IllegalStateException("El alta de usuarios necesita conexión con turnos.")
 
+    /**
+     * Cambia en turnos la agenda y/o la visibilidad de un médico (`PUT medicos/{n}/agenda`) y devuelve el estado final con
+     * los turnos futuros que informa turnos. Exige conexión (el dueño del dato es turnos): sin `online` no hay dónde
+     * guardarlo y la copia local no se toca. Qué pedido sale lo decide `AgendaDelMedico.cambioDeAgenda`.
+     */
+    suspend fun guardarAgenda(medicoId: Id, tieneAgenda: Boolean?, visible: Boolean?): AgendaGuardada =
+        online?.guardarAgenda(medicoId, tieneAgenda, visible)
+            ?: throw IllegalStateException("Cambiar la agenda necesita conexión con turnos.")
+
     /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
     suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {
         val r = remota(o.medicoId)?.takeIf { TobbIds.esTobb(o.obraSocialId) }
