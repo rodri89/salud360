@@ -34,6 +34,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
+import com.salud360.core.data.repos.puedeCambiarVisible
+import com.salud360.core.data.repos.puedeMarcarMostrarEnElAlta
+import com.salud360.core.data.repos.puedeVerConfigDeAgenda
+import com.salud360.core.data.repos.puedeVerHorarios
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
@@ -103,8 +108,9 @@ private fun UsuariosTab(vm: AdminViewModel) {
     val especialidades by vm.especialidades.collectAsState()
     var consultorioId by remember { mutableStateOf<String?>(null) }
     var especialidadId by remember { mutableStateOf<String?>(null) }
-    // Por defecto no se publica: el que se da de alta desde acá suele ser el que solo usa historia
-    // clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    // Por defecto sin agenda y sin publicar: el que se da de alta desde acá suele ser el que solo usa
+    // historia clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    var tieneAgenda by remember { mutableStateOf(false) }
     var mostrarEnTurnos by remember { mutableStateOf(false) }
     var hcElegidas by remember { mutableStateOf(emptySet<String>()) }
     val esMedico = rol == Rol.MEDICO
@@ -136,13 +142,15 @@ private fun UsuariosTab(vm: AdminViewModel) {
                     CheckboxField(nombreHc, codigo in hcElegidas, { marcada -> hcElegidas = if (marcada) hcElegidas + codigo else hcElegidas - codigo })
                 }
             }
-            CheckboxField("Mostrar para pedir turno", mostrarEnTurnos, { mostrarEnTurnos = it })
+            CheckboxField("Tiene agenda de turnos", tieneAgenda, { tieneAgenda = it; mostrarEnTurnos = mostrarEnTurnosEnElAlta(esMedico, it, mostrarEnTurnos) })
+            // Ofrecerse para pedir turno solo tiene sentido con agenda (RF-14): la regla está en AgendaDelMedico.
+            CheckboxField("Mostrar para pedir turno", mostrarEnTurnosEnElAlta(esMedico, tieneAgenda, mostrarEnTurnos), { mostrarEnTurnos = it }, enabled = puedeMarcarMostrarEnElAlta(tieneAgenda))
         }
         ActionRow {
             PillButton("Crear usuario", enabled = completo, onClick = {
-                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList())
+                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList(), tieneAgenda)
                 nombre = ""; apellido = ""; email = ""; password = ""
-                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet()
+                especialidadId = null; consultorioId = null; tieneAgenda = false; mostrarEnTurnos = false; hcElegidas = emptySet()
             })
         }
     }
@@ -166,6 +174,7 @@ private fun MedicosTab(vm: AdminViewModel, onConfig: (String) -> Unit, onHorario
 
 @Composable
 private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<String, String>>, especialidades: List<Pair<String, String>>, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
+    val guardandoAgenda by vm.guardandoAgenda.collectAsState()
     SectionCard(m.nombreCompleto, initiallyExpanded = false, trailing = {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (m.tieneTurnos) StatusChip("Turnos", Salud360Colors.TealStart)
@@ -179,10 +188,13 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
             }
         }
         HorizontalDivider()
+        // Los dos interruptores escriben en turnos (el dueño del dato) y muestran lo guardado: si turnos no
+        // confirma, vuelven solos y `mensaje` dice por qué. Quietos mientras su pedido está en vuelo.
+        val guardando = m.id in guardandoAgenda
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Switch(checked = m.tieneTurnos, onCheckedChange = { vm.guardarMedico(m.copy(tieneTurnos = it)) })
+            Switch(checked = m.tieneTurnos, onCheckedChange = { vm.cambiarAgenda(m, it) }, enabled = !guardando)
             Text("Tiene agenda de turnos")
-            Switch(checked = m.visibleEnTurnos, onCheckedChange = { vm.guardarMedico(m.copy(visibleEnTurnos = it)) })
+            Switch(checked = m.visibleEnTurnos, onCheckedChange = { vm.cambiarVisible(m, it) }, enabled = !guardando && puedeCambiarVisible(m.tieneTurnos, m.visibleEnTurnos))
             Text("Visible para pacientes en la web")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -195,9 +207,11 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
             TextField("Teléfono", m.telefono, { vm.guardarMedico(m.copy(telefono = it)) }, Modifier.weight(1f))
             TextField("Mail de contacto", m.mail, { vm.guardarMedico(m.copy(mail = it)) }, Modifier.weight(1f))
         }
-        ActionRow {
-            AcceptButton("Módulos y configuración", onClick = { onConfig(m.id) })
-            if (m.consultorioId != null) AcceptButton("Horarios", onClick = { onHorarios(m.id, m.consultorioId!!) })
+        val verConfig = puedeVerConfigDeAgenda(m.tieneTurnos)
+        val verHorarios = puedeVerHorarios(m.tieneTurnos, m.consultorioId)
+        if (verConfig || verHorarios) ActionRow {
+            if (verConfig) AcceptButton("Módulos y configuración", onClick = { onConfig(m.id) })
+            if (verHorarios) AcceptButton("Horarios", onClick = { onHorarios(m.id, m.consultorioId!!) })
         }
     }
 }

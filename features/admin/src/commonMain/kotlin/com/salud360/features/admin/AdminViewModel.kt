@@ -4,8 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
+import com.salud360.core.data.repos.CambioDeAgenda
+import com.salud360.core.data.repos.EstadoAgenda
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.avisoDeAgendaGuardada
+import com.salud360.core.data.repos.cambioDeAgenda
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
@@ -45,6 +50,14 @@ class AdminViewModel(
     val licencias: StateFlow<List<Licencia>> = admin.observarLicencias().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val mensaje = MutableStateFlow<String?>(null)
 
+    private val _guardandoAgenda = MutableStateFlow<Set<Id>>(emptySet())
+
+    /**
+     * Médicos cuya agenda se está guardando en turnos ahora mismo: la tarjeta deshabilita sus interruptores mientras
+     * espera la confirmación (D-P10, para que dos toques no manden dos pedidos cruzados).
+     */
+    val guardandoAgenda: StateFlow<Set<Id>> = _guardandoAgenda
+
     init {
         // Médicos, consultorios, especialidades, usuarios y secretarias son de turnosonlinebb, que es
         // su dueño. Se traen al abrir el panel y quedan en la base del dispositivo; las listas se
@@ -66,8 +79,9 @@ class AdminViewModel(
      * Da de alta a quien va a usar la app. Va a turnosonlinebb, que es el dueño de la identidad: es
      * la contraseña con la que se entra, y la historia clínica valida la sesión contra ese sistema.
      *
-     * El médico que solo usa historia clínica se crea con [mostrarEnTurnos] en false: queda activo,
-     * que es lo que le permite entrar, pero no aparece en las listas para pedirle turno.
+     * El médico que solo usa historia clínica se crea con [tieneAgenda] en false y [mostrarEnTurnos] en false: queda
+     * activo, que es lo que le permite entrar, pero no aparece en las listas para pedirle turno (RF-14). Ofrecerse
+     * para pedir turno solo tiene sentido con agenda, así que sin agenda no se manda.
      */
     fun crearUsuario(
         nombre: String,
@@ -79,18 +93,60 @@ class AdminViewModel(
         consultorioId: Id? = null,
         mostrarEnTurnos: Boolean = false,
         historiasClinicas: List<String> = emptyList(),
+        /**
+         * Si el médico tiene agenda de turnos (RF-14). Va al final y con valor por omisión para que el alta de
+         * secretarias y administradores no lo necesite: para ellos no viaja (`null`, D-P5).
+         */
+        tieneAgenda: Boolean = false,
     ) = viewModelScope.launch {
+        val esMedico = rol == Rol.MEDICO
         val alta = TobbAltaUsuario(
             nombre = nombre.trim(), apellido = apellido.trim(), email = email.trim().lowercase(), password = password,
             rol = rol.name.lowercase(),
             especialidadId = TobbIds.numero(especialidadId),
             consultorioId = TobbIds.numero(consultorioId),
-            mostrarEnTurnos = mostrarEnTurnos,
+            mostrarEnTurnos = mostrarEnTurnosEnElAlta(esMedico, tieneAgenda, mostrarEnTurnos),
+            tieneAgenda = if (esMedico) tieneAgenda else null,
             historiasClinicas = historiasClinicas,
         )
         runCatching { turnos.crearUsuario(alta) }
             .onSuccess { mensaje.value = "Usuario ${it.email} creado" }
             .onFailure { mensaje.value = "No se pudo crear el usuario: ${it.message ?: "sin conexión"}" }
+    }
+
+    /**
+     * Prende o apaga «Tiene agenda de turnos» de un médico (RF-2, RF-5, RF-18). El dueño del dato es turnos: no hay
+     * cambio optimista, la tarjeta sigue mostrando lo guardado hasta que turnos confirma, y la copia del dispositivo la
+     * escribe el repositorio recién con esa respuesta. Qué pedido sale lo decide `AgendaDelMedico.cambioDeAgenda`
+     * (apagar la agenda apaga también «visible»); si turnos no confirma, [mensaje] dice por qué y el interruptor vuelve solo.
+     */
+    fun cambiarAgenda(m: Medico, tieneAgenda: Boolean) = pedirCambioDeAgenda(m, tieneAgenda = tieneAgenda, visible = null)
+
+    /** Prende o apaga «Visible para pacientes en la web» (RF-2, RF-6), con la misma espera de confirmación que [cambiarAgenda]. */
+    fun cambiarVisible(m: Medico, visible: Boolean) = pedirCambioDeAgenda(m, tieneAgenda = null, visible = visible)
+
+    private fun pedirCambioDeAgenda(m: Medico, tieneAgenda: Boolean?, visible: Boolean?) = viewModelScope.launch {
+        // `m` es la copia que tiene la pantalla: se manda solo el campo tocado, así no se pisa con un valor viejo lo
+        // que otro administrador haya cambiado en el otro (D-P4).
+        val antes = EstadoAgenda(tieneAgenda = m.tieneTurnos, visible = m.visibleEnTurnos)
+        val cambio = when (val pedido = cambioDeAgenda(antes, tieneAgenda = tieneAgenda, visible = visible)) {
+            is CambioDeAgenda.Rechazado -> {
+                mensaje.value = pedido.motivo
+                return@launch
+            }
+            is CambioDeAgenda.Enviar -> pedido
+        }
+        _guardandoAgenda.value = _guardandoAgenda.value + m.id
+        try {
+            runCatching { turnos.guardarAgenda(m.id, tieneAgenda = cambio.tieneAgenda, visible = cambio.visible) }
+                .onSuccess { guardada ->
+                    // RF-18: si la agenda se apagó y el médico tiene turnos futuros, se avisa cuántos (no se cancelan).
+                    mensaje.value = avisoDeAgendaGuardada(antes, guardada) ?: "Agenda guardada en turnos"
+                }
+                .onFailure { mensaje.value = "No se pudo guardar la agenda: ${it.message ?: "sin conexión"}" }
+        } finally {
+            _guardandoAgenda.value = _guardandoAgenda.value - m.id
+        }
     }
 
     fun guardarUsuario(u: Usuario) = viewModelScope.launch { admin.guardarUsuario(u) }

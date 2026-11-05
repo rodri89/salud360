@@ -66,6 +66,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.puedeVerAgenda
+import com.salud360.core.data.repos.puedeVerConfigDeAgenda
+import com.salud360.core.data.repos.puedeVerHorarios
+import com.salud360.core.data.repos.puedeVerMenuConfig
+import com.salud360.core.data.repos.puedeVerRecetas
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.auth.Rol
@@ -137,8 +142,37 @@ private fun NavGraphBuilder.pantallaAdmin(ruta: String, esAdmin: Boolean, conten
 /** Recetas está oculto en el menú hasta que se termine de definir; poner en true para volver a mostrarlo. */
 private const val MOSTRAR_RECETAS = false
 
-/** Médico que está siendo gestionado (el propio, o el elegido por la secretaria). */
+/**
+ * Médico que está siendo gestionado (el propio, o el elegido por la secretaria). [tieneTurnos] es «tiene agenda» tal como
+ * lo informa turnos (el del médico en su sesión; el de `Medico.tieneTurnos` del elegido en el caso de la secretaria): no se
+ * deduce del consultorio. Qué se ve con ese dato lo decide `AgendaDelMedico`.
+ */
 data class ContextoMedico(val medicoId: String, val consultorioId: String?, val nombre: String, val especialidades: List<String>, val tieneTurnos: Boolean)
+
+/** Consultorio donde abrir la agenda del contexto; `null` si [puedeVerAgenda] dice que no (sin agenda o sin consultorio). */
+private fun ContextoMedico.consultorioParaAgenda(): String? = consultorioId?.takeIf { puedeVerAgenda(tieneTurnos, it) }
+
+/** Consultorio de los horarios de atención del contexto; `null` si [puedeVerHorarios] dice que no. */
+private fun ContextoMedico.consultorioParaHorarios(): String? = consultorioId?.takeIf { puedeVerHorarios(tieneTurnos, it) }
+
+/**
+ * Cierra por ruta las pantallas de turnos (D-P9): en web la URL restaura la ruta aunque el administrador haya apagado la
+ * agenda después. Sin agenda muestra el aviso en vez de [contenido]; sin contexto (la secretaria todavía no eligió médico)
+ * muestra [sinContexto]. [regla] es la de `AgendaDelMedico` que corresponde a la pantalla.
+ */
+@Composable
+private fun SoloConAgenda(
+    c: ContextoMedico?,
+    regla: (tieneAgenda: Boolean) -> Boolean = ::puedeVerConfigDeAgenda,
+    sinContexto: @Composable () -> Unit = {},
+    contenido: @Composable (ContextoMedico) -> Unit,
+) {
+    when {
+        c == null -> sinContexto()
+        !regla(c.tieneTurnos) -> Text("Este médico no tiene agenda de turnos", Modifier.padding(16.dp))
+        else -> contenido(c)
+    }
+}
 
 /**
  * Shell principal con navegación adaptativa: barra lateral (con el degradado de marca) en
@@ -163,23 +197,25 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
     }
 
     val items = remember(rol, contexto) {
+        val c = contexto
         buildList {
             when (rol) {
                 Rol.MEDICO -> {
-                    if (contexto?.tieneTurnos == true && contexto?.consultorioId != null) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
+                    if (c != null && puedeVerAgenda(c.tieneTurnos, c.consultorioId)) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
                     add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People))
                     // Recetas queda oculto por ahora (pendiente de definir); la ruta sigue registrada.
-                    if (contexto?.tieneTurnos == true && MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
+                    if (c != null && puedeVerRecetas(c.tieneTurnos) && MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
                     // Config: agenda (si tiene) y secciones de las historias clínicas habilitadas.
-                    if (contexto?.tieneTurnos == true || contexto?.especialidades?.isNotEmpty() == true) add(ItemNav(Rutas.CONFIG_AGENDA, "Config", Icons.Default.Settings))
+                    if (c != null && puedeVerMenuConfig(c.tieneTurnos, c.especialidades)) add(ItemNav(Rutas.CONFIG_AGENDA, "Config", Icons.Default.Settings))
                 }
                 Rol.SECRETARIA -> {
                     add(ItemNav(Rutas.SELECTOR, "Médico", Icons.Default.SwapHoriz))
-                    if (contexto != null) {
-                        if (contexto?.consultorioId != null) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
+                    // Con un médico sin agenda la secretaria solo ve Pacientes (RF-10): ni Agenda, ni Obras sociales, ni «Nuevo turno».
+                    if (c != null) {
+                        if (puedeVerAgenda(c.tieneTurnos, c.consultorioId)) add(ItemNav(Rutas.AGENDA, "Agenda", Icons.Default.CalendarMonth))
                         add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People))
-                        if (MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
-                        add(ItemNav(Rutas.OBRAS_SOCIALES, "Obras sociales", Icons.Default.HealthAndSafety))
+                        if (puedeVerRecetas(c.tieneTurnos) && MOSTRAR_RECETAS) add(ItemNav(Rutas.RECETAS, "Recetas", Icons.Default.Receipt))
+                        if (puedeVerConfigDeAgenda(c.tieneTurnos)) add(ItemNav(Rutas.OBRAS_SOCIALES, "Obras sociales", Icons.Default.HealthAndSafety))
                     }
                 }
                 Rol.ADMIN -> { add(ItemNav(Rutas.ADMIN, "Administración", Icons.Default.AdminPanelSettings)); add(ItemNav(Rutas.PACIENTES, "Pacientes", Icons.Default.People)) }
@@ -238,21 +274,25 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                                 medicoActualId = contexto?.medicoId,
                                 onElegido = { m, consultorioId ->
                                     // La secretaria opera la agenda y también puede abrir las historias clínicas habilitadas al médico.
-                                    contexto = ContextoMedico(m.id, consultorioId.ifBlank { null }, m.nombreCompleto, m.especialidadesHc.filter { registry.existe(it) }, consultorioId.isNotBlank())
-                                    nav.navigate(if (consultorioId.isNotBlank()) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
+                                    // «Tiene agenda» es el dato de turnos del médico elegido, no se deduce del consultorio.
+                                    val consultorio = consultorioId.ifBlank { null }
+                                    contexto = ContextoMedico(m.id, consultorio, m.nombreCompleto, m.especialidadesHc.filter { registry.existe(it) }, m.tieneTurnos)
+                                    nav.navigate(if (puedeVerAgenda(m.tieneTurnos, consultorio)) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
                                 },
                             )
                         }
                         composable(Rutas.AGENDA) {
-                            val c = contexto
-                            if (c?.consultorioId == null) Text("Elegí un médico con agenda", Modifier.padding(16.dp))
-                            else AgendaDiaScreen(c.medicoId, c.consultorioId, operador, tituloMedico = if (rol == Rol.SECRETARIA) c.nombre else null,
-                                onAbrirPaciente = { nav.navigate("pacientes/$it") }, onVerSemana = { nav.navigate(Rutas.AGENDA_SEMANA) },
-                                fotoMedico = if (rol == Rol.SECRETARIA) ({ FotoMedico(c.medicoId, c.nombre, size = 48) }) else null,
-                                puedeModificar = rol == Rol.SECRETARIA)
+                            SoloConAgenda(contexto, sinContexto = { Text("Elegí un médico con agenda", Modifier.padding(16.dp)) }) { c ->
+                                val consultorio = c.consultorioParaAgenda()
+                                if (consultorio == null) Text("Elegí un médico con agenda", Modifier.padding(16.dp))
+                                else AgendaDiaScreen(c.medicoId, consultorio, operador, tituloMedico = if (rol == Rol.SECRETARIA) c.nombre else null,
+                                    onAbrirPaciente = { nav.navigate("pacientes/$it") }, onVerSemana = { nav.navigate(Rutas.AGENDA_SEMANA) },
+                                    fotoMedico = if (rol == Rol.SECRETARIA) ({ FotoMedico(c.medicoId, c.nombre, size = 48) }) else null,
+                                    puedeModificar = rol == Rol.SECRETARIA)
+                            }
                         }
-                        composable(Rutas.AGENDA_SEMANA) { contexto?.let { c -> c.consultorioId?.let { AgendaSemanaScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }, puedeModificar = rol == Rol.SECRETARIA) } } }
-                        composable(Rutas.ASIGNAR) { contexto?.let { c -> c.consultorioId?.let { AsignarTurnoScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }) } } }
+                        composable(Rutas.AGENDA_SEMANA) { SoloConAgenda(contexto) { c -> c.consultorioParaAgenda()?.let { AgendaSemanaScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }, puedeModificar = rol == Rol.SECRETARIA) } } }
+                        composable(Rutas.ASIGNAR) { SoloConAgenda(contexto) { c -> c.consultorioParaAgenda()?.let { AsignarTurnoScreen(c.medicoId, it, operador, onVolver = { nav.popBackStack() }) } } }
 
                         composable(Rutas.PACIENTES) {
                             PacientesListScreen(medicoId = if (rol == Rol.ADMIN) null else contexto?.medicoId, onAbrir = { nav.navigate("pacientes/${it.id}") }, onNuevo = { nav.navigate(Rutas.PACIENTE_NUEVO) },
@@ -264,7 +304,7 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                             val esp = contexto?.especialidades?.map { it to registry.nombre(it) } ?: emptyList()
                             PacienteDetalleScreen(id, esp, contexto?.medicoId.orEmpty(), onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { nav.navigate("hc/$id/$it") },
                                 onVerConsulta = { nav.navigate("consulta/${it.id}") },
-                                onNuevoTurno = if (contexto?.consultorioId != null) ({ nav.navigate(Rutas.ASIGNAR) }) else null, onVolver = { nav.popBackStack() })
+                                onNuevoTurno = if (contexto?.consultorioParaAgenda() != null) ({ nav.navigate(Rutas.ASIGNAR) }) else null, onVolver = { nav.popBackStack() })
                         }
                         composable(Rutas.PACIENTE_EDITAR) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
@@ -283,17 +323,18 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         }
                         composable(Rutas.RECETAS) {
                             val ids = if (rol == Rol.SECRETARIA) sesion.secretaria?.medicoIds ?: emptyList() else listOfNotNull(contexto?.medicoId)
-                            RecetasScreen(ids, onVolver = { nav.popBackStack() })
+                            SoloConAgenda(contexto, regla = ::puedeVerRecetas, sinContexto = { RecetasScreen(ids, onVolver = { nav.popBackStack() }) }) { RecetasScreen(ids, onVolver = { nav.popBackStack() }) }
                         }
                         composable(Rutas.CONFIG_AGENDA) {
                             contexto?.let { c ->
                                 ConfigAgendaScreen(
                                     c.medicoId, onVolver = { nav.popBackStack() },
+                                    // La configuración de la HC no depende de la agenda (RF-16); el resto es de turnos (RF-7, RF-8).
                                     secciones = SeccionConfig.entries.filter { s ->
                                         when (s) {
-                                            SeccionConfig.HORARIOS -> c.consultorioId != null
+                                            SeccionConfig.HORARIOS -> puedeVerHorarios(c.tieneTurnos, c.consultorioId)
                                             SeccionConfig.HISTORIA_CLINICA -> c.especialidades.isNotEmpty()
-                                            else -> c.tieneTurnos
+                                            else -> puedeVerConfigDeAgenda(c.tieneTurnos)
                                         }
                                     },
                                     onAbrir = { s ->
@@ -312,10 +353,12 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         }
                         composable(Rutas.CONFIG_SECCION) { entry ->
                             val seccion = SeccionConfig.porRuta(entry.savedStateHandle.get<String>("seccion")) ?: return@composable
-                            contexto?.let { c -> ConfigSeccionScreen(c.medicoId, seccion, esAdmin = rol == Rol.ADMIN, onVolver = { nav.popBackStack() }) }
+                            SoloConAgenda(contexto) { c -> ConfigSeccionScreen(c.medicoId, seccion, esAdmin = rol == Rol.ADMIN, onVolver = { nav.popBackStack() }) }
                         }
-                        composable(Rutas.HORARIOS) { contexto?.let { c -> c.consultorioId?.let { HorariosScreen(c.medicoId, it, onVolver = { nav.popBackStack() }) } } }
-                        composable(Rutas.OBRAS_SOCIALES) { ObrasSocialesScreen(contexto?.medicoId, onVolver = { nav.popBackStack() }) }
+                        composable(Rutas.HORARIOS) { SoloConAgenda(contexto) { c -> c.consultorioParaHorarios()?.let { HorariosScreen(c.medicoId, it, onVolver = { nav.popBackStack() }) } } }
+                        composable(Rutas.OBRAS_SOCIALES) {
+                            SoloConAgenda(contexto, sinContexto = { ObrasSocialesScreen(null, onVolver = { nav.popBackStack() }) }) { c -> ObrasSocialesScreen(c.medicoId, onVolver = { nav.popBackStack() }) }
+                        }
 
                         val esAdmin = rol == Rol.ADMIN
                         pantallaAdmin(Rutas.ADMIN, esAdmin) {

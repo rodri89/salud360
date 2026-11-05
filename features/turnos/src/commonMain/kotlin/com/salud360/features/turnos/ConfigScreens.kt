@@ -567,7 +567,7 @@ fun RecetasScreen(
 @Composable
 fun SelectorMedicoScreen(
     consultorioIds: List<Id>, medicoIds: List<Id>,
-    /** Médico elegido y consultorio para la agenda (vacío si el médico no tiene agenda). */
+    /** Médico elegido y consultorio donde opera (vacío si no tiene consultorio). Si tiene agenda lo dice `medico.tieneTurnos`, no el consultorio. */
     onElegido: (medico: Medico, consultorioId: Id) -> Unit,
     /** Avatar del médico (foto o iniciales); lo aporta la app porque la carga de fotos vive fuera de este módulo. */
     foto: @Composable (Medico) -> Unit = { m -> InitialsAvatar(m.nombreCompleto, size = 48) },
