@@ -261,6 +261,20 @@ registros de personas): el repo es público.
   **Dependencia:** antes de publicar tienen que estar subidos a turnos `pacientes/vinculados` en unión (médico ∪ con turnos)
   y el `store` que no pisa datos de pacientes ajenos. Pendiente: endurecer `show`/`update`/`buscar` en turnos; los dispositivos
   con duplicados viejos no se limpian solos; `verificarDni()` sigue sin conectarse; el alta por `pacienteTobbId` (agenda) no fusiona.
+- Rama `feature/ficha-paciente-hc-boton` (sobre `main`, sin commit): en la ficha del paciente (`PacienteDetalleScreen`), con una
+  sola historia clínica habilitada el botón dice «Nueva consulta» y lleva directo a elegir el tipo de consulta (con un único tipo
+  la crea; con una consulta ya en curso no crea otra y muestra «Consulta en curso»); con varias HC aparece el texto «Seleccioná la
+  historia clínica que deseás trabajar» sobre los botones por HC, que siguen abriendo la HC como antes. La señal «nueva consulta» va
+  en un estado en memoria de `MainShell` (`hcConNuevaConsulta`), NO en la ruta: en web recargar no crea nada; la HC la atiende una
+  sola vez cuando las consultas ya se leyeron (`HistoriaClinicaViewModel.consultas` ahora es `null` hasta entonces). Decisión pura
+  en `core/data` (`alLlegarConNuevaConsulta`, con test). Las consultas previas (cerradas) se abren con todas las secciones
+  expandidas (`RenderSeccionSola` fuerza `inicialmenteExpandida = true` si `soloLectura`); las en curso quedan como hoy. Las secciones
+  de texto con consultas previas (`TextoLibreConPrevias`) muestran el área de escritura (~62 %) y, a la derecha, un panel con la última
+  previa (alto máx. 180 dp, con scroll) y «Ver todas (N)» que abre un modal con todas; en ancho < 600 dp se apila (lógica en `ConsultasPrevias.kt`).
+  Primera consulta: al abrir una consulta abierta de una HC en la que el médico nunca configuró secciones (no existe la preferencia
+  `secciones_ocultas_<código>`; «todas» se guarda como valor vacío y también cuenta), un modal no descartable le pregunta qué secciones ver
+  (mismo selector que Configuración, `SelectorSeccionesHc`); «Guardar» o «Usar todas» guardan la preferencia y no vuelve a salir (sin
+  migración; lógica en `PreguntaSecciones.kt`, con test).
 - Rama `feature/licencias-renovar` (sobre `main`, sin commit): pestaña Licencias del admin con snackbar en cada actualización
   (éxito, «la historia clínica no la aceptó» o error con el motivo), botón «Renovar» (+1 mes calendario a «Vence» y «Aviso
   desde», `RenovacionDeLicencia.kt`, un solo guardado) y tarjeta reordenada (fechas e importe con wrap; debajo Renovar + «Activa»).
