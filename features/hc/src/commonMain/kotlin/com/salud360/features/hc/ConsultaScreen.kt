@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.debePreguntarSecciones
+import com.salud360.core.data.repos.hayConfigDeSecciones
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.SeccionesComunes
@@ -71,7 +73,7 @@ import org.koin.core.parameter.parametersOf
 /**
  * Pantalla de una consulta: cabecera del paciente, pestañas superiores (datos, antecedentes) y
  * secciones en acordeón, renderizadas a partir de la definición de la especialidad.
- * Cuando la consulta está cerrada se muestra en modo lectura.
+ * Cuando la consulta está cerrada se muestra en modo lectura, con todas las secciones expandidas.
  */
 @Composable
 fun ConsultaScreen(
@@ -103,6 +105,17 @@ fun ConsultaScreen(
     LaunchedEffect(pendientesPrevios.isNotEmpty(), soloLectura) {
         if (!soloLectura && pendientesPrevios.isNotEmpty() && !avisoMostrado) { avisoMostrado = true; mostrarAviso = true }
     }
+
+    // Primera vez que el médico abre una consulta de esta historia clínica: se le pregunta qué secciones quiere ver. Las
+    // preferencias llegan en la misma emisión que la consulta, así que acá ya están leídas. `preguntaResuelta` tapa el
+    // instante entre tocar un botón y que la base devuelva la preferencia guardada.
+    val seccionesParaElegir = remember(def) { seccionesConfigurables(def) }
+    var preguntaResuelta by remember(consulta.id) { mutableStateOf(false) }
+    val preguntarSecciones = !preguntaResuelta && debePreguntarSecciones(
+        configGuardada = hayConfigDeSecciones(ui.preferencias, clavePreferenciaSeccionesOcultas(def.codigo)),
+        soloLectura = soloLectura,
+        haySeccionesParaElegir = seccionesParaElegir.isNotEmpty(),
+    )
 
     val ctx = remember(consulta.id, soloLectura, ui.edadMeses, ui.paciente?.sexo) {
         object : SeccionContext {
@@ -190,7 +203,19 @@ fun ConsultaScreen(
         onConfirmar = { mostrarCierre = false; vm.cerrarConPendientes(it, onCerrada) },
         onCancelar = { mostrarCierre = false },
     )
-    if (mostrarAviso) androidx.compose.material3.AlertDialog(
+    if (preguntarSecciones) PreguntaSeccionesHcDialog(
+        secciones = seccionesParaElegir,
+        onGuardar = { ocultas ->
+            preguntaResuelta = true
+            vm.guardarPreferencia(clavePreferenciaSeccionesOcultas(def.codigo), ocultas.joinToString(","))
+        },
+        onUsarTodas = {
+            preguntaResuelta = true
+            vm.guardarPreferencia(clavePreferenciaSeccionesOcultas(def.codigo), "")
+        },
+    )
+    // Un diálogo por vez: el aviso de pendientes espera a que el médico responda lo de las secciones.
+    if (mostrarAviso && !preguntarSecciones) androidx.compose.material3.AlertDialog(
         onDismissRequest = { mostrarAviso = false },
         title = { Text("Pendientes de la consulta anterior") },
         text = { Column { pendientesPrevios.forEach { p -> p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") } } } },
@@ -233,7 +258,10 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
 }
 
 @Composable
-private fun RenderSeccionSola(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
+private fun RenderSeccionSola(definida: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
+    // Una consulta previa (cerrada) se abre con todas las secciones que se dibujan expandidas; la en curso respeta
+    // el estado inicial que define cada especialidad. El usuario puede contraer/expandir a mano después.
+    val s = if (ctx.soloLectura) definida.copy(inicialmenteExpandida = true) else definida
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
         TipoSeccion.TEXTO -> TextoSeccion(s, ctx, valores[s.id] ?: emptyMap())
