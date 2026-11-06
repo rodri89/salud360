@@ -473,7 +473,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     tipo a la vez. La pantalla de «Solo en este dispositivo» con «Enviar a la web» la separa en la tarea de interfaz. (c) La propia no lleva etiqueta de origen hasta que lleguen los estados de envío.
     (d) **Pantalla sin tocar:** la tarjeta «Consulta en curso» (`ConsultaEnCursoLocal`, `HistoriaDeLaWeb.kt`) tiene el texto fijo «Solo en este dispositivo» y se lo mostrará también a una propia; corregirlo (rótulo
     por origen) es de la tarea de interfaz (T36 a T39).
-- [ ] **T17. Qué se envía y qué no: catálogo (D9) y candado por sección.** RF-3, RF-4 — M — Toca API Laravel: no
+- [x] **T17. Qué se envía y qué no: catálogo (D9) y candado por sección.** RF-3, RF-4 — M — Toca API Laravel: no
   - Tests primero: common `SeccionesEnviablesTest` (en esta versión se ofrecen textos y examen físico; el resto de la HC general
     «todavía no se envía»; nunca se ofrecen tabaquismo, FC, CA, diagnósticos, audio ni «antecedentes personales»; lo ya cargado de eso
     se conserva y se marca «No se envía a la web»); `especialidades/clinica` `LecturaClinicaCatalogoTest` **reescrito** (el catálogo ya
@@ -482,6 +482,28 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     commit y en `MEMORY.md`).
   - Hecho cuando: ambos tests en verde (antes, en rojo); `:especialidades:clinica:jvmTest` y `:core:data:jvmTest` en verde; lo cargado
     antes en el dispositivo no se borra (test con datos de tabaquismo existentes).
+  - Resultado (2026-11-06, `4936364`): **cambio de requisitos sobre la 001, declarado** (D9; también en el commit y en `MEMORY.md`). Sin migración, sin API, sin pantallas tocadas.
+    **Hallazgo:** del D9 ya estaban fuera de lo que se ofrece las secciones diagnósticos, audio y antecedentes personales (están en `legadas`, que los perfiles no ofrecen) y la frecuencia cardíaca y la
+    circunferencia abdominal (`examenFisicoSoloLectura`, "Decidido" 6 de la 001); **lo único que seguía ofreciéndose era el tabaquismo** de los antecedentes familiares. **Reglas** (`hcgeneral/SeccionesEnviables.kt`,
+    puro): `SubentregaDeEscritura` (E1 a E4) y `SUBENTREGA_HABILITADA = E1`, lo único que se sube al cerrar E2, E3 y E4 (los pasos E2-8 y E3-9 de la lista); `envioDeSeccion(id, habilitada)` da `SE_ENVIA`, `TODAVIA_NO`
+    («Esta sección todavía no se envía a la web», RF-4), `NUNCA` («No se envía a la web», RF-3) o `APARTE` (`enfermedades`, que tiene su API). **E1 ofrece 10 de las 25 secciones del catálogo:** los 8 textos (motivo,
+    datos subjetivos, datos objetivos, conductas, nota, hábitos, diuresis y catarsis, somnia), el examen físico y `enfermedades`; **las otras 15 dicen «todavía no»**. E2 habilita alimentación, serologías, Child-Pugh,
+    antecedentes familiares, los 5 estudios, exámenes complementarios e interconsultas; E3, laboratorio general y reducido, peso y pendientes; E4, documentos. **Nunca** (en ninguna subentrega): `diagnostico`, `audio` y
+    `antecedentes_personales` (secciones), la casilla `tabaquismo` y todo lo de la categoría `personales` (`casillaSeEnvia`), y la frecuencia cardíaca y la circunferencia abdominal (`campoDelExamenSeEnvia`; del examen viajan
+    peso, talla, IMC, tensión y nota, RF-21). Una sección que no se conoce, o que ninguna subentrega habilita (la historia digitalizada `fotos`), cuenta como «todavía no»: ante la duda no se ofrece. `avisoDeSeccion`,
+    `avisoDeAntecedente`, `avisoDeCampoDelExamen` y `antecedentesQueSePuedenEnviar` dan el aviso y el filtro; **no escriben ni borran nada**.
+    **Código del catálogo:** `ItemAntecedente.sinEnvio` (`core/model`, al final, por omisión `false`) y `ClinicaMedica.kt` lo pone en el tabaquismo con la misma regla (`!casillaSeEnvia`), así que lo copian `hepatologia` y
+    `catalogoHcGeneral` sin más cambios. El tabaquismo **sigue en la lista de casillas** para que lo ya cargado se vea. `clinicaMedica` como definición no cambia de estructura (`clinica_medica_sigue_igual` sin tocar).
+    **Tests.** Rojo: no compilaban (`SeccionesEnviables`, `ItemAntecedente.sinEnvio`, etc. no existían). Verde: `SeccionesEnviablesTest` (commonTest, 14), `SeccionesEnviablesDatosTest` (jvm, 1: base real con tabaquismo,
+    personales, frecuencia, circunferencia y un diagnóstico cargados; editar otra casilla, cerrar, reabrir y abrir otra consulta no los toca) y `LecturaClinicaCatalogoTest` reescrito (de 8 a 13: la comparación con lo que
+    manda la web usa las casillas que se envían; la única `sinEnvio` es el tabaquismo; qué se ofrece del examen; las tres legadas no se ofrecen; las 25 siguen decididas y E1 ofrece 10). Totales: `core:data:jvmTest`
+    **1357** (1342 + 15; 0 fallos, 0 salteados), `especialidades:clinica` **38** (33 + 5), `core:ui` 17, `core:crecimiento` 6. `:composeApp:compileKotlinWasmJs -Pentorno=dev` y `:features:auth:compileKotlinWasmJs -Pentorno=dev`
+    con código 0 (y `:server:compileKotlin`). **Tests existentes que cambian:** solo `LecturaClinicaCatalogoTest.los_antecedentes_familiares_de_la_web_son_los_del_catalogo_mas_las_notas` (reescrito, lo pide la tarea: antes
+    descontaba `tabaquismo` a mano; ahora usa `casillaSeEnvia`); `CatalogoHcGeneralTest` y los demás, sin tocar.
+    **Decisiones a revisar.** (a) **Pantalla no tocada y afectada:** `AntecedentesSeccion` recorre `cat.items`, así que sigue mostrando el tabaquismo como casilla **editable** en una consulta; también ofrece lo que E1 aún no envía
+    (la pantalla de la consulta no consulta `seccionSeOfrece`). Dejarlo así hasta T36 a T39 no envía nada (no hay envío todavía) pero T36 a T39 tienen que leer `sinEnvio` y `seccionSeOfrece`/`avisoDeSeccion`. Lo contrario (sacar el
+    tabaquismo de `items`) habría ocultado en pantalla lo ya cargado. (b) `fotos` (historia digitalizada) queda en «todavía no» sin subentrega que la habilite: la 005 solo habla de fotos de exámenes complementarios (E4, D24). (c) La
+    nota `nota_perfil4` cuenta como que puede viajar en `casillaSeEnvia`; E2 (RF-36) decide si la app la escribe. (d) `enfermedades` es `APARTE` y se ofrece siempre.
 - [ ] **T18. «Cambio real» al guardar y datos por paciente asociados a la consulta.** RF-68, RF-69 — M — Toca API Laravel: no
   - Tests primero: common `CambioRealTest` (vacío sobre «nada» no es un cambio; vacío sobre texto es un vaciado a propósito;
     igual al anterior no cambia); jvm `DatosPorPacienteTest` (un dato por paciente es propio solo si su `consulta_id` apunta a una

@@ -30,6 +30,10 @@ registros de personas): el repo es público.
   antes de crearla. **T16 hecha (2026-11-06, `d0b51c8`); sigue T17.** `OrigenDeConsulta` (propia / histórico / web; la propia enviada con `remoto_id` NO es de la web),
   `abrirConsulta` de la HC general crea con `propia = 1` y solo reutiliza una propia abierta; `fusionarConsulta` conserva la marca; `core:data` 1342 tests en
   verde. `marcarPropia` sigue sin llamarse (lo usa «Enviar a la web» del histórico). Ojo: una abierta del histórico ya no se retoma desde `abrirConsulta`.
+  **T17 hecha (2026-11-06, `4936364`); sigue T18. CAMBIO DE REQUISITOS SOBRE LA 001 (D9):** lo que la web no guarda (tabaquismo, FC, CA del examen, diagnósticos, audio, antecedentes personales) no se
+  ofrece ni se envía nunca; lo ya cargado se conserva y se marca «No se envía a la web». `hcgeneral/SeccionesEnviables.kt`: `SUBENTREGA_HABILITADA = E1` (10 de las 25 secciones: 8 textos, examen físico y
+  `enfermedades`; el resto «todavía no»); **al cerrar E2, E3 y E4 se sube esa constante**. `ItemAntecedente.sinEnvio` marca el tabaquismo en `ClinicaMedica.kt`. Las pantallas NO se tocaron: T36 a T39
+  tienen que usar `sinEnvio` y `seccionSeOfrece`. `core:data` 1357 tests, `especialidades:clinica` 38.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
