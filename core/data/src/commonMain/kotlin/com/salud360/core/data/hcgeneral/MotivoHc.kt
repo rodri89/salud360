@@ -1,6 +1,8 @@
 package com.salud360.core.data.hcgeneral
 
 import com.salud360.core.data.network.TobbException
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Por qué no se pudo usar una historia clínica (traer la cartera, vincular un paciente, abrir una sección), con el
@@ -33,6 +35,36 @@ fun motivoHc(nombreHc: String, e: TobbException): MotivoHc {
         else -> MotivoHc.Tipo.OTRO to (e.message?.trim()?.ifEmpty { null } ?: "respondió ${e.status}.")
     }
     return MotivoHc(tipo, "Historia clínica de $nombreHc: $texto")
+}
+
+/**
+ * El motivo por el que un **envío** a la HC general no salió o fue rechazado (spec 005, RF-6, RF-30): los códigos nuevos de la
+ * escritura con su texto propio y, para todo lo que ya tenía motivo ([motivoHc], [motivoDeLaLectura]), el mismo texto de siempre.
+ * Siempre nombra la HC con [nombreHc]. Un `422` se distingue por el `motivo` del cuerpo (`clave_en_uso`, `texto_demasiado_largo`),
+ * no solo por el código.
+ */
+fun motivoDelEnvio(nombreHc: String, e: TobbException): MotivoHc {
+    val propio = when {
+        e.codigo == "fuera_de_cartera" -> "este paciente no está en tu cartera."
+        e.codigo == "paciente_no_encontrado" -> "la ficha de este paciente no está disponible en la web."
+        e.codigo == "sin_permiso" -> "tu usuario no puede cargar consultas en esta historia clínica. Avisale al administrador."
+        e.codigo == "consulta_no_encontrada" -> "la consulta ya no figura en la web."
+        e.codigo == "consulta_cerrada" -> "la consulta ya está cerrada o dada de baja en la web."
+        e.codigo == "consulta_no_propia" -> "esta consulta no se puede modificar desde la app (la cargó la web u otro médico)."
+        e.codigo == "datos_invalidos" || e.status == 422 -> textoDeDatosInvalidos(e)
+        e.codigo == "tobb_caido" || e.codigo == "red" -> null
+        e.status >= 500 -> "la web no pudo guardar los cambios. Se vuelve a intentar sola."
+        (e.status == 0 && e.codigo == "respuesta") || (e.status in 200..299 && e.codigo == null) ->
+            "la web respondió algo inesperado. Se vuelve a intentar sola."
+        else -> null
+    }
+    return if (propio != null) MotivoHc(MotivoHc.Tipo.OTRO, "Historia clínica de $nombreHc: $propio") else motivoDeLaLectura(nombreHc, e)
+}
+
+private fun textoDeDatosInvalidos(e: TobbException): String = when (e.cuerpo?.get("motivo")?.jsonPrimitive?.contentOrNull) {
+    "clave_en_uso" -> "el identificador de este envío ya se usó para otra cosa. Reintentar no lo arregla: avisale al administrador."
+    "texto_demasiado_largo" -> "un texto es demasiado largo para la web. Acortalo y volvé a enviar."
+    else -> "la web no aceptó los datos. ${e.message?.trim().orEmpty()}".trim()
 }
 
 /** RF-56: el `429` de Laravel (límite de pedidos por minuto), que llega sin código y con un texto en inglés. */
