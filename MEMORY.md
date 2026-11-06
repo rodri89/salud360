@@ -34,6 +34,10 @@ registros de personas): el repo es público.
   ofrece ni se envía nunca; lo ya cargado se conserva y se marca «No se envía a la web». `hcgeneral/SeccionesEnviables.kt`: `SUBENTREGA_HABILITADA = E1` (10 de las 25 secciones: 8 textos, examen físico y
   `enfermedades`; el resto «todavía no»); **al cerrar E2, E3 y E4 se sube esa constante**. `ItemAntecedente.sinEnvio` marca el tabaquismo en `ClinicaMedica.kt`. Las pantallas NO se tocaron: T36 a T39
   tienen que usar `sinEnvio` y `seccionSeOfrece`. `core:data` 1357 tests, `especialidades:clinica` 38.
+  **T18 hecha (2026-11-06, `493ca64`); sigue T19.** Hallazgo: hasta T18 cada autoguardado (600 ms) marcaba `dirty` y movía `updated_at` aunque no cambiara nada. Ahora, solo en la HC general, `guardarValor`/
+  `guardarSeccion`/`guardarExamenFisico`/`guardarAntecedente`/`guardarRegistro` escriben solo con cambio real (`hcgeneral/CambioReal.kt`; `0.00` = vacío en las medidas; vaciar a propósito se escribe vacío);
+  pediatría y las demás igual que antes. Datos por paciente: `antecedentesDeConsultasPropias`/`registrosDeConsultasPropias` (solo los de una consulta propia pueden viajar). **Pendiente de cablear:**
+  `ConsultaViewModel.guardarRegistro` y `flushEstudios` deben pasar `enConsulta = consultaId` para reasignar filas del histórico. `core:data` 1394 tests.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1

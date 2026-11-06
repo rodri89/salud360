@@ -504,7 +504,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     (la pantalla de la consulta no consulta `seccionSeOfrece`). Dejarlo así hasta T36 a T39 no envía nada (no hay envío todavía) pero T36 a T39 tienen que leer `sinEnvio` y `seccionSeOfrece`/`avisoDeSeccion`. Lo contrario (sacar el
     tabaquismo de `items`) habría ocultado en pantalla lo ya cargado. (b) `fotos` (historia digitalizada) queda en «todavía no» sin subentrega que la habilite: la 005 solo habla de fotos de exámenes complementarios (E4, D24). (c) La
     nota `nota_perfil4` cuenta como que puede viajar en `casillaSeEnvia`; E2 (RF-36) decide si la app la escribe. (d) `enfermedades` es `APARTE` y se ofrece siempre.
-- [ ] **T18. «Cambio real» al guardar y datos por paciente asociados a la consulta.** RF-68, RF-69 — M — Toca API Laravel: no
+- [x] **T18. «Cambio real» al guardar y datos por paciente asociados a la consulta.** RF-68, RF-69 — M — Toca API Laravel: no
   - Tests primero: common `CambioRealTest` (vacío sobre «nada» no es un cambio; vacío sobre texto es un vaciado a propósito;
     igual al anterior no cambia); jvm `DatosPorPacienteTest` (un dato por paciente es propio solo si su `consulta_id` apunta a una
     propia; los de histórico o sin consulta no viajan; editar una casilla/fila del histórico dentro de una propia la reasigna y la
@@ -512,6 +512,27 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - Código: `hcgeneral/CambioReal.kt`; `HcRepository.guardarValor/guardarSeccion` (clínica) y la reasignación de `consulta_id` en
     `guardarAntecedente/guardarRegistro` (laboratorio y pendiente lo harán en E3).
   - Hecho cuando: los tests en verde (antes, en rojo) y `jvmTest` completo en verde.
+  - Resultado (2026-11-06, `493ca64`): sin migración, sin API, sin pantallas ni ViewModels tocados. **Verificado y reportado: hoy cada guardado marcaba.** `guardarValor`, `guardarSeccion`, `guardarExamenFisico` y
+    `guardarAntecedente` reescribían la fila con `dirty = 1` y un `updated_at` nuevo aunque el valor fuera el mismo o un vacío sobre nada (el autoguardado lo hace cada 600 ms con todo lo que hay en pantalla); desactivando la
+    guarda nueva, 4 tests de `DatosPorPacienteTest` fallan. **Reglas** (`hcgeneral/CambioReal.kt`, puro): `cambioReal(anterior, nuevo)` = `NINGUNO` (lo mismo, o vacío sobre nada: vacío = en blanco), `ESCRIBIR` o `VACIAR`
+    (vacío sobre algo con contenido: vaciado a propósito, se escribe vacío y viaja vacío, RF-69, D27); los textos se comparan tal cual (un espacio de más es otro texto). En las medidas del examen (peso, talla, tensión, IMC)
+    `0.00` es vacío y `0` y `0.0` son datos (`cambioRealDeMedida`, RF-21); `cambioRealDelExamen`, `cambioRealDeAntecedente` (casilla sin marca y sin detalle = vacía) y `cambioRealDeRegistro` (fila nueva siempre se escribe; un
+    campo vacío es como no estar; cambia la fecha, la baja, la consulta o un campo). **En el repositorio, solo para la HC general (`clinica`, con o sin backend):** `guardarValor`/`guardarSeccion` (solo los campos que cambian,
+    en una transacción), `guardarExamenFisico`, `guardarAntecedente` y `guardarRegistro` no escriben si no hubo cambio real (ni `dirty`, ni `updated_at`, ni reasignan la consulta) y devuelven `true`. **Pediatría y las demás
+    siguen escribiendo y marcando en cada guardado** (un test lo fija). **Datos por paciente (RF-68):** consultas SQL nuevas `antecedentesDeConsultasPropias` y `registrosDeConsultasPropias` (`.sq`, sin esquema; el antecedente
+    exige `activo = 1`; el registro incluye la baja) y sus métodos `antecedentesDeConsultasPropias`/`registrosDeConsultasPropias(…, soloSucios)` en `HcRepository`: un dato es propio solo si su `consulta_id` apunta a una consulta con
+    `propia = 1`, no borrada y sin prefijo `hcc-`; los del histórico, de la web, sin consulta o con una consulta que no existe no viajan. **Reasignación:** `guardarAntecedente` ya asociaba el antecedente a la consulta donde se edita
+    (`consultaId`), así que editar una casilla del histórico dentro de una propia la pasa a esa propia y la marca sucia; ahora además guardar lo mismo no la reasigna. `guardarRegistro(registro, enConsulta)` es nuevo: si se edita una
+    fila existente cuya consulta no es propia (histórico o ninguna) y `enConsulta` es propia, la reasigna y la marca; una fila que ya es de otra propia se queda; sin `enConsulta` conserva la suya. Laboratorio y pendiente, sin tocar (E3).
+    **Tests.** Rojo: no compilaban (`CambioReal`, `cambioReal…`, `antecedentesDeConsultasPropias`, etc. no existían). Verde: `CambioRealTest` (commonTest, 17) y `DatosPorPacienteTest` (jvm, 20, base real). Totales: `core:data:jvmTest`
+    **1394** (1357 + 37; 0 fallos, 0 salteados), `especialidades:clinica` 38, `core:ui` 17, `core:crecimiento` 6; `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev` y `:server:compileKotlin`
+    con código 0. **Tests existentes que cambian: ninguno.**
+    **Decisiones a revisar.** (a) **Falta cablear `ConsultaViewModel`** (no se tocó, no es de esta tarea): `guardarRegistro` y `flushEstudios` deben pasar `enConsulta = consultaId` a `hc.guardarRegistro` para que la reasignación de
+    registros funcione en la app; el de antecedentes ya funciona con el VM actual. En pediatría el parámetro se ignora. (b) `guardarExamenFisico` también aplica el cambio real (no estaba en la lista de la tarea, pero es el mismo
+    autoguardado y el mismo riesgo de enviar lo no tocado). (c) El cambio real es por **fila**, no por campo: en el examen, una fila ya marcada sigue marcada por completo; que viaje solo el campo tocado lo resuelve el plan de envío
+    (T21), no el guardado. (d) Se aplica igual a las consultas del histórico de la HC general (un guardado idéntico tampoco las marca); un cambio real en ellas sigue marcando `dirty`, como hasta ahora. (e) Un `guardarAntecedente`
+    hecho desde una consulta del histórico sobre una casilla que apuntaba a una propia la devuelve al histórico (editar dentro del histórico no se envía, RF-7): comportamiento de siempre, sin test propio. (f) Los
+    antecedentes con `activo = 0` quedan fuera de `antecedentesDeConsultasPropias` (RF-9).
 
 ## App: datos
 - [ ] **T19. API de escritura de E1 (DTOs y remota) con servidor falso.** RF-12 a RF-15, RF-20 a RF-22, RF-26 — M — Toca API Laravel: no
