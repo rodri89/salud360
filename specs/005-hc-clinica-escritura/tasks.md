@@ -440,7 +440,7 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
   - Totales: `core:data:jvmTest` 1314 (1305 + 9 nuevos; 0 fallos, 0 salteados); `core:crecimiento` 6, `core:ui` 17 y `especialidades:clinica` 33, todos en verde.
     `:composeApp:compileKotlinWasmJs -Pentorno=dev` y `:features:auth:compileKotlinWasmJs -Pentorno=dev` terminan con código 0 (también `:server:compileKotlin`, que usa `core.database`).
     **Sin vuelta atrás:** una app más vieja (v9) sobre una base v10 descarta los datos del navegador; para probar, servir esta rama en otro puerto que el `devWeb` de :8080.
-- [ ] **T16. Origen de la consulta, lista y «Nueva consulta» con la marca.** RF-8, RF-11, RF-62, RF-64, RF-65 — M — Toca API Laravel: no
+- [x] **T16. Origen de la consulta, lista y «Nueva consulta» con la marca.** RF-8, RF-11, RF-62, RF-64, RF-65 — M — Toca API Laravel: no
   - Tests primero: common `OrigenDeConsultaTest` (propia / histórico / de la web; una propia abierta ya enviada es «Consulta en curso»
     y no «Abierta en la web»; una propia que otro dispositivo creó es «de la web», RF-64/RF-65); jvm `HcRepositoryTest` ampliado:
     `abrirConsulta` en clínica crea con `propia = 1` y **reutiliza** solo una propia abierta del mismo paciente y tipo, nunca una de la
@@ -449,6 +449,30 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     `HcRepository.abrirConsulta`.
   - Hecho cuando: ambos tests en verde (antes, en rojo) y el `jvmTest` de `core:data` completo en verde; ningún `copy`/`fusionar` pierde
     `propia` (test que recorre cerrar, reabrir, anular y `fusionarConsulta`).
+  - Resultado (2026-11-06, `d0b51c8`): sin migración ni cambio de esquema (solo una consulta nueva en `HistoriaClinica.sq`), sin pantallas tocadas, sin llamadas a ninguna API.
+    **Reglas.** (1) `hcgeneral/OrigenDeConsulta.kt`: `OrigenDeConsulta` = `PROPIA` / `HISTORICO` / `WEB`; el prefijo `hcc-` manda (siempre `WEB`), después la marca (`PROPIA`),
+    después un `remoto_id` sin marca (`WEB`, como hasta ahora), y el resto `HISTORICO`. Nada depende de la sesión ni del reloj, y editar, cerrar, reabrir o enviar no lo cambia.
+    (2) `Consulta.esDeLaWeb()` y `esSoloLecturaWeb()` respetan la marca: una propia enviada tiene `remoto_id` y **no** es de la web (RF-62: sigue editable y cerrable aun con el
+    backend de solo lectura); sin marca todo igual. (3) La propia que creó otro dispositivo llega por la lectura como `hcc-c<id>` sin marca (`consultaDeLaWeb` nunca la pone):
+    es `WEB`, «Abierta en la web», solo lectura (RF-64, RF-65), sin código nuevo. (4) `agruparConsultas`: una propia abierta, enviada o no, cae en `enCurso`, nunca en
+    `abiertasEnLaWeb`; `ConsultaDeLaLista.origenDeConsulta` (tres valores) se suma a `origen` (dos valores, que sigue igual para los tests y las pantallas); `etiquetas` pone
+    «Solo en este dispositivo» solo al histórico (RF-8) y la propia no lleva etiqueta de origen (su estado de envío se rotula en otra tarea); `soloEnEsteDispositivo` = las cerradas del histórico.
+    (5) `HcRepository.abrirConsulta` **solo para la HC general (`clinica`, con o sin backend registrado)**: crea con `propia = 1` y reutiliza únicamente una propia abierta del mismo
+    paciente, médico y tipo (`consultaAbiertaPropia`, que también descarta el prefijo `hcc-`), nunca una del histórico ni una de la web; pediatría y las demás especialidades no llevan la
+    marca y siguen con `consultaAbierta` / `consultaAbiertaLocal`. (6) `fusionarConsulta(web, local)` conserva la marca de la fila local (la web no la conoce). `cerrar`, `reabrir`, `anular`
+    y `guardarConsulta` ya la conservaban por `copy` + `toRow`; un test lo recorre con propia, histórica y propia enviada.
+    **Tests.** Rojo: no compilaba (`OrigenDeConsulta` / `origenDeConsulta` no existían). Verde: `OrigenDeConsultaTest` (commonTest, 14) y `HcRepositoryTest` (jvm, de 16 a 30: +14); `core:data:jvmTest` completo
+    **1342** (1314 + 28; 0 fallos, 0 salteados); `core:crecimiento` 6, `core:ui` 17, `especialidades:clinica` 33. `:composeApp:compileKotlinWasmJs -Pentorno=dev` y `:features:auth:compileKotlinWasmJs -Pentorno=dev` terminan con código 0.
+    **Tests existentes que cambian (afirmaban lo que RF-11 prohíbe: retomar una abierta del histórico o de la web):** `HcRepositoryTest` — `abrirConsulta_retoma_la_local_…` (ahora siembra una propia y se llama
+    `…_retoma_la_propia_…`), `clinica_sin_backend_registrado_se_comporta_como_hoy` (retomaba una de la web; ahora `…_tambien_se_rige_por_la_marca`) y `la_consulta_sql_y_esDeLaWeb_coinciden_en_cada_caso`
+    (siembra propias; se agrega su par sin marca, que nunca se retoma); `MigracionHepatologiaTest.despues_de_migrar_los_repositorios_leen_…` (ya no retoma la abierta de hepatología migrada: crea una propia y deja
+    intacta la del histórico). Ningún otro cambia.
+    **Decisiones a revisar.** (a) La marca se decide por la especialidad (`clinica`), no por que el backend envíe (el plan decía «si el backend envía»): hoy el backend es de solo lectura y, si se decidiera por él, todo
+    lo creado desde ahora quedaría como histórico; así lo creado después de la migración es propio (D26) con o sin URL configurada. (b) Una abierta del histórico sigue en `enCurso` (como hasta ahora) y se sigue
+    pudiendo continuar desde su tarjeta («Continuar» abre por id); lo que cambia es que «Nueva consulta» ya no la retoma y crea una propia: puede haber una abierta del histórico y una propia del mismo paciente y
+    tipo a la vez. La pantalla de «Solo en este dispositivo» con «Enviar a la web» la separa en la tarea de interfaz. (c) La propia no lleva etiqueta de origen hasta que lleguen los estados de envío.
+    (d) **Pantalla sin tocar:** la tarjeta «Consulta en curso» (`ConsultaEnCursoLocal`, `HistoriaDeLaWeb.kt`) tiene el texto fijo «Solo en este dispositivo» y se lo mostrará también a una propia; corregirlo (rótulo
+    por origen) es de la tarea de interfaz (T36 a T39).
 - [ ] **T17. Qué se envía y qué no: catálogo (D9) y candado por sección.** RF-3, RF-4 — M — Toca API Laravel: no
   - Tests primero: common `SeccionesEnviablesTest` (en esta versión se ofrecen textos y examen físico; el resto de la HC general
     «todavía no se envía»; nunca se ofrecen tabaquismo, FC, CA, diagnósticos, audio ni «antecedentes personales»; lo ya cargado de eso

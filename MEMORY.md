@@ -27,7 +27,9 @@ registros de personas): el repo es público.
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
   navegador en la web). `core:data` 1314 tests en verde. La próxima migración (E3, `remoto_id`) sería la `10.sqm`: volver a mirar las ramas
-  antes de crearla. Falta: T16 usa `marcarPropia` y `Consulta.propia` (nadie los llama todavía).
+  antes de crearla. **T16 hecha (2026-11-06, `d0b51c8`); sigue T17.** `OrigenDeConsulta` (propia / histórico / web; la propia enviada con `remoto_id` NO es de la web),
+  `abrirConsulta` de la HC general crea con `propia = 1` y solo reutiliza una propia abierta; `fusionarConsulta` conserva la marca; `core:data` 1342 tests en
+  verde. `marcarPropia` sigue sin llamarse (lo usa «Enviar a la web» del histórico). Ojo: una abierta del histórico ya no se retoma desde `abrirConsulta`.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
