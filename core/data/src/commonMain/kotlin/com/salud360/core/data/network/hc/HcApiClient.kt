@@ -196,7 +196,8 @@ class HcApiClient(
     suspend fun get(ruta: String, params: Map<String, Any?> = emptyMap()): JsonObject = pedir(HttpMethod.Get, ruta, params)
     suspend fun post(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Post, ruta, emptyMap(), cuerpo)
     suspend fun put(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Put, ruta, emptyMap(), cuerpo)
-    suspend fun delete(ruta: String): JsonObject = pedir(HttpMethod.Delete, ruta)
+    /** `DELETE`; con [cuerpo] lleva un JSON, igual que un `POST` (la baja de una consulta de la HC general manda `clave` y `dispositivo`). */
+    suspend fun delete(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Delete, ruta, emptyMap(), cuerpo)
 
     /**
      * POST auth/salir: le pide a la HC que olvide [token] (RF-59). Va por parámetro y no es el de [token]: cuando
