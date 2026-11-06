@@ -22,9 +22,10 @@ fun esIdDeLaWeb(id: Id): Boolean = id.startsWith(PREFIJO_ID_WEB)
 /**
  * La consulta se abre solo para leer porque la trajo la web: tiene id `hcc-…` (siempre, con cualquier backend: ese prefijo lo
  * usa solo esta lectura) o tiene `remoto_id` y su backend es de solo lectura ([backendSoloLectura]). En pediatría una consulta
- * creada en el dispositivo también tiene `remoto_id` una vez enviada, y esa se sigue editando.
+ * creada en el dispositivo también tiene `remoto_id` una vez enviada, y esa se sigue editando; lo mismo una [Consulta.propia]
+ * de la HC general ya enviada (RF-62).
  */
-fun Consulta.esSoloLecturaWeb(backendSoloLectura: Boolean): Boolean = esIdDeLaWeb(id) || (backendSoloLectura && remotoId.isNotBlank())
+fun Consulta.esSoloLecturaWeb(backendSoloLectura: Boolean): Boolean = esIdDeLaWeb(id) || (backendSoloLectura && remotoId.isNotBlank() && !propia)
 
 // ---------- Qué se puede hacer con la consulta (RF-45) ----------
 

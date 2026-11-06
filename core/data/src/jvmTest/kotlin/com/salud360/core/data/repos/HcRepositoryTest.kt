@@ -2,6 +2,7 @@ package com.salud360.core.data.repos
 
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.esDeLaWeb
+import com.salud360.core.data.hcgeneral.fusionarConsulta
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.database.DriverFactory
@@ -84,11 +85,18 @@ class HcRepositoryTest {
         actualizada: Long,
         tipo: String = "consulta",
         dirty: Boolean = remotoId.isBlank(),
+        propia: Boolean = false,
+        paciente: Id = this@HcRepositoryTest.paciente,
+        medico: Id = this@HcRepositoryTest.medico,
+        estado: EstadoConsulta = EstadoConsulta.ABIERTA,
     ) {
         historiaClinicaQueries.upsertConsulta(
-            Consulta(id, paciente, medico, especialidad, tipo, hoy, EstadoConsulta.ABIERTA, remotoId = remotoId).toRow(actualizada, dirty = dirty),
+            Consulta(id, paciente, medico, especialidad, tipo, hoy, estado, remotoId = remotoId, propia = propia).toRow(actualizada, dirty = dirty),
         )
     }
+
+    /** La marca tal como quedó en la base, sin pasar por el modelo. */
+    private suspend fun Salud360Db.marca(id: Id): Long? = historiaClinicaQueries.consultaPorId(id).lista { it.propia }.singleOrNull()
 
     private suspend fun Salud360Db.filas() = historiaClinicaQueries.consultasDePacienteTodas(paciente).lista { it }.sortedBy { it.id }
 
@@ -170,8 +178,9 @@ class HcRepositoryTest {
     }
 
     @Test
-    fun abrirConsulta_retoma_la_local_aunque_haya_una_de_la_web_mas_reciente() = conBase { db ->
-        db.sembrar("local-1", "clinica", actualizada = 100)
+    fun abrirConsulta_retoma_la_propia_aunque_haya_una_de_la_web_mas_reciente() = conBase { db ->
+        // T16 (RF-11): se retoma solo una propia; antes valía cualquier abierta del dispositivo (hoy sería del histórico).
+        db.sembrar("local-1", "clinica", actualizada = 100, propia = true)
         db.sembrar("hcc-c77", "clinica", remotoId = "77", actualizada = 900)
         val antes = db.filas()
         val r = repo(db, clinica())
@@ -245,13 +254,15 @@ class HcRepositoryTest {
     }
 
     @Test
-    fun clinica_sin_backend_registrado_se_comporta_como_hoy() = conBase { db ->
-        // Es el estado de la app hasta E6.5: la general no tiene backend y se retoma la abierta más reciente.
-        db.sembrar("local-1", "clinica", actualizada = 100)
+    fun clinica_sin_backend_registrado_tambien_se_rige_por_la_marca() = conBase { db ->
+        // Hasta E6.5 la general no tenía backend y se retomaba la abierta más reciente, incluso una de la web. Desde T16 (RF-11)
+        // la HC general es la misma con o sin backend: solo se retoma una propia.
+        db.sembrar("local-1", "clinica", actualizada = 100, propia = true)
         db.sembrar("hcc-c77", "clinica", remotoId = "77", actualizada = 900)
         val r = repo(db)
 
-        assertEquals("hcc-c77", r.abrir("clinica").id)
+        assertEquals("local-1", r.abrir("clinica").id)
+        assertEquals(1L, db.marca(r.abrir("clinica", tipo = "telemedicina").id), "y la nueva también se crea propia")
     }
 
     // ---- el criterio de «consulta de la web» ----
@@ -274,19 +285,210 @@ class HcRepositoryTest {
 
     @Test
     fun la_consulta_sql_y_esDeLaWeb_coinciden_en_cada_caso() {
-        // Una sola definición del criterio: lo que la consulta SQL descarta es exactamente lo que `esDeLaWeb` dice que es de la web.
+        // Una sola definición del criterio: de las propias, lo que la consulta SQL descarta es exactamente lo que `esDeLaWeb` dice
+        // que es de la web (T16: la propia enviada tiene `remoto_id` y no es de la web; el prefijo `hcc-` sí lo es siempre).
         val casos = listOf(
             "hcc-c1" to "1", "hcc-c2" to "", "x-3" to "3", "x-4" to "", "hcp-c5" to "", "hc-clinica-p6" to "", "hcc" to "", "xhcc-7" to "",
         )
         casos.forEach { (id, remoto) ->
             conBase { db ->
-                db.sembrar(id, "clinica", remotoId = remoto, actualizada = 100)
+                db.sembrar(id, "clinica", remotoId = remoto, actualizada = 100, propia = true)
 
                 val seRetoma = repo(db, clinica()).abrir("clinica").id == id
 
-                val deLaWeb = Consulta(id, paciente, medico, "clinica", "consulta", hoy, remotoId = remoto).esDeLaWeb()
+                val deLaWeb = Consulta(id, paciente, medico, "clinica", "consulta", hoy, remotoId = remoto, propia = true).esDeLaWeb()
                 assertEquals(!deLaWeb, seRetoma, "id=$id remoto=$remoto")
             }
+        }
+    }
+
+    @Test
+    fun una_sin_la_marca_nunca_se_retoma_sea_cual_sea_su_id() {
+        // El mismo recorrido sin la marca: del histórico o de la web, ninguna se retoma (RF-11).
+        listOf("hcc-c1" to "1", "hcc-c2" to "", "x-3" to "3", "x-4" to "", "hcp-c5" to "", "hc-clinica-p6" to "").forEach { (id, remoto) ->
+            conBase { db ->
+                db.sembrar(id, "clinica", remotoId = remoto, actualizada = 100)
+
+                assertNotEquals(id, repo(db, clinica()).abrir("clinica").id, "id=$id remoto=$remoto")
+            }
+        }
+    }
+
+    // ---- abrirConsulta: la marca de propia (T16, RF-8, RF-11, D26) ----
+
+    @Test
+    fun abrirConsulta_en_clinica_crea_la_consulta_propia() = conBase { db ->
+        val r = repo(db, clinica())
+
+        val nueva = r.abrir("clinica")
+
+        assertTrue(nueva.propia)
+        assertEquals(1L, db.marca(nueva.id))
+        assertTrue(r.consulta(nueva.id)!!.propia, "y se lee propia desde la base")
+        assertEquals("", nueva.remotoId)
+        assertEquals(EstadoConsulta.ABIERTA, nueva.estado)
+    }
+
+    @Test
+    fun abrirConsulta_en_clinica_reutiliza_la_propia_abierta_del_mismo_paciente_y_tipo_sin_escribir() = conBase { db ->
+        db.sembrar("propia-1", "clinica", actualizada = 100, propia = true)
+        val antes = db.filas()
+        val r = repo(db, clinica())
+
+        val abierta = r.abrir("clinica")
+
+        assertEquals("propia-1", abierta.id)
+        assertTrue(abierta.propia)
+        assertEquals(antes, db.filas(), "retomar no escribe nada")
+    }
+
+    @Test
+    fun una_propia_ya_enviada_y_abierta_se_sigue_reutilizando_RF_62() = conBase { db ->
+        db.sembrar("propia-1", "clinica", remotoId = "7011", actualizada = 100, propia = true, dirty = false)
+        val r = repo(db, clinica())
+
+        val abierta = r.abrir("clinica")
+
+        assertEquals("propia-1", abierta.id)
+        assertEquals("7011", abierta.remotoId)
+    }
+
+    @Test
+    fun abrirConsulta_nunca_reutiliza_una_del_historico_aunque_este_abierta_y_sea_la_mas_reciente() = conBase { db ->
+        db.sembrar("historica-1", "clinica", actualizada = 900)
+        val antes = db.filas()
+        val r = repo(db, clinica())
+
+        val nueva = r.abrir("clinica")
+
+        assertNotEquals("historica-1", nueva.id)
+        assertTrue(nueva.propia)
+        assertEquals(antes, db.filas().filter { it.id == "historica-1" }, "la del histórico queda como estaba: sin marca, sin cambios")
+        assertEquals(0L, db.marca("historica-1"))
+    }
+
+    @Test
+    fun abrirConsulta_nunca_reutiliza_una_de_la_web_ni_con_backend_ni_sin_el() = conBase { db ->
+        db.sembrar("hcc-c77", "clinica", remotoId = "77", actualizada = 900, dirty = false)
+        db.sembrar("hcc-c78", "clinica", remotoId = "", actualizada = 950, dirty = false)
+
+        for (r in listOf(repo(db, clinica()), repo(db))) {
+            val nueva = r.abrir("clinica")
+            assertTrue(nueva.id != "hcc-c77" && nueva.id != "hcc-c78")
+            assertTrue(nueva.propia)
+        }
+    }
+
+    @Test
+    fun abrirConsulta_elige_la_propia_aunque_haya_del_historico_y_de_la_web_mas_recientes() = conBase { db ->
+        db.sembrar("propia-1", "clinica", actualizada = 100, propia = true)
+        db.sembrar("historica-1", "clinica", actualizada = 500)
+        db.sembrar("hcc-c77", "clinica", remotoId = "77", actualizada = 900, dirty = false)
+        val r = repo(db, clinica())
+
+        assertEquals("propia-1", r.abrir("clinica").id)
+    }
+
+    @Test
+    fun la_propia_solo_se_reutiliza_si_coinciden_paciente_medico_tipo_y_esta_abierta() = conBase { db ->
+        db.sembrar("otro-tipo", "clinica", actualizada = 100, propia = true, tipo = "telemedicina")
+        db.sembrar("otro-paciente", "clinica", actualizada = 200, propia = true, paciente = "p-otro")
+        db.sembrar("otro-medico", "clinica", actualizada = 300, propia = true, medico = "m-otro")
+        db.sembrar("cerrada", "clinica", actualizada = 400, propia = true, estado = EstadoConsulta.CERRADA)
+        db.sembrar("anulada", "clinica", actualizada = 500, propia = true, estado = EstadoConsulta.ANULADA)
+        val r = repo(db, clinica())
+
+        val nueva = r.abrir("clinica", tipo = "consulta")
+
+        assertEquals(setOf("otro-tipo", "otro-paciente", "otro-medico", "cerrada", "anulada").intersect(setOf(nueva.id)), emptySet())
+        assertTrue(nueva.propia)
+        // La de otro tipo sí se reutiliza cuando se pide su tipo.
+        assertEquals("otro-tipo", r.abrir("clinica", tipo = "telemedicina").id)
+    }
+
+    @Test
+    fun con_dos_propias_abiertas_del_mismo_tipo_se_retoma_la_mas_reciente() = conBase { db ->
+        db.sembrar("propia-vieja", "clinica", actualizada = 100, propia = true)
+        db.sembrar("propia-nueva", "clinica", actualizada = 300, propia = true)
+
+        assertEquals("propia-nueva", repo(db, clinica()).abrir("clinica").id)
+    }
+
+    @Test
+    fun abrir_dos_veces_seguidas_en_clinica_da_la_misma_consulta() = conBase { db ->
+        val r = repo(db, clinica())
+
+        val primera = r.abrir("clinica")
+        val segunda = r.abrir("clinica")
+
+        assertEquals(primera.id, segunda.id)
+        assertEquals(1, db.filas().size)
+    }
+
+    @Test
+    fun solo_la_hc_general_lleva_la_marca_pediatria_y_las_demas_siguen_igual() = conBase { db ->
+        val r = repo(db, pediatria(), clinica())
+
+        val pediatrica = r.abrir("pediatria")
+        val otra = r.abrir("hematologia")
+
+        assertFalse(pediatrica.propia)
+        assertFalse(otra.propia)
+        assertEquals(0L, db.marca(pediatrica.id))
+        assertEquals(0L, db.marca(otra.id))
+        // Y siguen reutilizando la abierta sin mirar la marca.
+        db.sembrar("a-1", "oftalmologia", actualizada = 500)
+        assertEquals("a-1", r.abrir("oftalmologia").id)
+    }
+
+    // ---- ninguna operación pierde la marca ----
+
+    @Test
+    fun cerrar_reabrir_anular_y_guardar_la_cabecera_conservan_la_marca() = conBase { db ->
+        db.sembrar("propia-1", "clinica", actualizada = 100, propia = true)
+        db.sembrar("historica-1", "clinica", actualizada = 100)
+        db.sembrar("propia-enviada", "clinica", remotoId = "7011", actualizada = 100, propia = true, dirty = false)
+        val r = repo(db, clinica())
+
+        for ((id, esperada) in listOf("propia-1" to 1L, "historica-1" to 0L, "propia-enviada" to 1L)) {
+            assertTrue(r.cerrarConsulta(id, LocalDate.parse("2026-11-01"), "46 años"), id)
+            assertEquals(esperada, db.marca(id), "cerrar $id")
+            assertTrue(r.reabrirConsulta(id), id)
+            assertEquals(esperada, db.marca(id), "reabrir $id")
+            assertTrue(r.guardarConsulta(r.consulta(id)!!.copy(edadMostrar = "47 años")), id)
+            assertEquals(esperada, db.marca(id), "guardarConsulta $id")
+            assertEquals(esperada == 1L, r.consulta(id)!!.propia, "el modelo $id")
+            assertTrue(r.anularConsulta(id), id)
+            assertEquals(esperada, db.marca(id), "anular $id")
+        }
+    }
+
+    @Test
+    fun una_propia_ya_enviada_se_edita_aunque_el_backend_sea_de_solo_lectura_y_una_historica_con_remoto_id_no() = conBase { db ->
+        // Las guardas de la web miran el `remoto_id` frente a un backend de solo lectura: la marca de propia lo exceptúa (RF-62).
+        db.sembrar("propia-enviada", "clinica", remotoId = "7011", actualizada = 100, propia = true, dirty = false)
+        db.sembrar("historica-con-remoto", "clinica", remotoId = "9", actualizada = 100, dirty = false)
+        val r = repo(db, clinica())
+
+        assertTrue(r.cerrarConsulta("propia-enviada"))
+        assertFalse(r.cerrarConsulta("historica-con-remoto"), "sin la marca sigue siendo de la web: no se cierra")
+        assertEquals(EstadoConsulta.ABIERTA, r.consulta("historica-con-remoto")!!.estado)
+    }
+
+    @Test
+    fun fusionarConsulta_con_la_fila_de_la_web_no_pierde_la_marca_de_la_local() = conBase { db ->
+        // Lo que la lectura hace con una fila que ya está: `fusionarConsulta(web, local)` y escribir el resultado.
+        db.sembrar("hcc-c7011", "clinica", remotoId = "7011", actualizada = 100, propia = true, dirty = false)
+        db.sembrar("hcc-c7012", "clinica", remotoId = "7012", actualizada = 100, dirty = false)
+        val r = repo(db, clinica())
+
+        for ((id, esperada) in listOf("hcc-c7011" to 1L, "hcc-c7012" to 0L)) {
+            val local = r.consulta(id)!!
+            val web = local.copy(propia = false, estado = EstadoConsulta.CERRADA, edadMostrar = "50 años", updatedAt = null)
+            val fusionada = fusionarConsulta(web, local)!!
+            db.historiaClinicaQueries.upsertConsulta(fusionada.toRow(200, dirty = false))
+            assertEquals(esperada, db.marca(id), "fusionar $id")
+            assertEquals(EstadoConsulta.CERRADA, r.consulta(id)!!.estado)
         }
     }
 }

@@ -13,6 +13,8 @@ import kotlinx.datetime.LocalDate
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /**
  * Spec 001 RF-29 y RF-30 (tanda D, T49): la migración `8.sqm` (v8 a v9) pasa lo que el dispositivo guardó como
@@ -894,10 +896,17 @@ class MigracionHepatologiaTest {
         assertEquals(listOf("c-hepat-abierta", "c-hepat-cerrada", "c-clinica"), consultas.map { it.id })
         assertEquals("ABIERTA", consultas.first().estado.name)
         assertEquals(listOf("c-p2-clinica", "c-p2-hepat"), repo.observarConsultas(paciente2, "clinica").first().map { it.id })
-        // Y `abrirConsulta` retoma la abierta más reciente en lugar de crear una (la de hepatologia ya es de clinica).
+        // Y `abrirConsulta` ya no retoma la abierta de hepatología: es del histórico y desde la spec 005 (T16, RF-11) solo se retoma
+        // una propia. Crea una propia nueva y la del histórico queda como estaba (la ve en clinica, sin la marca).
+        val antes3 = repo.observarConsultas(paciente3, "clinica").first()
+        assertEquals(2, antes3.size)
+        assertTrue(antes3.none { it.propia }, "lo migrado es histórico")
         val abierta = repo.abrirConsulta(paciente3, medico, "clinica", "consulta", LocalDate(2026, 10, 26), "45 años")
-        assertEquals("c-p3-hepat", abierta.id)
-        assertEquals(2, repo.observarConsultas(paciente3, "clinica").first().size)
+        assertNotEquals("c-p3-hepat", abierta.id)
+        assertTrue(abierta.propia)
+        val despues3 = repo.observarConsultas(paciente3, "clinica").first()
+        assertEquals(3, despues3.size)
+        assertEquals(antes3.toSet(), despues3.filter { it.id != abierta.id }.toSet(), "las del histórico no cambian")
         // Registros y laboratorios, con su contenido.
         val registros = repo.observarRegistros(paciente, "clinica", "biopsia_hepatica").first()
         assertEquals(setOf("r-hepatologia", "r-clinica"), registros.map { it.id }.toSet())

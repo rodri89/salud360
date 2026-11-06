@@ -89,8 +89,12 @@ private val PUNTOS_CHILD_PUGH = setOf("1", "2", "3")
  * edita, no la cierra ni la retoma como propia. Solo tiene sentido frente a un backend de solo lectura: en pediatría una
  * consulta creada en el dispositivo también tiene `remoto_id` una vez enviada. La consulta SQL `consultaAbiertaLocal`
  * aplica el mismo criterio (con [PREFIJO_ID_WEB] como parámetro) y un test las compara.
+ *
+ * Una [Consulta.propia] (la creó esta app, spec 005) tiene `remoto_id` una vez enviada y **no** es de la web (RF-62): solo el
+ * prefijo `hcc-` la hace de la web, que es como la lectura guarda lo que creó otro dispositivo (RF-64). `consultaAbiertaPropia`
+ * aplica el mismo criterio. Sin la marca, todo igual que antes.
  */
-fun Consulta.esDeLaWeb(): Boolean = remotoId.isNotBlank() || id.startsWith(PREFIJO_ID_WEB)
+fun Consulta.esDeLaWeb(): Boolean = id.startsWith(PREFIJO_ID_WEB) || (remotoId.isNotBlank() && !propia)
 
 /** La cargó el médico de la sesión. Las ajenas de la web llevan `hcc-m<id>`, que nunca es el id de un médico de turnos (RF-25). */
 fun Consulta.esPropia(medicoSesionId: Id): Boolean = medicoId == medicoSesionId
@@ -168,7 +172,8 @@ private fun tipoDeLaWeb(c: ConsultaCabeceraDto): String? = when {
  */
 fun fusionarConsulta(web: Consulta, local: Consulta?): Consulta? {
     if (local == null) return web
-    val nueva = web.copy(edadMostrar = web.edadMostrar.ifBlank { local.edadMostrar }, updatedAt = local.updatedAt)
+    // La web no sabe de la marca (`consultaDeLaWeb` nunca la pone): la de la fila local se conserva (RF-8, RF-33).
+    val nueva = web.copy(edadMostrar = web.edadMostrar.ifBlank { local.edadMostrar }, updatedAt = local.updatedAt, propia = local.propia)
     return nueva.takeIf { it != local }
 }
 

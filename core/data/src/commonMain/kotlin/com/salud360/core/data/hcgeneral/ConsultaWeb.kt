@@ -9,11 +9,15 @@ import com.salud360.core.model.hc.MedicoPreferencia
 // dejó en la base y devuelve lo que la pantalla muestra, ya decidido (constitución, puntos 3 y 4). No escribe nada: la
 // pantalla no puede cerrar, reabrir, anular ni editar una consulta de la web con esto.
 
-/** De dónde es la consulta: la trajo la web (solo lectura) o se cargó en el dispositivo y nunca se envió (Q14). */
+/**
+ * De dónde es la consulta, en dos valores: la trajo la web (solo lectura) o se cargó en el dispositivo (Q14). «Del dispositivo»
+ * incluye al histórico y a las propias de la app (spec 005); la distinción entre las dos es [OrigenDeConsulta].
+ */
 enum class OrigenConsulta { WEB, SOLO_EN_ESTE_DISPOSITIVO }
 
-/** El origen de una consulta de la HC general: de la web si tiene su identificador ([esDeLaWeb]). */
-fun Consulta.origen(): OrigenConsulta = if (esDeLaWeb()) OrigenConsulta.WEB else OrigenConsulta.SOLO_EN_ESTE_DISPOSITIVO
+/** El origen de una consulta de la HC general: de la web si lo es según [origenDeConsulta] (la propia ya enviada no lo es, RF-62). */
+fun Consulta.origen(): OrigenConsulta =
+    if (origenDeConsulta() == OrigenDeConsulta.WEB) OrigenConsulta.WEB else OrigenConsulta.SOLO_EN_ESTE_DISPOSITIVO
 
 /**
  * El id de la consulta en la web (`hcc-c<id>` o `remoto_id`) o `null` si no es de la web. Con él se busca lo que la lectura
@@ -54,10 +58,20 @@ data class ConsultaDeLaLista(
 
     val ausente: Boolean get() = ausenteDesde != null
 
-    /** Las etiquetas de la fila, en orden: el origen, «Ya no figura en la web» y «Cargada por …». */
+    /** Propia de la app, del histórico o de la web (RF-8). Otra cosa que [propia], que es «la cargó el médico de la sesión». */
+    val origenDeConsulta: OrigenDeConsulta get() = consulta.origenDeConsulta()
+
+    /**
+     * Las etiquetas de la fila, en orden: el origen, «Ya no figura en la web» y «Cargada por …». «Solo en este dispositivo» es
+     * del histórico (RF-8); la propia no lleva etiqueta de origen (su estado de envío se rotula aparte).
+     */
     val etiquetas: List<String>
         get() = listOfNotNull(
-            if (origen == OrigenConsulta.WEB) ETIQUETA_WEB else ETIQUETA_SOLO_EN_ESTE_DISPOSITIVO,
+            when (origenDeConsulta) {
+                OrigenDeConsulta.WEB -> ETIQUETA_WEB
+                OrigenDeConsulta.HISTORICO -> ETIQUETA_SOLO_EN_ESTE_DISPOSITIVO
+                OrigenDeConsulta.PROPIA -> null
+            },
             YA_NO_FIGURA_EN_LA_WEB.takeIf { ausente },
             cargadaPor,
         )
@@ -70,21 +84,25 @@ data class ConsultaDeLaLista(
 data class GruposDeConsultas(
     /** De la web y abiertas allá (RF-44): «Abiertas en la web (solo lectura)». */
     val abiertasEnLaWeb: List<ConsultaDeLaLista>,
-    /** Las abiertas del dispositivo (normalmente una): las únicas con Continuar y Anular. */
+    /**
+     * Las abiertas del dispositivo (normalmente una): las únicas con Continuar y Anular. Incluye a las propias abiertas —enviadas
+     * o no, RF-62: «Consulta en curso»— y, como hasta ahora, a las abiertas del histórico (la pantalla de «Solo en este
+     * dispositivo» con «Enviar a la web» las separa en otra tarea); nunca a una de la web.
+     */
     val enCurso: List<ConsultaDeLaLista>,
     /** Las cerradas, de la web y del dispositivo juntas, de la más nueva a la más vieja, cada una con su origen. */
     val anteriores: List<ConsultaDeLaLista>,
 ) {
-    /** Las cerradas del dispositivo. No es otro grupo: es una vista de [anteriores], para quien quiera separarlas. */
-    val soloEnEsteDispositivo: List<ConsultaDeLaLista> get() = anteriores.filter { it.origen == OrigenConsulta.SOLO_EN_ESTE_DISPOSITIVO }
+    /** Las cerradas del histórico (RF-8). No es otro grupo: es una vista de [anteriores], para quien quiera separarlas. */
+    val soloEnEsteDispositivo: List<ConsultaDeLaLista> get() = anteriores.filter { it.origenDeConsulta == OrigenDeConsulta.HISTORICO }
 }
 
 /**
  * Reparte [consultas] (las de la HC general del paciente, como las da la base) en los grupos de la pantalla.
  *
- * - Abierta de la web → [GruposDeConsultas.abiertasEnLaWeb]; abierta del dispositivo → [GruposDeConsultas.enCurso]
- *   (RF-44: una de la web nunca es la «consulta en curso»); cerrada, de donde sea → [GruposDeConsultas.anteriores].
- *   Las anuladas no se listan.
+ * - Abierta de la web → [GruposDeConsultas.abiertasEnLaWeb]; abierta del dispositivo (propia o del histórico) →
+ *   [GruposDeConsultas.enCurso] (RF-44: una de la web nunca es la «consulta en curso»; RF-62: una propia ya enviada tampoco es
+ *   «abierta en la web»); cerrada, de donde sea → [GruposDeConsultas.anteriores]. Las anuladas no se listan.
  * - Cada grupo va de la fecha más nueva a la más vieja. La base no guarda `created_at`: dentro de un mismo día manda el
  *   orden en que llegan, que es el de la base (`fecha`, `updated_at` descendentes) y el de escritura de la lectura (de la
  *   más vieja a la más nueva), así que un empate se resuelve como `(created_at, id)` sin comparar ids como texto.
