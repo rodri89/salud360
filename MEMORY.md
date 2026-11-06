@@ -38,6 +38,9 @@ registros de personas): el repo es público.
   `guardarSeccion`/`guardarExamenFisico`/`guardarAntecedente`/`guardarRegistro` escriben solo con cambio real (`hcgeneral/CambioReal.kt`; `0.00` = vacío en las medidas; vaciar a propósito se escribe vacío);
   pediatría y las demás igual que antes. Datos por paciente: `antecedentesDeConsultasPropias`/`registrosDeConsultasPropias` (solo los de una consulta propia pueden viajar). **Pendiente de cablear:**
   `ConsultaViewModel.guardarRegistro` y `flushEstudios` deben pasar `enConsulta = consultaId` para reasignar filas del histórico. `core:data` 1394 tests.
+  **T19 hecha (2026-11-06, `e7da239`); sigue T20.** `network/hc/ClinicaEscrituraApi.kt` + `HcClinicaEscrituraDtos.kt` (`PayloadsClinica`, puro): crear, secciones, examen, cerrar y baja contra el contrato de E1,
+  probados con un servidor falso en 127.0.0.1 (nada cableado al backend ni a la UI; ningún pedido real). `HcApiClient.delete(ruta, cuerpo)`: el DELETE con cuerpo anda en JVM; **sin probar en Android, iOS ni web** (prueba manual).
+  Ojo para T20: `clave_en_uso` es el `motivo` de un `422 datos_invalidos`, no un `codigo` (está en `TobbException.cuerpo`). `core:data` 1432 tests.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1

@@ -535,13 +535,37 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     antecedentes con `activo = 0` quedan fuera de `antecedentesDeConsultasPropias` (RF-9).
 
 ## App: datos
-- [ ] **T19. API de escritura de E1 (DTOs y remota) con servidor falso.** RF-12 a RF-15, RF-20 a RF-22, RF-26 — M — Toca API Laravel: no
+- [x] **T19. API de escritura de E1 (DTOs y remota) con servidor falso.** RF-12 a RF-15, RF-20 a RF-22, RF-26 — M — Toca API Laravel: no
   - Tests primero: jvm `ClinicaEscrituraApiTest` con `com.sun.net.httpserver.HttpServer` en `127.0.0.1`: método, ruta y cuerpo de
     `crear` (con `clave`), `secciones`, `examen`, `cerrar`, `baja`; los 401/403/404/409/422/429/500 llegan con `status` y `codigo`; un
     solo pedido por error; JSON cortado. `PayloadsClinicaTest` (puro): los cuerpos llevan solo lo tocado, el vaciado a propósito como `""`,
     la fecha clínica y la edad que cargó el médico (no la del envío) y nunca un campo no tocado.
   - Código: `network/hc/ClinicaEscrituraApi.kt` y `HcClinicaEscrituraDtos.kt` (la remota recibe el `HcApiClient` completo).
   - Hecho cuando: el test en verde (antes, en rojo) y compila el wasm.
+  - Resultado (2026-11-06, `e7da239`): solo la capa de red, **nada cableado** (ni `HcClinicaBackend`, ni la interfaz, ni el autoguardado) y **ningún pedido a un servidor real**: los tests usan solo un `HttpServer` en
+    `127.0.0.1`. Sin dependencias nuevas, sin migración, sin tocar ningún Laravel. **Archivos.** `network/hc/ClinicaEscrituraApi.kt` (interfaz `ClinicaEscrituraApi` y `ClinicaEscrituraApiRemota(cliente: HcApiClient)`);
+    `network/hc/HcClinicaEscrituraDtos.kt` (respuestas y el objeto puro `PayloadsClinica`); `HcApiClient.delete(ruta, cuerpo = null)` (el único cambio a código existente: parámetro opcional, los usos de antes no cambian).
+    **Contrato** (verificado contra `md/API_SALUD360_CLINICA.md` «Escritura (E1)» y el PHP del clon, solo leídos): `crear` = `POST consultas` `{clave, dispositivo, paciente_id (texto), tipo control|telemedicina, fecha AAAA-MM-DD,
+    edad_mostrar?}` → `RespuestaCrearConsultaDto {consulta (cabecera de la lectura), creada, otras_abiertas[{id, medico_nombre?}]}` (`201`, o `200` con `creada = false` si se repite); `secciones` = `PUT consultas/{id}/secciones`
+    `{secciones:{<sec>:{texto}}}` y `examen` = `PUT consultas/{id}/examen` `{peso?, talla?, tension_arterial?, imc?, nota?}` → `RespuestaEscrituraDto {guardadas (obligatoria), desconocidas}`; `cerrar` = `POST consultas/{id}/cerrar`
+    `{clave, dispositivo, fecha, edad_mostrar?}` → `{consulta, cerrada}`; `baja` = `DELETE consultas/{id}` con cuerpo JSON `{clave, dispositivo}` → `{baja, consulta_id}`. Mismo encabezado de token que la lectura (`Authorization: Bearer` y
+    `X-Salud360-Token`). **Errores:** cualquier error llega como `TobbException` con `status`, `codigo` y el cuerpo entero en `cuerpo` (el `campo` y el `motivo` de un `422`); probados en las cinco operaciones `401 sin_token|token`,
+    `403 sin_permiso|fuera_de_cartera|consulta_no_propia|hc_no_habilitada|medico_no_vinculado|licencia_vencida`, `404 paciente_no_encontrado|consulta_no_encontrada`, `409 consulta_cerrada`, `422 datos_invalidos`, `500 escritura`,
+    `503 tobb_caido`, el `429` de Laravel (sin código) y la red caída; **cada uno es un solo pedido** (el cliente no reintenta: eso es del envío diferido). Un JSON cortado, una respuesta `200` sin lo esperado (`TobbException`
+    `respuesta`) y un `200` con `ok = false` no se toman por éxito. **`PayloadsClinica`** (puro, sin reloj): solo lo tocado (secciones y campos que no se pasan no salen), nunca un `null`; el vaciado a propósito sale como `""` (un
+    texto en blanco, y en peso, talla, tensión e IMC también `0.00`; `0` y `0.0` salen tal cual; un texto con contenido sale sin recortar; todo como texto); la fecha y la edad son las del médico (`edad_mostrar` se omite si no hay);
+    descarta lo que la web no guarda o esta versión no envía (solo pasan las 8 secciones de texto y los 5 campos del examen) y, si no queda nada, no arma cuerpo y la remota **no hace ningún pedido**; `tipo` distinto de
+    `control`/`telemedicina` lanza `IllegalArgumentException`; las claves son `c:<id local>`, `c:<id local>-cierre` y `c:<id local>-baja` (distintas entre sí y estables entre reintentos).
+    **`DELETE` con cuerpo por plataforma.** El `HcApiClient` ya lo permite (`pedir(HttpMethod.Delete, …, cuerpo)` hace `setBody` con `Content-Type: application/json`, igual que para `POST`). **Verificado en ejecución solo en JVM** (motor CIO):
+    el servidor falso recibe `DELETE /api/salud360/consultas/{id}` con el cuerpo exacto. **No verificado en ejecución en Android (OkHttp), iOS (Darwin) ni web (fetch, wasm)**: el código común compila para wasm y no hay ningún
+    chequeo propio que lo impida, y ninguno de esos motores prohíbe el cuerpo en `DELETE` (la restricción de `fetch` es solo para `GET` y `HEAD`), pero queda **para la prueba manual** (la baja de una consulta propia en la web de la
+    app, en Android y en iOS); si algún motor lo descartara, el servidor contestaría `422 datos_invalidos` por la clave. **Tests.** Rojo: no compilaban (`PayloadsClinica` y `ClinicaEscrituraApi` no existían). Verde:
+    `PayloadsClinicaTest` (commonTest, 21) y `ClinicaEscrituraApiTest` (jvm, 17). Totales: `core:data:jvmTest` **1432** (1394 + 38; 0 fallos, 0 salteados), `especialidades:clinica` 38, `core:ui` 17, `core:crecimiento` 6;
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev` y `:server:compileKotlin` con código 0. **Tests existentes que cambian: ninguno.**
+    **Decisiones a revisar.** (a) **`clave_en_uso` no es un `codigo`:** el pedido lo daba como `422 clave_en_uso`, pero el `.md` y el PHP lo devuelven como `422` con `codigo = datos_invalidos`, `campo = clave` y `motivo = clave_en_uso`
+    (igual que `texto_demasiado_largo` y los demás motivos); la app lo lee de `TobbException.cuerpo`. T20 (clasificación) tiene que mirar el `motivo`, no solo el `codigo`. (b) `dispositivo` y las claves entran como parámetros: de dónde sale
+    el id estable del dispositivo es de T22/T23. (c) `paciente_id` se manda como texto (`"5001"`), como el ejemplo del `.md`. (d) `guardadas` es obligatoria en la respuesta de secciones y examen. (e) `HcApiClient.delete` ganó un parámetro
+    opcional: es la única modificación de código existente.
 - [ ] **T20. Clasificación de errores, estados de envío y motivos que nombran la HC.** RF-6, RF-19, RF-30 — M — Toca API Laravel: no
   - Tests primero: common `ClasificacionDeEnvioTest`: causa ajena (401, 403 `hc_no_habilitada|medico_no_vinculado|licencia_vencida|
     fuera_de_cartera`, sin red, 5xx, 429, 503) → «En espera: <motivo con el nombre de la HC>»; causa del dato (422, 404 consulta, 409) →
