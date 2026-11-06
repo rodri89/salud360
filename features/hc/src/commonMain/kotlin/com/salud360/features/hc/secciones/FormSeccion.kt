@@ -1,19 +1,34 @@
 package com.salud360.features.hc.secciones
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.ValorHistorico
+import com.salud360.core.data.repos.consultasPrevias
 import com.salud360.core.model.especialidad.CampoDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.especialidad.TipoCampo
@@ -144,20 +159,81 @@ fun TextoSeccion(s: SeccionDef, ctx: SeccionContext, valores: Map<String, String
     }
 }
 
+/** Por debajo de este ancho, la última consulta previa va debajo del área de escritura y no a su derecha. */
+private val AnchoMinimoDosColumnas = 600.dp
+
+/** Alto máximo del panel de la última consulta previa: si el texto es más largo, se desplaza dentro del panel. */
+private val AltoMaximoPanelPrevia = 180.dp
+
 /**
- * Texto libre de una sección (guardado en `seccion_valor`) precedido por lo cargado en consultas previas.
- * Reutilizable desde secciones a medida (ej. vacunas en modo texto). En lectura no se listan las previas:
- * se muestra solo lo cargado en esta consulta.
+ * Texto libre de una sección (guardado en `seccion_valor`) con el área de escritura del médico y, a su derecha, un panel
+ * de solo lectura con la última consulta previa y un botón que abre todas. Reutilizable desde secciones a medida
+ * (ej. vacunas en modo texto). Sin previas, o en lectura, se muestra solo el texto de esta consulta.
  */
 @Composable
 fun TextoLibreConPrevias(seccionId: String, campo: String, etiqueta: String, ctx: SeccionContext, valor: String = ctx.valor(seccionId, campo), minLines: Int = 5) {
     val historial by ctx.vm.historial(seccionId, campo).collectAsState(emptyList())
-    val previas = if (ctx.soloLectura) emptyList() else historial.filter { it.consultaId != ctx.consultaId }
-    if (previas.isNotEmpty()) {
-        Text("Consultas previas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        previas.take(8).forEach { h ->
-            Text("${h.fecha.toDisplay()}: ${h.valor}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+    val previas = if (ctx.soloLectura) emptyList() else consultasPrevias(historial, ctx.consultaId)
+    val escritura: @Composable (Modifier) -> Unit = { modificador ->
+        TextAreaField(etiqueta, valor, { ctx.setValor(seccionId, campo, it) }, modificador, minLines = minLines, readOnly = ctx.soloLectura)
+    }
+    if (previas.isEmpty()) { escritura(Modifier); return }
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= AnchoMinimoDosColumnas) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+                escritura(Modifier.weight(0.62f))
+                PanelUltimaPrevia(previas, etiqueta, minLines, Modifier.weight(0.38f))
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                escritura(Modifier)
+                PanelUltimaPrevia(previas, etiqueta, minLines, Modifier.fillMaxWidth())
+            }
         }
     }
-    TextAreaField(etiqueta, valor, { ctx.setValor(seccionId, campo, it) }, minLines = minLines, readOnly = ctx.soloLectura)
+}
+
+/**
+ * Última consulta previa (fecha y texto) como campo de solo lectura de alto acotado, más el acceso a todas debajo.
+ * Es un `OutlinedTextField` igual al del área de escritura: así el borde superior (que Material baja media altura de
+ * la etiqueta para que ésta quede montada sobre él) coincide con el del textarea de al lado.
+ */
+@Composable
+private fun PanelUltimaPrevia(previas: List<ValorHistorico>, titulo: String, minLines: Int, modifier: Modifier = Modifier) {
+    var verTodas by remember { mutableStateOf(false) }
+    val ultima = previas.first()
+    val altoMinimo = (minLines * 24).dp
+    val fondo = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    Column(modifier, horizontalAlignment = Alignment.End) {
+        OutlinedTextField(
+            value = ultima.valor,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Consultas previas · ${ultima.fecha.toDisplay()}") },
+            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fondo, unfocusedContainerColor = fondo),
+            modifier = Modifier.fillMaxWidth().heightIn(min = altoMinimo, max = maxOf(AltoMaximoPanelPrevia, altoMinimo)),
+        )
+        if (previas.size > 1) TextButton(onClick = { verTodas = true }) { Text("Ver todas (${previas.size})") }
+    }
+    if (verTodas) TodasLasPreviasDialog(titulo, previas) { verTodas = false }
+}
+
+/** Todas las consultas previas de un texto, de la más reciente a la más antigua, en una lista que se desplaza. */
+@Composable
+private fun TodasLasPreviasDialog(titulo: String, previas: List<ValorHistorico>, onCerrar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Consultas previas · $titulo") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                previas.forEachIndexed { i, h ->
+                    if (i > 0) HorizontalDivider()
+                    Text(h.fecha.toDisplay(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(h.valor, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } },
+    )
 }
