@@ -196,6 +196,11 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
         mutableStateOf(sesion.medico?.let { m -> ContextoMedico(m.medicoId, m.consultorioId, sesion.usuario.nombreCompleto, m.especialidades.filter { registry.existe(it) }, m.tieneTurnos) })
     }
 
+    // Señal «nueva consulta» de la ficha hacia la historia clínica (paciente y especialidad). Es estado en memoria y no
+    // un argumento de la ruta a propósito: en web la ruta queda en la URL y recargar crearía una consulta sola. La
+    // historia clínica la apaga en cuanto la atiende.
+    var hcConNuevaConsulta by remember(sesion) { mutableStateOf<Pair<String, String>?>(null) }
+
     val items = remember(rol, contexto) {
         val c = contexto
         buildList {
@@ -302,7 +307,9 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         composable(Rutas.PACIENTE) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
                             val esp = contexto?.especialidades?.map { it to registry.nombre(it) } ?: emptyList()
-                            PacienteDetalleScreen(id, esp, contexto?.medicoId.orEmpty(), onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { nav.navigate("hc/$id/$it") },
+                            PacienteDetalleScreen(id, esp, contexto?.medicoId.orEmpty(), onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { hcConNuevaConsulta = null; nav.navigate("hc/$id/$it") },
+                                // Solo este camino lleva la señal «nueva consulta»; no viaja en la ruta (ver hcConNuevaConsulta).
+                                onNuevaConsulta = { hcConNuevaConsulta = id to it; nav.navigate("hc/$id/$it") },
                                 onVerConsulta = { nav.navigate("consulta/${it.id}") },
                                 onNuevoTurno = if (contexto?.consultorioParaAgenda() != null) ({ nav.navigate(Rutas.ASIGNAR) }) else null, onVolver = { nav.popBackStack() })
                         }
@@ -314,7 +321,8 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                             val pacienteId = entry.savedStateHandle.get<String>("pacienteId") ?: return@composable
                             val especialidad = entry.savedStateHandle.get<String>("especialidad") ?: return@composable
                             val medicoId = contexto?.medicoId ?: return@composable
-                            HistoriaClinicaScreen(pacienteId, especialidad, medicoId, onAbrirConsulta = { nav.navigate("consulta/${it.id}") }, onVolver = { nav.popBackStack() })
+                            HistoriaClinicaScreen(pacienteId, especialidad, medicoId, onAbrirConsulta = { nav.navigate("consulta/${it.id}") }, onVolver = { nav.popBackStack() },
+                                iniciarNueva = hcConNuevaConsulta == (pacienteId to especialidad), onNuevaConsultaAtendida = { hcConNuevaConsulta = null })
                         }
                         composable(Rutas.CONSULTA) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable

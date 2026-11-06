@@ -2,6 +2,7 @@ package com.salud360.features.pacientes
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Edit
@@ -303,6 +305,7 @@ fun PacienteDetalleScreen(
     medicoId: Id,
     onEditar: () -> Unit,
     onAbrirHc: (especialidad: String) -> Unit,
+    onNuevaConsulta: (especialidad: String) -> Unit,
     onVerConsulta: (Consulta) -> Unit,
     onNuevoTurno: (() -> Unit)?,
     onVolver: () -> Unit,
@@ -366,8 +369,18 @@ fun PacienteDetalleScreen(
         }
 
         if (especialidadesDisponibles.isNotEmpty()) SectionCard("Historia clínica", icon = Icons.Default.FolderOpen, collapsible = false) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                especialidadesDisponibles.forEach { (codigo, nombre) -> PillButton(nombre, onClick = { onAbrirHc(codigo) }) }
+            if (especialidadesDisponibles.size == 1) {
+                // Una sola historia clínica: no hay nada que elegir, el botón lleva directo a elegir el tipo de consulta nueva.
+                val (codigo, _) = especialidadesDisponibles.first()
+                PillButton("Nueva consulta", icon = Icons.Default.Add, onClick = { onNuevaConsulta(codigo) })
+            } else {
+                Text(
+                    "Seleccioná la historia clínica que deseás trabajar",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    especialidadesDisponibles.forEach { (codigo, nombre) -> PillButton(nombre, onClick = { onAbrirHc(codigo) }) }
+                }
             }
             if (consultas.isEmpty()) Text("Sin consultas registradas", color = MaterialTheme.colorScheme.onSurfaceVariant)
             consultas.take(10).forEach { c ->

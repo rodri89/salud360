@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.AlLlegarConNuevaConsulta
+import com.salud360.core.data.repos.alLlegarConNuevaConsulta
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Consulta
@@ -79,6 +82,11 @@ fun iconoTipoConsulta(nombre: String): ImageVector = when (nombre) {
 /**
  * Historia clínica de un paciente en una especialidad: listado de consultas, pendientes y
  * elección del tipo de consulta nueva (las "tarjetas" de `nueva_consulta_opciones`).
+ *
+ * [iniciarNueva] es la señal del botón «Nueva consulta» de la ficha del paciente: cuando las consultas ya se leyeron se
+ * decide una sola vez qué hacer (`alLlegarConNuevaConsulta`: elegir el tipo, crearla si hay un único tipo, o nada si ya
+ * hay una en curso) y se avisa con [onNuevaConsultaAtendida] para que quien la dio la apague. No viaja en la ruta, para
+ * que recargar la página no cree una consulta sola.
  */
 @Composable
 fun HistoriaClinicaScreen(
@@ -87,16 +95,34 @@ fun HistoriaClinicaScreen(
     medicoId: Id,
     onAbrirConsulta: (Consulta) -> Unit,
     onVolver: () -> Unit,
+    iniciarNueva: Boolean = false,
+    onNuevaConsultaAtendida: () -> Unit = {},
     vm: HistoriaClinicaViewModel = koinViewModel(key = "hc-$pacienteId-$especialidad") { parametersOf(pacienteId, especialidad, medicoId) },
 ) {
     val paciente by vm.paciente.collectAsState()
-    val consultas by vm.consultas.collectAsState()
+    val consultasLeidas by vm.consultas.collectAsState()
+    val consultas = consultasLeidas.orEmpty()
     val pendientes by vm.pendientes.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val def = vm.definicion
     var elegirTipo by remember { mutableStateOf(false) }
     var anular by remember { mutableStateOf<Consulta?>(null) }
     val color = Salud360Colors.especialidad(especialidad)
+
+    // Con la señal se espera a que la base responda: decidir con la lista vacía de antes de cargar crearía una consulta
+    // aunque ya hubiera una abierta. La señal se apaga en cuanto se atiende, así que no se repite al recomponer; la
+    // creación corre en el scope del ViewModel y no se cancela ni se relanza si este efecto se reinicia.
+    LaunchedEffect(iniciarNueva, consultasLeidas != null) {
+        if (!iniciarNueva) return@LaunchedEffect
+        if (def == null) return@LaunchedEffect onNuevaConsultaAtendida()
+        when (alLlegarConNuevaConsulta(consultasLeidas != null, consultas.any { it.estado == EstadoConsulta.ABIERTA }, def.tiposConsulta.size)) {
+            AlLlegarConNuevaConsulta.ESPERAR -> return@LaunchedEffect
+            AlLlegarConNuevaConsulta.ELEGIR_TIPO -> elegirTipo = true
+            AlLlegarConNuevaConsulta.CREAR_DEL_UNICO_TIPO -> vm.nuevaConsulta(def.tiposConsulta.first().codigo, onAbrirConsulta)
+            AlLlegarConNuevaConsulta.NADA -> Unit
+        }
+        onNuevaConsultaAtendida()
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         paciente?.let { p ->
@@ -143,7 +169,7 @@ fun HistoriaClinicaScreen(
                         LinkButton("Anular", onClick = { anular = abierta })
                     }
                 }
-            } else if (!elegirTipo) {
+            } else if (!elegirTipo && !iniciarNueva) {
                 PillButton("Nueva consulta", icon = Icons.Default.Add, onClick = {
                     if (def.tiposConsulta.size == 1) vm.nuevaConsulta(def.tiposConsulta.first().codigo, onAbrirConsulta) else elegirTipo = true
                 })
