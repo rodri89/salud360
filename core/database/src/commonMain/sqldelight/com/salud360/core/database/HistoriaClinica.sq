@@ -133,6 +133,9 @@ CREATE INDEX antecedente_paciente ON antecedente(paciente_id, especialidad, cate
 
 antecedentesDePaciente: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND activo = 1;
 antecedentesDeCategoria: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND categoria = ? AND deleted = 0 AND activo = 1;
+-- Spec 005, RF-68: un dato por paciente es propio, y puede viajar, solo si su `consulta_id` apunta a una consulta propia
+-- (`propia = 1`, no borrada y sin el prefijo `:prefijoWeb` de lo traído de la web). Con `:soloSucios = 1`, solo lo tocado. Sin cambio de tablas.
+antecedentesDeConsultasPropias: SELECT a.* FROM antecedente a JOIN consulta c ON c.id = a.consulta_id WHERE a.paciente_id = :pacienteId AND a.especialidad = :especialidad AND a.deleted = 0 AND a.activo = 1 AND c.propia = 1 AND c.deleted = 0 AND instr(c.id, :prefijoWeb) <> 1 AND (:soloSucios = 0 OR a.dirty = 1) ORDER BY a.updated_at, a.id;
 upsertAntecedente: INSERT OR REPLACE INTO antecedente VALUES ?;
 antecedentesDirty: SELECT * FROM antecedente WHERE dirty = 1;
 limpiarAntecedente: UPDATE antecedente SET dirty = 0 WHERE id = ?;
@@ -158,6 +161,8 @@ CREATE INDEX registro_paciente ON registro_clinico(paciente_id, especialidad, ti
 registrosDePaciente: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registrosDeConsulta: SELECT * FROM registro_clinico WHERE consulta_id = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registroPorId: SELECT * FROM registro_clinico WHERE id = ? AND deleted = 0;
+-- Igual que `antecedentesDeConsultasPropias` (RF-68), para las filas de registro. Incluye las dadas de baja (`activo = 0`): la baja también viaja.
+registrosDeConsultasPropias: SELECT r.* FROM registro_clinico r JOIN consulta c ON c.id = r.consulta_id WHERE r.paciente_id = :pacienteId AND r.especialidad = :especialidad AND r.deleted = 0 AND c.propia = 1 AND c.deleted = 0 AND instr(c.id, :prefijoWeb) <> 1 AND (:soloSucios = 0 OR r.dirty = 1) ORDER BY r.updated_at, r.id;
 -- Todos los del paciente en la especialidad, sin filtrar por tipo ni por activo: para emparejar con
 -- lo que devuelve la API de la especialidad, que también informa los dados de baja.
 registrosDePacienteTodos: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;

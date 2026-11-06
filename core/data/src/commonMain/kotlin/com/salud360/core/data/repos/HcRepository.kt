@@ -3,10 +3,16 @@ package com.salud360.core.data.repos
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
+import com.salud360.core.data.hcgeneral.CambioReal
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.esIdDeLaWeb
+import com.salud360.core.data.hcgeneral.cambioReal
+import com.salud360.core.data.hcgeneral.cambioRealDeAntecedente
+import com.salud360.core.data.hcgeneral.cambioRealDeRegistro
+import com.salud360.core.data.hcgeneral.cambioRealDelExamen
+import com.salud360.core.data.hcgeneral.cambiosRealesDeSeccion
 import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
 import com.salud360.core.data.hcgeneral.nombresDeMedicosWeb
 import com.salud360.core.data.lista
@@ -185,22 +191,47 @@ class HcRepository(
     suspend fun valoresDeSeccion(consultaId: Id, seccion: String): Map<String, String> =
         q.valoresDeSeccion(consultaId, seccion).lista { it.toModel() }.associate { it.campo to it.valor }
 
-    /** `false` si [consultaId] es una consulta de la web: sus secciones las trae la lectura y no se escriben desde acá. */
+    /**
+     * `false` si [consultaId] es una consulta de la web: sus secciones las trae la lectura y no se escriben desde acá.
+     *
+     * En la HC general solo un **cambio real** escribe (spec 005, RF-68, RF-69; [cambioReal]): el mismo valor, o un vacío sobre
+     * nada, no toca la base —ni `dirty` ni `updated_at`— y devuelve `true` (el valor ya quedó como se pidió); vaciar algo
+     * que tenía texto se escribe vacío. Las demás historias clínicas escriben siempre, como antes.
+     */
     suspend fun guardarValor(consultaId: Id, seccion: String, campo: String, valor: String): Boolean {
         if (esIdDeLaWeb(consultaId)) return false
+        if (esDeLaHcGeneral(consultaId) && cambioReal(valoresDeSeccion(consultaId, seccion)[campo], valor) == CambioReal.NINGUNO) return true
         q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahoraMillis()))
         return true
     }
 
-    /** `false` si [consultaId] es una consulta de la web (ver [guardarValor]); no escribe ningún campo. */
+    /**
+     * `false` si [consultaId] es una consulta de la web (ver [guardarValor]); no escribe ningún campo. En la HC general escribe
+     * solo los campos con cambio real, en una transacción; si ninguno cambió no escribe nada.
+     */
     suspend fun guardarSeccion(consultaId: Id, seccion: String, valores: Map<String, String>): Boolean {
         if (esIdDeLaWeb(consultaId)) return false
+        val aEscribir = if (esDeLaHcGeneral(consultaId)) {
+            val cambios = cambiosRealesDeSeccion(valoresDeSeccion(consultaId, seccion), valores)
+            valores.filterKeys { it in cambios }
+        } else {
+            valores
+        }
+        if (aEscribir.isEmpty()) return true
         val ahora = ahoraMillis()
         db.transaction {
-            valores.forEach { (campo, valor) -> q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahora)) }
+            aEscribir.forEach { (campo, valor) -> q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahora)) }
         }
         return true
     }
+
+    /** La consulta es de la HC general (la única con marca de propia y con «cambio real» al guardar); una que no existe, no. */
+    private suspend fun esDeLaHcGeneral(consultaId: Id): Boolean =
+        q.consultaPorId(consultaId).uno { it.especialidad } == CodigosHc.GENERAL
+
+    /** La consulta es propia de la app: con la marca, no borrada y no traída de la web (RF-68). */
+    private suspend fun esPropia(consultaId: Id?): Boolean =
+        consultaId != null && !esIdDeLaWeb(consultaId) && q.consultaPorId(consultaId).uno { it.propia != 0L } == true
 
     /** Historial de un campo en consultas anteriores (ej. "Consultas previas" del motivo de consulta). */
     fun observarHistorial(pacienteId: Id, especialidad: String, seccion: String, campo: String): Flow<List<ValorHistorico>> =
@@ -223,9 +254,17 @@ class HcRepository(
     // ---- examen físico ----
 
     fun observarExamenFisico(consultaId: Id): Flow<ExamenFisico?> = q.examenFisicoDeConsulta(consultaId).flujoUno { it.toModel() }
-    /** `false` si el examen es de una consulta de la web: lo trae la lectura y no se escribe desde acá. */
+    /**
+     * `false` si el examen es de una consulta de la web: lo trae la lectura y no se escribe desde acá. En la HC general solo un
+     * cambio real escribe ([cambioRealDelExamen]: un examen igual, o vacío —`0.00` incluido— sobre nada, no toca la base).
+     */
     suspend fun guardarExamenFisico(examen: ExamenFisico): Boolean {
         if (esIdDeLaWeb(examen.consultaId)) return false
+        if (esDeLaHcGeneral(examen.consultaId) &&
+            !cambioRealDelExamen(q.examenFisicoDeConsulta(examen.consultaId).uno { it.toModel() }, examen)
+        ) {
+            return true
+        }
         q.upsertExamenFisico(examen.toRow(ahoraMillis()))
         return true
     }
@@ -253,10 +292,16 @@ class HcRepository(
     /**
      * `false` si el antecedente ya existe y vino de la web (`hcc-a…`, la web es su dueña y el cambio no llegaría) o si se
      * atribuye a una consulta de la web; no escribe nada.
+     *
+     * Siempre asocia el antecedente a [consultaId], la consulta donde se edita: editar una casilla del histórico dentro de una
+     * propia la reasigna a esa propia y la marca sucia, y viaja solo eso (spec 005, RF-68). En la HC general solo un **cambio
+     * real** escribe ([cambioRealDeAntecedente]): guardar lo mismo, o una casilla vacía sobre nada, no reasigna ni marca nada y
+     * devuelve `true`; desmarcar algo cargado es un vaciado a propósito y se escribe. Las demás historias clínicas escriben siempre.
      */
     suspend fun guardarAntecedente(pacienteId: Id, especialidad: String, categoria: String, clave: String, flag: Boolean, detalle: String, consultaId: Id?): Boolean {
         val existente = q.antecedentesDeCategoria(pacienteId, especialidad, categoria).lista { it.toModel() }.firstOrNull { it.clave == clave }
         if (existente?.esDeLaWeb() == true || (consultaId != null && esIdDeLaWeb(consultaId))) return false
+        if (especialidad == CodigosHc.GENERAL && cambioRealDeAntecedente(existente, flag, detalle) == CambioReal.NINGUNO) return true
         val a = (existente ?: Antecedente(newId(), pacienteId, especialidad, categoria, clave)).copy(flag = flag, detalle = detalle, consultaId = consultaId)
         q.upsertAntecedente(a.toRow(ahoraMillis()))
         return true
@@ -292,13 +337,42 @@ class HcRepository(
     /** Un registro por su id local, para conservar lo que no se está editando (la consulta de origen). */
     suspend fun registro(id: Id): RegistroClinico? = q.registroPorId(id).uno { it.toModel() }
 
-    /** `false` si el registro es de la web (`hcc-r…`) o cuelga de una consulta de la web: lo trae la lectura y no se escribe. */
-    suspend fun guardarRegistro(registro: RegistroClinico): Boolean {
+    /**
+     * `false` si el registro es de la web (`hcc-r…`) o cuelga de una consulta de la web: lo trae la lectura y no se escribe.
+     *
+     * [enConsulta] es la consulta donde se está editando. En la HC general, si esa consulta es propia y la fila que ya existía
+     * es del histórico (apunta a una consulta que no es propia) o no tiene consulta, se reasigna a [enConsulta] y se marca sucia:
+     * viaja solo esa fila (spec 005, RF-68). Una fila que ya es de otra propia se queda donde está. Solo un **cambio real** escribe
+     * ([cambioRealDeRegistro]): guardar lo mismo no reasigna ni marca nada y devuelve `true`. Sin [enConsulta], y en las demás
+     * historias clínicas, la fila conserva la consulta que trae y se escribe siempre, como antes.
+     */
+    suspend fun guardarRegistro(registro: RegistroClinico, enConsulta: Id? = null): Boolean {
         if (registro.esDeLaWeb() || registro.consultaId?.let(::esIdDeLaWeb) == true) return false
-        val remoto = registro.remotoId.ifBlank { q.registroPorId(registro.id).uno { it.remoto_id }.orEmpty() }
-        q.upsertRegistro(registro.copy(remotoId = remoto).toRow(ahoraMillis()))
+        val anterior = q.registroPorId(registro.id).uno { it.toModel() }
+        val remoto = registro.remotoId.ifBlank { anterior?.remotoId.orEmpty() }
+        var aGuardar = registro.copy(remotoId = remoto)
+        if (registro.especialidad == CodigosHc.GENERAL) {
+            if (!cambioRealDeRegistro(anterior, aGuardar)) return true
+            if (anterior != null && enConsulta != null && !esPropia(aGuardar.consultaId) && esPropia(enConsulta)) {
+                aGuardar = aGuardar.copy(consultaId = enConsulta)
+            }
+        }
+        q.upsertRegistro(aGuardar.toRow(ahoraMillis()))
         return true
     }
+
+    // ---- datos por paciente que pueden viajar (spec 005, RF-68) ----
+
+    /**
+     * Los antecedentes del paciente asociados a una consulta propia (activos): los únicos que pueden viajar a la web. Los de una
+     * consulta del histórico, de la web o sin consulta no viajan por estar en el mismo paciente. Con [soloSucios], solo lo tocado.
+     */
+    suspend fun antecedentesDeConsultasPropias(pacienteId: Id, especialidad: String, soloSucios: Boolean = false): List<Antecedente> =
+        q.antecedentesDeConsultasPropias(pacienteId, especialidad, PREFIJO_ID_WEB, if (soloSucios) 1L else 0L).lista { it.toModel() }
+
+    /** Lo mismo para las filas de registro (con las dadas de baja: la baja también viaja). */
+    suspend fun registrosDeConsultasPropias(pacienteId: Id, especialidad: String, soloSucios: Boolean = false): List<RegistroClinico> =
+        q.registrosDeConsultasPropias(pacienteId, especialidad, PREFIJO_ID_WEB, if (soloSucios) 1L else 0L).lista { it.toModel() }
 
     /** `false` si no existe o es de la web (`hcc-r…`): no se quita desde acá. */
     suspend fun eliminarRegistro(id: Id): Boolean {
