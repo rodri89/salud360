@@ -1,5 +1,6 @@
 package com.salud360.especialidades.clinica
 
+import com.salud360.core.data.hcgeneral.casillaSeEnvia
 import com.salud360.core.model.especialidad.AnalitoDef
 import com.salud360.core.model.especialidad.CampoDef
 import com.salud360.core.model.especialidad.CampoExamenFisico
@@ -56,7 +57,9 @@ val clinicaMedica = EspecialidadDefinition(
             "hta" to "HTA", "dbt_nir" to "DBT (NIR)", "dbt_ir" to "DBT (IR)", "acv" to "ACV", "dsl" to "DSL", "fa" to "FA", "mp" to "MP", "analfabeto" to "Analfabeto",
             "postrado" to "Postrado", "af_ca_mama" to "AF Ca mama", "ca_mama" to "Ca mama", "institucionalizado" to "Institucionalizado", "psicofarmacos" to "Psicofármacos",
             "dependiente_terceros" to "Dependiente de terceros", "tabaquismo" to "Tabaquismo", "otro" to "Otro",
-        ).map { ItemAntecedente(it.first, it.second) }),
+            // Spec 005 (T17, D9, RF-3; cambio de requisitos sobre la 001): la web no guarda el tabaquismo. Sigue en la lista para leer lo ya
+            // cargado y queda marcado `sinEnvio` (la regla es `casillaSeEnvia`): no se envía nunca y la pantalla le pone «No se envía a la web».
+        ).map { ItemAntecedente(it.first, it.second, sinEnvio = !casillaSeEnvia("familiares", it.first)) }),
     ),
     laboratorios = listOf(labGeneralClinica),
     registros = SeccionesGenericas.registrosBase,

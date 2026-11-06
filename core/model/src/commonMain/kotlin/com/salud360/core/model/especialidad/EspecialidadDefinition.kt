@@ -172,7 +172,16 @@ data class CategoriaAntecedentes(
 
 enum class ModoAntecedentes { CASILLAS, TEXTO_ACUMULATIVO }
 
-data class ItemAntecedente(val clave: String, val etiqueta: String, val soloDetalle: Boolean = false)
+data class ItemAntecedente(
+    val clave: String,
+    val etiqueta: String,
+    val soloDetalle: Boolean = false,
+    /**
+     * La web no guarda esta casilla (HC general, spec 005 D9, RF-3): no viaja nunca. Sigue en el catálogo para leer lo que el
+     * dispositivo ya tenía cargado, con el aviso «No se envía a la web». La regla es `casillaSeEnvia` de `core/data`.
+     */
+    val sinEnvio: Boolean = false,
+)
 
 data class LaboratorioDef(
     val tipo: String,

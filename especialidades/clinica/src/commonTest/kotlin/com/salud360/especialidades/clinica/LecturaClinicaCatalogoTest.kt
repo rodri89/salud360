@@ -1,18 +1,33 @@
 package com.salud360.especialidades.clinica
 
+import com.salud360.core.data.hcgeneral.AVISO_NO_SE_ENVIA
+import com.salud360.core.data.hcgeneral.CAMPOS_DEL_EXAMEN_QUE_LA_WEB_NO_GUARDA
 import com.salud360.core.data.hcgeneral.CLAVE_NOTA
 import com.salud360.core.data.hcgeneral.CLAVE_NOTA_PERFIL4
 import com.salud360.core.data.hcgeneral.Desconocido
+import com.salud360.core.data.hcgeneral.EnvioDeSeccion
+import com.salud360.core.data.hcgeneral.ModoCampoExamen
+import com.salud360.core.data.hcgeneral.SECCIONES_QUE_LA_WEB_NO_GUARDA
 import com.salud360.core.data.hcgeneral.SECCION_DE_LA_NOTA_PERFIL4
+import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
+import com.salud360.core.data.hcgeneral.avisoDeCampoDelExamen
+import com.salud360.core.data.hcgeneral.avisoDeSeccion
+import com.salud360.core.data.hcgeneral.campoDelExamenSeEnvia
+import com.salud360.core.data.hcgeneral.casillaSeEnvia
 import com.salud360.core.data.hcgeneral.desconocidos
+import com.salud360.core.data.hcgeneral.envioDeSeccion
 import com.salud360.core.data.hcgeneral.idConsultaWeb
 import com.salud360.core.data.hcgeneral.laboratoriosDeLaWeb
+import com.salud360.core.data.hcgeneral.modoCampoExamen
 import com.salud360.core.data.hcgeneral.motivosDeLaWeb
 import com.salud360.core.data.hcgeneral.registrosDeLaWeb
+import com.salud360.core.data.hcgeneral.seccionSeOfrece
+import com.salud360.core.data.hcgeneral.seccionesQueSeOfrecen
 import com.salud360.core.data.hcgeneral.valoresDeLaWeb
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
 import com.salud360.core.data.network.hc.RespuestaHistoriaDto
+import com.salud360.core.model.especialidad.CampoExamenFisico
 import com.salud360.core.model.especialidad.TipoSeccion
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -129,13 +144,88 @@ class LecturaClinicaCatalogoTest {
     }
 
     @Test
-    fun los_antecedentes_familiares_de_la_web_son_los_del_catalogo_mas_las_notas() {
-        val catalogo = catalogoHcGeneral.seccion("antecedentes_familiares")!!.antecedentes.single { it.categoria == "familiares" }
-            .items.map { it.clave }.toSet()
+    fun los_antecedentes_familiares_de_la_web_son_los_del_catalogo_que_se_envian_mas_las_notas() {
+        val items = catalogoHcGeneral.seccion("antecedentes_familiares")!!.antecedentes.single { it.categoria == "familiares" }.items
+        val queSeEnvian = items.filter { casillaSeEnvia("familiares", it.clave) }.map { it.clave }.toSet()
         val web = antecedentesDeLaWeb(paciente, historia).map { it.clave }.toSet()
-        // `tabaquismo` está en el catálogo y la web no lo tiene (Q13): no se inventa. Las dos notas no son casillas.
-        assertEquals(catalogo - "tabaquismo" + CLAVE_NOTA + CLAVE_NOTA_PERFIL4, web)
-        assertTrue("tabaquismo" !in web)
+        // T17 (D9, RF-3): `tabaquismo` sigue en el catálogo solo para leer lo ya cargado, marcado `sinEnvio`; la web no lo tiene y
+        // no se inventa. Las dos notas no son casillas.
+        assertEquals(queSeEnvian + CLAVE_NOTA + CLAVE_NOTA_PERFIL4, web)
+        assertTrue("tabaquismo" !in web && "tabaquismo" !in queSeEnvian)
+    }
+
+    // ---------- T17 (RF-3, RF-4, D9): lo que la web no guarda sale de lo que se envía; lo cargado se conserva ----------
+
+    @Test
+    fun la_unica_casilla_sin_envio_del_catalogo_es_tabaquismo_y_sigue_ahi_para_leer_lo_cargado() {
+        val sinEnvio = (catalogoHcGeneral.secciones + catalogoHcGeneral.legadas).flatMap { it.antecedentes }
+            .flatMap { c -> c.items.filter { it.sinEnvio }.map { c.categoria to it.clave } }
+        assertEquals(listOf("familiares" to "tabaquismo"), sinEnvio)
+        // Y la marca es la regla de `SeccionesEnviables`, no una lista aparte: ninguna otra casilla, de ninguna categoría, la contradice.
+        (catalogoHcGeneral.secciones + catalogoHcGeneral.legadas).flatMap { it.antecedentes }.filter { it.categoria == "familiares" }.forEach { c ->
+            c.items.forEach { assertEquals(!casillaSeEnvia(c.categoria, it.clave), it.sinEnvio, "familiares/${it.clave}") }
+        }
+        // Lo mismo en las definiciones de las que el catálogo copia: nada cambia de lugar, solo se marca.
+        assertEquals(listOf("tabaquismo"), clinicaMedica.antecedentes.single { it.categoria == "familiares" }.items.filter { it.sinEnvio }.map { it.clave })
+        assertEquals(listOf("tabaquismo"), hepatologia.antecedentes.single { it.categoria == "familiares" }.items.filter { it.sinEnvio }.map { it.clave })
+    }
+
+    @Test
+    fun del_examen_fisico_de_la_hc_general_se_ofrece_lo_que_viaja_y_frecuencia_y_circunferencia_son_solo_lectura() {
+        val base = catalogoHcGeneral.base
+        assertEquals(base.examenFisicoCampos, CampoExamenFisico.entries.filter { campoDelExamenSeEnvia(it) }.toSet(), "se ofrece exactamente lo que viaja")
+        assertEquals(CAMPOS_DEL_EXAMEN_QUE_LA_WEB_NO_GUARDA, base.examenFisicoSoloLectura)
+        assertTrue(base.examenFisicoCampos.intersect(base.examenFisicoSoloLectura).isEmpty())
+        // Lo ya cargado se conserva y se ve, solo para leer, aunque la consulta esté abierta; sin valor no aparece.
+        CAMPOS_DEL_EXAMEN_QUE_LA_WEB_NO_GUARDA.forEach {
+            assertEquals(ModoCampoExamen.LECTURA, modoCampoExamen(base, it, "72", soloLectura = false), "$it con valor")
+            assertEquals(ModoCampoExamen.OCULTO, modoCampoExamen(base, it, "", soloLectura = false), "$it sin valor")
+            assertEquals(AVISO_NO_SE_ENVIA, avisoDeCampoDelExamen(it))
+        }
+        // La clínica de antes (no registrada, fija para RF-33) sigue ofreciéndolos: no es la que se envía.
+        assertTrue(CampoExamenFisico.FRECUENCIA_CARDIACA in clinicaMedica.examenFisicoCampos)
+    }
+
+    @Test
+    fun diagnosticos_audio_y_antecedentes_personales_no_estan_en_el_catalogo_que_se_ofrece_sino_en_las_legadas() {
+        SECCIONES_QUE_LA_WEB_NO_GUARDA.forEach { id ->
+            assertTrue(id !in catalogoHcGeneral.ids, "$id no se ofrece en perfiles")
+            assertTrue(catalogoHcGeneral.legada(id) != null, "$id sigue en las legadas para leer lo ya cargado")
+            assertEquals(EnvioDeSeccion.NUNCA, envioDeSeccion(id, SubentregaDeEscritura.E4), id)
+            assertEquals(AVISO_NO_SE_ENVIA, avisoDeSeccion(id, SubentregaDeEscritura.E4), id)
+        }
+        // La nota que algún perfil rotula «antecedentes personales» es la de los antecedentes familiares: esa sí viaja.
+        assertTrue(casillaSeEnvia("familiares", CLAVE_NOTA))
+    }
+
+    @Test
+    fun las_25_secciones_siguen_decididas_y_en_esta_version_se_ofrecen_textos_y_examen_fisico() {
+        assertEquals(25, catalogoHcGeneral.ids.size)
+        val estados = catalogoHcGeneral.ids.associateWith { envioDeSeccion(it) }
+        // Ninguna del catálogo es de las que la web no guarda.
+        assertTrue(estados.values.none { it == EnvioDeSeccion.NUNCA })
+        assertEquals(
+            setOf(
+                "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia",
+                "examen_fisico", "enfermedades",
+            ),
+            catalogoHcGeneral.ids.filter { seccionSeOfrece(it) }.toSet(),
+        )
+        // Todo lo demás del catálogo dice «todavía no» y se habilita por subentrega: ninguna queda sin decidir.
+        assertEquals(15, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
+        // Con todas las subentregas habilitadas se envían las 24 que viajan en una consulta; `enfermedades` va por su API.
+        assertEquals(
+            catalogoHcGeneral.ids.toSet() - "enfermedades",
+            catalogoHcGeneral.ids.filter { envioDeSeccion(it, SubentregaDeEscritura.E4) == EnvioDeSeccion.SE_ENVIA }.toSet(),
+        )
+    }
+
+    @Test
+    fun una_seccion_del_perfil_que_todavia_no_se_envia_no_se_ofrece_pero_no_se_pierde() {
+        val perfil = listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "enfermedades")
+        assertEquals(listOf("motivo_consulta", "examen_fisico", "enfermedades"), seccionesQueSeOfrecen(perfil))
+        assertTrue(perfil.all { catalogoHcGeneral.seccion(it) != null }, "las secciones del perfil siguen en el catálogo, se muestran para leer")
+        assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion("laboratorio_general"))
     }
 
     @Test
