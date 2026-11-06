@@ -566,13 +566,48 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     (igual que `texto_demasiado_largo` y los demás motivos); la app lo lee de `TobbException.cuerpo`. T20 (clasificación) tiene que mirar el `motivo`, no solo el `codigo`. (b) `dispositivo` y las claves entran como parámetros: de dónde sale
     el id estable del dispositivo es de T22/T23. (c) `paciente_id` se manda como texto (`"5001"`), como el ejemplo del `.md`. (d) `guardadas` es obligatoria en la respuesta de secciones y examen. (e) `HcApiClient.delete` ganó un parámetro
     opcional: es la única modificación de código existente.
-- [ ] **T20. Clasificación de errores, estados de envío y motivos que nombran la HC.** RF-6, RF-19, RF-30 — M — Toca API Laravel: no
+- [x] **T20. Clasificación de errores, estados de envío y motivos que nombran la HC.** RF-6, RF-19, RF-30 — M — Toca API Laravel: no
   - Tests primero: common `ClasificacionDeEnvioTest`: causa ajena (401, 403 `hc_no_habilitada|medico_no_vinculado|licencia_vencida|
     fuera_de_cartera`, sin red, 5xx, 429, 503) → «En espera: <motivo con el nombre de la HC>»; causa del dato (422, 404 consulta, 409) →
     «No se pudo enviar»; precedencia de RF-19 (paciente de baja → consulta de baja → otro rechazo); persistencia de los estados en
     `paciente_extra` (clave `hce_estado_…`, `dirty = 0`) que sobrevive a reabrir la app.
   - Código: `core/model/.../EstadoEnvio.kt`, `hcgeneral/ClasificacionDeEnvio.kt`, `MotivoHc` ampliado.
   - Hecho cuando: el test en verde (antes, en rojo); `MotivoHcTest` existente sin cambios.
+  - Resultado (2026-11-06, `19d9a95`): solo lógica y datos locales; **nada cableado** al envío ni a la interfaz, ninguna llamada a la API, sin migración (los estados van en `paciente_extra`), sin tocar Laravel. **Archivos.**
+    `core/model/.../hc/EstadoEnvio.kt` (`Pendiente`, `EnEspera(causa, motivo)`, `NoSePudoEnviar(causa, motivo)`, `Descartado`, con `CausaEnEspera` y `CausaDeRechazo`); `hcgeneral/ClasificacionDeEnvio.kt` (`clasificarErrorDeEnvio`,
+    `masPrioritaria`, `textoDelEstado` y las funciones puras de persistencia); `MotivoHc.kt` ampliado con `motivoDelEnvio` (sin cambiar nada de lo que había); `repos/EstadosDeEnvio.kt` (guardar, quitar y leer los estados).
+    **Tabla error → estado** (el motivo siempre empieza con «Historia clínica de <nombre de la HC>: …» y el texto es «En espera: <motivo>» o «No se pudo enviar: <motivo>»):
+
+    | Error | Estado | Causa | Reintento solo | Con espera (sin ráfaga) |
+    |---|---|---|---|---|
+    | `401 sin_token\|token` (o cualquier 401) | En espera | `SESION_VENCIDA` | sí | no |
+    | `403 hc_no_habilitada` / `medico_no_vinculado` / `licencia_vencida` | En espera | `HC_NO_HABILITADA` / `MEDICO_NO_VINCULADO` / `LICENCIA_VENCIDA` | sí | no |
+    | `403 fuera_de_cartera` | En espera | `FUERA_DE_CARTERA` | sí | no |
+    | `403 sin_permiso` | En espera | `SIN_PERMISO` | sí | no |
+    | `404 paciente_no_encontrado` | En espera (RF-19) | `PACIENTE_DE_BAJA` | sí | no |
+    | `429` (sin código) | En espera | `DEMASIADOS_PEDIDOS` | sí | **sí** |
+    | `5xx` (`500 escritura`, `502`, `504`…), `503 tobb_caido` | En espera | `SERVIDOR` | sí | **sí** |
+    | sin red (`red`) | En espera | `SIN_CONEXION` | sí | **sí** |
+    | respuesta que no se lee (JSON cortado, `200` sin código, `respuesta`, un error que no es de la API) | En espera | `SERVIDOR` | sí | **sí** |
+    | `422 datos_invalidos` | No se pudo enviar | `DATOS_INVALIDOS` | no | no |
+    | `422` con `motivo = clave_en_uso` (del `cuerpo`, no del `codigo`) | No se pudo enviar | `CLAVE_EN_USO` | no | no |
+    | `404 consulta_no_encontrada` | No se pudo enviar (+ «Ya no figura en la web» solo si la consulta ya estaba enviada) | `CONSULTA_DE_BAJA` | no | no |
+    | `409 consulta_cerrada` (o cualquier 409) | No se pudo enviar | `CONSULTA_CERRADA` | no | no |
+    | `403 consulta_no_propia` | No se pudo enviar | `CONSULTA_NO_PROPIA` | no | no |
+    | cualquier otro 4xx | No se pudo enviar | `OTRO` (muestra el mensaje de la web) | no | no |
+
+    **Precedencia (RF-19)**, `masPrioritaria`: paciente de baja (En espera) → consulta de baja (No se pudo enviar) → cualquier causa ajena (En espera) → cualquier otro rechazo; a igual lugar, la primera; sin nada, `null`. **Persistencia:** filas de
+    `paciente_extra` del paciente (especialidad `clinica`), clave `hce_estado_<consulta>:<parte>`, valor `<espera|rechazado|descartado>|<AAAA-MM-DD>|<causa>|<motivo>` (el motivo va al final y puede llevar `|`), siempre `dirty = 0` (un test confirma que
+    `pacienteExtrasDirty` queda vacío); `Pendiente` no se guarda (es la ausencia del estado: guardarlo quita la fila); quitar da de baja la fila (`deleted = 1`), nunca `DELETE`; un valor que no se entiende no inventa un estado. Las filas no alteran
+    `extrasDeLectura` (lo que lee la historia de la web). **Nombre de la HC:** entra por parámetro (`nombreHc`), el mismo que usan la cartera, las enfermedades y la licencia (`nombresHc[CodigosHc.GENERAL]` de `DataModule`); no hay ningún nombre escrito a mano.
+    **Tests.** Rojo: no compilaba (`EstadoEnvio`, `clasificarErrorDeEnvio`, etc. no existían). Verde: `ClasificacionDeEnvioTest` (commonTest, 22) y `EstadosDeEnvioTest` (jvm, 6: base real cerrada y reabierta); `MotivoHcTest` (9) sin cambios. Totales:
+    `core:data:jvmTest` **1460** (1432 + 28; 0 fallos, 0 salteados), `especialidades:clinica` 38, `core:ui` 17, `core:crecimiento` 6; `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev` y `:server:compileKotlin`
+    con código 0. **Tests existentes que cambian: ninguno.**
+    **Decisiones a revisar** (donde la spec o el plan no dicen). (a) `403 sin_permiso` → «En espera» (no está en la lista del plan): no es un dato mal cargado ni se arregla reintentando sin que cambie el rol, y no corresponde «No se pudo enviar». (b) `403 consulta_no_propia` →
+    «No se pudo enviar» (tampoco está en el plan): la consulta no es de este médico o la creó la web. (c) Un `409` con otro código y un `422` sin cuerpo se tratan igual que los conocidos. (d) Una respuesta ilegible (JSON cortado) queda «En espera» y no «No se pudo
+    enviar»: el servidor repite con la misma clave sin duplicar (RF-15), así que reintentar es seguro. (e) Una **causa ajena va antes que un rechazo** en la precedencia (el plan solo ordena los tres casos de RF-19): el rechazo vuelve a salir al reintentar.
+    (f) `CLAVE_EN_USO` es una causa propia: es un error de la app, no del médico, y el texto dice «avisale al administrador». (g) `tobb_caido` conserva el texto «sin conexión» que ya tenía `motivoHc`. (h) El estado se guarda **por parte** de la consulta (`crear`, `secciones`, `examen`,
+    `cierre`, `baja`…): los nombres de las partes los fija `HcClinicaEnvio` (T24 en adelante).
 - [ ] **T21. Plan de envío puro: qué viaja, en qué orden y qué se queda.** RF-9, RF-56, RF-60, RF-68, RF-69 — M — Toca API Laravel: no
   - Tests primero: common `PlanDeEnvioTest`: solo consultas `propia = 1`; solo lo `dirty` (tocado); vaciado a propósito se envía; nunca
     un vacío no tocado; antecedentes desactivados y secciones no enviables no viajan **y no quedan pendientes ni figuran enviados**;
