@@ -35,6 +35,7 @@ class AdminRepositoryLicenciasTest {
         val guardaLicencias: Boolean = false,
         var respuesta: Boolean = true,
         val licenciasDelServidor: List<Licencia> = emptyList(),
+        override val administraLicencia: Boolean = true,
     ) : HcBackend {
         val llamadas = mutableListOf<String>()
 
@@ -89,6 +90,12 @@ class AdminRepositoryLicenciasTest {
     private suspend fun filasDeLicencia(db: Salud360Db) = db.authQueries.licencias().lista { it }
 
     private fun clinicaSoloLectura() = BackendFalso("clinica", soloLectura = true)
+
+    /**
+     * La HC general con escritura (spec 005, T23): ya no es de solo lectura, así que lo único que la deja afuera del panel es que no
+     * administra licencias (RF-66). Con el `guardarLicencia` por defecto (`false`), como el de `HcClinicaBackend`.
+     */
+    private fun clinicaConEscritura() = BackendFalso("clinica", soloLectura = false, administraLicencia = false)
     private fun pediatria(respuesta: Boolean = true) = BackendFalso("pediatria", soloLectura = false, guardaLicencias = true, respuesta = respuesta)
 
     @Test
@@ -159,6 +166,89 @@ class AdminRepositoryLicenciasTest {
 
         assertEquals(emptyList(), clinica.llamadas)
         assertEquals(1L, filasDeLicencia(db).single().dirty)
+    }
+
+    // ---- la HC general con escritura no administra licencias desde la app (spec 005, RF-66) ----
+
+    @Test
+    fun medico_solo_de_clinica_con_escritura_guarda_y_devuelve_true_sin_llamar_al_backend() = conBase { db ->
+        val clinica = clinicaConEscritura()
+        val r = repo(db, clinica)
+        r.conMedico(listOf("clinica"))
+
+        assertTrue(r.guardarLicencia(licencia), "sin destino que la cobre sigue siendo true, como antes de que la HC general escriba")
+
+        assertEquals(emptyList(), clinica.llamadas, "cero llamadas al backend de la HC general")
+        assertEquals(licencia, r.licencia("m-99000001"))
+    }
+
+    @Test
+    fun la_licencia_local_queda_igual_con_la_hc_general_escribiendo_que_sin_registrarla() = conBase { db ->
+        val sin = repo(db)
+        sin.conMedico(listOf("clinica"))
+        val resultadoSin = sin.guardarLicencia(licencia)
+        val filasSin = filasDeLicencia(db)
+
+        val con = repo(db, clinicaConEscritura())
+        val resultadoCon = con.guardarLicencia(licencia)
+
+        assertTrue(resultadoSin)
+        assertEquals(resultadoSin, resultadoCon)
+        assertEquals(filasSin.single().copy(updated_at = 0), filasDeLicencia(db).single().copy(updated_at = 0), "misma fila, `dirty` incluido")
+    }
+
+    @Test
+    fun pediatria_sigue_igual_con_la_hc_general_escribiendo() = conBase { db ->
+        val pediatria = pediatria()
+        val clinica = clinicaConEscritura()
+        val r = repo(db, pediatria, clinica)
+        r.conMedico(listOf("pediatria"))
+
+        assertTrue(r.guardarLicencia(licencia))
+
+        assertEquals(listOf("guardarLicencia"), pediatria.llamadas)
+        assertEquals(emptyList(), clinica.llamadas)
+        assertEquals(0L, filasDeLicencia(db).single().dirty)
+    }
+
+    @Test
+    fun medico_de_pediatria_y_clinica_con_escritura_manda_la_respuesta_de_pediatria() = conBase { db ->
+        val pediatriaRechaza = pediatria(respuesta = false)
+        val clinica = clinicaConEscritura()
+        val r = repo(db, pediatriaRechaza, clinica)
+        r.conMedico(listOf("pediatria", "clinica"))
+
+        assertFalse(r.guardarLicencia(licencia), "la respuesta es la de pediatría, no la 'false' por defecto de la HC general")
+
+        assertEquals(emptyList(), clinica.llamadas)
+        assertEquals(listOf("guardarLicencia"), pediatriaRechaza.llamadas)
+        assertEquals(1L, filasDeLicencia(db).single().dirty)
+    }
+
+    @Test
+    fun sincronizarLicencias_no_le_pregunta_nada_a_la_hc_general_con_escritura() = conBase { db ->
+        val deClinica = Licencia("m-99000002", "2027-02-28", "2027-02-01")
+        val clinica = BackendFalso("clinica", soloLectura = false, licenciasDelServidor = listOf(deClinica), administraLicencia = false)
+        val pediatria = BackendFalso("pediatria", soloLectura = false, guardaLicencias = true, licenciasDelServidor = listOf(licencia))
+        val r = repo(db, clinica, pediatria)
+
+        r.sincronizarLicencias()
+
+        assertEquals(emptyList(), clinica.llamadas)
+        assertEquals(listOf("traerLicencias"), pediatria.llamadas)
+        assertEquals(listOf(licencia.medicoId), filasDeLicencia(db).map { it.medico_id })
+    }
+
+    @Test
+    fun un_backend_que_administra_su_licencia_y_escribe_si_es_destino() = conBase { db ->
+        // Es lo que habilita E5: una HC que escribe y además administra su licencia entra al panel como pediatría.
+        val clinicaE5 = BackendFalso("clinica", soloLectura = false, guardaLicencias = true, administraLicencia = true)
+        val r = repo(db, clinicaE5)
+        r.conMedico(listOf("clinica"))
+
+        assertTrue(r.guardarLicencia(licencia))
+
+        assertEquals(listOf("guardarLicencia"), clinicaE5.llamadas)
     }
 
     @Test

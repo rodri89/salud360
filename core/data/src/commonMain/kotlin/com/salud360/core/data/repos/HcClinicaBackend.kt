@@ -84,6 +84,12 @@ class HcClinicaBackend internal constructor(
 
     override val soloLectura: Boolean = true
 
+    /** Spec 005 (RF-5): su envío es de `HcClinicaEnvio`, no de `HcApiSync`. Todavía no envía nada: la escritura es de T23. */
+    override val envioPropio: Boolean = true
+
+    /** Spec 005 (RF-66): la licencia de la HC general la administra la web de hclinica hasta E5; el panel de la app no la toca. */
+    override val administraLicencia: Boolean = false
+
     private val log = Logger.withTag("HcClinica")
     private val hq get() = db.historiaClinicaQueries
     private val pq get() = db.pacientesQueries

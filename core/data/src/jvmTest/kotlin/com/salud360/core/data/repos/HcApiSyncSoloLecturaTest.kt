@@ -47,7 +47,11 @@ class HcApiSyncSoloLecturaTest {
      * Backend falso que anota cada llamada de envío. [fallar] lo hace lanzar en `asegurarConsulta`: si el candado no
      * cortara, además de la llamada anotada quedaría un reintento programado.
      */
-    private class BackendFalso(override val especialidad: String, override val soloLectura: Boolean) : HcBackend {
+    private class BackendFalso(
+        override val especialidad: String,
+        override val soloLectura: Boolean,
+        override val envioPropio: Boolean = false,
+    ) : HcBackend {
         val llamadas = mutableListOf<String>()
         var fallar = false
 
@@ -180,6 +184,9 @@ class HcApiSyncSoloLecturaTest {
     }
 
     private fun clinica() = BackendFalso("clinica", soloLectura = true).apply { fallar = true }
+
+    /** La HC general con envío propio (spec 005): su envío es de `HcClinicaEnvio`, no de este motor. [soloLectura] es el de hoy (T22) o el de después (T23). */
+    private fun clinicaPropia(soloLectura: Boolean) = BackendFalso("clinica", soloLectura = soloLectura, envioPropio = true).apply { fallar = true }
     private fun pediatria() = BackendFalso("pediatria", soloLectura = false)
 
     @Test
@@ -273,6 +280,80 @@ class HcApiSyncSoloLecturaTest {
         val m = motor(db, archivos, clinica())
 
         // Una consulta que no existe no rompe nada ni programa nada.
+        m.sync.marcarSucia("no-existe", esperaMs = 0)
+        m.sync.empujarYa("no-existe")
+
+        assertEquals(0, programado(m))
+        m.scope.cancel()
+    }
+
+    // ---- un backend con envío propio (spec 005, RF-5): este motor no le manda nada ni lo cuenta ----
+
+    @Test
+    fun con_envio_propio_ningun_camino_llama_al_backend_ni_cuenta_ni_programa_aunque_deje_de_ser_de_solo_lectura() = conBase { db, archivos ->
+        for (soloLectura in listOf(true, false)) {
+            sembrar(db, archivos, "clinica")
+            val antes = filasSucias(db)
+            val backend = clinicaPropia(soloLectura)
+            val m = motor(db, archivos, backend)
+
+            m.sync.empujarTodo()
+            m.sync.empujarYa("clinica-c1")
+            m.sync.empujarYa("clinica-c2")
+            m.sync.marcarSucia("clinica-c1", esperaMs = 0)
+            m.sync.marcarSucia("clinica-c2")
+
+            assertEquals(emptyList(), backend.llamadas, "soloLectura=$soloLectura")
+            assertEquals(0, programado(m), "soloLectura=$soloLectura")
+            assertEquals(antes, filasSucias(db), "lo sucio queda exactamente igual (soloLectura=$soloLectura)")
+            assertEquals(0, m.sync.pendientes.value, "no cuenta: lo cuenta el motor propio (soloLectura=$soloLectura)")
+            m.scope.cancel()
+        }
+    }
+
+    @Test
+    fun con_envio_propio_los_antecedentes_y_registros_sucios_tampoco_salen_ni_se_cuentan() = conBase { db, archivos ->
+        val hq = db.historiaClinicaQueries
+        hq.upsertConsulta(Consulta("clinica-c9", "clinica-pac9", "m1", "clinica", "control", fecha, EstadoConsulta.CERRADA, remotoId = "R-9").toRow(50, dirty = false))
+        hq.upsertAntecedente(Antecedente("clinica-an9", "clinica-pac9", "clinica", "familiares", "acv", true, "x", "clinica-c9").toRow(60))
+        hq.upsertRegistro(RegistroClinico("clinica-r9", "clinica-pac9", "clinica-c9", "clinica", "interconsulta", fecha, mapOf("motivo" to "inventado")).toRow(70))
+        val antes = filasSucias(db)
+        val backend = clinicaPropia(soloLectura = false)
+        val m = motor(db, archivos, backend)
+
+        m.sync.empujarTodo()
+
+        assertEquals(emptyList(), backend.llamadas)
+        assertEquals(0, programado(m))
+        assertEquals(antes, filasSucias(db))
+        assertEquals(0, m.sync.pendientes.value)
+        m.scope.cancel()
+    }
+
+    @Test
+    fun pediatria_envia_y_la_hc_con_envio_propio_ni_se_toca_ni_se_cuenta() = conBase { db, archivos ->
+        sembrar(db, archivos, "pediatria")
+        sembrar(db, archivos, "clinica")
+        val clinicaAntes = filasSucias(db).map { filas -> filas.filter { it.toString().contains("clinica") } }
+        val pedi = pediatria()
+        val clin = clinicaPropia(soloLectura = false)
+        val m = motor(db, archivos, pedi, clin)
+
+        m.sync.empujarTodo()
+        esperarQuieto(m)
+
+        assertTrue("enviarSecciones" in pedi.llamadas && "enviarEstado" in pedi.llamadas, "pediatría no envió: ${pedi.llamadas}")
+        assertEquals(emptyList(), clin.llamadas)
+        assertEquals(clinicaAntes, filasSucias(db).map { filas -> filas.filter { it.toString().contains("clinica") } })
+        assertEquals(0, m.sync.pendientes.value, "pediatría quedó limpia y la de envío propio no se cuenta acá")
+        m.scope.cancel()
+    }
+
+    @Test
+    fun una_consulta_que_no_existe_no_programa_nada_con_envio_propio() = conBase { db, archivos ->
+        sembrar(db, archivos, "clinica")
+        val m = motor(db, archivos, clinicaPropia(soloLectura = false))
+
         m.sync.marcarSucia("no-existe", esperaMs = 0)
         m.sync.empujarYa("no-existe")
 

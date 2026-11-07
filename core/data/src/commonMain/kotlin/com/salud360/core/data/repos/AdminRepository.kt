@@ -36,11 +36,12 @@ class AdminRepository(
     private val q get() = db.authQueries
 
     /**
-     * Las que cobran licencias de verdad. Un backend de solo lectura (HC general) no es destino: registrarlo no debe
-     * cambiar nada para un médico solo de esa HC (sin destino, `guardarLicencia` sigue devolviendo true) ni sumar un
+     * Las que cobran licencias de verdad. Un backend de solo lectura, o que no administra su licencia desde la app
+     * ([HcBackend.administraLicencia], spec 005 RF-66: la HC general hasta E5), no es destino: registrarlo, o darle escritura, no
+     * debe cambiar nada para un médico solo de esa HC (sin destino, `guardarLicencia` sigue devolviendo true) ni sumar un
      * `false` por defecto a uno que además usa pediatría (RF-61).
      */
-    private val destinosDeLicencia get() = backends.filterValues { !it.soloLectura }
+    private val destinosDeLicencia get() = backends.filterValues { !it.soloLectura && it.administraLicencia }
 
     fun observarUsuarios(): Flow<List<Usuario>> = q.usuarios().flujoLista { it.toModel() }
     fun observarUsuariosPorRol(rol: Rol): Flow<List<Usuario>> = q.usuariosPorRol(rol.name).flujoLista { it.toModel() }
