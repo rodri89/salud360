@@ -9,6 +9,8 @@ import com.salud360.core.data.hcgeneral.TEXTO_DESCARTADO
 import com.salud360.core.data.hcgeneral.textoDelEstado
 import com.salud360.core.data.lista
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
+import com.salud360.core.data.repos.MarcasDeLaWeb
 import com.salud360.core.model.hc.CausaDeRechazo
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
@@ -116,6 +118,29 @@ class HcClinicaEnvioRechazoTest {
         assertEquals(setOf("nota/texto"), db.textosSucios("u1"))
     }
 
+    @Test
+    fun un_404_sobre_una_consulta_ya_enviada_la_marca_ya_no_figura_en_la_web_sin_tocar_ningun_dato() = conServidor {
+        db.sembrarPropia("u1", remotoId = "7001", dirty = false)
+        servidor.consultas[7001] = ServidorFalso.ConsultaWeb(7001, "c:u1", 5001, "control")
+        db.sembrarTexto("u1", "nota", "Texto de prueba")
+        servidor.falla = { TobbException(404, "consulta_no_encontrada", "No existe la consulta") }
+
+        envio.empujarYa("u1").join()
+
+        assertEquals(setOf("hcc-c7001"), MarcasDeLaWeb(db).delPaciente(PACIENTE).keys, "la web ya no la tiene (RF-33)")
+        assertEquals(setOf("nota/texto"), db.textosSucios("u1"), "y el dato sigue en el dispositivo, pendiente")
+        assertIs<EstadoEnvio.NoSePudoEnviar>(db.estadosDe("u1").getValue(PARTE_SECCIONES).estado)
+    }
+
+    @Test
+    fun un_404_antes_de_que_la_consulta_exista_en_la_web_no_marca_nada() = conServidor {
+        db.sembrarPropia("u1")
+        servidor.falla = { if (it == "crear") TobbException(404, "consulta_no_encontrada", "No existe") else null }
+
+        envio.empujarYa("u1").join()
+
+        assertEquals(emptyMap(), MarcasDeLaWeb(db).delPaciente(PACIENTE))
+    }
     @Test
     fun reintentar_tambien_sirve_si_lo_rechazado_fue_la_creacion() = conServidor {
         db.sembrarPropia("u1")

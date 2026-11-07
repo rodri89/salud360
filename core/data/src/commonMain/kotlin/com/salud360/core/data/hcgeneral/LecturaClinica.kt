@@ -5,6 +5,7 @@ import com.salud360.core.data.network.hc.CargaLaboratorioDto
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
 import com.salud360.core.data.network.hc.ExamenFisicoDto
 import com.salud360.core.data.network.hc.LaboratoriosDto
+import com.salud360.core.data.network.hc.PayloadsClinica
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
 import com.salud360.core.data.network.hc.RespuestaHistoriaDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
@@ -129,9 +130,15 @@ private fun fechaDeLaWeb(texto: String?): LocalDate? {
     return runCatching { LocalDate.parse(dia) }.getOrNull()
 }
 
-/** El id local de una consulta de la web, solo si esa consulta está en el dispositivo; si no, `null`. */
-private fun consultaLocalDe(consultaWebId: Long?, consultasLocales: Set<Id>): Id? =
-    consultaWebId?.takeIf { it.valido() }?.let(::idConsultaWeb)?.takeIf { it in consultasLocales }
+/**
+ * El id local de una consulta de la web, solo si esa consulta está en el dispositivo; si no, `null`. [vinculadas] son las consultas
+ * **propias** ya enviadas (spec 005, RF-33): el id de la web  su id local; lo de la web que cuelga de una de ellas cuelga de la propia, no de
+ * una `hcc-c<id>` que no existe.
+ */
+private fun consultaLocalDe(consultaWebId: Long?, consultasLocales: Set<Id>, vinculadas: Map<Long, Id> = emptyMap()): Id? {
+    val id = consultaWebId?.takeIf { it.valido() } ?: return null
+    return vinculadas[id] ?: idConsultaWeb(id).takeIf { it in consultasLocales }
+}
 
 // ---------- Consulta ----------
 
@@ -177,6 +184,24 @@ fun fusionarConsulta(web: Consulta, local: Consulta?): Consulta? {
     return nueva.takeIf { it != local }
 }
 
+/**
+ * Qué escribir de la cabecera [web] sobre la consulta **propia** ya enviada [propia] (spec 005, RF-33): la de la web, con las mismas
+ * reglas de [fusionarConsulta] (una edad vacía no pisa; se conserva `propia`), pero conservando su id local, su médico y su `remoto_id`
+ * —la web la trae como `hcc-c<id>`— y con dos protecciones: una **anulada** no se toca (es terminal: si la web la mostrara abierta
+ * sería una baja que no llegó) y una **cerrada** sigue cerrada (la web no reabre, D13: una lista que llegó vieja no la vuelve a abierta).
+ * `null` si no cambia nada. El llamador no la usa si la propia tiene cambios sin enviar ni si es de otro médico.
+ */
+fun fusionarConsultaPropia(web: Consulta, propia: Consulta): Consulta? {
+    if (propia.estado == EstadoConsulta.ANULADA) return null
+    val estado = if (propia.estado == EstadoConsulta.CERRADA) EstadoConsulta.CERRADA else web.estado
+    return fusionarConsulta(
+        web.copy(
+            id = propia.id, pacienteId = propia.pacienteId, medicoId = propia.medicoId, especialidad = propia.especialidad,
+            estado = estado, remotoId = propia.remotoId,
+        ),
+        propia,
+    )
+}
 /** El nombre del médico de una consulta ajena, para `medico_preferencia`; `null` para las propias o sin nombre. */
 fun nombreMedicoDeLaWeb(c: ConsultaCabeceraDto): MedicoPreferencia? {
     if (c.propia) return null
@@ -233,6 +258,63 @@ fun fusionarExamenFisico(consultaLocalId: Id, e: ExamenFisicoDto, local: ExamenF
     return nuevo.takeIf { it != base }
 }
 
+/**
+ * Qué escribir de lo que trae la web en el contenido de una consulta **propia** ya enviada (spec 005, RF-33, RF-34, T27 decisión 5).
+ * Un texto de los que esta app envía ([PayloadsClinica.SECCIONES_DE_TEXTO]) se actualiza solo si el dispositivo **no** lo tiene pendiente
+ * y si lo que hay acá es lo mismo que la web tenía la última vez ([loEnviado]) o está vacío: un texto distinto de lo último que la web tuvo
+ * y sin pendiente es algo que el médico **descartó** y se conserva solo en el dispositivo. Los formularios (E2) siguen la regla de
+ * siempre: se actualizan si no están pendientes. Un valor vacío no viene en [web] (nunca pisa).
+ */
+fun valoresDeLaWebParaLaPropia(
+    web: List<SeccionValor>,
+    locales: Map<Pair<String, String>, SeccionValor>,
+    pendientes: Set<Pair<String, String>>,
+    loEnviado: LoEnviado,
+): List<SeccionValor> = web.filter { w ->
+    val clave = w.seccion to w.campo
+    val local = locales[clave]
+    when {
+        clave in pendientes -> false
+        local?.valor == w.valor -> false
+        w.seccion !in PayloadsClinica.SECCIONES_DE_TEXTO -> true
+        else -> local == null || local.valor.isBlank() || local.valor == loEnviado.valores["${w.seccion}/${w.campo}"]
+    }
+}
+
+/**
+ * El examen físico de la consulta **propia** con lo que trae la web (misma idea que [valoresDeLaWebParaLaPropia]): cada campo que la web
+ * trae con dato reemplaza al de acá solo si acá está vacío o es lo último que la web tenía ([loExamen], por nombre del contrato); un
+ * campo distinto y sin pendiente se conserva (descartado). `null` si no hay nada que escribir. El llamador no la usa si la fila está sucia.
+ */
+fun fusionarExamenDeLaPropia(consultaLocalId: Id, e: ExamenFisicoDto, local: ExamenFisico?, loExamen: Map<String, String>): ExamenFisico? {
+    val base = local ?: ExamenFisico(consultaLocalId)
+    fun campo(nombre: String, web: String?, actual: String, medida: Boolean): String {
+        if (web.isNullOrBlank()) return actual
+        val vacio = if (medida) esVacioDeMedida(actual) else esVacio(actual)
+        return if (vacio || actual == loExamen[nombre]) web else actual
+    }
+    val nuevo = base.copy(
+        peso = campo("peso", e.peso, base.peso, medida = true),
+        talla = campo("talla", e.talla, base.talla, medida = true),
+        tensionArterial = campo("tension_arterial", e.tensionArterial, base.tensionArterial, medida = true),
+        imc = campo("imc", e.imc, base.imc, medida = true),
+        nota = campo("nota", e.nota, base.nota, medida = false),
+    )
+    return nuevo.takeIf { it != base }
+}
+
+/**
+ * Lo que la web tiene de la consulta después de esta lectura ([previo] + lo que trajo con dato): así lo que el médico cambie después se
+ * compara contra eso, también un vaciado a propósito (RF-69). Un valor vacío de la web **no** cambia lo anotado (puede ser un campo que
+ * nunca se cargó o que se vació allá; el envío siguiente decide por lo que escribió el médico).
+ */
+fun loEnviadoTrasLaLectura(previo: LoEnviado, s: SeccionesConsultaDto, e: ExamenFisicoDto): LoEnviado {
+    val textos = s.textos().filterValues { it.isNotBlank() }.mapKeys { "${it.key}/$CAMPO_TEXTO" }
+    val examen = listOf(
+        "peso" to e.peso, "talla" to e.talla, "tension_arterial" to e.tensionArterial, "imc" to e.imc, "nota" to e.nota,
+    ).filter { !it.second.isNullOrBlank() }.associate { it.first to it.second!! }
+    return previo.copy(valores = previo.valores + textos, examen = previo.examen + examen)
+}
 private fun camposDelExamen(peso: String?, talla: String?, tension: String?, imc: String?, nota: String?): List<String> = listOf(
     "peso" to peso, "talla" to talla, "tension_arterial" to tension, "imc" to imc, "nota" to nota,
 ).filter { !it.second.isNullOrBlank() }.map { it.first }
@@ -303,12 +385,12 @@ private fun cargaValida(c: CargaLaboratorioDto) =
  * Las cargas por paciente y fecha. La consulta de origen es la local `hcc-c<id>` si está en [consultasLocales] y, si no,
  * `null`: la carga se guarda igual, sin consulta. Los valores vacíos se descartan.
  */
-fun laboratoriosDeLaWeb(pacienteLocalId: Id, l: LaboratoriosDto, consultasLocales: Set<Id>): List<Laboratorio> =
+fun laboratoriosDeLaWeb(pacienteLocalId: Id, l: LaboratoriosDto, consultasLocales: Set<Id>, vinculadas: Map<Long, Id> = emptyMap()): List<Laboratorio> =
     cargasPorTipo(l).flatMap { (tipo, cargas) ->
         cargas.filter(::cargaValida).mapNotNull { c ->
             val fecha = fechaDeLaWeb(c.fecha) ?: return@mapNotNull null
             Laboratorio(
-                id = idCargaWeb(tipo, c.id), pacienteId = pacienteLocalId, consultaId = consultaLocalDe(c.consultaId, consultasLocales),
+                id = idCargaWeb(tipo, c.id), pacienteId = pacienteLocalId, consultaId = consultaLocalDe(c.consultaId, consultasLocales, vinculadas),
                 especialidad = CodigosHc.GENERAL, tipo = tipo, fecha = fecha, valores = c.valores.filterValues { it.isNotBlank() },
             )
         }
@@ -362,10 +444,10 @@ private fun numero(n: Int?): Map<String, String> = n?.let { mapOf(CAMPO_NUMERO t
  * (`especialista`, `solicito`, `respuesta`), cada uno con el id de su tipo, `remoto_id` = el id de la web y, si la web lo
  * mandó, el `numero` de orden como campo. Una fila sin texto no se convierte; un campo sin texto no se inventa.
  */
-fun registrosDeLaWeb(pacienteLocalId: Id, h: RespuestaHistoriaDto, consultasLocales: Set<Id>): List<RegistroClinico> =
+fun registrosDeLaWeb(pacienteLocalId: Id, h: RespuestaHistoriaDto, consultasLocales: Set<Id>, vinculadas: Map<Long, Id> = emptyMap()): List<RegistroClinico> =
     registrosWeb(h).map {
         RegistroClinico(
-            id = idFilaWeb(it.tipo, it.id), pacienteId = pacienteLocalId, consultaId = consultaLocalDe(it.consultaId, consultasLocales),
+            id = idFilaWeb(it.tipo, it.id), pacienteId = pacienteLocalId, consultaId = consultaLocalDe(it.consultaId, consultasLocales, vinculadas),
             especialidad = CodigosHc.GENERAL, tipo = it.tipo, fecha = fechaDeLaWeb(it.fecha), campos = it.campos,
             activo = true, remotoId = it.id.toString(),
         )

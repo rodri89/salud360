@@ -6,6 +6,7 @@ import com.salud360.core.data.hcgeneral.CATEGORIA_FAMILIARES
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS_LABORATORIO
 import com.salud360.core.data.hcgeneral.LecturaWeb
+import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
 import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
@@ -13,11 +14,14 @@ import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.filaDeLaWeb
 import com.salud360.core.data.hcgeneral.fusionarAntecedente
 import com.salud360.core.data.hcgeneral.fusionarConsulta
+import com.salud360.core.data.hcgeneral.fusionarConsultaPropia
+import com.salud360.core.data.hcgeneral.fusionarExamenDeLaPropia
 import com.salud360.core.data.hcgeneral.fusionarExamenFisico
 import com.salud360.core.data.hcgeneral.fusionarLaboratorio
 import com.salud360.core.data.hcgeneral.fusionarRegistro
 import com.salud360.core.data.hcgeneral.hayAlgo
 import com.salud360.core.data.hcgeneral.idConsultaWeb
+import com.salud360.core.data.hcgeneral.loEnviadoTrasLaLectura
 import com.salud360.core.data.hcgeneral.laboratoriosDeLaWeb
 import com.salud360.core.data.hcgeneral.motivosDeLaWeb
 import com.salud360.core.data.hcgeneral.noLeidasComoTexto
@@ -28,8 +32,10 @@ import com.salud360.core.data.hcgeneral.ordenarMasRecientesPrimero
 import com.salud360.core.data.hcgeneral.pendienteDeLaWeb
 import com.salud360.core.data.hcgeneral.registrosDeLaWeb
 import com.salud360.core.data.hcgeneral.valoresDeLaWeb
+import com.salud360.core.data.hcgeneral.valoresDeLaWebParaLaPropia
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
+import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ClinicaEscrituraApiRemota
@@ -51,6 +57,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.pacientes.PacienteExtra
 import kotlinx.coroutines.CancellationException
@@ -112,6 +119,7 @@ class HcClinicaBackend internal constructor(
     private val hq get() = db.historiaClinicaQueries
     private val pq get() = db.pacientesQueries
     private val marcas = MarcasDeLaWeb(db)
+    private val loEnviados = LoEnviadoGuardado(db)
 
     /** Una lectura a la vez: dos pantallas que piden lo mismo juntas hacen un solo pedido (la segunda ve el minuto). */
     private val candado = Mutex()
@@ -208,14 +216,44 @@ class HcClinicaBackend internal constructor(
                 return@forEachIndexed
             }
             val local = hq.consultaPorId(web.id).uno { it.toModel() }
-            val delDispositivo = hq.consultaPorRemotoId(especialidad, web.remotoId).lista { it.id }.any { it != web.id }
-            val intocable = web.id in sucias || delDispositivo || (local != null && local.pacienteId != pacienteId)
+            val vinculadas = hq.consultaPorRemotoId(especialidad, web.remotoId).lista { it.toModel() }.filter { it.id != web.id }
+            // Una propia de esta app que ya se envió (RF-33): la lista la trae como `hcc-c<id>` pero es la propia. Se refresca con lo que
+            // cambió en la web salvo lo pendiente, y no se vuelve a crear ni se deja una copia.
+            val propia = vinculadas.firstOrNull { it.propia && !it.esDeLaWeb() }
+            if (propia != null) {
+                if (local != null) retirarCopia(local, sello + i)
+                if (propia.medicoId == medicoId && propia.pacienteId == pacienteId && propia.id !in sucias) {
+                    fusionarConsultaPropia(web, propia)?.let { hq.upsertConsulta(it.filaDeLaWeb(sello + i)) }
+                }
+                return@forEachIndexed
+            }
+            val intocable = web.id in sucias || vinculadas.isNotEmpty() || (local != null && local.pacienteId != pacienteId)
             if (!intocable) fusionarConsulta(web, local)?.let { hq.upsertConsulta(it.filaDeLaWeb(sello + i)) }
             guardarNombreDelMedico(c, sello + i)
         }
         guardarOmitidas(pacienteId, paginas.first(), sello)
     }
 
+    /**
+     * La copia `hcc-c<id>` de una consulta que resultó ser una propia (la lectura la trajo antes de que el envío anotara el id de la web,
+     * o un corte dejó el id sin anotar): se da de baja para que la consulta se vea una sola vez (RF-33). Es una baja lógica de la fila de
+     * la consulta, no un borrado: lo que colgaba de ella queda en el dispositivo y no se pierde nada. No vuelve a crearse mientras la propia
+     * tenga ese `remoto_id`.
+     */
+    private suspend fun retirarCopia(copia: Consulta, sello: Long) {
+        log.i { "la consulta ${copia.id} es la propia ya enviada: se retira la copia" }
+        hq.upsertConsulta(copia.toRow(sello, deleted = true, dirty = false))
+    }
+    /** La consulta es una propia de esta app ya enviada con ese `remoto_id` y que se puede refrescar: no anulada (terminal). */
+    private fun esPropiaVinculada(local: Consulta, remotoId: String): Boolean =
+        local.propia && !local.esDeLaWeb() && local.remotoId == remotoId && local.estado != EstadoConsulta.ANULADA
+
+    /** Las propias ya enviadas del paciente, por el id de su consulta en la web: lo que la web guarda de ella cuelga de la propia (RF-33). */
+    private suspend fun vinculadasDelPaciente(pacienteId: Id): Map<Long, Id> =
+        hq.consultasDePaciente(pacienteId, especialidad).lista { it.toModel() }
+            .filter { it.propia && !it.esDeLaWeb() && it.estado != EstadoConsulta.ANULADA }
+            .mapNotNull { c -> c.remotoId.toLongOrNull()?.takeIf { it > 0 }?.let { it to c.id } }
+            .toMap()
     /** El nombre de un médico ajeno (`medico_preferencia`); uno vacío no pisa el que había y uno sin enviar no se toca. */
     private suspend fun guardarNombreDelMedico(c: ConsultaCabeceraDto, sello: Long) {
         val nombre = nombreMedicoDeLaWeb(c) ?: return
@@ -270,6 +308,8 @@ class HcClinicaBackend internal constructor(
         val sello = ahora()
         marcas.aplicar(pacienteId, LecturaWeb.Historia(ficha, h), hoy(), sello)
         val consultas = hq.consultasDePaciente(pacienteId, especialidad).lista { it.id }.toSet()
+        // Las propias ya enviadas (RF-33): lo que la web guarda de su consulta cuelga de ellas.
+        val vinculadas = vinculadasDelPaciente(pacienteId)
 
         val familiares = hq.antecedentesDeCategoria(pacienteId, especialidad, CATEGORIA_FAMILIARES).lista { it.toModel() }
         val antecedentesSucios = hq.antecedentesDirty().lista { it.id }.toSet()
@@ -278,14 +318,26 @@ class HcClinicaBackend internal constructor(
         }
 
         val cargasSucias = hq.laboratoriosDirty().lista { it.id }.toSet()
-        laboratoriosDeLaWeb(pacienteId, h.laboratorios, consultas).filter { it.id !in cargasSucias }.forEach { web ->
+        laboratoriosDeLaWeb(pacienteId, h.laboratorios, consultas, vinculadas).filter { it.id !in cargasSucias }.forEach { web ->
             val local = hq.laboratorioPorId(web.id).uno { it.toModel() }
             if (local != null && local.pacienteId != pacienteId) return@forEach
             fusionarLaboratorio(web, local)?.let { hq.upsertLaboratorio(it.filaDeLaWeb(sello)) }
         }
 
         val registrosSucios = hq.registrosDirty().lista { it.id }.toSet()
-        registrosDeLaWeb(pacienteId, h, consultas).filter { it.id !in registrosSucios }.forEach { web ->
+        // Las filas que esta app ya envió tienen su id local y el de la web (`remoto_id`): se emparejan por él (RF-33) y no se duplican.
+        val registrosPropios = hq.registrosDePacienteTodos(pacienteId, especialidad).lista { it.toModel() }
+            .filter { !it.id.startsWith(PREFIJO_ID_WEB) && it.remotoId.isNotBlank() }
+            .associateBy { it.tipo to it.remotoId }
+        registrosDeLaWeb(pacienteId, h, consultas, vinculadas).forEach { web ->
+            val propio = registrosPropios[web.tipo to web.remotoId]
+            if (propio != null) {
+                if (propio.id !in registrosSucios) {
+                    fusionarRegistro(web.copy(id = propio.id, activo = propio.activo), propio)?.let { hq.upsertRegistro(it.filaDeLaWeb(sello)) }
+                }
+                return@forEach
+            }
+            if (web.id in registrosSucios) return@forEach
             val local = hq.registroPorId(web.id).uno { it.toModel() }
             if (local != null && local.pacienteId != pacienteId) return@forEach
             fusionarRegistro(web, local)?.let { hq.upsertRegistro(it.filaDeLaWeb(sello)) }
@@ -327,14 +379,22 @@ class HcClinicaBackend internal constructor(
      */
     override suspend fun traerConsulta(consultaLocalId: Id, remotoId: String) {
         val consultaWebId = remotoId.toLongOrNull()?.takeIf { it > 0 }
-        if (consultaWebId == null || consultaLocalId != idConsultaWeb(consultaWebId)) {
+        if (consultaWebId == null) {
             log.w { "$consultaLocalId no es la consulta $remotoId de la web: no se pide" }
             return
         }
         candado.withLock {
             val local = hq.consultaPorId(consultaLocalId).uno { it.toModel() }
             if (local == null || local.especialidad != especialidad) return@withLock
-            if (consultaLocalId in hq.consultasDirty().lista { it.id }) return@withLock
+            // Es la consulta de la web (`hcc-c<id>`) o una propia ya enviada con ese `remoto_id` (RF-33); cualquier otra no se pide.
+            val deLaWeb = consultaLocalId == idConsultaWeb(consultaWebId)
+            if (!deLaWeb && !esPropiaVinculada(local, remotoId)) {
+                log.w { "$consultaLocalId no es la consulta $remotoId de la web: no se pide" }
+                return@withLock
+            }
+            // La fila sucia de una consulta de la web no se toca; la de una propia (cierre o baja pendientes) no impide refrescar su
+            // contenido: lo pendiente se protege campo por campo.
+            if (deLaWeb && consultaLocalId in hq.consultasDirty().lista { it.id }) return@withLock
             val ficha = pacientes.fichaConocida(local.pacienteId, especialidad)
             if (ficha == null) {
                 log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
@@ -380,14 +440,25 @@ class HcClinicaBackend internal constructor(
 
         val sucios = hq.seccionValoresDirty().lista { it }.filter { it.consulta_id == id }.map { it.seccion to it.campo }.toSet()
         val actuales = hq.valoresDeConsulta(id).lista { it.toModel() }.associateBy { it.seccion to it.campo }
-        valoresDeLaWeb(id, r.secciones).forEach { web ->
-            val clave = web.seccion to web.campo
-            if (clave !in sucios && actuales[clave]?.valor != web.valor) hq.upsertSeccionValor(web.filaDeLaWeb(sello))
-        }
-
-        if (id !in hq.examenesFisicosDirty().lista { it.consulta_id }) {
-            val actual = hq.examenFisicoDeConsulta(id).uno { it.toModel() }
-            fusionarExamenFisico(id, r.examenFisico, actual)?.let { hq.upsertExamenFisico(it.filaDeLaWeb(sello)) }
+        val examenSucio = id in hq.examenesFisicosDirty().lista { it.consulta_id }
+        val actualExamen = hq.examenFisicoDeConsulta(id).uno { it.toModel() }
+        if (local.propia && !local.esDeLaWeb()) {
+            // Una propia ya enviada (RF-33): lo pendiente manda, un vacío no pisa y lo que el médico descartó se conserva. Lo que la web
+            // tiene queda anotado, así lo que el médico escriba después se compara contra eso.
+            val previo = loEnviados.deLaConsulta(local.pacienteId, id)
+            valoresDeLaWebParaLaPropia(valoresDeLaWeb(id, r.secciones), actuales, sucios, previo)
+                .forEach { hq.upsertSeccionValor(it.filaDeLaWeb(sello)) }
+            if (!examenSucio) {
+                fusionarExamenDeLaPropia(id, r.examenFisico, actualExamen, previo.examen)?.let { hq.upsertExamenFisico(it.filaDeLaWeb(sello)) }
+            }
+            val nuevo = loEnviadoTrasLaLectura(previo, r.secciones, r.examenFisico)
+            if (nuevo != previo) loEnviados.guardar(local.pacienteId, id, nuevo, sello)
+        } else {
+            valoresDeLaWeb(id, r.secciones).forEach { web ->
+                val clave = web.seccion to web.campo
+                if (clave !in sucios && actuales[clave]?.valor != web.valor) hq.upsertSeccionValor(web.filaDeLaWeb(sello))
+            }
+            if (!examenSucio) fusionarExamenFisico(id, r.examenFisico, actualExamen)?.let { hq.upsertExamenFisico(it.filaDeLaWeb(sello)) }
         }
 
         val noLeidas = noLeidasComoTexto(r.noLeidas)

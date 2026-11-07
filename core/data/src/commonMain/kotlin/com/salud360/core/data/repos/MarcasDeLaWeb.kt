@@ -6,6 +6,7 @@ import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.claveDeCampo
 import com.salud360.core.data.hcgeneral.claveDeLaMarca
 import com.salud360.core.data.hcgeneral.clavesDelExamenTraido
+import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.filaDeLaWeb
 import com.salud360.core.data.hcgeneral.idConsultaWeb
 import com.salud360.core.data.hcgeneral.marcaAusente
@@ -18,6 +19,7 @@ import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.especialidad.SeccionesComunes
+import com.salud360.core.model.hc.EstadoConsulta
 import kotlinx.datetime.LocalDate
 
 /**
@@ -52,6 +54,15 @@ internal class MarcasDeLaWeb(private val db: Salud360Db) {
         }
     }
 
+    /**
+     * Marca «Ya no figura en la web» a la consulta de la web [consultaWebId] (`hcc-c<id>`) porque el envío de una propia ya enviada recibió un
+     * `404 consulta_no_encontrada` (RF-33, ClasificacionDeEnvio). Escribe la marca aunque la fila local tenga cambios pendientes (es lo que
+     * hace falta decir: la web ya no la tiene) y no toca ninguna fila clínica. La lectura la quita si la consulta vuelve (misma clave).
+     */
+    suspend fun marcarConsulta(pacienteId: Id, consultaWebId: Long, hoy: LocalDate, sello: Long) {
+        val clave = idConsultaWeb(consultaWebId)
+        if (clave !in delPaciente(pacienteId).keys) pq.upsertPacienteExtra(marcaAusente(pacienteId, clave, hoy).filaDeLaWeb(sello))
+    }
     /** Las claves de ausencia de lo que el dispositivo ya trajo de la web, limpio y de [pacienteId], y que [lectura] podría cubrir. */
     private suspend fun traido(pacienteId: Id, lectura: LecturaWeb): Set<String> = when (lectura) {
         is LecturaWeb.ConError -> emptySet()
@@ -61,20 +72,37 @@ internal class MarcasDeLaWeb(private val db: Salud360Db) {
         is LecturaWeb.Historia -> delHistorial(pacienteId)
     }
 
-    /** Las consultas de la web (`hcc-c<id>`) que el paciente tiene y no tienen cambios sin enviar. */
+    /**
+     * Las consultas de la web (`hcc-c<id>`) que el paciente tiene y no tienen cambios sin enviar, y las **propias** ya enviadas y limpias
+     * (RF-33) con la clave de la web de cada una (`hcc-c<remoto_id>`): una propia dada de baja en la web se marca igual que una ajena.
+     */
     private suspend fun consultasTraidas(pacienteId: Id): Set<String> =
-        hq.consultasDePaciente(pacienteId, CodigosHc.GENERAL).lista { it }
+        (hq.consultasDePaciente(pacienteId, CodigosHc.GENERAL).lista { it }
             .filter { it.dirty == 0L && it.id.startsWith("${PREFIJO_ID_WEB}c") }
-            .mapTo(linkedSetOf()) { it.id }
+            .map { it.id } + propiasTraidas(pacienteId).keys).toCollection(linkedSetOf())
 
-    /** Los textos, campos de formulario y datos del examen físico que la consulta [consultaId] ya trajo (si la consulta es traída y limpia). */
-    private suspend fun contenidoDeLaConsulta(pacienteId: Id, consultaId: Id): Set<String> {
-        if (consultaId !in consultasTraidas(pacienteId)) return emptySet()
+    /**
+     * Las propias de esta app ya enviadas, sin cambios pendientes y no anuladas (una baja a propósito no es una ausencia): clave de la web
+     * (`hcc-c<remoto_id>`) → id local.
+     */
+    private suspend fun propiasTraidas(pacienteId: Id): Map<String, Id> =
+        hq.consultasDePaciente(pacienteId, CodigosHc.GENERAL).lista { it }.filter { it.dirty == 0L }.map { it.toModel() }
+            .filter { it.propia && !it.esDeLaWeb() && it.estado != EstadoConsulta.ANULADA }
+            .mapNotNull { c -> c.remotoId.toLongOrNull()?.takeIf { it > 0 }?.let { idConsultaWeb(it) to c.id } }
+            .toMap()
+
+    /**
+     * Los textos, campos de formulario y datos del examen físico que la consulta [claveWeb] (`hcc-c<id>`) ya trajo (si la consulta es traída y
+     * limpia). Si es una propia, los valores están en su fila local y la clave de la marca sigue siendo la de la web.
+     */
+    private suspend fun contenidoDeLaConsulta(pacienteId: Id, claveWeb: Id): Set<String> {
+        if (claveWeb !in consultasTraidas(pacienteId)) return emptySet()
+        val consultaId = propiasTraidas(pacienteId)[claveWeb] ?: claveWeb
         val valores = hq.valoresDeConsulta(consultaId).lista { it }
             .filter { it.dirty == 0L && it.valor.isNotBlank() }
-            .map { claveDeCampo(consultaId, it.seccion, it.campo) }
+            .map { claveDeCampo(claveWeb, it.seccion, it.campo) }
         val examen = hq.examenFisicoDeConsulta(consultaId).uno { it }
-            ?.takeIf { it.dirty == 0L }?.toModel()?.let { clavesDelExamenTraido(consultaId, it) }.orEmpty()
+            ?.takeIf { it.dirty == 0L }?.toModel()?.let { clavesDelExamenTraido(claveWeb, it) }.orEmpty()
         return (valores + examen).toSet()
     }
 

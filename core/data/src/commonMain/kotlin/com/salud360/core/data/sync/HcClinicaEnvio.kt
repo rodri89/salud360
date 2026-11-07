@@ -33,6 +33,7 @@ import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.repos.EnvioDeConsultas
 import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.LoEnviadoGuardado
+import com.salud360.core.data.repos.MarcasDeLaWeb
 import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
@@ -155,6 +156,7 @@ open class HcClinicaEnvio(
     private val hq get() = db.historiaClinicaQueries
     private val estados = EstadosDeEnvio(db)
     private val loEnviados = LoEnviadoGuardado(db)
+    private val marcas = MarcasDeLaWeb(db)
 
     /** Protege [esperas] y [turnos]; no se sostiene mientras se espera ni mientras se envía. */
     private val candado = Mutex()
@@ -519,7 +521,10 @@ open class HcClinicaEnvio(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            fallo(paso, clasificarErrorDeEnvio(e, nombreHc, yaEnviada = webId != null).estado)
+            val clasificacion = clasificarErrorDeEnvio(e, nombreHc, yaEnviada = webId != null)
+            fallo(paso, clasificacion.estado)
+            // La web dio de baja la consulta que ya estaba enviada (RF-33): «Ya no figura en la web», sin tocar ningún dato local.
+            if (clasificacion.marcaYaNoFigura) webId?.let { marcas.marcarConsulta(consulta.pacienteId, it, hoy(), ahora()) }
             log.w { "la web no aceptó ${paso.parte} de la consulta ${consulta.id}: ${e.message}" }
             null
         }

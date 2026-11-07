@@ -60,6 +60,11 @@ data class AusenciasEnLaWeb(val marcas: Map<String, String> = emptyMap()) {
     /** La consulta [consultaId] ya no figura en la web. */
     fun consulta(consultaId: Id): Boolean = ItemAusente.Consulta(consultaId) in clasificadas
 
+    /**
+     * La consulta **propia** ya enviada cuyo id en la web es [remotoId] ya no figura en la web (spec 005, RF-33). La marca lleva la clave de
+     * la consulta de la web (`hcc-c<remoto_id>`) aunque la fila local tenga otro id.
+     */
+    fun consultaPropia(remotoId: String): Boolean = remotoId.toLongOrNull()?.takeIf { it > 0 }?.let { consulta(idConsultaWeb(it)) } == true
     /** El campo [campo] de la sección [seccion] de la consulta (también del examen físico) ya no figura en la web. */
     fun contenido(consultaId: Id, seccion: String, campo: String): Boolean = claveDeCampo(consultaId, seccion, campo) in marcas
 
