@@ -1,9 +1,23 @@
 package com.salud360.features.turnos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.graphics.Color
+import com.salud360.core.data.repos.hoy
+import com.salud360.core.ui.components.CalendarioDialog
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,7 +73,6 @@ import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.ui.components.AcceptButton
-import com.salud360.core.ui.components.BackButton
 import com.salud360.core.ui.components.ConfirmDialog
 import com.salud360.core.ui.components.DateField
 import com.salud360.core.ui.components.EmptyState
@@ -173,29 +186,12 @@ fun AgendaDiaScreen(
             fotoMedico()
             ScreenTitle("Agenda del día", tituloMedico)
         } else ScreenTitle("Agenda del día", tituloMedico)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::diaAnterior) { Icon(Icons.Default.ChevronLeft, contentDescription = "Día anterior") }
-            DateField("Fecha", state.fecha, { it?.let(vm::irA) }, Modifier.width(200.dp))
-            IconButton(onClick = vm::diaSiguiente) { Icon(Icons.Default.ChevronRight, contentDescription = "Día siguiente") }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Text(state.fecha.dayOfWeek.nombre(), fontWeight = FontWeight.SemiBold)
-            if (state.esFeriado) { Spacer(Modifier.width(8.dp)); StatusChip("Feriado", Salud360Colors.Danger) }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            AcceptButton("Sobreturno", onClick = { sobreturno = true })
-            BackButton("Ver semana", onClick = onVerSemana)
-        }
-        if (state.conCaja) {
-            val totalCaja = turnosDia.filter { it.estado != EstadoTurno.BLOQUEADO }.sumOf { it.caja }
-            Text("Caja del día: $ ${totalCaja.aImporte()}", fontWeight = FontWeight.SemiBold, color = Salud360Colors.SuccessDark, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-        if (state.proximasFechas.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(
-            Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("Próximas fechas disponibles:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
-            state.proximasFechas.forEach { d -> androidx.compose.material3.AssistChip(onClick = { vm.irA(d) }, label = { Text(d.conDia()) }) }
-        }
+        BarraAgendaDia(
+            fecha = state.fecha, esFeriado = state.esFeriado, proximasFechas = state.proximasFechas,
+            totalCaja = if (state.conCaja) turnosDia.filter { it.estado != EstadoTurno.BLOQUEADO }.sumOf { it.caja } else null,
+            onIrA = vm::irA, onAnterior = vm::diaAnterior, onSiguiente = vm::diaSiguiente,
+            onSobreturno = { sobreturno = true }, onVerSemana = onVerSemana,
+        )
         state.turnoAModificar?.let { BannerModificacion(it, onCancelar = vm::cancelarModificacion) }
         aviso?.let { Text(it, color = if (it.startsWith("Turno registrado") || it.startsWith("Turno movido") || it == "Horario bloqueado") Salud360Colors.SuccessDark else MaterialTheme.colorScheme.error) }
         state.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -235,6 +231,61 @@ fun AgendaDiaScreen(
         val siguiente = ordenados.getOrNull(idx + 1)?.takeIf { it.libre && it.horario !in horariosConTurno }?.horario
         val doble = ordenados.getOrNull(idx)?.doble ?: false
         AsignarTurnoDialog(vm, state.fecha, h, siguiente, primerControlDoble = state.primerControlDoble && doble, onCerrar = { slotLibre = null }, onAviso = { aviso = it })
+    }
+}
+
+/**
+ * Barra compacta de la agenda del día (1 o 2 líneas; envuelve en ancho angosto): navegación de fecha, «Sobreturno»,
+ * «Ver semana» y el total de la caja contra la derecha (solo si el médico usa caja); debajo, las próximas fechas con turno libre.
+ * Solo dispone los controles: cada acción sigue siendo la del [AgendaViewModel].
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BarraAgendaDia(
+    fecha: LocalDate, esFeriado: Boolean, proximasFechas: List<LocalDate>, totalCaja: Double?,
+    onIrA: (LocalDate) -> Unit, onAnterior: () -> Unit, onSiguiente: () -> Unit, onSobreturno: () -> Unit, onVerSemana: () -> Unit,
+) {
+    var calendario by remember { mutableStateOf(false) }
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onAnterior, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.ChevronLeft, contentDescription = "Día anterior") }
+            // El texto de la fecha abre el calendario (antes era el campo «Fecha» con su ícono).
+            TextButton(onClick = { calendario = true }) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha", modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(fecha.conDia(), fontWeight = FontWeight.SemiBold)
+            }
+            IconButton(onClick = onSiguiente, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.ChevronRight, contentDescription = "Día siguiente") }
+            if (fecha != hoy()) TextButton(onClick = { onIrA(hoy()) }) { Text("Hoy") }
+        }
+        if (esFeriado) StatusChip("Feriado", Salud360Colors.Danger)
+        BotonBarra("Sobreturno", Icons.Default.Add, Salud360Colors.Success, Salud360Colors.SuccessDark, onSobreturno)
+        BotonBarra("Ver semana", Icons.Default.ViewWeek, Salud360Colors.Grey, MaterialTheme.colorScheme.onSurfaceVariant, onVerSemana)
+        // La caja va contra el borde derecho; si no entra en la línea, pasa a la siguiente y sigue alineada a la derecha.
+        if (totalCaja != null) Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            StatusChip("Caja del día: $ ${totalCaja.aImporte()}", Salud360Colors.SuccessDark)
+        }
+    }
+    if (proximasFechas.isNotEmpty()) FlowRow(
+        Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Próximas fechas disponibles:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+        proximasFechas.forEach { d -> androidx.compose.material3.AssistChip(onClick = { onIrA(d) }, label = { Text(d.conDia()) }) }
+    }
+    if (calendario) CalendarioDialog(inicial = fecha, onElegida = { d -> d?.let(onIrA) }, onCerrar = { calendario = false })
+}
+
+/** Botón de la barra de la agenda: contorno de color, ícono y texto corto, más bajo que los botones de acción de los formularios. */
+@Composable
+private fun BotonBarra(texto: String, icono: androidx.compose.ui.graphics.vector.ImageVector, borde: Color, contenido: Color, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick, modifier = Modifier.height(36.dp), shape = CircleShape,
+        border = BorderStroke(1.dp, borde), colors = ButtonDefaults.outlinedButtonColors(contentColor = contenido),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        Icon(icono, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(texto)
     }
 }
 
