@@ -25,8 +25,8 @@ import kotlin.test.fail
  * especialidad que no tenga decidida su terna acá.
  *
  * - Pediatría: envía su motor de siempre (`HcApiSync`) y administra su licencia: `false`, `false`, `true`.
- * - La HC general (`clinica`): envía por su cuenta (`HcClinicaEnvio`, spec 005) y su licencia la administra la web de hclinica hasta
- *   E5 (RF-66): `envioPropio = true` y `administraLicencia = false`. Su `soloLectura` sigue en `true` hasta que T23 le dé la escritura.
+ * - La HC general (`clinica`): lee y escribe (`soloLectura = false`, T23), envía por su cuenta (`HcClinicaEnvio`, spec 005) y su licencia
+ *   la administra la web de hclinica hasta E5 (RF-66): `envioPropio = true` y `administraLicencia = false`.
  */
 class HcBackendsSoloLecturaTest {
 
@@ -63,8 +63,8 @@ class HcBackendsSoloLecturaTest {
         for ((codigo, backend) in backends) {
             val esperada = when (codigo) {
                 "pediatria" -> Terna(soloLectura = false, envioPropio = false, administraLicencia = true)
-                // Spec 005: envía por su cuenta y no administra licencias desde la app (RF-5, RF-66). `soloLectura` cambia con T23.
-                CodigosHc.GENERAL -> Terna(soloLectura = true, envioPropio = true, administraLicencia = false)
+                // Spec 005: lee y escribe (T23), envía por su cuenta y no administra licencias desde la app (RF-5, RF-66).
+                CodigosHc.GENERAL -> Terna(soloLectura = false, envioPropio = true, administraLicencia = false)
                 else -> fail("el backend de '$codigo' no tiene decidido qué declara: agregarlo acá con su soloLectura, su envioPropio y su administraLicencia")
             }
             assertEquals(esperada, Terna(backend.soloLectura, backend.envioPropio, backend.administraLicencia), "lo que declara '$codigo'")

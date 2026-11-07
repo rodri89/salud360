@@ -5,7 +5,6 @@ import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.network.hc.EnfermedadesApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
-import com.salud360.core.data.network.hc.HcApiSoloLectura
 import com.salud360.core.data.network.hc.PacientesHcApiRemota
 import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.repos.AdminRepository
@@ -79,17 +78,17 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
             }.toMap(),
         )
     }
-    // `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura` de cada código que se agregue acá. La HC general se
-    // registra de solo lectura (spec 002, entrega L): trae las consultas de la web y no manda nada. Usa el mismo
-    // cliente (misma URL y mismo token) que su configuración, su cartera y sus enfermedades, pero envuelto en
-    // `HcApiSoloLectura`: el backend no recibe con qué escribir. Sin URL de la HC general en el entorno no se registra
-    // y todo queda como antes (sin API).
+    // `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura`, `envioPropio` y `administraLicencia` de cada código que se agregue acá.
+    // La HC general se registra con lectura y escritura (spec 005, T23): usa el mismo cliente completo (misma URL y mismo token) que su
+    // configuración, su cartera y sus enfermedades; el backend lee por su envoltorio de solo lectura y recibe aparte la API de escritura,
+    // que todavía no usa (el motor de envío es `HcClinicaEnvio`, T24). Sin URL de la HC general en el entorno no se registra y todo
+    // queda como antes (sin API).
     single {
         HcBackends(
             get<HcApiClients>().porEspecialidad.mapNotNull { (codigo, cliente) ->
                 when (codigo) {
                     "pediatria" -> codigo to HcPediatriaBackend(get(), cliente)
-                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), HcApiSoloLectura(cliente), get<PacientesHcRepository>())
+                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), cliente, get<PacientesHcRepository>())
                     else -> null
                 }
             }.toMap(),

@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -65,9 +66,10 @@ class DataModuleLicenciaTest {
             assertNotNull(app.get<AuthRepository>())
             assertEquals(0, e.turnos.pedidos.get() + e.pediatria.pedidos.get() + e.clinica.pedidos.get(), "armar el grafo no pide nada a la red")
 
-            // Solo pediatría lleva licencia: clínica es de solo lectura y contesta «sin dato» sin pedir nada.
+            // Solo pediatría lleva licencia: clínica no la administra desde la app y contesta «sin dato» sin pedir nada.
             val clinica = backends.getValue("clinica")
-            assertTrue(clinica.soloLectura, "la HC general es de solo lectura")
+            assertFalse(clinica.soloLectura, "spec 005, T23: la HC general lee y escribe")
+            assertFalse(clinica.administraLicencia, "pero su licencia la administra la web")
             assertEquals(EstadoLicenciaRemoto.SinDato, clinica.licenciaDelServidor())
             assertEquals(0, e.clinica.pedidos.get(), "consultar la licencia de clínica no pide nada")
 

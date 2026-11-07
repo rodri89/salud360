@@ -176,7 +176,7 @@ class ConsultaViewModel(
         // médico escribió y todavía no se envió. Además se reintenta lo que haya quedado pendiente.
         viewModelScope.launch {
             val c = consultaFlow.first { it != null } ?: return@launch
-            soloLecturaWeb = c.esSoloLecturaWeb(hc.esSoloLectura(c.especialidad))
+            soloLecturaWeb = hc.esConsultaDeLaWeb(c)
             if (!hc.tieneApi(c.especialidad)) return@launch
             // Una consulta de la web: un solo pedido (RF-57), a mano si falla (RF-58), y nada que enviar ni reintentar.
             if (soloLecturaWeb) { leerDeLaWeb(c); return@launch }
@@ -234,8 +234,8 @@ class ConsultaViewModel(
             val catalogo = if (resuelta?.porPerfil == true) definiciones.catalogo(c.especialidad) else null
             // Spec 002 (entrega L): con un backend de solo lectura (HC general) además se leen las marcas, los avisos y los
             // nombres de los médicos de la web; las demás HC no piden nada más.
-            val backendSoloLectura = hc.esSoloLectura(c.especialidad)
-            val esDeLaWeb = c.esSoloLecturaWeb(backendSoloLectura)
+            val backendSoloLectura = hc.leeDeLaWeb(c.especialidad) // la HC se lee de la web, escriba o no el backend (spec 005, T23)
+            val esDeLaWeb = hc.esConsultaDeLaWeb(c)
             val leeLaWeb = esDeLaWeb || backendSoloLectura
             combine(
                 pacientes.observar(c.pacienteId),
@@ -644,7 +644,7 @@ class HistoriaClinicaViewModel(
      * true si la HC solo lee de la web (HC general, spec 002 entrega L): la pantalla muestra los grupos de [vista] y las
      * consultas de la web son solo para leer. Pediatría y las demás siguen con la lista de siempre.
      */
-    val soloLectura: Boolean = hc.esSoloLectura(especialidad)
+    val soloLectura: Boolean = hc.leeDeLaWeb(especialidad)
 
     /** true si la pantalla ofrece «Actualizar» (RF-57): solo donde el backend sabe leer a pedido. */
     val puedeActualizar: Boolean = hc.puedeActualizar(especialidad)

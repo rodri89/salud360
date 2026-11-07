@@ -29,7 +29,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `HcClinicaBackend` no escribe nunca (spec 002, E6.3 y E6.4, RF-47): ni por construcción ni por lo que sale a la red.
+ * La **lectura** de `HcClinicaBackend` no escribe nunca (spec 002, E6.3 y E6.4, RF-47). Desde la spec 005 (T23) el backend ya no es de
+ * solo lectura —recibe la API de escritura, ver `HcClinicaBackendEscrituraTest`— pero lo que lee sigue igual, y todo esto vale
+ * tal cual: ni por construcción ni por lo que sale a la red.
  * Contra un servidor local de la JVM (`127.0.0.1`, sin dependencias nuevas) que anota método y ruta de cada pedido: la
  * lista, el historial y cada consulta son solo `GET`, cada método de envío lanza sin tocar la red y los errores del
  * servidor llegan con su status, sin reintento y sin escribir nada.
@@ -83,7 +85,7 @@ class HcClinicaBackendSoloLecturaTest {
         try {
             HcClinicaPruebas.conBase(vinculado) { db, driver ->
                 val cliente = HcApiClient("http://127.0.0.1:${servidor.address.port}", "clinica").apply { token = "token-de-prueba-1" }
-                val backend = HcClinicaBackend(db, HcApiSoloLectura(cliente), HcClinicaPruebas.pacientes(db))
+                val backend = HcClinicaBackend(db, cliente, HcClinicaPruebas.pacientes(db))
                 Contexto(backend, pedidos, driver).bloque()
             }
         } finally {
@@ -101,17 +103,17 @@ class HcClinicaBackendSoloLecturaTest {
     // ---- Por construcción ----
 
     @Test
-    fun ningun_constructor_recibe_el_cliente_que_sabe_escribir() {
-        for (c in HcClinicaBackend::class.java.constructors) {
-            assertTrue(c.parameterTypes.none { it == HcApiClient::class.java }, c.toString())
-        }
-        // El público recibe el envoltorio de solo lectura.
-        assertTrue(HcClinicaBackend::class.java.constructors.any { c -> c.parameterTypes.any { it == HcApiSoloLectura::class.java } })
+    fun la_lectura_se_arma_siempre_con_el_envoltorio_de_solo_lectura_aunque_el_backend_reciba_el_cliente_completo() {
+        // T23: el constructor público recibe el cliente completo (también para la escritura, que este backend todavía no usa),
+        // pero la lectura la hace `ConsultasClinicaApi`, que solo sabe leer (comprobado en ConsultasClinicaApiSoloLecturaTest).
+        assertTrue(HcClinicaBackend::class.java.constructors.any { c -> c.parameterTypes.any { it == HcApiClient::class.java } })
+        assertTrue(HcClinicaBackend::class.java.constructors.none { c -> c.parameterTypes.any { it == HcApiSoloLectura::class.java } })
+        val lectura = HcClinicaBackend::class.java.declaredConstructors.flatMap { it.parameterTypes.toList() }
+        assertTrue(lectura.any { it == com.salud360.core.data.network.hc.ConsultasClinicaApi::class.java }, "la lectura es de una API que solo lee")
     }
 
     @Test
-    fun declara_solo_lectura() = conServidor(responder = { _, _ -> 200 to "{}" }) {
-        assertTrue(backend.soloLectura)
+    fun armarlo_no_pide_nada() = conServidor(responder = { _, _ -> 200 to "{}" }) {
         assertEquals("clinica", backend.especialidad)
         assertEquals(emptyList(), pedidos)
     }
@@ -405,7 +407,7 @@ class HcClinicaBackendSoloLecturaTest {
         servidor.stop(0) // el puerto queda libre y nadie escucha
         HcClinicaPruebas.conBase(true) { db, driver ->
             val backend = HcClinicaBackend(
-                db, HcApiSoloLectura(HcApiClient("http://127.0.0.1:$puerto", "clinica")), HcClinicaPruebas.pacientes(db),
+                db, HcApiClient("http://127.0.0.1:$puerto", "clinica"), HcClinicaPruebas.pacientes(db),
             )
             val antes = volcarTodo(driver)
 

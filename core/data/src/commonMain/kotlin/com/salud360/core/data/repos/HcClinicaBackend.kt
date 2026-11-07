@@ -31,10 +31,17 @@ import com.salud360.core.data.hcgeneral.valoresDeLaWeb
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.ClinicaEscrituraApi
+import com.salud360.core.data.network.hc.ClinicaEscrituraApiRemota
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
 import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.ConsultasClinicaApiRemota
+import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiSoloLectura
+import com.salud360.core.data.network.hc.RespuestaBajaDto
+import com.salud360.core.data.network.hc.RespuestaCerrarDto
+import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
+import com.salud360.core.data.network.hc.RespuestaEscrituraDto
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
 import com.salud360.core.data.network.hc.RespuestaHistoriaDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
@@ -55,10 +62,10 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 /**
- * Historia clínica general (`hclinica`), **solo lectura** (spec 002, entrega L): trae de la web las consultas del paciente,
- * su historial y el contenido de cada consulta, y lo deja en el dispositivo; no manda nada, nunca (RF-47).
+ * Historia clínica general (`hclinica`), **lectura** (spec 002, entrega L; desde la spec 005, T23, también recibe la API de escritura, que todavía no usa): trae de la web las consultas del paciente,
+ * su historial y el contenido de cada consulta, y lo deja en el dispositivo; su lectura no manda nada, nunca (RF-47).
  *
- * - No tiene cómo escribir: recibe un [HcApiSoloLectura] (o una [ConsultasClinicaApi], que solo lee) y todo método de
+ * - Su lectura no escribe: lee por una [ConsultasClinicaApi] (que solo lee; la remota se arma con un [HcApiSoloLectura]), recibe aparte la [escritura] y todo método de
  *   envío de [HcBackend] lanza [UnsupportedOperationException] sin tocar la red.
  * - Sin ficha de la web (`fichaConocida` nula) no pide nada y no llama a `pacientes/resolver` (RF-49).
  * - Pedidos (RF-57): abrir la historia de un paciente son la lista (50 por pedido) y un pedido de historial; abrir una
@@ -76,15 +83,26 @@ class HcClinicaBackend internal constructor(
     private val pacientes: PacientesHcRepository,
     private val ahora: () -> Long,
     private val maxPaginas: Int,
+    /**
+     * La API de escritura (spec 005, T19). Este backend la **recibe** pero todavía no la usa: el motor de envío es `HcClinicaEnvio`
+     * (T24 y T25). La lectura sigue siendo solo `GET` por [api], que solo sabe leer.
+     */
+    val escritura: ClinicaEscrituraApi,
 ) : HcBackend, Refrescable {
-    constructor(db: Salud360Db, api: HcApiSoloLectura, pacientes: PacientesHcRepository, ahora: () -> Long = ::ahoraMillis) :
-        this(db, ConsultasClinicaApiRemota(api), pacientes, ahora, MAX_PAGINAS)
+    /** Con el cliente completo: la lectura por su envoltorio de solo lectura y la escritura por [ClinicaEscrituraApiRemota]. */
+    constructor(db: Salud360Db, cliente: HcApiClient, pacientes: PacientesHcRepository, ahora: () -> Long = ::ahoraMillis) :
+        this(db, ConsultasClinicaApiRemota(HcApiSoloLectura(cliente)), pacientes, ahora, MAX_PAGINAS, ClinicaEscrituraApiRemota(cliente))
+
+    /** Para probar la lectura sin API de escritura: cualquier uso de [escritura] falla (la lectura nunca la usa). */
+    internal constructor(db: Salud360Db, api: ConsultasClinicaApi, pacientes: PacientesHcRepository, ahora: () -> Long, maxPaginas: Int) :
+        this(db, api, pacientes, ahora, maxPaginas, SinEscritura)
 
     override val especialidad: String = CodigosHc.GENERAL
 
-    override val soloLectura: Boolean = true
+    /** Spec 005 (T23, RF-1): ya no es de solo lectura. Lo que protege a la web (D1) no depende de esto: ver `HcRepository.leeDeLaWeb`. */
+    override val soloLectura: Boolean = false
 
-    /** Spec 005 (RF-5): su envío es de `HcClinicaEnvio`, no de `HcApiSync`. Todavía no envía nada: la escritura es de T23. */
+    /** Spec 005 (RF-5): su envío es de `HcClinicaEnvio`, no de `HcApiSync`: el motor viejo la ignora y no la cuenta. */
     override val envioPropio: Boolean = true
 
     /** Spec 005 (RF-66): la licencia de la HC general la administra la web de hclinica hasta E5; el panel de la app no la toca. */
@@ -397,8 +415,10 @@ class HcClinicaBackend internal constructor(
     /** La entrega L no trae adjuntos (`no_leidas` los avisa): no hay nada que bajar. */
     override suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray? = null
 
+    // Estos métodos son del motor viejo (`HcApiSync`), que ignora a este backend por `envioPropio`: la HC general se envía con
+    // `HcClinicaEnvio` y la API de escritura ([escritura]). Si alguien los llama, lanzan sin tocar la red, como siempre.
     private fun noEnvia(operacion: String): Nothing =
-        throw UnsupportedOperationException("La historia clínica general es de solo lectura: $operacion no manda nada")
+        throw UnsupportedOperationException("La historia clínica general no se envía con este motor ($operacion): lo hace HcClinicaEnvio")
 
     companion object {
         /** Consultas por pedido (Q9). */
@@ -413,4 +433,15 @@ class HcClinicaBackend internal constructor(
         /** El `codigo` del `404` de `GET consultas/{id}` cuando la consulta ya no figura (dada de baja o inexistente). */
         const val CODIGO_CONSULTA_NO_ENCONTRADA = "consulta_no_encontrada"
     }
+}
+
+/** Sin API de escritura: lo que usan los tests de la lectura. Ninguna lectura la llama; si algo lo hace, falla fuerte. */
+private object SinEscritura : ClinicaEscrituraApi {
+    private fun sinApi(): Nothing = throw UnsupportedOperationException("Este HcClinicaBackend se armó sin API de escritura")
+
+    override suspend fun crear(clave: String, dispositivo: String, pacienteWebId: Long, tipo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCrearConsultaDto = sinApi()
+    override suspend fun secciones(consultaWebId: Long, textos: Map<String, String>): RespuestaEscrituraDto = sinApi()
+    override suspend fun examen(consultaWebId: Long, campos: Map<String, String>): RespuestaEscrituraDto = sinApi()
+    override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto = sinApi()
+    override suspend fun baja(consultaWebId: Long, clave: String, dispositivo: String): RespuestaBajaDto = sinApi()
 }

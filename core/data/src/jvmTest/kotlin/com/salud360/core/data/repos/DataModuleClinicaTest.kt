@@ -5,6 +5,8 @@ import com.salud360.core.data.AppConfig
 import com.salud360.core.data.dataModule
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.mappers.toRow
+import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.ClinicaEscrituraApiRemota
 import com.salud360.core.data.network.hc.EjemplosConsultasClinica
 import com.salud360.core.data.network.hc.HcApiClients
 import com.salud360.core.data.repos.HcClinicaPruebas.FICHA
@@ -40,6 +42,7 @@ import java.net.InetSocketAddress
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -49,7 +52,7 @@ import kotlin.test.assertTrue
 /**
  * La HC general registrada de verdad en el módulo Koin de datos (spec 002, E6.5, RF-38, RF-47, RF-56, RF-60): con el
  * `dataModule` real y un servidor local de la JVM (`127.0.0.1`, sin dependencias nuevas) que anota método, ruta y
- * `Authorization` de cada pedido, se comprueba que `clinica` es un backend de solo lectura, que el flujo de lectura de
+ * `Authorization` de cada pedido, se comprueba que `clinica` es un backend de lectura y escritura (spec 005, T23: `soloLectura = false`, `envioPropio = true`), que el flujo de lectura de
  * `HcRepository` (sin pantalla) solo hace `GET` de `consultas`, `consultas/{id}` y `pacientes/{id}/historia`, y que el
  * motor de envío no manda nada de clínica con la base sucia.
  *
@@ -192,20 +195,25 @@ class DataModuleClinicaTest {
     // ---- Qué queda registrado ----
 
     @Test
-    fun clinica_queda_registrada_de_solo_lectura_y_pediatria_sigue_igual() = conEntorno {
+    fun clinica_queda_registrada_con_lectura_y_escritura_y_pediatria_sigue_igual() = conEntorno {
         assertEquals(setOf("pediatria", CodigosHc.GENERAL), backends.keys)
         val clinica = assertNotNull(backends[CodigosHc.GENERAL])
         assertIs<HcClinicaBackend>(clinica)
-        assertTrue(clinica.soloLectura)
+        assertFalse(clinica.soloLectura, "T23: ya no es de solo lectura")
+        assertTrue(clinica.envioPropio, "envía por su cuenta: el motor viejo la ignora")
+        assertFalse(clinica.administraLicencia, "su licencia la administra la web")
+        assertIs<ClinicaEscrituraApiRemota>(clinica.escritura, "trae el cliente completo")
         val pediatria = assertNotNull(backends["pediatria"])
         assertIs<HcPediatriaBackend>(pediatria)
         assertFalse(pediatria.soloLectura)
 
         assertTrue(hc.tieneApi(CodigosHc.GENERAL))
-        assertTrue(hc.esSoloLectura(CodigosHc.GENERAL))
+        assertFalse(hc.esSoloLectura(CodigosHc.GENERAL))
+        assertTrue(hc.leeDeLaWeb(CodigosHc.GENERAL), "su historia se sigue leyendo de la web")
         assertTrue(hc.puedeActualizar(CodigosHc.GENERAL))
         assertTrue(hc.tieneApi("pediatria"))
         assertFalse(hc.esSoloLectura("pediatria"))
+        assertFalse(hc.leeDeLaWeb("pediatria"))
         assertFalse(hc.puedeActualizar("pediatria"), "«Actualizar» es solo de la HC general")
         assertEquals(setOf("pediatria", CodigosHc.GENERAL), hc.especialidadesConApi)
         assertEquals(emptyList(), pedidos, "registrar no pide nada")
@@ -216,6 +224,7 @@ class DataModuleClinicaTest {
         assertEquals(setOf("pediatria"), backends.keys)
         assertFalse(hc.tieneApi(CodigosHc.GENERAL))
         assertFalse(hc.esSoloLectura(CodigosHc.GENERAL))
+        assertFalse(hc.leeDeLaWeb(CodigosHc.GENERAL))
         assertFalse(hc.puedeActualizar(CodigosHc.GENERAL))
         assertEquals(setOf("pediatria"), hc.especialidadesConApi)
         assertNull(hc.traerConsultasRemotas(PACIENTE, MEDICO, CodigosHc.GENERAL))
@@ -238,6 +247,24 @@ class DataModuleClinicaTest {
 
         assertTrue(pedidos.isNotEmpty())
         assertEquals(setOf("Bearer token-del-login"), pedidos.map { it.autorizacion }.toSet(), "el cliente al que `AuthRepository` le pone el token")
+    }
+
+    @Test
+    fun el_backend_trae_el_cliente_completo_con_el_token_del_login_y_la_lectura_sigue_siendo_solo_get() = conEntorno {
+        val clinica = backends.getValue(CodigosHc.GENERAL) as HcClinicaBackend
+
+        // Un único pedido al servidor falso local alcanza para ver que la escritura usa el cliente completo (DELETE con cuerpo y token).
+        assertFailsWith<TobbException> { clinica.escritura.baja(9003, "c:prueba-baja", "disp-prueba") }
+
+        val p = pedidos.single()
+        assertEquals("DELETE", p.metodo)
+        assertEquals("/api/salud360/consultas/9003", p.ruta)
+        assertTrue(p.cuerpo.isNotEmpty(), "el DELETE lleva su cuerpo")
+        assertEquals("Bearer token-de-prueba-1", p.autorizacion, "el mismo cliente (y token) que el resto de la HC general")
+
+        // Y leer, después, sigue siendo solo GET: la escritura no se mezcla con la lectura.
+        hc.traerConsultasRemotas(PACIENTE, MEDICO, CodigosHc.GENERAL)
+        assertEquals(emptyList(), pedidos.drop(1).filter { it.metodo != "GET" }.map { it.toString() })
     }
 
     // ---- El flujo de lectura de HcRepository, sin pantalla ----

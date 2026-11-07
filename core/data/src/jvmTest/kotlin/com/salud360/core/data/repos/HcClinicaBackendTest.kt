@@ -37,6 +37,7 @@ import kotlinx.coroutines.yield
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -113,9 +114,10 @@ class HcClinicaBackendTest {
     // ---- Qué guarda ----
 
     @Test
-    fun declara_su_especialidad_y_que_es_de_solo_lectura() = conBackend {
+    fun declara_su_especialidad_y_que_lee_y_escribe_con_envio_propio() = conBackend {
         assertEquals("clinica", backend.especialidad)
-        assertTrue(backend.soloLectura)
+        assertFalse(backend.soloLectura) // spec 005, T23
+        assertTrue(backend.envioPropio)
     }
 
     @Test

@@ -71,6 +71,17 @@ class HcRepository(
     /** true si esa especialidad tiene un backend que solo lee: lo traído de ella lo manda su dueño y la app no lo envía. */
     fun esSoloLectura(especialidad: String): Boolean = backends[especialidad]?.soloLectura == true
 
+    /**
+     * true si la historia de esa especialidad se **lee de la web**: la pantalla muestra lo que trajo la web (grupos, «Actualizar»,
+     * avisos) y una consulta con `remoto_id` que no es propia es de la web. Es la HC general —un backend de solo lectura o que sabe
+     * traer a pedido, [Refrescable]— **escriba o no** (spec 005, T23: al pasar a `soloLectura = false` esto no puede cambiar, o las
+     * consultas de la web dejarían de ser solo lectura, D1). Pediatría y las demás no se leen de la web.
+     */
+    fun leeDeLaWeb(especialidad: String): Boolean = backends[especialidad]?.let { it.soloLectura || it is Refrescable } == true
+
+    /** La consulta es de la web y nunca se escribe desde acá (RF-45, D1): su id es `hcc-…` o tiene `remoto_id` sin ser propia de la app. */
+    fun esConsultaDeLaWeb(consulta: Consulta): Boolean = consulta.esSoloLecturaWeb(leeDeLaWeb(consulta.especialidad))
+
     /** Especialidades que guardan también en su propio sistema, para traerlas sin que el médico las pida. */
     val especialidadesConApi: Set<String> get() = backends.keys
 
@@ -145,7 +156,7 @@ class HcRepository(
     // no cambian. La pantalla ya no ofrece ninguna de estas acciones sobre lo de la web; esto es la segunda barrera.
 
     /** La consulta se lee porque vino de la web ([esSoloLecturaWeb]); con el backend de su especialidad si lo tiene. */
-    private fun Consulta.deLaWeb(): Boolean = esSoloLecturaWeb(esSoloLectura(especialidad))
+    private fun Consulta.deLaWeb(): Boolean = esConsultaDeLaWeb(this)
 
     /** Escribe la cabecera de la consulta. `false` si es de la web: esa la trae la lectura y no se pisa desde acá. */
     suspend fun guardarConsulta(consulta: Consulta): Boolean {
