@@ -44,6 +44,9 @@ registros de personas): el repo es público.
   **T20 hecha (2026-11-06, `19d9a95`); sigue T21.** `hcgeneral/ClasificacionDeEnvio.kt` (puro): causa ajena → «En espera: <motivo con el nombre de la HC>» (401, 403 hc/médico/licencia/cartera/permiso, 404 paciente, 429, 5xx, 503, sin red, respuesta ilegible);
   causa del dato → «No se pudo enviar» (422, 404 consulta, 409, 403 consulta_no_propia); precedencia de RF-19 en `masPrioritaria`. `core/model/hc/EstadoEnvio.kt`. Estados en `paciente_extra` (`hce_estado_<consulta>:<parte>`, `dirty = 0`, sin migración) con
   `repos/EstadosDeEnvio.kt`; sobreviven a reabrir la app. Nada cableado todavía. `core:data` 1460 tests.
+  **T21 hecha (2026-11-06, `1bd70cf`); sigue T22.** `hcgeneral/PlanDeEnvio.kt` (puro): `planDeEnvio(EntradaDelPlan)` da pasos ordenados (crear → secciones → examen → … → cierre al final; `siguiente` corta en la primera parte frenada),
+  `sinViaje` (se limpia sin figurar enviado: lo que la web no guarda, desactivados, lo ya igual), `enReserva` (lo que la versión todavía no envía: queda sucio y no cuenta) y retenciones por partes rechazadas. Solo `propia`; solo lo tocado y con cambio real.
+  **Pendiente para T25:** registrar `LoEnviado` (lo último que la web confirmó, `conLoConfirmado`) y dejar la fila de la consulta `dirty` mientras falte cierre o baja. Ojo: `toSortedMap` y similares son solo JVM; compilar wasm antes de dar por hecho. `core:data` 1503 tests.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
