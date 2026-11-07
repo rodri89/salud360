@@ -4,10 +4,12 @@ import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.hcgeneral.EntradaDelContador
 import com.salud360.core.data.hcgeneral.EntradaDelPlan
+import com.salud360.core.data.hcgeneral.EstadoDeLaConsulta
 import com.salud360.core.data.hcgeneral.FilaSucia
 import com.salud360.core.data.hcgeneral.LoEnviado
 import com.salud360.core.data.hcgeneral.OrigenDeConsulta
 import com.salud360.core.data.hcgeneral.PARTE_CREAR
+import com.salud360.core.data.hcgeneral.PARTE_CIERRE
 import com.salud360.core.data.hcgeneral.PlanDeEnvio
 import com.salud360.core.data.hcgeneral.PasoDeEnvio
 import com.salud360.core.data.hcgeneral.ResumenDeEnvio
@@ -17,7 +19,9 @@ import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
 import com.salud360.core.data.hcgeneral.esperaDeReintento
+import com.salud360.core.data.hcgeneral.estadoDeLaConsulta
 import com.salud360.core.data.hcgeneral.estadoDeVinculo
+import com.salud360.core.data.hcgeneral.estadoPendienteDeLaConsulta
 import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.hcgeneral.planDeEnvio
 import com.salud360.core.data.hcgeneral.resumenDeEnvio
@@ -26,6 +30,7 @@ import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
+import com.salud360.core.data.repos.EnvioDeConsultas
 import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.LoEnviadoGuardado
 import com.salud360.core.data.repos.PacientesHcRepository
@@ -53,8 +58,12 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -141,7 +150,7 @@ open class HcClinicaEnvio(
      * la de otro, no programa ni manda ni toca nada. Por omisión no hay sesión: ante la duda no se manda con el token de nadie.
      */
     private val medicoDeLaSesion: () -> Id? = { null },
-) {
+) : EnvioDeConsultas {
     private val log = Logger.withTag("HcClinicaEnvio")
     private val hq get() = db.historiaClinicaQueries
     private val estados = EstadosDeEnvio(db)
@@ -171,6 +180,16 @@ open class HcClinicaEnvio(
      * automático, de ninguna consulta: el límite es por IP y lo comparte todo el consultorio (RF-29, sin ráfagas).
      */
     private var frenadoHasta = 0L
+
+    private val _enviandoElCierre = MutableStateFlow<Set<Id>>(emptySet())
+
+    /**
+     * Las consultas cuyo cierre está viajando ahora mismo (RF-55): desde que sale el pedido hasta que queda anotado lo que contestó la web.
+     * Mientras figuran acá la pantalla dice «Enviando el cierre.» y no se puede reabrir ni anular.
+     */
+    val consultasEnviandoElCierre: StateFlow<Set<Id>> = _enviandoElCierre.asStateFlow()
+
+    override fun enviandoElCierre(consultaId: Id): Boolean = consultaId in _enviandoElCierre.value
 
     private val _consultasCreadas = MutableSharedFlow<ConsultaCreadaEnLaWeb>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -232,7 +251,7 @@ open class HcClinicaEnvio(
      * Envía ya una consulta propia, sin esperar los 4 s: cancela la espera programada y entra en el turno de la consulta (si hay un
      * envío en curso, espera a que termine, RF-54). Devuelve el trabajo, que termina cuando termina ese envío.
      */
-    fun empujarYa(consultaId: Id): Job = scope.launch {
+    override fun empujarYa(consultaId: Id): Job = scope.launch {
         if (!puedeEnviar(consultaId)) return@launch
         candado.withLock { esperas.remove(consultaId)?.cancel() }
         enviarDeAUno(consultaId)
@@ -269,7 +288,7 @@ open class HcClinicaEnvio(
     }
 
     /** Corre [bloque] con el turno de la consulta: nunca a la vez que un envío de la misma (RF-54). */
-    private suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T {
+    override suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T {
         val turno = candado.withLock { turnos.getOrPut(consultaId) { Mutex() } }
         return turno.withLock { bloque() }
     }
@@ -345,6 +364,9 @@ open class HcClinicaEnvio(
             // La sesión se mira antes de cada paso (RF-50): si entró otro médico mientras tanto, lo que sigue no sale con su token (crearía la
             // consulta a nombre del otro, RF-14). Lo ya anotado queda; no se marca nada: lo del primero no se modifica.
             if (!esDeLaSesion(consulta)) break
+            // Si el médico anuló la consulta mientras viajaba un paso, lo que seguía en este plan ya no sale (RF-26): lo pendiente se descarta y
+            // el próximo envío manda la baja.
+            if (consulta.estado != EstadoConsulta.ANULADA && estaAnulada(consulta.id)) break
             // El envío se corta en el primer paso que no llega: nada de lo que sigue (y nunca el cierre) sale detrás.
             if (!envio.ejecutar(paso)) break
             confirmadas += paso.parte
@@ -359,6 +381,8 @@ open class HcClinicaEnvio(
             }
         }
     }
+
+    private suspend fun estaAnulada(consultaId: Id): Boolean = hq.consultaPorId(consultaId).uno { it.estado } == EstadoConsulta.ANULADA.name
 
     /** El envío de una consulta mientras corre: lo que se sabe de ella y lo que fue pasando. */
     private inner class EnvioEnCurso(
@@ -440,12 +464,18 @@ open class HcClinicaEnvio(
 
         private suspend fun cerrar(paso: PasoDeEnvio.Cerrar): Boolean {
             val id = webId ?: return false
-            val respuesta = intentar(paso) { api.cerrar(id, paso.clave, dispositivo, paso.fecha, paso.edadMostrar) } ?: return false
-            db.transaction {
-                if (respuesta.cerrada) paso.cubre.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
-                anotarEstado(paso.parte, if (respuesta.cerrada) emptySet() else setOf("el cierre"))
+            // «Enviando el cierre.» (RF-55): desde que sale el pedido hasta que queda anotado, así no se reabre ni se anula en el medio.
+            _enviandoElCierre.update { it + consulta.id }
+            try {
+                val respuesta = intentar(paso) { api.cerrar(id, paso.clave, dispositivo, paso.fecha, paso.edadMostrar) } ?: return false
+                db.transaction {
+                    if (respuesta.cerrada) paso.cubre.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                    anotarEstado(paso.parte, if (respuesta.cerrada) emptySet() else setOf("el cierre"))
+                }
+                return respuesta.cerrada
+            } finally {
+                _enviandoElCierre.update { it - consulta.id }
             }
-            return respuesta.cerrada
         }
 
         private suspend fun baja(paso: PasoDeEnvio.Baja): Boolean {
@@ -625,6 +655,39 @@ open class HcClinicaEnvio(
     /** true si la consulta existe y la cola puede ocuparse de ella ([puedeEnviar]). */
     private suspend fun puedeEnviar(consultaId: Id): Boolean = hq.consultaPorId(consultaId).uno { it.toModel() }?.let { puedeEnviar(it) } ?: false
 
+    /** Todo lo que el contador y la tarjeta necesitan de una consulta propia: su plan, sus estados y lo que no pasa por el plan. */
+    private suspend fun entradaDelContador(consulta: Consulta, sucio: Sucio): EntradaDelContador {
+        val estados = estadosDe(consulta)
+        return EntradaDelContador(
+            pacienteId = consulta.pacienteId,
+            plan = planDeEnvio(entradaDelPlan(consulta, sucio, loEnviados.deLaConsulta(consulta.pacienteId, consulta.id), estados)),
+            estados = estados,
+            laboratorios = sucio.laboratorios.filter { it.consultaId == consulta.id },
+            pendientes = sucio.pendientes.filter { it.consultaId == consulta.id },
+            habilitada = habilitada,
+        )
+    }
+
+    /**
+     * El estado de envío de una consulta propia de la HC general, para su tarjeta y su banner (T28; RF-24, RF-25, RF-26, RF-55): lo que
+     * falta mandar y cómo está («Falta enviar», «En espera: <motivo>», «No se pudo enviar: <motivo>»), si el cierre viaja ahora
+     * («Enviando el cierre.»), si la web ya la tiene cerrada, y si se puede reabrir o anular. `null` si no existe o no es propia (el
+     * histórico y lo de la web no se envían). Solo lee. Las reglas son las de [com.salud360.core.data.hcgeneral.estadoDeLaConsulta], las mismas
+     * que aplica `HcRepository`.
+     */
+    suspend fun estadoDeLaConsulta(consultaId: Id): EstadoDeLaConsulta? {
+        val consulta = hq.consultaPorId(consultaId).uno { it.toModel() } ?: return null
+        if (!esPropia(consulta)) return null
+        val sucia = hq.consultaPorId(consultaId).uno { it.dirty != 0L } ?: false
+        val entrada = entradaDelContador(consulta, cargarSucio())
+        return estadoDeLaConsulta(
+            consulta = consulta,
+            filaSucia = sucia,
+            estadoDelCierre = entrada.estados[PARTE_CIERRE],
+            envio = estadoPendienteDeLaConsulta(entrada),
+            enviandoElCierre = enviandoElCierre(consultaId),
+        )
+    }
     /**
      * Cuántas consultas propias de la HC general tienen cambios sin enviar, con cuáles están «En espera» o «No se pudo enviar»
      * (RF-31). Cuenta todo tipo de dato que esta versión envía y no cuenta el histórico ni lo que nunca va a viajar (RF-60). Usa lo
@@ -646,15 +709,7 @@ open class HcClinicaEnvio(
         val entradas = candidatas.sorted().mapNotNull { id ->
             val consulta = hq.consultaPorId(id).uno { it.toModel() } ?: return@mapNotNull null
             if (!puedeEnviar(consulta)) return@mapNotNull null // lo de otro médico no se cuenta ni se muestra (RF-50)
-            val estados = estadosDe(consulta)
-            EntradaDelContador(
-                pacienteId = consulta.pacienteId,
-                plan = planDeEnvio(entradaDelPlan(consulta, sucio, loEnviados.deLaConsulta(consulta.pacienteId, id), estados)),
-                estados = estados,
-                laboratorios = sucio.laboratorios.filter { it.consultaId == id },
-                pendientes = sucio.pendientes.filter { it.consultaId == id },
-                habilitada = habilitada,
-            )
+            entradaDelContador(consulta, sucio)
         }
         return resumenDeEnvio(entradas)
     }

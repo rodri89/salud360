@@ -17,7 +17,9 @@ import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
+import com.salud360.core.data.repos.HcClinicaBackend
 import com.salud360.core.data.repos.HcClinicaPruebas
+import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.database.Salud360Db
@@ -252,6 +254,14 @@ internal class Escena(
     )
 
     val envio: HcClinicaEnvio = nuevoEnvio()
+
+    /** El backend real de la HC general: lee de una API de mentira y escribe contra el servidor falso (como lo arma DataModule). */
+    val backend = HcClinicaBackend(db, HcClinicaPruebas.ApiFalsa(), pacientes, { 0L }, HcClinicaBackend.MAX_PAGINAS, servidor)
+
+    /** El repositorio de la app, con [envio] cableado: cerrar, reabrir y anular hablan con la cola. [conCola] = false lo arma sin ella. */
+    fun repositorio(conCola: Boolean = true) = HcRepository(db, mapOf(CodigosHc.GENERAL to backend), if (conCola) envio else null)
+
+    val hc: HcRepository by lazy { repositorio() }
 
     companion object {
         const val DISPOSITIVO = "disp-1"

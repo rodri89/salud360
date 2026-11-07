@@ -12,9 +12,14 @@ import com.salud360.core.data.hcgeneral.cambioReal
 import com.salud360.core.data.hcgeneral.cambioRealDeAntecedente
 import com.salud360.core.data.hcgeneral.cambioRealDeRegistro
 import com.salud360.core.data.hcgeneral.cambioRealDelExamen
+import com.salud360.core.data.hcgeneral.OrigenDeConsulta
+import com.salud360.core.data.hcgeneral.PARTE_BAJA
+import com.salud360.core.data.hcgeneral.PARTE_CIERRE
 import com.salud360.core.data.hcgeneral.cambiosRealesDeSeccion
+import com.salud360.core.data.hcgeneral.cierreEnviado
 import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
 import com.salud360.core.data.hcgeneral.nombresDeMedicosWeb
+import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -62,6 +67,11 @@ class HcRepository(
      * servidor. Una especialidad sin backend funciona exactamente como antes, solo local.
      */
     private val backends: Map<String, HcBackend> = emptyMap(),
+    /**
+     * La cola de envío de la HC general (spec 005, T28), si la hay: cerrar y anular una consulta propia piden el envío ya, y reabrir y
+     * anular consultan si el cierre está viajando y toman su turno. Sin ella (los tests, las demás historias) todo se guarda solo acá.
+     */
+    private val envio: EnvioDeConsultas? = null,
 ) {
     private val q get() = db.historiaClinicaQueries
 
@@ -165,27 +175,116 @@ class HcRepository(
         return true
     }
 
-    /** Cierra la consulta (`establecer_activo`). `false` si no existe o es de la web (una consulta de la web no se cierra, RF-45). */
+    /**
+     * Cierra la consulta (`establecer_activo`). `false` si no existe o es de la web (una consulta de la web no se cierra, RF-45).
+     *
+     * Una consulta **propia** de la HC general (spec 005, RF-22, RF-24, RF-55) queda cerrada en el dispositivo con el cierre pendiente de
+     * envío («Falta enviar») y se pide el envío ordenado a la cola: la creación si falta, el contenido y al final el cierre, con la fecha y
+     * la edad que cargó el médico. Si hay un envío en curso, el cierre espera a que termine. `false` también si está anulada o ya tiene el
+     * cierre enviado (o viajando): una cerrada que la web ya tiene cerrada no se vuelve a cerrar con otros datos. Conserva `propia`, el id
+     * de la web y todo lo cargado.
+     */
     suspend fun cerrarConsulta(id: Id, fecha: LocalDate? = null, edadMostrar: String? = null): Boolean {
         val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
+        if (c.esPropiaDeLaGeneral()) {
+            if (c.estado == EstadoConsulta.ANULADA) return false
+            if (c.estado == EstadoConsulta.CERRADA && (envio?.enviandoElCierre(id) == true || cierreYaEnviado(c))) return false
+        }
         q.upsertConsulta(c.copy(estado = EstadoConsulta.CERRADA, fecha = fecha ?: c.fecha, edadMostrar = edadMostrar ?: c.edadMostrar).toRow(ahoraMillis()))
+        if (c.esPropiaDeLaGeneral()) envio?.empujarYa(id)
         return true
     }
 
-    /** `false` si no existe o es de la web (no se reabre, RF-45). */
+    /**
+     * `false` si no existe o es de la web (no se reabre, RF-45).
+     *
+     * Una consulta **propia** de la HC general se reabre solo mientras el cierre **no se haya enviado** y **no esté viajando** (RF-25, D13: la
+     * web no tiene reapertura): vuelve a abierta sin tocar la web, y el cierre retirado no deja su estado («En espera», «No se pudo enviar»…)
+     * para que uno nuevo no quede frenado por el viejo. Se decide con el turno de la consulta tomado, así un envío no cambia las cosas en
+     * el medio. `false` si ya se envió el cierre, si está viajando o si está anulada; reabrir una abierta no cambia nada.
+     */
     suspend fun reabrirConsulta(id: Id): Boolean {
         val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
-        q.upsertConsulta(c.copy(estado = EstadoConsulta.ABIERTA).toRow(ahoraMillis()))
-        return true
+        if (!c.esPropiaDeLaGeneral()) {
+            q.upsertConsulta(c.copy(estado = EstadoConsulta.ABIERTA).toRow(ahoraMillis()))
+            return true
+        }
+        if (c.estado != EstadoConsulta.CERRADA) return c.estado == EstadoConsulta.ABIERTA
+        if (envio?.enviandoElCierre(id) == true) return false
+        return enElTurno(id) {
+            val fresca = consulta(id)
+            when {
+                fresca == null -> false
+                fresca.estado == EstadoConsulta.ABIERTA -> true
+                fresca.estado != EstadoConsulta.CERRADA || cierreYaEnviado(fresca) -> false
+                else -> {
+                    db.transaction {
+                        // La web la tiene abierta (si ya está creada): la fila queda como ella, sin nada que mandar de la consulta.
+                        q.upsertConsulta(fresca.copy(estado = EstadoConsulta.ABIERTA).toRow(ahoraMillis(), dirty = fresca.remotoId.isBlank()))
+                        EstadosDeEnvio(db).quitar(fresca.pacienteId, fresca.id, PARTE_CIERRE)
+                    }
+                    true
+                }
+            }
+        }
     }
 
-    /** `false` si no existe o es de la web (no se anula, RF-45). */
+    /**
+     * `false` si no existe o es de la web (no se anula, RF-45).
+     *
+     * Una consulta **propia** de la HC general (RF-26, D14): si **nunca se creó** en la web, no se envía nada (queda anulada solo en el
+     * dispositivo); si ya se creó, la cola **descarta lo pendiente**, deja terminar el envío que estuviera en curso y la da de baja en la web
+     * (nunca la borra). Lo cargado se conserva en el dispositivo. **No** se anula una con el cierre ya enviado (queda solo para leer) ni
+     * mientras el cierre viaja: `false`. Anular una cerrada cuyo cierre no se envió sí se puede (la web la sigue viendo abierta). Los datos
+     * por paciente pendientes asociados a ella quedan en reserva: ni se envían ni se tiran.
+     */
     suspend fun anularConsulta(id: Id): Boolean {
         val c = consulta(id)?.takeUnless { it.deLaWeb() } ?: return false
-        q.upsertConsulta(c.copy(estado = EstadoConsulta.ANULADA).toRow(ahoraMillis()))
-        return true
+        if (!c.esPropiaDeLaGeneral()) {
+            q.upsertConsulta(c.copy(estado = EstadoConsulta.ANULADA).toRow(ahoraMillis()))
+            return true
+        }
+        if (c.estado == EstadoConsulta.ANULADA) return true
+        if (envio?.enviandoElCierre(id) == true) return false
+        val anular: suspend () -> Boolean = {
+            val fresca = consulta(id)
+            when {
+                fresca == null -> false
+                fresca.estado == EstadoConsulta.ANULADA -> true
+                fresca.estado == EstadoConsulta.CERRADA && cierreYaEnviado(fresca) -> false
+                else -> {
+                    db.transaction {
+                        q.upsertConsulta(fresca.copy(estado = EstadoConsulta.ANULADA).toRow(ahoraMillis()))
+                        // Lo que esperaba (en espera, rechazado, descartado) ya no se va a enviar: solo importa la baja.
+                        val estados = EstadosDeEnvio(db)
+                        estados.deLaConsulta(fresca.pacienteId, fresca.id).keys.filter { it != PARTE_BAJA }.forEach {
+                            estados.quitar(fresca.pacienteId, fresca.id, it)
+                        }
+                    }
+                    true
+                }
+            }
+        }
+        // Una abierta se anula al instante: el envío en curso termina lo que está mandando y no sigue con el resto. Una cerrada espera su
+        // turno, porque quizá el cierre justo esté saliendo y entonces ya no se puede anular.
+        val anulo = if (c.estado == EstadoConsulta.CERRADA) enElTurno(id, anular) else anular()
+        if (anulo) envio?.empujarYa(id)
+        return anulo
     }
 
+    /** La consulta es propia de la app y de la HC general (la que se envía con `HcClinicaEnvio`): el histórico y las demás, no. */
+    private fun Consulta.esPropiaDeLaGeneral(): Boolean =
+        especialidad == CodigosHc.GENERAL && origenDeConsulta() == OrigenDeConsulta.PROPIA
+
+    /** La web ya tiene cerrada la consulta (RF-25): ver [cierreEnviado]. Lee el `dirty` de la fila y el estado de la parte «cierre». */
+    private suspend fun cierreYaEnviado(c: Consulta): Boolean {
+        val sucia = q.consultaPorId(c.id).uno { it.dirty != 0L } ?: return false
+        val estadoDelCierre = EstadosDeEnvio(db).deLaConsulta(c.pacienteId, c.id)[PARTE_CIERRE]?.estado
+        return cierreEnviado(c, sucia, estadoDelCierre)
+    }
+
+    /** Corre [bloque] con el turno de la consulta de la cola, si la hay; sin cola no hay con quién competir. */
+    private suspend fun <T> enElTurno(id: Id, bloque: suspend () -> T): T = if (envio != null) envio.conTurno(id, bloque) else bloque()
     suspend fun contarConsultas(medicoId: Id, desde: LocalDate, hasta: LocalDate): Long =
         q.contarConsultasMedico(medicoId, desde.toString(), hasta.toString()).uno { it } ?: 0
 

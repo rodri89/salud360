@@ -135,7 +135,8 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
         )
     }
     single { PacientesRepository(get()) }
-    single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
+    // Con la cola de envío de la HC general: cerrar y anular una consulta propia piden el envío, y reabrir y anular miran si el cierre viaja.
+    single { HcRepository(get(), get<HcBackends>().porEspecialidad, get<HcClinicaEnvio>()) }
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
     single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }

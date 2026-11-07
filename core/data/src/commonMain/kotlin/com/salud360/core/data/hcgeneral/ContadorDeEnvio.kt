@@ -62,6 +62,22 @@ data class EntradaDelContador(
 fun resumenDeEnvio(entradas: List<EntradaDelContador>): ResumenDeEnvio = ResumenDeEnvio(entradas.mapNotNull(::consultaPorEnviar))
 
 private fun consultaPorEnviar(e: EntradaDelContador): ConsultaPorEnviar? {
+    val situacion = when (estadoPendienteDeLaConsulta(e)) {
+        null -> return null
+        is EstadoEnvio.NoSePudoEnviar -> SituacionDeEnvio.NO_SE_PUDO_ENVIAR
+        is EstadoEnvio.EnEspera -> SituacionDeEnvio.EN_ESPERA
+        else -> SituacionDeEnvio.FALTA_ENVIAR
+    }
+    return ConsultaPorEnviar(e.plan.consultaId, e.pacienteId, situacion)
+}
+
+/**
+ * El estado de lo que le falta enviar a la consulta, o `null` si no le falta nada (o no es una propia): el más grave de sus partes
+ * pendientes —«No se pudo enviar» gana a «En espera», y esta a «Falta enviar» ([EstadoEnvio.Pendiente])—. Es el que ve el médico en la
+ * tarjeta y el banner de la consulta (T28) y el que cuenta [resumenDeEnvio]. Solo cuenta el estado de lo que realmente falta: el de una
+ * parte que no tiene nada pendiente no cambia la situación.
+ */
+fun estadoPendienteDeLaConsulta(e: EntradaDelContador): EstadoEnvio? {
     val plan = e.plan
     if (plan.motivoVacio != null) return null // histórico o de la web: nada sale, nada se cuenta (RF-7, RF-67)
 
@@ -76,12 +92,6 @@ private fun consultaPorEnviar(e: EntradaDelContador): ConsultaPorEnviar? {
     }
     if (partes.isEmpty()) return null
 
-    // Solo cuenta el estado de lo que realmente falta: el de una parte que no tiene nada pendiente no cambia la situación.
-    val estados = e.estados.filterKeys { it in partes }.values
-    val situacion = when {
-        estados.any { it is EstadoEnvio.NoSePudoEnviar } -> SituacionDeEnvio.NO_SE_PUDO_ENVIAR
-        estados.any { it is EstadoEnvio.EnEspera } -> SituacionDeEnvio.EN_ESPERA
-        else -> SituacionDeEnvio.FALTA_ENVIAR
-    }
-    return ConsultaPorEnviar(plan.consultaId, e.pacienteId, situacion)
+    val estados = e.estados.filterKeys { it in partes }.toList().sortedBy { it.first }.map { it.second }
+    return estados.firstOrNull { it is EstadoEnvio.NoSePudoEnviar } ?: estados.firstOrNull { it is EstadoEnvio.EnEspera } ?: EstadoEnvio.Pendiente
 }

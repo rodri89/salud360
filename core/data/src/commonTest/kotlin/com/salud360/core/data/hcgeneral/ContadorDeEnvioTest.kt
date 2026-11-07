@@ -16,6 +16,7 @@ import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * Spec 005, T24 (RF-31, RF-60, RF-67): cuántas consultas de la HC general tienen cambios sin enviar. Cuenta **consultas** (no filas),
@@ -332,6 +333,37 @@ class ContadorDeEnvioTest {
 
         assertEquals(SituacionDeEnvio.FALTA_ENVIAR, r.consultas.single().situacion)
     }
+    // ---- El estado de una consulta (la marca de su tarjeta, T28) ----
+
+    @Test
+    fun el_estado_pendiente_de_una_consulta_es_el_mas_grave_de_sus_partes() {
+        val texto = listOf(texto("c1"))
+
+        assertNull(estadoPendienteDeLaConsulta(entrada(propia("c1", remotoId = "7001"))), "nada pendiente: sin estado")
+        assertEquals(EstadoEnvio.Pendiente, estadoPendienteDeLaConsulta(entrada(propia("c1"), valores = texto)))
+        assertEquals(enEspera, estadoPendienteDeLaConsulta(entrada(propia("c1"), valores = texto, estados = mapOf(PARTE_CREAR to enEspera))))
+        assertEquals(rechazado, estadoPendienteDeLaConsulta(entrada(propia("c1"), valores = texto, estados = mapOf(PARTE_SECCIONES to rechazado))))
+        assertEquals(
+            rechazado,
+            estadoPendienteDeLaConsulta(entrada(propia("c1"), valores = texto, estados = mapOf(PARTE_CREAR to enEspera, PARTE_SECCIONES to rechazado))),
+            "un rechazo manda sobre una espera",
+        )
+    }
+
+    @Test
+    fun el_estado_pendiente_de_lo_que_no_se_cuenta_es_nulo() {
+        val historica = Consulta("h1", "p-h1", "m1", "clinica", "consulta", fecha, EstadoConsulta.CERRADA)
+
+        assertNull(estadoPendienteDeLaConsulta(entrada(historica, consultaSucia = true, valores = listOf(texto("h1")))))
+    }
+
+    @Test
+    fun la_situacion_de_la_cuenta_sale_del_mismo_estado() {
+        val r = resumenDeEnvio(listOf(entrada(propia("c1"), valores = listOf(texto("c1")), estados = mapOf(PARTE_CREAR to enEspera))))
+
+        assertEquals(SituacionDeEnvio.EN_ESPERA, r.consultas.single().situacion)
+    }
+
     // ---- Forma ----
 
     @Test
