@@ -633,13 +633,33 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     **Decisiones a revisar.** (a) **El plan necesita `LoEnviado`** (lo último que la web confirmó) para distinguir «vaciar a propósito» de «campo que no toqué» en el examen, que se guarda por fila; **T25 tiene que registrarlo al confirmar cada paso** (`conLoConfirmado`) y guardarlo donde sobreviva a cerrar la app; sin eso, un texto vaciado después de enviarse no se notaría (queda como «sin cambio real»). Es la consecuencia de la decisión (c) de T18. (b) La fila de la
     consulta tiene que seguir `dirty` mientras falte el cierre o la baja: T25/T28 no pueden limpiarla al confirmar la creación si la consulta ya está cerrada o anulada. (c) Una parte rechazada frena el cierre aunque ya no tenga filas sucias, mientras su estado siga como «No se pudo enviar»: lo resuelve el médico (reintentar o descartar, T27). (d) Los datos por paciente de una consulta anulada quedan en reserva (ni se envían ni se tiran): a confirmar con el usuario.
     (e) Los formularios, antecedentes y registros ya salen como pasos con sus filas, pero su cuerpo para la API (E2) no existe: hasta que se habilite E2 quedan en reserva, que es lo que pasa con `SUBENTREGA_HABILITADA = E1`. (f) Los antecedentes y los formularios no usan `LoEnviado`: dependen del cambio real de T18 (un vacío solo se escribe si fue un vaciado); E2 lo completa si hace falta.
-- [ ] **T22. `envioPropio` y `administraLicencia`; `HcApiSync` y `AdminRepository` los respetan.** RF-5, RF-66 — S — Toca API Laravel: no
+- [x] **T22. `envioPropio` y `administraLicencia`; `HcApiSync` y `AdminRepository` los respetan.** RF-5, RF-66 — S — Toca API Laravel: no
   - Tests primero: jvm `HcApiSyncSoloLecturaTest` ampliado (un backend con `envioPropio` no recibe nada de `HcApiSync` ni se cuenta);
     `HcBackendsSoloLecturaTest` **reescrito** (cada backend registrado declara `soloLectura`, `envioPropio` y `administraLicencia`);
     `AdminRepositoryLicenciasTest` ampliado (médico solo de clínica: `guardarLicencia` devuelve `true`, **cero llamadas** al backend de
     clínica y la licencia local queda como hoy; pediatría igual que antes).
   - Código: `HcBackend.kt` (dos propiedades con valor por defecto), `HcApiSync.kt`, `AdminRepository.destinosDeLicencia`.
   - Hecho cuando: los tests en verde (antes, en rojo) y `:core:data:jvmTest` completo en verde (pediatría sin cambios).
+  - Resultado (2026-11-06, `5668069`): sin migración, sin Laravel, sin pedidos de red, sin pantallas; `HcClinicaBackend` solo declara las dos propiedades (la escritura es T23). **Valores** (los del plan, `plan.md` «Módulos»; la spec RF-66 dice lo mismo:
+    la licencia de la HC general la administra la web de hclinica hasta E5 y el panel no cambia):
+
+    | Backend | `soloLectura` | `envioPropio` | `administraLicencia` |
+    |---|---|---|---|
+    | por omisión (`HcBackend`) | `false` | `false` | `true` |
+    | `pediatria` | `false` | `false` | `true` (sin cambios) |
+    | `clinica` (hoy) | `true` | **`true`** | **`false`** |
+    | `clinica` (después de T23) | `false` | `true` | `false` |
+
+    **Reglas.** (1) `HcApiSync` trata a un backend con `envioPropio` igual de cortado que a uno de solo lectura: `marcarSucia`, `empujarYa`, `empujarTodo` y `drenar` no llaman ni programan nada, `consultasDeAntecedentesPendientes` no lo resuelve, y lo `dirty` queda exactamente igual;
+    además **no se cuenta** en `pendientes` (lo cuenta su propio motor, T24). Los de solo lectura **sí** se siguen contando (Q16-A; un test existente lo fija y no cambió). El corte vale con `soloLectura = true` (hoy) y con `false` (después de T23). (2) `AdminRepository.destinosDeLicencia` =
+    `!soloLectura && administraLicencia`: un médico solo de clínica sigue guardándose con `true`, **cero llamadas** al backend de clínica y la fila de licencia local idéntica (`dirty` incluido) a la de no registrarla; un médico de pediatría y clínica recibe la respuesta de pediatría; `sincronizarLicencias`
+    no le pregunta nada a clínica. Un backend que escribe y sí administra su licencia (lo que hará E5) entra al panel como pediatría. (3) Pediatría y los backends que no declaran nada no cambian.
+    **Tests.** Rojo: primero no compilaban (`envioPropio`/`administraLicencia` no existían); con solo las dos propiedades agregadas a la interfaz, **8 tests fallaban por comportamiento** (3 de `HcApiSync`, 4 de `AdminRepository`, 1 de `HcBackendsSoloLecturaTest`). Verde: `HcApiSyncSoloLecturaTest` (de 10 a 14, +4),
+    `AdminRepositoryLicenciasTest` (de 6 a 12, +6) y `HcBackendsSoloLecturaTest` **reescrito** (de 1 a 2: la terna que declara cada backend registrado y los valores por omisión). Totales: `core:data:jvmTest` **1514** (1503 + 11; 0 fallos, 0 salteados), `especialidades:clinica` 38, `core:ui` 17,
+    `core:crecimiento` 6; `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev` y `:server:compileKotlin` con código 0. **Tests existentes que cambian:** solo en su definición (no en lo que afirman): los `BackendFalso` de `HcApiSyncSoloLecturaTest` y `AdminRepositoryLicenciasTest`
+    ganan un parámetro con valor por omisión (`envioPropio`, `administraLicencia`), y el test viejo de `HcBackendsSoloLecturaTest` se reescribió como pedía la tarea (`cada_backend_registrado_tiene_decidido_si_envia` → `cada_backend_registrado_declara_soloLectura_envioPropio_y_administraLicencia`). Ningún otro test cambió.
+    **Decisiones a revisar.** (a) **«Ni se cuenta»:** el contador `HcApiSync.pendientes` de clínica pasa a 0 desde ahora (antes contaba sus consultas sucias, Q16-A). Hasta T24 (`HcClinicaEnvio.contarPendientes`) nadie cuenta lo de clínica; la app no está publicada con esto y no hay pantalla nueva, pero si la interfaz
+    actual muestra ese contador para clínica, bajará a 0 entre T22 y T24. (b) Los valores por omisión son los del plan (`envioPropio = false`, `administraLicencia = true`). (c) `HcRepository.esSoloLectura` y las guardas de la web siguen mirando solo `soloLectura`: no cambian hasta T23.
 - [ ] **T23. `HcClinicaBackend` pasa de solo lectura a lectura y escritura.** RF-1 — M — Toca API Laravel: no
   - Tests primero: jvm `HcClinicaBackendEscrituraTest` (declara `soloLectura = false`, `envioPropio = true`, `administraLicencia =
     false`; recibe `ClinicaEscrituraApi`; la lectura sigue haciendo solo `GET`); **se reescriben** `HcClinicaBackendSoloLecturaTest`

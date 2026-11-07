@@ -47,6 +47,9 @@ registros de personas): el repo es público.
   **T21 hecha (2026-11-06, `1bd70cf`); sigue T22.** `hcgeneral/PlanDeEnvio.kt` (puro): `planDeEnvio(EntradaDelPlan)` da pasos ordenados (crear → secciones → examen → … → cierre al final; `siguiente` corta en la primera parte frenada),
   `sinViaje` (se limpia sin figurar enviado: lo que la web no guarda, desactivados, lo ya igual), `enReserva` (lo que la versión todavía no envía: queda sucio y no cuenta) y retenciones por partes rechazadas. Solo `propia`; solo lo tocado y con cambio real.
   **Pendiente para T25:** registrar `LoEnviado` (lo último que la web confirmó, `conLoConfirmado`) y dejar la fila de la consulta `dirty` mientras falte cierre o baja. Ojo: `toSortedMap` y similares son solo JVM; compilar wasm antes de dar por hecho. `core:data` 1503 tests.
+  **T22 hecha (2026-11-06, `5668069`); sigue T23.** `HcBackend.envioPropio` (por omisión `false`) y `administraLicencia` (por omisión `true`); `HcClinicaBackend` declara `true`/`false` (su `soloLectura` sigue `true` hasta T23). `HcApiSync` ignora y no cuenta a los de
+  `envioPropio` (los de solo lectura se siguen contando, Q16-A) y `AdminRepository.destinosDeLicencia` = `!soloLectura && administraLicencia` (el panel no cambia para clínica, RF-66). Ojo: el contador `HcApiSync.pendientes` de clínica es 0 desde acá hasta que T24 cuente lo suyo.
+  `core:data` 1514 tests.
 - **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
   clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
   sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
