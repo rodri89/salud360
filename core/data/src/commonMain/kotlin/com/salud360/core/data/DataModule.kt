@@ -23,6 +23,7 @@ import com.salud360.core.data.repos.PerfilesHcRepository
 import com.salud360.core.data.repos.RevocaSesion
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
+import com.salud360.core.data.sync.HcClinicaEnvio
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.Salud360Db
 import com.russhwolf.settings.Settings
@@ -107,6 +108,9 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     }
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
+    // La cola de envío de la HC general (spec 005, T24): una sola. Todavía no la llama nadie (el autoguardado y los disparadores se
+    // conectan en T31 y T36) y su envío no manda nada hasta T25; `HcApiSync` ignora a la HC general por `envioPropio`.
+    single { HcClinicaEnvio(get()) }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
     // `backendsHc`: los backends con API (pediatría informa la licencia; clínica, de solo lectura, contesta «sin dato») para que el ingreso la consulte al
     // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.

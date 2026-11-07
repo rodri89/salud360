@@ -15,6 +15,9 @@ import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.repos.HcClinicaPruebas.textos
 import com.salud360.core.data.repos.HcClinicaPruebas.volcar
 import com.salud360.core.data.sync.HcApiSync
+import com.salud360.core.data.sync.HcClinicaEnvio
+import com.salud360.core.data.sync.sembrarPropia
+import com.salud360.core.data.sync.sembrarTexto
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.auth.Licencia
@@ -47,6 +50,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -370,6 +374,26 @@ class DataModuleClinicaTest {
         pedidos.forEach { it.assertLecturaPermitida() }
         assertEquals(sucioAntes, sucias(driver))
         job.cancel()
+    }
+
+    // ---- La cola de envío de la HC general (spec 005, T24) ----
+
+    @Test
+    fun la_cola_de_envio_queda_registrada_una_sola_vez_y_todavia_no_pide_nada() = conEntorno {
+        val envio = koin.get<HcClinicaEnvio>()
+        assertSame(envio, koin.get<HcClinicaEnvio>(), "una sola cola para toda la app")
+        db.sembrarPropia("propia-1", paciente = PACIENTE, medico = MEDICO)
+        db.sembrarTexto("propia-1")
+        val sucioAntes = sucias(driver)
+
+        // Con la espera de siempre y a pedido: el gancho de envío todavía no manda nada (T25), y la base queda como estaba.
+        envio.marcarSucia("propia-1", esperaMs = 0)
+        envio.empujarYa("propia-1").join()
+        delay(300)
+
+        assertEquals(emptyList(), pedidos.map { it.toString() }, "cero pedidos")
+        assertEquals(sucioAntes, sucias(driver))
+        assertEquals(1, envio.contarPendientes().total, "y la cuenta ve la consulta propia con su texto sin enviar")
     }
 
     // ---- Licencias ----
