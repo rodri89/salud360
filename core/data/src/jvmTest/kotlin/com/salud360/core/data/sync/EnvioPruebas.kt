@@ -109,12 +109,20 @@ internal class EscrituraContada : ClinicaEscrituraApi {
     }
 }
 
-/** Una consulta propia (abierta, de la HC general) sin enviar. */
-internal suspend fun Salud360Db.sembrarPropia(id: Id, paciente: Id = PACIENTE, medico: Id = MEDICO, remotoId: String = "") =
-    historiaClinicaQueries.upsertConsulta(
-        Consulta(id, paciente, medico, "clinica", "consulta", FECHA_DE_PRUEBA, EstadoConsulta.ABIERTA, remotoId = remotoId, propia = true).toRow(100),
-    )
-
+/** Una consulta propia de la HC general sin enviar. El [tipo] es el que de verdad guarda la app (`control` o `telemedicina`). */
+internal suspend fun Salud360Db.sembrarPropia(
+    id: Id,
+    paciente: Id = PACIENTE,
+    medico: Id = MEDICO,
+    remotoId: String = "",
+    estado: EstadoConsulta = EstadoConsulta.ABIERTA,
+    edad: String = "45 años",
+    dirty: Boolean = true,
+    actualizadaEn: Long = 100,
+    tipo: String = "control",
+) = historiaClinicaQueries.upsertConsulta(
+    Consulta(id, paciente, medico, "clinica", tipo, FECHA_DE_PRUEBA, estado, edad, remotoId = remotoId, propia = true).toRow(actualizadaEn, dirty = dirty),
+)
 /** Una consulta del histórico del dispositivo (`propia = 0`): nada de ella sale solo (RF-7, D2). */
 internal suspend fun Salud360Db.sembrarHistorica(id: Id, paciente: Id = PACIENTE, medico: Id = MEDICO) =
     historiaClinicaQueries.upsertConsulta(Consulta(id, paciente, medico, "clinica", "consulta", FECHA_DE_PRUEBA, EstadoConsulta.CERRADA).toRow(100))

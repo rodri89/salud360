@@ -24,7 +24,9 @@ import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.EstadoEnvio
 import com.salud360.core.model.hc.ExamenFisico
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.pacientes.Paciente
@@ -379,23 +381,33 @@ class DataModuleClinicaTest {
     // ---- La cola de envío de la HC general (spec 005, T24) ----
 
     @Test
-    fun la_cola_de_envio_queda_registrada_una_sola_vez_y_todavia_no_pide_nada() = conEntorno {
+    fun la_cola_de_envio_queda_registrada_una_sola_vez_y_envia_por_el_cliente_completo_de_la_hc_general() = conEntorno {
         val envio = koin.get<HcClinicaEnvio>()
         assertSame(envio, koin.get<HcClinicaEnvio>(), "una sola cola para toda la app")
         db.sembrarPropia("propia-1", paciente = PACIENTE, medico = MEDICO)
         db.sembrarTexto("propia-1")
-        val sucioAntes = sucias(driver)
 
-        // Con la espera de siempre y a pedido: el gancho de envío todavía no manda nada (T25), y la base queda como estaba.
-        envio.marcarSucia("propia-1", esperaMs = 0)
+        // La cola real, con la API de escritura del backend de la HC general: lo primero que sale es la creación. El servidor falso de
+        // este test contesta la lista de consultas a cualquier pedido a `consultas` (no sabe crear): lo que se mira es por dónde salió el
+        // pedido y qué quedó en el dispositivo.
         envio.empujarYa("propia-1").join()
-        delay(300)
 
-        assertEquals(emptyList(), pedidos.map { it.toString() }, "cero pedidos")
-        assertEquals(sucioAntes, sucias(driver))
-        assertEquals(1, envio.contarPendientes().total, "y la cuenta ve la consulta propia con su texto sin enviar")
+        val pedido = pedidos.single()
+        assertEquals("POST", pedido.metodo)
+        assertEquals("/api/salud360/consultas", pedido.ruta)
+        assertEquals("Bearer token-de-prueba-1", pedido.autorizacion, "el mismo cliente (y token) que el resto de la HC general")
+        val cuerpo = pedido.cuerpo.decodeToString()
+        assertTrue("\"clave\":\"c:propia-1\"" in cuerpo, cuerpo)
+        assertTrue("\"paciente_id\":\"5001\"" in cuerpo, "la ficha de la web del paciente: $cuerpo")
+        assertTrue("\"dispositivo\":\"" in cuerpo && "\"dispositivo\":\"\"" !in cuerpo, "con el id de este dispositivo: $cuerpo")
+
+        // La web contestó algo que no es una creación: «En espera» (se reintenta sola, T27) y todo sigue en el dispositivo, sin perderse nada.
+        val estadoDeCrear = EstadosDeEnvio(db).deLaConsulta(PACIENTE, "propia-1").getValue("crear").estado
+        assertEquals(CausaEnEspera.SERVIDOR, assertIs<EstadoEnvio.EnEspera>(estadoDeCrear, estadoDeCrear.toString()).causa)
+        assertEquals("1", textos(driver, "SELECT COUNT(*) FROM seccion_valor WHERE dirty <> 0").single())
+        assertEquals("", textos(driver, "SELECT remoto_id FROM consulta WHERE id = 'propia-1'").single())
+        assertEquals(1, envio.contarPendientes().enEspera)
     }
-
     // ---- Licencias ----
 
     /** Lo que deja guardar la licencia de un médico solo de clínica: el resultado, la fila (con `dirty`) y los pedidos. */

@@ -65,11 +65,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     single { Settings() }
     single { ApiClient(config.apiBaseUrl) }
     single { TurnosOnlineClient(config.turnosUrl) }
-    single {
-        val settings = get<Settings>()
-        val id = settings.getStringOrNull("dispositivo_id") ?: newId().also { settings.putString("dispositivo_id", it) }
-        SyncEngine(get(), get(), get(), id)
-    }
+    single { SyncEngine(get(), get(), get(), get<Settings>().idDelDispositivo()) }
     // Clientes de las historias clínicas que ya tienen API propia (`salud360.entorno.*.hc.<codigo>`).
     // Las que no están configuradas siguen guardando solo en el dispositivo, sin cambiar nada.
     single {
@@ -108,9 +104,18 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     }
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
-    // La cola de envío de la HC general (spec 005, T24): una sola. Todavía no la llama nadie (el autoguardado y los disparadores se
-    // conectan en T31 y T36) y su envío no manda nada hasta T25; `HcApiSync` ignora a la HC general por `envioPropio`.
-    single { HcClinicaEnvio(get()) }
+    // La cola de envío de la HC general (spec 005, T24 y T25): una sola. Envía por la API de escritura del backend de la HC general (si el
+    // entorno no tiene su URL, no envía nada), con el mismo id de dispositivo que el resto de la app. Todavía no la llama nadie: el
+    // autoguardado y los disparadores se conectan en T31 y T36. `HcApiSync` ignora a la HC general por `envioPropio`.
+    single {
+        HcClinicaEnvio(
+            db = get(),
+            escritura = (get<HcBackends>().porEspecialidad[CodigosHc.GENERAL] as? HcClinicaBackend)?.escritura,
+            pacientes = get(),
+            dispositivo = get<Settings>().idDelDispositivo(),
+            nombreHc = nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
+        )
+    }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
     // `backendsHc`: los backends con API (pediatría informa la licencia; clínica, de solo lectura, contesta «sin dato») para que el ingreso la consulte al
     // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
@@ -144,3 +149,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
         )
     }
 }
+
+/** El id estable de este dispositivo (se crea la primera vez): lo usan el motor de turnos y los pedidos de escritura de la HC general. */
+private fun Settings.idDelDispositivo(): String =
+    getStringOrNull("dispositivo_id") ?: newId().also { putString("dispositivo_id", it) }
