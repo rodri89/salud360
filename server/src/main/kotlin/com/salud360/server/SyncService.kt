@@ -32,7 +32,7 @@ import kotlinx.serialization.json.jsonObject
  */
 class SyncService(private val db: Salud360Db) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val adapters: Map<String, SyncAdapter> = SyncAdapters.todos(db).associateBy { it.tabla }
+    private val adapters: Map<String, SyncAdapter> = SyncAdapters.completos(db).associateBy { it.tabla }
     private val mutex = Mutex()
     private val driver get() = db.driverInterno()
 

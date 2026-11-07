@@ -60,8 +60,22 @@ class TablaSync<R : Any, M : Any>(
 private fun clave(vararg partes: String) = partes.joinToString("|")
 private fun partes(id: String) = id.split("|")
 
+/**
+ * Las tablas de HC con **contenido clínico** que `SyncEngine` no maneja (spec 005, T30, RF-7): cada una tiene su envío propio
+ * (`HcApiSync` para pediatría, `HcClinicaEnvio` para la HC general) o no se envía, y el motor viejo pegaba su `sync/push` a rutas de
+ * turnos que no existen. Si alguien las creara, saldría de golpe todo lo `dirty` del dispositivo.
+ */
+val TABLAS_CLINICAS_DE_CONTENIDO: Set<String> = setOf(
+    Tablas.CONSULTAS, Tablas.SECCION_VALORES, Tablas.EXAMEN_FISICO, Tablas.ANTECEDENTES,
+    Tablas.REGISTROS, Tablas.LABORATORIOS, Tablas.ARCHIVOS, Tablas.PENDIENTES,
+)
+
 object SyncAdapters {
-    fun todos(db: Salud360Db): List<SyncAdapter> {
+    /** Lo que maneja el motor del cliente (`SyncEngine`): todas las tablas menos [TABLAS_CLINICAS_DE_CONTENIDO]. */
+    fun todos(db: Salud360Db): List<SyncAdapter> = completos(db).filterNot { it.tabla in TABLAS_CLINICAS_DE_CONTENIDO }
+
+    /** Todas las tablas, con las clínicas de contenido: es el catálogo del servidor (`:server`), que no cambia. */
+    fun completos(db: Salud360Db): List<SyncAdapter> {
         val a = db.authQueries
         val p = db.pacientesQueries
         val h = db.historiaClinicaQueries

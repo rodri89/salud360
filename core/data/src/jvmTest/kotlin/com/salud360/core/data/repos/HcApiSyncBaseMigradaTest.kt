@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.sync.HcApiSync
+import com.salud360.core.data.sync.SyncAdapters
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.Salud360Db
@@ -46,8 +47,8 @@ import kotlin.test.assertTrue
  * `8.sqm` (v8 a v9) como en [MigracionHepatologiaTest]. Sobre ella, un backend falso de solo lectura para `clinica` que
  * lanza si lo llaman (una fuga dejaría además un reintento programado) y se ejercitan todos los caminos de envío.
  *
- * El último test fija —sin cambiarlo— lo que hace hoy `SyncEngine` con esta misma base (otro canal, hacia las rutas de
- * turnos que no existen): es la deuda anotada en AGENTS.md.
+ * Los últimos tests fijan lo que hace `SyncEngine` con esta misma base (otro canal, hacia las rutas de turnos que no existen): desde la spec 005, T30,
+ * ya no manda las tablas clínicas de contenido, que es el riesgo que estaba anotado en AGENTS.md.
  */
 class HcApiSyncBaseMigradaTest {
 
@@ -485,24 +486,34 @@ class HcApiSyncBaseMigradaTest {
         m.scope.cancel()
     }
 
-    // ---- SyncEngine: otro canal, fuera del candado (deuda anotada en AGENTS.md) ----
+    // ---- SyncEngine: otro canal, fuera del candado (riesgo cerrado en la spec 005, T30) ----
+
+    /** Las tablas de HC con contenido clínico que `SyncEngine` ya no maneja (tienen envío propio o no se envían): spec 005, T30. */
+    private val tablasClinicasDeContenido = setOf(
+        "consultas", "seccion_valores", "examen_fisico", "antecedentes", "registros_clinicos", "laboratorios", "archivos", "pendientes",
+    )
+
+    /** Un servidor local que contesta 404 a todo y anota cada pedido: como las rutas `sync/push` y `sync/pull` de turnos, que no existen. */
+    private fun servidorQueDa404(pedidos: MutableList<Pair<String, String>>): HttpServer =
+        HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
+            createContext("/") { x ->
+                pedidos += x.requestMethod + " " + x.requestURI.path to x.requestBody.readBytes().decodeToString()
+                x.sendResponseHeaders(404, -1)
+                x.close()
+            }
+            start()
+        }
 
     /**
-     * Fija lo que hace HOY `SyncEngine` con esta base, sin cambiarlo: no pasa por el candado ni por ningún backend; arma de todas
-     * las tablas `dirty` (también las clínicas de `clinica`, y los antecedentes `activo = 0`) un `POST sync/push` hacia la URL de
-     * turnos. Esa ruta no existe: contesta 404, `sincronizar()` da `false` y no se limpia nada. Si alguien crea las rutas en turnos,
-     * o apaga el motor, este test avisa; es la deuda de AGENTS.md (`SyncEngine` se inicia tras cada login).
+     * Spec 005, T30 (RF-7, riesgo declarado): `SyncEngine` ya NO arma de las tablas clínicas de contenido (consultas, secciones, examen,
+     * antecedentes, registros, laboratorios, archivos, pendientes) un `POST sync/push` hacia turnos. Si alguien crea esas rutas, no sale
+     * nada del histórico. Con esta misma base (todo `dirty = 1`), el push ya solo lleva las demás tablas, igual que antes: la ruta da 404,
+     * `sincronizar()` da `false` y no se limpia nada.
      */
     @Test
-    fun documenta_SyncEngine_manda_todo_lo_sucio_a_una_ruta_que_da_404_y_no_limpia_nada() = conBaseMigrada { base ->
+    fun SyncEngine_ya_no_manda_las_tablas_clinicas_de_contenido_y_no_limpia_nada() = conBaseMigrada { base ->
         val pedidos = CopyOnWriteArrayList<Pair<String, String>>()
-        val servidor = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
-        servidor.createContext("/") { x ->
-            pedidos += x.requestMethod + " " + x.requestURI.path to x.requestBody.readBytes().decodeToString()
-            x.sendResponseHeaders(404, -1)
-            x.close()
-        }
-        servidor.start()
+        val servidor = servidorQueDa404(pedidos)
         val api = ApiClient("http://127.0.0.1:${servidor.address.port}").apply { token = "token-de-prueba-1" }
         try {
             val antes = volcadoTotal(base.driver)
@@ -511,31 +522,57 @@ class HcApiSyncBaseMigradaTest {
             val ok = engine.sincronizar()
 
             assertEquals(false, ok)
-            // Un solo pedido: el push; el 404 corta antes de subir archivos y de bajar nada.
+            // Un solo pedido: el push; el 404 corta antes de bajar nada.
             assertEquals(listOf("POST /sync/push"), pedidos.map { it.first })
             val cambios = Json.parseToJsonElement(pedidos.single().second).jsonObject.getValue("cambios").jsonArray.map { it.jsonObject }
             val porTabla = cambios.groupBy({ it.getValue("tabla").jsonPrimitive.content }, { it.getValue("registroId").jsonPrimitive.content })
-            // Qué tablas manda: las clínicas con filas `dirty` (clínica incluida; pediatría también; los pacientes limpios no).
-            assertEquals(
-                setOf(
-                    "consultas", "seccion_valores", "examen_fisico", "archivos", "registros_clinicos", "laboratorios", "antecedentes",
-                    "paciente_extras", "medico_preferencias",
-                ),
-                porTabla.keys,
-            )
-            assertEquals(consultasDeClinica.sorted().minus("c-p3-cerrada").plus("pedi-c1").sorted(), porTabla.getValue("consultas").sorted())
-            // Los antecedentes `activo = 0` de `8.sqm` salen como cualquier otro (con `activo = false` en el payload).
-            val antecedentes = cambios.filter { it.getValue("tabla").jsonPrimitive.content == "antecedentes" }
-            assertEquals(
-                perdedoras.sorted(),
-                antecedentes.filter { !it.getValue("payload").jsonObject.getValue("activo").jsonPrimitive.boolean }
-                    .map { it.getValue("registroId").jsonPrimitive.content }.sorted(),
-            )
+            // Qué tablas manda: las demás con filas `dirty`, como hoy (los antecedentes `activo = 0` de `8.sqm` ya no salen).
+            assertEquals(setOf("paciente_extras", "medico_preferencias"), porTabla.keys)
+            assertEquals(emptySet(), porTabla.keys.intersect(tablasClinicasDeContenido), "ni una fila clínica de contenido")
             assertEquals(cambios.size, engine.estado.value.pendientes, "nada se limpió: lo pendiente es todo lo enviado")
+            // Y no lleva cuenta de lo que ya no maneja: las filas clínicas siguen `dirty` para su envío propio, sin que el motor las vea.
             assertIdentica(base.driver, antes)
         } finally {
             api.http.close()
             servidor.stop(0)
         }
+    }
+
+    @Test
+    fun SyncEngine_con_solo_lo_clinico_pendiente_no_pide_nada_de_eso_ni_sube_adjuntos() = conBaseMigrada { base ->
+        // Se limpia lo que `SyncEngine` todavía maneja: queda sucio solo el contenido clínico, con un adjunto en el dispositivo.
+        ejecutar(base.driver, "UPDATE paciente_extra SET dirty = 0")
+        ejecutar(base.driver, "UPDATE medico_preferencia SET dirty = 0")
+        val ruta = base.archivos.guardar("ar-local", "estudio.pdf", "contenido de prueba".encodeToByteArray())
+        ejecutar(base.driver, "INSERT INTO archivo (id, paciente_id, consulta_id, seccion, nombre, mime, ruta_local, activo, updated_at, deleted, dirty, remoto_id) VALUES ('ar-local', '$p1', 'h-abierta', 'familigrama', 'estudio.pdf', 'application/pdf', '$ruta', 1, 5030, 0, 1, '')")
+        val pedidos = CopyOnWriteArrayList<Pair<String, String>>()
+        val servidor = servidorQueDa404(pedidos)
+        val api = ApiClient("http://127.0.0.1:${servidor.address.port}").apply { token = "token-de-prueba-1" }
+        try {
+            val antes = volcadoTotal(base.driver)
+            val engine = SyncEngine(base.db, api, base.archivos, "dispositivo-de-prueba")
+
+            assertEquals(false, engine.sincronizar())
+
+            assertEquals(0, pedidos.count { it.first.startsWith("POST") }, "ni push ni adjuntos: ${pedidos.map { it.first }}")
+            val tablas = pedidos.map { it.first }
+            assertTrue(tablas.none { "archivo" in it }, "no sube el adjunto: $tablas")
+            assertEquals(0, engine.estado.value.pendientes, "para el motor no queda nada pendiente")
+            assertIdentica(base.driver, antes)
+        } finally {
+            api.http.close()
+            servidor.stop(0)
+        }
+    }
+
+    @Test
+    fun SyncAdapters_todos_deja_afuera_las_ocho_tablas_clinicas_y_conserva_las_demas() = conBaseMigrada { base ->
+        val completos = SyncAdapters.completos(base.db).map { it.tabla }
+        val todos = SyncAdapters.todos(base.db).map { it.tabla }
+
+        assertEquals(emptySet(), todos.toSet().intersect(tablasClinicasDeContenido))
+        assertEquals(tablasClinicasDeContenido, completos.toSet().intersect(tablasClinicasDeContenido), "las ocho existen en el catálogo completo")
+        assertEquals(completos.filter { it !in tablasClinicasDeContenido }, todos, "las demás, las mismas y en el mismo orden")
+        assertTrue(todos.containsAll(listOf("usuarios", "pacientes", "paciente_extras", "medico_preferencias", "turnos")))
     }
 }

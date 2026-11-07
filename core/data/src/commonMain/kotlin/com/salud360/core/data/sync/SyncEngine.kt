@@ -1,6 +1,5 @@
 package com.salud360.core.data.sync
 
-import app.cash.sqldelight.async.coroutines.awaitAsList
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.files.ArchivoStore
@@ -39,7 +38,8 @@ data class EstadoSync(
  *    las marca limpias si fueron aceptadas.
  * 2. **Pull**: por cada tabla pide los cambios posteriores a la última versión conocida y los
  *    aplica localmente (última escritura gana; si hay un cambio local más nuevo se conserva).
- * 3. **Archivos**: sube los adjuntos que todavía no están en el servidor.
+ * Las tablas de HC con contenido clínico no pasan por acá (`TABLAS_CLINICAS_DE_CONTENIDO`, spec 005, T30): tienen envío propio o no se
+ * envían, así que tampoco se suben sus adjuntos (los de pediatría los sube `HcApiSync`). Sí se descarga un adjunto a pedido.
  *
  * Se ejecuta al iniciar sesión, periódicamente y cuando la app vuelve a primer plano.
  */
@@ -62,7 +62,6 @@ class SyncEngine(
         _estado.value = _estado.value.copy(sincronizando = true, error = null)
         val ok = runCatching {
             push()
-            subirArchivos()
             pull()
         }
         val pendientes = contarPendientes()
@@ -115,18 +114,6 @@ class SyncEngine(
                 desde = maxOf(desde, respuesta.hasta)
                 db.authQueries.guardarSyncEstado(adapter.tabla, desde, ahoraMillis())
             } while (respuesta.hayMas)
-        }
-    }
-
-    private suspend fun subirArchivos() {
-        val q = db.historiaClinicaQueries
-        val pendientes = q.archivosPendientesDeSubir().awaitAsList()
-        pendientes.forEach { fila ->
-            val archivo = fila.toModel()
-            val bytes = archivo.rutaLocal?.let { archivos.leer(it) } ?: return@forEach
-            runCatching { api.subirArchivo(archivo.id, archivo.nombre, archivo.mime, bytes) }
-                .onSuccess { r -> q.upsertArchivo(archivo.copy(subido = true, urlRemota = r.url).toRow(ahoraMillis())) }
-                .onFailure { log.w(it) { "No se pudo subir ${archivo.nombre}" } }
         }
     }
 
