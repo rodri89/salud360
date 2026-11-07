@@ -21,6 +21,7 @@ import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.PerfilesHcRepository
+import com.salud360.core.data.repos.TurnosPorConsulta
 import com.salud360.core.data.repos.RevocaSesion
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
@@ -76,6 +77,9 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
             }.toMap(),
         )
     }
+    // El turno de cada consulta propia de la HC general, compartido por la cola de envío y la lectura (`HcClinicaBackend`): nunca dos a la vez
+    // sobre la misma consulta (spec 005, T29). Va aparte porque la cola necesita la API de escritura del backend y el backend, el turno.
+    single { TurnosPorConsulta() }
     // `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura`, `envioPropio` y `administraLicencia` de cada código que se agregue acá.
     // La HC general se registra con lectura y escritura (spec 005, T23): usa el mismo cliente completo (misma URL y mismo token) que su
     // configuración, su cartera y sus enfermedades; el backend lee por su envoltorio de solo lectura y recibe aparte la API de escritura,
@@ -86,7 +90,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
             get<HcApiClients>().porEspecialidad.mapNotNull { (codigo, cliente) ->
                 when (codigo) {
                     "pediatria" -> codigo to HcPediatriaBackend(get(), cliente)
-                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), cliente, get<PacientesHcRepository>())
+                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), cliente, get<PacientesHcRepository>(), turnos = get())
                     else -> null
                 }
             }.toMap(),
@@ -112,6 +116,7 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
         val auth = lazy { get<AuthRepository>() }
         HcClinicaEnvio(
             db = get(),
+            turnos = get(),
             escritura = (get<HcBackends>().porEspecialidad[CodigosHc.GENERAL] as? HcClinicaBackend)?.escritura,
             pacientes = get(),
             dispositivo = get<Settings>().idDelDispositivo(),

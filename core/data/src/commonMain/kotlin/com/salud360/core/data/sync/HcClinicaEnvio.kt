@@ -35,6 +35,7 @@ import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.LoEnviadoGuardado
 import com.salud360.core.data.repos.MarcasDeLaWeb
 import com.salud360.core.data.repos.PacientesHcRepository
+import com.salud360.core.data.repos.TurnosPorConsulta
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
@@ -151,6 +152,8 @@ open class HcClinicaEnvio(
      * la de otro, no programa ni manda ni toca nada. Por omisión no hay sesión: ante la duda no se manda con el token de nadie.
      */
     private val medicoDeLaSesion: () -> Id? = { null },
+    /** El turno de cada consulta, compartido con la lectura de las propias (HcClinicaBackend) y HcRepository: nunca dos a la vez sobre la misma. */
+    private val turnos: TurnosPorConsulta = TurnosPorConsulta(),
 ) : EnvioDeConsultas {
     private val log = Logger.withTag("HcClinicaEnvio")
     private val hq get() = db.historiaClinicaQueries
@@ -158,14 +161,11 @@ open class HcClinicaEnvio(
     private val loEnviados = LoEnviadoGuardado(db)
     private val marcas = MarcasDeLaWeb(db)
 
-    /** Protege [esperas] y [turnos]; no se sostiene mientras se espera ni mientras se envía. */
+    /** Protege [esperas] e [intentos]; no se sostiene mientras se espera ni mientras se envía. */
     private val candado = Mutex()
 
     /** La espera programada de cada consulta (solo la que todavía no empezó a enviar). */
     private val esperas = mutableMapOf<Id, Job>()
-
-    /** El turno de cada consulta: quien lo tiene está enviándola. */
-    private val turnos = mutableMapOf<Id, Mutex>()
 
     /**
      * Cuántas veces seguidas falló cada consulta por una causa ajena al dato: de ahí sale la espera del próximo reintento solo
@@ -291,8 +291,7 @@ open class HcClinicaEnvio(
 
     /** Corre [bloque] con el turno de la consulta: nunca a la vez que un envío de la misma (RF-54). */
     override suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T {
-        val turno = candado.withLock { turnos.getOrPut(consultaId) { Mutex() } }
-        return turno.withLock { bloque() }
+        return turnos.conTurno(consultaId, bloque)
     }
 
     private suspend fun enviarDeAUno(consultaId: Id) {

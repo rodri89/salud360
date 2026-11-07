@@ -141,7 +141,8 @@ class HcClinicaBackendEscrituraTest {
     fun el_constructor_publico_recibe_el_cliente_completo_y_el_primario_las_dos_apis() {
         val publicos = HcClinicaBackend::class.java.constructors
         assertTrue(publicos.any { c -> c.parameterTypes.any { it == HcApiClient::class.java } }, "el cliente completo, para la lectura y la escritura")
-        val primario = HcClinicaBackend::class.java.declaredConstructors.single { c ->
+        // Sin el constructor sintético que Kotlin genera por los parámetros con valor por omisión (turnos).
+        val primario = HcClinicaBackend::class.java.declaredConstructors.filter { !it.isSynthetic }.single { c ->
             c.parameterTypes.any { it == ConsultasClinicaApi::class.java } && c.parameterTypes.any { it == ClinicaEscrituraApi::class.java }
         }
         assertTrue(primario.parameterTypes.contains(ClinicaEscrituraApi::class.java))

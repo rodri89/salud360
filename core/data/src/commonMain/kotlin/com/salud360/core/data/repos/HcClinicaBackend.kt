@@ -6,6 +6,7 @@ import com.salud360.core.data.hcgeneral.CATEGORIA_FAMILIARES
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS
 import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS_LABORATORIO
 import com.salud360.core.data.hcgeneral.LecturaWeb
+import com.salud360.core.data.hcgeneral.LoEnviado
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
 import com.salud360.core.data.hcgeneral.claveNoLeidas
@@ -95,10 +96,17 @@ class HcClinicaBackend internal constructor(
      * (T24 y T25). La lectura sigue siendo solo `GET` por [api], que solo sabe leer.
      */
     val escritura: ClinicaEscrituraApi,
+    /** El turno por consulta que comparte con la cola de envío: la lectura de una propia lo toma solo para aplicar lo que trajo. */
+    private val turnos: TurnosPorConsulta = TurnosPorConsulta(),
 ) : HcBackend, Refrescable {
     /** Con el cliente completo: la lectura por su envoltorio de solo lectura y la escritura por [ClinicaEscrituraApiRemota]. */
-    constructor(db: Salud360Db, cliente: HcApiClient, pacientes: PacientesHcRepository, ahora: () -> Long = ::ahoraMillis) :
-        this(db, ConsultasClinicaApiRemota(HcApiSoloLectura(cliente)), pacientes, ahora, MAX_PAGINAS, ClinicaEscrituraApiRemota(cliente))
+    constructor(
+        db: Salud360Db,
+        cliente: HcApiClient,
+        pacientes: PacientesHcRepository,
+        ahora: () -> Long = ::ahoraMillis,
+        turnos: TurnosPorConsulta = TurnosPorConsulta(),
+    ) : this(db, ConsultasClinicaApiRemota(HcApiSoloLectura(cliente)), pacientes, ahora, MAX_PAGINAS, ClinicaEscrituraApiRemota(cliente), turnos)
 
     /** Para probar la lectura sin API de escritura: cualquier uso de [escritura] falla (la lectura nunca la usa). */
     internal constructor(db: Salud360Db, api: ConsultasClinicaApi, pacientes: PacientesHcRepository, ahora: () -> Long, maxPaginas: Int) :
@@ -383,23 +391,28 @@ class HcClinicaBackend internal constructor(
             log.w { "$consultaLocalId no es la consulta $remotoId de la web: no se pide" }
             return
         }
-        candado.withLock {
+        // Primero el pedido, con el candado de la lectura y sin el turno de la consulta. Una consulta de la web se aplica ahí mismo, como
+        // siempre; una propia deja lo que trajo (y cómo estaba lo enviado antes de pedirlo) para aplicarlo con su turno.
+        val propia = candado.withLock {
             val local = hq.consultaPorId(consultaLocalId).uno { it.toModel() }
-            if (local == null || local.especialidad != especialidad) return@withLock
+            if (local == null || local.especialidad != especialidad) return@withLock null
             // Es la consulta de la web (`hcc-c<id>`) o una propia ya enviada con ese `remoto_id` (RF-33); cualquier otra no se pide.
             val deLaWeb = consultaLocalId == idConsultaWeb(consultaWebId)
             if (!deLaWeb && !esPropiaVinculada(local, remotoId)) {
                 log.w { "$consultaLocalId no es la consulta $remotoId de la web: no se pide" }
-                return@withLock
+                return@withLock null
             }
             // La fila sucia de una consulta de la web no se toca; la de una propia (cierre o baja pendientes) no impide refrescar su
             // contenido: lo pendiente se protege campo por campo.
-            if (deLaWeb && consultaLocalId in hq.consultasDirty().lista { it.id }) return@withLock
+            if (deLaWeb && consultaLocalId in hq.consultasDirty().lista { it.id }) return@withLock null
             val ficha = pacientes.fichaConocida(local.pacienteId, especialidad)
             if (ficha == null) {
                 log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
-                return@withLock
+                return@withLock null
             }
+            // Lo que la web tiene de la propia según esta app, ANTES de pedir: si cuando llegue la respuesta ya es otro, un envío confirmó algo
+            // en el medio y la respuesta puede ser más vieja que eso.
+            val antes = if (deLaWeb) null else loEnviados.deLaConsulta(local.pacienteId, local.id)
             val respuesta = try {
                 api.consulta(consultaWebId)
             } catch (e: TobbException) {
@@ -410,10 +423,45 @@ class HcClinicaBackend internal constructor(
             if (respuesta.consulta.pacienteId != ficha) {
                 throw respuestaDudosa("la consulta $consultaWebId es de la ficha ${respuesta.consulta.pacienteId} y el paciente tiene la $ficha")
             }
-            db.transaction { aplicarConsulta(local, respuesta) }
-        }
+            if (antes == null) {
+                db.transaction { aplicarConsulta(local, respuesta) }
+                null
+            } else {
+                PropiaTraida(local.id, local.pacienteId, remotoId, respuesta, antes)
+            }
+        } ?: return
+        aplicarEnSuTurno(propia)
     }
 
+    /** El contenido que trajo la web de una propia, a la espera de su turno: [antes] es lo que la web tenía según `LoEnviado` al pedirlo. */
+    private class PropiaTraida(
+        val id: Id,
+        val pacienteId: Id,
+        val remotoId: String,
+        val respuesta: RespuestaConsultaDto,
+        val antes: LoEnviado,
+    )
+
+    /**
+     * Aplica lo que trajo la web de una propia **con el turno de la consulta** (el mismo de la cola de envío, RF-54), así nunca corre a la
+     * vez que un envío ni lo deshace. Si desde que se pidió un envío confirmó algo (`LoEnviado` cambió), la respuesta puede ser anterior y no
+     * se aplica: la lectura siguiente trae lo vigente. Tampoco si mientras tanto dejó de ser una propia refrescable (la anularon).
+     *
+     * Sin riesgo de bloqueo cruzado: acá el orden es siempre turno y después candado de la lectura, y quien tiene el candado de la lectura
+     * (la lista, el pedido de la consulta) nunca espera un turno ni algo que lo tenga; la cola de envío y `HcRepository`, que sí tienen el
+     * turno, jamás llaman a la lectura.
+     */
+    private suspend fun aplicarEnSuTurno(p: PropiaTraida) = turnos.conTurno(p.id) {
+        candado.withLock {
+            val local = hq.consultaPorId(p.id).uno { it.toModel() }
+            if (local == null || !esPropiaVinculada(local, p.remotoId)) return@withLock
+            if (loEnviados.deLaConsulta(p.pacienteId, p.id) != p.antes) {
+                log.i { "la consulta ${p.id} cambió mientras se pedía a la web: se descarta esa respuesta" }
+                return@withLock
+            }
+            db.transaction { aplicarConsulta(local, p.respuesta) }
+        }
+    }
     /**
      * La web contesta `404 consulta_no_encontrada` por una consulta que ya se había traído (RF-63): se la marca «Ya no figura
      * en la web» y queda en el dispositivo con todo su contenido. El error sale igual (lo lanza quien llama); si ni la marca se

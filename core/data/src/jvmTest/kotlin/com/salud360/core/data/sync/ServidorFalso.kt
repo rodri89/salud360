@@ -22,6 +22,7 @@ import com.salud360.core.data.repos.HcClinicaPruebas
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.PacientesHcRepository
+import com.salud360.core.data.repos.TurnosPorConsulta
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
@@ -240,6 +241,9 @@ internal class Escena(
     /** El repositorio de pacientes real, sobre [pacientesApi] (por omisión, una que falla si alguien resuelve algo). */
     val pacientes = PacientesHcRepository(db, PacientesHcApis(mapOf(CodigosHc.GENERAL to pacientesApi)), mapOf(CodigosHc.GENERAL to "Clínica general"), esperar = {})
 
+    /** El turno por consulta que comparten la cola, el backend y el repositorio (como los arma DataModule). */
+    val turnos = TurnosPorConsulta()
+
     fun nuevoEnvio(
         escritura: ClinicaEscrituraApi? = servidor,
         dispositivo: String = DISPOSITIVO,
@@ -251,12 +255,13 @@ internal class Escena(
         dispositivo = dispositivo,
         nombreHc = "Clínica general",
         medicoDeLaSesion = { medicoDeLaSesion },
+        turnos = turnos,
     )
 
     val envio: HcClinicaEnvio = nuevoEnvio()
 
     /** El backend real de la HC general: lee de una API de mentira y escribe contra el servidor falso (como lo arma DataModule). */
-    val backend = HcClinicaBackend(db, HcClinicaPruebas.ApiFalsa(), pacientes, { 0L }, HcClinicaBackend.MAX_PAGINAS, servidor)
+    val backend = HcClinicaBackend(db, HcClinicaPruebas.ApiFalsa(), pacientes, { 0L }, HcClinicaBackend.MAX_PAGINAS, servidor, turnos)
 
     /** El repositorio de la app, con [envio] cableado: cerrar, reabrir y anular hablan con la cola. [conCola] = false lo arma sin ella. */
     fun repositorio(conCola: Boolean = true) = HcRepository(db, mapOf(CodigosHc.GENERAL to backend), if (conCola) envio else null)
