@@ -35,15 +35,16 @@ data class EdicionDeConsulta(val soloLectura: Boolean, val puedeCerrar: Boolean,
 /**
  * La regla de siempre para las consultas del dispositivo: se lee la que no está abierta o la que su tipo deja solo para
  * leer ([soloLecturaPorTipo]); se cierra la que se edita; se reabre la que se lee si su tipo lo permite
- * ([puedeReabrirPorTipo]). Una consulta de la web ([soloLecturaWeb]) se lee siempre y no se cierra ni se reabre, esté
+ * ([puedeReabrirPorTipo]). Una propia de la HC general con el cierre ya enviado o viajando ([cierreEnviadoOViajando], spec 005, RF-25, D13)
+ * no se reabre: la web no tiene reapertura. Una consulta de la web ([soloLecturaWeb]) se lee siempre y no se cierra ni se reabre, esté
  * abierta o cerrada allá.
  */
-fun edicionDeConsulta(estado: EstadoConsulta, soloLecturaPorTipo: Boolean, puedeReabrirPorTipo: Boolean, soloLecturaWeb: Boolean): EdicionDeConsulta {
+fun edicionDeConsulta(estado: EstadoConsulta, soloLecturaPorTipo: Boolean, puedeReabrirPorTipo: Boolean, soloLecturaWeb: Boolean, cierreEnviadoOViajando: Boolean = false): EdicionDeConsulta {
     val soloLectura = soloLecturaWeb || estado != EstadoConsulta.ABIERTA || soloLecturaPorTipo
     return EdicionDeConsulta(
         soloLectura = soloLectura,
         puedeCerrar = !soloLectura,
-        puedeReabrir = soloLectura && !soloLecturaWeb && puedeReabrirPorTipo,
+        puedeReabrir = soloLectura && !soloLecturaWeb && puedeReabrirPorTipo && !cierreEnviadoOViajando,
     )
 }
 

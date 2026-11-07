@@ -3,7 +3,10 @@ package com.salud360.core.data.repos
 import com.salud360.core.data.ahoraMillis
 import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
+import com.salud360.core.data.hcgeneral.AvisoDeCambios
 import com.salud360.core.data.hcgeneral.CambioReal
+import com.salud360.core.data.hcgeneral.EstadoDeLaConsulta
+import com.salud360.core.data.hcgeneral.avisoDeCambios
 import com.salud360.core.data.hcgeneral.DatosConsulta
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.esDeLaWeb
@@ -45,6 +48,9 @@ import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.LocalDate
 
@@ -125,6 +131,39 @@ class HcRepository(
         backend.traerConsulta(consulta.id, consulta.remotoId)
     }
 
+    // ---- aviso al envío y estado de envío de la consulta (spec 005, T36) ----
+
+    /**
+     * El autoguardado terminó de guardar un cambio de [consulta] en el dispositivo (spec 005, T36; RF-2, RF-27, RF-62): avisa a quien corresponda
+     * ([avisoDeCambios]) y devuelve a quién. En la HC general es la cola de envío, que programa el envío para 4 s después del último cambio y
+     * decide qué entra (solo lo propio del médico de la sesión); una consulta de la web no avisa a nadie. **No hace ningún pedido a la web.**
+     * Pediatría y las demás siguen con `HcApiSync`, que la pantalla llama aparte: acá no se hace nada por ellas.
+     */
+    fun avisarCambio(consulta: Consulta): AvisoDeCambios {
+        val aviso = avisoDeCambios(consulta, esConsultaDeLaWeb(consulta))
+        if (aviso == AvisoDeCambios.COLA_DE_LA_HC_GENERAL) envio?.avisarCambio(consulta.id)
+        return aviso
+    }
+
+    /**
+     * El estado de envío de una consulta propia de la HC general para su pantalla (T28, T36): lo que falta mandar y cómo está, si el cierre
+     * viaja, si la web ya la tiene cerrada y si se puede reabrir o anular. Se vuelve a calcular cuando cambia algo de lo que lo decide: la
+     * consulta, sus textos y su examen, los antecedentes del paciente, los estados guardados (`paciente_extra`) y los cierres en vuelo de la
+     * cola. `null` sin cola o si la consulta no es propia de la HC general (el histórico no se envía y lo de la web solo se lee). Solo lee.
+     */
+    fun observarEstadoDeEnvio(consulta: Consulta): Flow<EstadoDeLaConsulta?> {
+        val cola = envio
+        if (cola == null || !consulta.esPropiaDeLaGeneral()) return flowOf(null)
+        return combine(
+            observarConsulta(consulta.id),
+            q.valoresDeConsulta(consulta.id).flujoLista { it.dirty },
+            observarExamenFisico(consulta.id),
+            observarAntecedentes(consulta.pacienteId, consulta.especialidad),
+            db.pacientesQueries.extrasDePaciente(consulta.pacienteId, consulta.especialidad).flujoLista { it.dirty to it.clave },
+            cola.consultasEnviandoElCierre,
+        ) { Unit }.conflate().map { cola.estadoDeLaConsulta(consulta.id) }.distinctUntilChanged()
+    }
+
     // ---- consultas ----
 
     fun observarConsultas(pacienteId: Id, especialidad: String): Flow<List<Consulta>> =
@@ -170,7 +209,7 @@ class HcRepository(
 
     /** Escribe la cabecera de la consulta. `false` si es de la web: esa la trae la lectura y no se pisa desde acá. */
     suspend fun guardarConsulta(consulta: Consulta): Boolean {
-        if (consulta.deLaWeb()) return false
+        if (consulta.deLaWeb() || cierreEnviadoOViajando(consulta.id)) return false
         q.upsertConsulta(consulta.toRow(ahoraMillis()))
         return true
     }
@@ -309,7 +348,7 @@ class HcRepository(
      * que tenía texto se escribe vacío. Las demás historias clínicas escriben siempre, como antes.
      */
     suspend fun guardarValor(consultaId: Id, seccion: String, campo: String, valor: String): Boolean {
-        if (esIdDeLaWeb(consultaId)) return false
+        if (esIdDeLaWeb(consultaId) || cierreEnviadoOViajando(consultaId)) return false
         if (esDeLaHcGeneral(consultaId) && cambioReal(valoresDeSeccion(consultaId, seccion)[campo], valor) == CambioReal.NINGUNO) return true
         q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahoraMillis()))
         return true
@@ -320,7 +359,7 @@ class HcRepository(
      * solo los campos con cambio real, en una transacción; si ninguno cambió no escribe nada.
      */
     suspend fun guardarSeccion(consultaId: Id, seccion: String, valores: Map<String, String>): Boolean {
-        if (esIdDeLaWeb(consultaId)) return false
+        if (esIdDeLaWeb(consultaId) || cierreEnviadoOViajando(consultaId)) return false
         val aEscribir = if (esDeLaHcGeneral(consultaId)) {
             val cambios = cambiosRealesDeSeccion(valoresDeSeccion(consultaId, seccion), valores)
             valores.filterKeys { it in cambios }
@@ -333,6 +372,18 @@ class HcRepository(
             aEscribir.forEach { (campo, valor) -> q.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(ahora)) }
         }
         return true
+    }
+
+    /**
+     * La segunda barrera de escritura (spec 005, T28 decisión 4, T36; RF-25, D13): [consultaId] es una consulta propia de la HC general con el
+     * cierre **ya enviado** -la web la tiene cerrada y no se reabre- o **viajando**: ninguna escritura sobre ella debe llegar al servidor ni quedar
+     * pendiente. La pantalla ya la muestra solo para leer; esto lo garantiza aunque la pantalla se equivoque. Las demás consultas, una cerrada
+     * con el cierre pendiente o descartado y una abierta no están bloqueadas. Una consulta que no existe tampoco.
+     */
+    private suspend fun cierreEnviadoOViajando(consultaId: Id): Boolean {
+        val c = consulta(consultaId)?.takeIf { it.esPropiaDeLaGeneral() } ?: return false
+        if (envio?.enviandoElCierre(consultaId) == true) return true
+        return c.estado == EstadoConsulta.CERRADA && cierreYaEnviado(c)
     }
 
     /** La consulta es de la HC general (la única con marca de propia y con «cambio real» al guardar); una que no existe, no. */
@@ -369,7 +420,7 @@ class HcRepository(
      * cambio real escribe ([cambioRealDelExamen]: un examen igual, o vacío —`0.00` incluido— sobre nada, no toca la base).
      */
     suspend fun guardarExamenFisico(examen: ExamenFisico): Boolean {
-        if (esIdDeLaWeb(examen.consultaId)) return false
+        if (esIdDeLaWeb(examen.consultaId) || cierreEnviadoOViajando(examen.consultaId)) return false
         if (esDeLaHcGeneral(examen.consultaId) &&
             !cambioRealDelExamen(q.examenFisicoDeConsulta(examen.consultaId).uno { it.toModel() }, examen)
         ) {
@@ -411,6 +462,7 @@ class HcRepository(
     suspend fun guardarAntecedente(pacienteId: Id, especialidad: String, categoria: String, clave: String, flag: Boolean, detalle: String, consultaId: Id?): Boolean {
         val existente = q.antecedentesDeCategoria(pacienteId, especialidad, categoria).lista { it.toModel() }.firstOrNull { it.clave == clave }
         if (existente?.esDeLaWeb() == true || (consultaId != null && esIdDeLaWeb(consultaId))) return false
+        if (consultaId != null && cierreEnviadoOViajando(consultaId)) return false
         if (especialidad == CodigosHc.GENERAL && cambioRealDeAntecedente(existente, flag, detalle) == CambioReal.NINGUNO) return true
         val a = (existente ?: Antecedente(newId(), pacienteId, especialidad, categoria, clave)).copy(flag = flag, detalle = detalle, consultaId = consultaId)
         q.upsertAntecedente(a.toRow(ahoraMillis()))
@@ -458,6 +510,7 @@ class HcRepository(
      */
     suspend fun guardarRegistro(registro: RegistroClinico, enConsulta: Id? = null): Boolean {
         if (registro.esDeLaWeb() || registro.consultaId?.let(::esIdDeLaWeb) == true) return false
+        if (enConsulta != null && cierreEnviadoOViajando(enConsulta)) return false
         val anterior = q.registroPorId(registro.id).uno { it.toModel() }
         val remoto = registro.remotoId.ifBlank { anterior?.remotoId.orEmpty() }
         var aGuardar = registro.copy(remotoId = remoto)
@@ -488,6 +541,7 @@ class HcRepository(
     suspend fun eliminarRegistro(id: Id): Boolean {
         if (esIdDeLaWeb(id)) return false
         val r = q.registroPorId(id).uno { it.toModel() } ?: return false
+        if (r.consultaId != null && cierreEnviadoOViajando(r.consultaId!!)) return false
         q.upsertRegistro(r.copy(activo = false).toRow(ahoraMillis()))
         return true
     }

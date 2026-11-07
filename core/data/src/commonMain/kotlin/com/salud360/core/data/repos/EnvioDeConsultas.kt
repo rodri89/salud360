@@ -1,7 +1,9 @@
 package com.salud360.core.data.repos
 
+import com.salud360.core.data.hcgeneral.EstadoDeLaConsulta
 import com.salud360.core.model.Id
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Lo que [HcRepository] necesita de la cola de envío de la HC general (spec 005, T28): saber si el cierre de una consulta está viajando
@@ -16,6 +18,14 @@ interface EnvioDeConsultas {
     /** Corre [bloque] con el turno de la consulta: nunca a la vez que un envío de la misma. Si hay uno en curso, espera a que termine. */
     suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T
 
+    /** El autoguardado guardó un cambio de [consultaId]: programa el envío para dentro de 4 s (RF-27, RF-28). No hace ningún pedido. */
+    fun avisarCambio(consultaId: Id)
+
+    /** Las consultas cuyo cierre está viajando ahora mismo; cambia cuando empieza y cuando termina cada cierre. */
+    val consultasEnviandoElCierre: Flow<Set<Id>>
+
+    /** El estado de envío de una consulta propia (ver `HcClinicaEnvio.estadoDeLaConsulta`); `null` si no existe o no es propia. Solo lee. */
+    suspend fun estadoDeLaConsulta(consultaId: Id): EstadoDeLaConsulta?
     /** Envía ya lo pendiente de la consulta (cerrar, anular), sin la espera del autoguardado; si hay un envío en curso, espera a que termine. */
     fun empujarYa(consultaId: Id): Job
 }

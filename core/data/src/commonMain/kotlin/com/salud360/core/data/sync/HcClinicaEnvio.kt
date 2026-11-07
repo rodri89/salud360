@@ -193,7 +193,7 @@ open class HcClinicaEnvio(
      * Las consultas cuyo cierre está viajando ahora mismo (RF-55): desde que sale el pedido hasta que queda anotado lo que contestó la web.
      * Mientras figuran acá la pantalla dice «Enviando el cierre.» y no se puede reabrir ni anular.
      */
-    val consultasEnviandoElCierre: StateFlow<Set<Id>> = _enviandoElCierre.asStateFlow()
+    override val consultasEnviandoElCierre: StateFlow<Set<Id>> = _enviandoElCierre.asStateFlow()
 
     override fun enviandoElCierre(consultaId: Id): Boolean = consultaId in _enviandoElCierre.value
 
@@ -242,6 +242,9 @@ open class HcClinicaEnvio(
             }
         }
     }
+
+    /** El autoguardado guardó un cambio ([EnvioDeConsultas.avisarCambio]): lo mismo que [marcarSucia] con la espera de siempre. */
+    override fun avisarCambio(consultaId: Id) = marcarSucia(consultaId)
 
     /**
      * Programa el próximo intento de una consulta que quedó «En espera» ([estado]): a los 15 s, al minuto y a los 5 minutos para una causa
@@ -740,7 +743,7 @@ open class HcClinicaEnvio(
      * histórico y lo de la web no se envían). Solo lee. Las reglas son las de [com.salud360.core.data.hcgeneral.estadoDeLaConsulta], las mismas
      * que aplica `HcRepository`.
      */
-    suspend fun estadoDeLaConsulta(consultaId: Id): EstadoDeLaConsulta? {
+    override suspend fun estadoDeLaConsulta(consultaId: Id): EstadoDeLaConsulta? {
         val consulta = hq.consultaPorId(consultaId).uno { it.toModel() } ?: return null
         if (!esPropia(consulta)) return null
         val sucia = hq.consultaPorId(consultaId).uno { it.dirty != 0L } ?: false

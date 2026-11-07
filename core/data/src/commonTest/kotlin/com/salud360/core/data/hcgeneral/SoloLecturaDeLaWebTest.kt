@@ -90,6 +90,16 @@ class SoloLecturaDeLaWebTest {
     }
 
     @Test
+    fun una_propia_con_el_cierre_enviado_o_viajando_no_se_puede_reabrir_pero_se_lee() {
+        for (estado in EstadoConsulta.entries) {
+            val e = edicionDeConsulta(estado, soloLecturaPorTipo = false, puedeReabrirPorTipo = true, soloLecturaWeb = false, cierreEnviadoOViajando = true)
+            assertEquals(estado != EstadoConsulta.ABIERTA, e.soloLectura, "$estado: lo cerrado se lee, lo abierto sigue editable")
+            assertFalse(e.puedeReabrir, "$estado: sin «Reabrir para editar» una vez enviado el cierre (RF-25, D13)")
+        }
+        // Sin esa marca, todo como antes.
+        assertTrue(edicionDeConsulta(EstadoConsulta.CERRADA, false, true, false, cierreEnviadoOViajando = false).puedeReabrir)
+    }
+    @Test
     fun la_etiqueta_de_estado_de_una_consulta_de_la_web_abierta_no_dice_cerrada() {
         assertEquals("Solo lectura", etiquetaDeEstadoEnLectura(EstadoConsulta.ABIERTA, soloLecturaPorTipo = false, soloLecturaWeb = true))
         assertEquals("Cerrada", etiquetaDeEstadoEnLectura(EstadoConsulta.CERRADA, soloLecturaPorTipo = false, soloLecturaWeb = true))
