@@ -109,8 +109,9 @@ históricos sobre las curvas P3-P97.
 ## Offline-first y sincronización
 
 - Cada escritura local marca la fila con `dirty = 1`.
-- `SyncEngine.sincronizar()`: envía las filas sucias (`POST /sync/push`), sube adjuntos pendientes y
-  trae los cambios de cada tabla desde la última versión conocida (`GET /sync/pull`).
+- `SyncEngine.sincronizar()`: envía las filas sucias (`POST /sync/push`) y trae los cambios de cada tabla desde la
+  última versión conocida (`GET /sync/pull`). No maneja las tablas de HC con contenido clínico (consultas, secciones, examen,
+  antecedentes, registros, laboratorios, adjuntos y pendientes: tienen envío propio, `HcApiSync` o `HcClinicaEnvio`) ni sube adjuntos.
 - Conflictos: última escritura gana por `updated_at`; para **turnos** el servidor rechaza un turno si
   el horario ya fue ocupado por otro dispositivo, y el cliente lo ve al sincronizar.
 - Web: la base corre en memoria (sql.js en un Web Worker) con una copia en IndexedDB del navegador que se
