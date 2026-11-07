@@ -237,7 +237,8 @@ class VinculoAlEnviarTest {
             assertEquals(emptyList(), resolver.pedidos, "RF-19: no se pide `pacientes/resolver` (que podría crear otra ficha)")
             assertEquals(5001L, pacientes.fichaConocida(PACIENTE, CodigosHc.GENERAL), "y el vínculo que había se conserva")
             assertEquals(setOf("nota/texto"), db.textosSucios("u1"), "la consulta y su texto siguen en el dispositivo")
-            assertNull(db.estadosDe("u1")[PARTE_SECCIONES])
+            // Lo que faltaba de la consulta queda igual en espera (RF-6): la ficha de baja vale para todo lo que sigue.
+            assertEquals(CausaEnEspera.PACIENTE_DE_BAJA, assertIs<EstadoEnvio.EnEspera>(db.estadosDe("u1").getValue(PARTE_SECCIONES).estado).causa)
 
             // Otro intento con la ficha todavía de baja: igual, sin resolver. Cuando la web la reactiva, sale sola.
             envio.empujarYa("u1").join()

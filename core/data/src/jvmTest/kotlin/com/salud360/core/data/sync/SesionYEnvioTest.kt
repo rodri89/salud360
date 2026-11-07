@@ -180,7 +180,7 @@ class SesionYEnvioTest {
     }
 
     @Test
-    fun otra_causa_ajena_deja_en_espera_solo_la_parte_que_fallo() = conServidor {
+    fun cualquier_causa_ajena_deja_en_espera_todo_lo_que_faltaba_no_solo_la_sesion_vencida() = conServidor {
         db.sembrarPropia("u1", estado = EstadoConsulta.CERRADA)
         db.sembrarTexto("u1")
         db.sembrarExamen("u1", peso = "70")
@@ -188,10 +188,10 @@ class SesionYEnvioTest {
 
         envio.empujarYa("u1").join()
 
-        // Lo de «el resto en espera» es de la sesión vencida; un servidor caído se reintenta y lo decide T27.
-        assertEquals(setOf(PARTE_SECCIONES), db.estadosDe("u1").keys)
+        // T27 define lo que T26 dejó abierto: la regla de RF-6 vale para toda causa ajena al dato, no solo para el 401.
+        assertEquals(setOf(PARTE_SECCIONES, PARTE_EXAMEN, PARTE_CIERRE), db.estadosDe("u1").keys)
+        assertEquals(CausaEnEspera.SERVIDOR, assertIs<EstadoEnvio.EnEspera>(db.estadosDe("u1").getValue(PARTE_CIERRE).estado).causa)
     }
-
     @Test
     fun un_401_al_resolver_el_vinculo_tambien_deja_en_espera_por_sesion_vencida() {
         val resolver = ResolverFalso().apply { respuesta = { _, _ -> throw TobbException(401, "token", "Sesión vencida") } }

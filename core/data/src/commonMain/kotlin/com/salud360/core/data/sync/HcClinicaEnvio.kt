@@ -16,6 +16,7 @@ import com.salud360.core.data.hcgeneral.SUBENTREGA_HABILITADA
 import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
+import com.salud360.core.data.hcgeneral.esperaDeReintento
 import com.salud360.core.data.hcgeneral.estadoDeVinculo
 import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.hcgeneral.planDeEnvio
@@ -95,16 +96,27 @@ import kotlinx.datetime.toLocalDateTime
  * Lo que nunca va a viajar (la web no lo guarda, antecedentes desactivados, lo ya igual, D2) se limpia sin figurar como enviado.
  *
  * **El vínculo del paciente** (RF-13, RF-19): antes de crear la primera consulta se resuelve la ficha de la web con
- * PacientesHcRepository.vinculo (la lógica de la 002 y la 003). Si no queda vinculado la creación queda «En espera: <motivo>» y no sale
- * nada (estadoDeVinculo). Un paciente dado de baja en la web deja «En espera» sin resolver de nuevo: el envío nunca crea fichas por su cuenta.
+ * `PacientesHcRepository.vinculo` (la lógica de la 002 y la 003). Si no queda vinculado la creación queda «En espera: <motivo>» y no sale
+ * nada (`estadoDeVinculo`). Un paciente dado de baja en la web deja «En espera» sin resolver de nuevo: el envío nunca crea fichas por su cuenta.
  *
- * **La sesión** (RF-50): se envía **solo** lo del médico de la sesión (medicoDeLaSesion), mirado al programar, al empezar y antes de
+ * **La sesión** (RF-50): se envía **solo** lo del médico de la sesión (`medicoDeLaSesion`), mirado al programar, al empezar y antes de
  * cada paso. Con otra sesión, o sin ninguna, lo pendiente ni se envía ni se programa ni se toca, y vuelve a salir cuando vuelve su dueño.
- * Un 401 a mitad de un envío deja lo que faltaba de esa consulta «En espera: sesión vencida».
  *
- * **Todavía no** (T27, T28): el reintento solo (con espera, periódico), «Reintentar» y «Descartar», ni cerrar/reabrir/anular desde la pantalla.
+ * **Lo que no llegó** (RF-6, RF-29, RF-30):
+ * - **Causa ajena al dato** (sesión vencida, HC no habilitada, licencia, paciente fuera de la cartera o de baja, sin conexión, la web
+ *   caída, «demasiados pedidos»…): lo que faltaba de la consulta queda «En espera: <motivo>» —nombrando la HC—, sin perder ni modificar
+ *   nada, y **se reintenta solo**: a los 15 s, al minuto y a los 5 minutos y después cada 5 minutos para las pasajeras, cada 5 minutos
+ *   para las de cuenta o de alguien ([esperaDeReintento]). Un reintento es la misma espera que arma el autoguardado: **una por consulta**;
+ *   un cambio del médico la adelanta y no la multiplica. «Demasiados pedidos» frena a todas las consultas hasta que se cumple su espera.
+ *   Solo corre mientras la app esté abierta (en el [scope] inyectado). Repite la misma clave, así que no duplica (RF-15).
+ * - **Rechazo por el dato** (`422`, `404 consulta_no_encontrada`, `409`, `403 consulta_no_propia`): «No se pudo enviar: <motivo>». No se
+ *   reintenta solo y no frena a las demás consultas. El médico puede [reintentar] (vuelve a mandar lo rechazado) o [descartar] (queda
+ *   «Descartado: no se envió a la web», el dato se conserva en el dispositivo y el cierre que esperaba sale).
  *
- * El reloj es inyectable ([esperar]) y la corrutina también ([scope]): los tests mueven un reloj falso y no esperan tiempo real.
+ * **Todavía no** (T28, T29, T31): cerrar/reabrir/anular desde la pantalla, «Ya no figura en la web», y los disparadores de abrir la app,
+ * iniciar sesión y recuperar la conexión. Al cerrar y abrir la app la cadena de reintentos no sigue sola: la retoma el disparador de abrir
+ * la app (T31).
+ * * El reloj es inyectable ([esperar]) y la corrutina también ([scope]): los tests mueven un reloj falso y no esperan tiempo real.
  * Todavía no se conecta a la pantalla: el autoguardado de la consulta no lo llama hasta T36.
  */
 open class HcClinicaEnvio(
@@ -118,15 +130,14 @@ open class HcClinicaEnvio(
     private val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
     /** La API de escritura de la HC general; sin ella (la HC general no tiene URL en este entorno) no se envía nada. */
     private val escritura: ClinicaEscrituraApi? = null,
-    /** De dónde sale la ficha de la web del paciente (inculo). Sin él no se puede crear ninguna consulta. */
+    /** De dónde sale la ficha de la web del paciente (`vinculo`). Sin él no se puede crear ninguna consulta. */
     private val pacientes: PacientesHcRepository? = null,
     /** El id estable de este dispositivo, que va en cada pedido de escritura. Sin él no se envía nada. */
     private val dispositivo: String = "",
     /** El nombre visible de la HC, que nombran los motivos de los estados. */
     private val nombreHc: String = CodigosHc.GENERAL,
     /**
-     * El médico de la sesión actual (
-ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF-50): sin sesión, o con
+     * El médico de la sesión actual (`null` si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF-50): sin sesión, o con
      * la de otro, no programa ni manda ni toca nada. Por omisión no hay sesión: ante la duda no se manda con el token de nadie.
      */
     private val medicoDeLaSesion: () -> Id? = { null },
@@ -145,6 +156,22 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
     /** El turno de cada consulta: quien lo tiene está enviándola. */
     private val turnos = mutableMapOf<Id, Mutex>()
 
+    /**
+     * Cuántas veces seguidas falló cada consulta por una causa ajena al dato: de ahí sale la espera del próximo reintento solo
+     * ([esperaDeReintento]). Se reinicia con un envío sin fallos o cuando el médico toca «Reintentar». Vive en memoria: es la cadena de
+     * reintentos de esta apertura de la app (RF-29: solo mientras la app esté abierta).
+     */
+    private val intentos = mutableMapOf<Id, Int>()
+
+    /** Las consultas a las que el médico tocó «Reintentar»: su próximo envío vuelve a incluir lo que la web rechazó (RF-30). */
+    private val aMano = mutableSetOf<Id>()
+
+    /**
+     * Hasta cuándo (en el reloj de [ahora]) la web pidió esperar con «demasiados pedidos». Mientras tanto no sale **ningún** pedido
+     * automático, de ninguna consulta: el límite es por IP y lo comparte todo el consultorio (RF-29, sin ráfagas).
+     */
+    private var frenadoHasta = 0L
+
     private val _consultasCreadas = MutableSharedFlow<ConsultaCreadaEnLaWeb>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /**
@@ -161,17 +188,44 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
     fun marcarSucia(consultaId: Id, esperaMs: Long = ESPERA_MS) {
         scope.launch {
             if (!puedeEnviar(consultaId)) return@launch
-            candado.withLock {
-                esperas.remove(consultaId)?.cancel()
-                esperas[consultaId] = scope.launch {
-                    val yo = currentCoroutineContext()[Job]
-                    if (esperaMs > 0) esperar(esperaMs)
-                    // Pasada la espera ya no se la puede cancelar: un cambio nuevo arma otra espera y su envío hace cola detrás de éste.
-                    val lePertenece = candado.withLock { (esperas[consultaId] === yo).also { if (it) esperas.remove(consultaId) } }
-                    if (lePertenece) enviarDeAUno(consultaId)
-                }
+            programar(consultaId, esperaMs, reemplazar = true)
+        }
+    }
+
+    /**
+     * Deja programado un envío de [consultaId] para dentro de [esperaMs]: **una sola espera por consulta**, la de los 4 s del autoguardado
+     * o la de un reintento. Con [reemplazar] (un cambio del médico) cancela la que hubiera y arma ésta, así un cambio **adelanta** el
+     * reintento y no lo multiplica; sin él (un reintento por un fallo) deja la que hubiera, que ya es igual o más cercana. Pasada la espera
+     * ya no se la puede cancelar: un cambio nuevo arma otra y su envío hace cola detrás de éste. Si la web pidió esperar ([frenadoHasta]),
+     * el envío espera a que se cumpla, también el de los cambios del médico.
+     */
+    private suspend fun programar(consultaId: Id, esperaMs: Long, reemplazar: Boolean) {
+        candado.withLock {
+            val actual = esperas[consultaId]
+            if (!reemplazar && actual != null && actual.isActive) return@withLock
+            actual?.cancel()
+            esperas[consultaId] = scope.launch {
+                val yo = currentCoroutineContext()[Job]
+                if (esperaMs > 0) esperar(esperaMs)
+                val resto = candado.withLock { frenadoHasta } - ahora()
+                if (resto > 0) esperar(resto)
+                val lePertenece = candado.withLock { (esperas[consultaId] === yo).also { if (it) esperas.remove(consultaId) } }
+                if (lePertenece) enviarDeAUno(consultaId)
             }
         }
+    }
+
+    /**
+     * Programa el próximo intento de una consulta que quedó «En espera» ([estado]): a los 15 s, al minuto y a los 5 minutos para una causa
+     * pasajera y después cada 5 minutos; cada 5 minutos para una de cuenta o de alguien ([esperaDeReintento]). Es la cadena de reintentos
+     * de RF-29: **solo mientras la app esté abierta** (corre en el [scope] de la cola) y nunca más rápido. «Demasiados pedidos» frena además
+     * a todas las demás consultas hasta que se cumpla su espera.
+     */
+    private suspend fun programarReintento(consultaId: Id, estado: EstadoEnvio.EnEspera) {
+        val intento = candado.withLock { (intentos[consultaId] ?: 0).also { intentos[consultaId] = it + 1 } }
+        val espera = esperaDeReintento(estado, intento)
+        if (estado.causa == CausaEnEspera.DEMASIADOS_PEDIDOS) candado.withLock { frenadoHasta = maxOf(frenadoHasta, ahora() + espera) }
+        programar(consultaId, espera, reemplazar = false)
     }
 
     /**
@@ -184,9 +238,44 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
         enviarDeAUno(consultaId)
     }
 
-    private suspend fun enviarDeAUno(consultaId: Id) {
+    /**
+     * «Reintentar» a mano (RF-30): envía ya la consulta y esta vez **vuelve a incluir lo que la web rechazó** («No se pudo enviar»), con
+     * la misma clave y el mismo cuerpo. Si la web lo vuelve a rechazar, queda igual; no arma reintentos solos. Reinicia la cuenta de los
+     * reintentos de las esperas. Solo para una consulta propia del médico de la sesión.
+     */
+    fun reintentar(consultaId: Id): Job = scope.launch {
+        if (!puedeEnviar(consultaId)) return@launch
+        candado.withLock {
+            aMano += consultaId
+            intentos.remove(consultaId)
+            esperas.remove(consultaId)?.cancel()
+        }
+        enviarDeAUno(consultaId)
+    }
+
+    /**
+     * «Descartar» (RF-30, D19(d)): el médico decide no enviar lo que la web **rechazó**. La parte queda «Descartado: no se envió a la
+     * web» y el dato **se conserva en el dispositivo** (solo deja de estar pendiente); la web no se toca ni se anota nada de lo que
+     * «tiene». Con eso lo que esperaba (el cierre) se libera y sale. Sin [parte] descarta todo lo rechazado de la consulta. Solo descarta
+     * «No se pudo enviar», nunca una espera (se perdería lo que falta mandar), y nunca la creación (sin ella no hay consulta). Lo que el
+     * médico edite después vuelve a viajar. Devuelve el trabajo, que termina cuando termina el descarte y el envío que lo sigue.
+     */
+    fun descartar(consultaId: Id, parte: String? = null): Job = scope.launch {
+        if (!puedeEnviar(consultaId)) return@launch
+        val descarto = conTurno(consultaId) { descartarRechazadas(consultaId, parte) }
+        if (!descarto) return@launch
+        candado.withLock { esperas.remove(consultaId)?.cancel() }
+        enviarDeAUno(consultaId)
+    }
+
+    /** Corre [bloque] con el turno de la consulta: nunca a la vez que un envío de la misma (RF-54). */
+    private suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T {
         val turno = candado.withLock { turnos.getOrPut(consultaId) { Mutex() } }
-        turno.withLock {
+        return turno.withLock { bloque() }
+    }
+
+    private suspend fun enviarDeAUno(consultaId: Id) {
+        conTurno(consultaId) {
             try {
                 enviar(consultaId)
             } catch (e: CancellationException) {
@@ -194,9 +283,33 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
             } catch (e: Throwable) {
                 // Suelta el turno y no rompe la cola. Un error del servidor ya quedó guardado como estado de la parte; esto es un fallo local
                 // (por ejemplo, no se pudo anotar lo que el servidor confirmó): lo pendiente sigue pendiente y el reenvío repite la clave.
+                // No se rinde: se vuelve a intentar con la misma espera que una causa pasajera.
                 log.w { "no se pudo terminar el envío de la consulta $consultaId: ${e.message}" }
+                programarReintento(consultaId, EstadoEnvio.EnEspera(CausaEnEspera.SERVIDOR, e.message.orEmpty()))
             }
         }
+    }
+
+    /** El descarte en sí, con el turno tomado. true si descartó algo. */
+    private suspend fun descartarRechazadas(consultaId: Id, parte: String?): Boolean {
+        val consulta = hq.consultaPorId(consultaId).uno { it.toModel() } ?: return false
+        if (!puedeEnviar(consulta)) return false
+        val guardados = estados.deLaConsulta(consulta.pacienteId, consulta.id).mapValues { it.value.estado }
+        val rechazadas = guardados.filter { (p, estado) ->
+            estado is EstadoEnvio.NoSePudoEnviar && p != PARTE_CREAR && (parte == null || p == parte)
+        }.keys
+        if (rechazadas.isEmpty()) return false
+        // El plan con las partes rechazadas incluidas dice qué filas cubre cada una: son las que dejan de estar pendientes.
+        val plan = planDeEnvio(
+            entradaDelPlan(consulta, cargarSucio(), loEnviados.deLaConsulta(consulta.pacienteId, consulta.id), guardados, reintentoManual = true),
+        )
+        db.transaction {
+            for (p in rechazadas) {
+                plan.pasos.firstOrNull { it.parte == p }?.cubre?.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                estados.guardar(consulta.pacienteId, consulta.id, p, EstadoEnvio.Descartado, hoy())
+            }
+        }
+        return true
     }
 
     // ------------------------------------------------------------------
@@ -209,6 +322,8 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
      * dos a la vez para la misma) y siempre para una consulta propia de la HC general. Los tests de la cola lo sobreescriben.
      */
     protected open suspend fun enviar(consultaId: Id) {
+        // El «Reintentar» del médico vale para este envío y nada más: se consume ya, aunque después no haya nada que mandar.
+        val aMano = candado.withLock { aMano.remove(consultaId) }
         val api = escritura ?: return
         if (dispositivo.isBlank()) {
             log.w { "no hay id de dispositivo: no se envía la consulta $consultaId" }
@@ -219,7 +334,7 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
 
         val sucio = cargarSucio()
         val lo = loEnviados.deLaConsulta(consulta.pacienteId, consulta.id)
-        val plan = planDeEnvio(entradaDelPlan(consulta, sucio, lo, estadosDe(consulta)))
+        val plan = planDeEnvio(entradaDelPlan(consulta, sucio, lo, estadosDe(consulta), reintentoManual = aMano))
         val envio = EnvioEnCurso(consulta = consulta, api = api, plan = plan, webId = consulta.remotoId.toLongOrNull(), lo = lo)
 
         limpiarLoQueNoViaja(consulta, plan)
@@ -234,6 +349,15 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
             if (!envio.ejecutar(paso)) break
             confirmadas += paso.parte
         }
+
+        // Un envío sin fallos por una causa ajena termina la cadena de reintentos: la próxima falla vuelve a empezar a los 15 s. Y si no queda
+        // nada por mandar, nada está «En espera»: se limpian los estados viejos de partes que ya no esperan nada.
+        if (!envio.huboEspera) {
+            candado.withLock { intentos.remove(consultaId) }
+            if (esDeLaSesion(consulta) && plan.siguiente(confirmadas) == null) {
+                estadosDe(consulta).filterValues { it is EstadoEnvio.EnEspera }.keys.forEach { estados.quitar(consulta.pacienteId, consulta.id, it) }
+            }
+        }
     }
 
     /** El envío de una consulta mientras corre: lo que se sabe de ella y lo que fue pasando. */
@@ -247,6 +371,9 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
         /** Lo último que la web tiene confirmado, al día con cada paso. */
         var lo: LoEnviado,
     ) {
+        /** Algún paso quedó «En espera» en este envío (y, por lo tanto, ya hay un reintento programado). */
+        var huboEspera = false
+
         /** Ejecuta [paso]; true si la web lo confirmó **entero** y quedó anotado, false si hay que cortar acá. */
         suspend fun ejecutar(paso: PasoDeEnvio): Boolean = when (paso) {
             is PasoDeEnvio.Crear -> crear(paso)
@@ -368,16 +495,20 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
         }
 
         /**
-         * Guarda el [estado] de la parte que no salió. Si es **sesión vencida** (`401`), vale para todo lo que faltaba de esta consulta: lo
-         * que seguía en el plan queda igual «En espera: sesión vencida» (RF-6, no se pierde ni se modifica nada) y se envía todo junto al
-         * volver a iniciar sesión. Las demás causas ajenas (servidor caído, sin red) solo marcan la parte que falló: el reintento lo decide T27.
+         * Guarda el [estado] de la parte que no salió. Una causa ajena al dato («En espera», RF-6) vale para **todo lo que faltaba de esta
+         * consulta**: lo que seguía en el plan queda igual «En espera» con el mismo motivo —no se pierde ni se modifica nada— y se envía todo
+         * junto cuando pasa la causa. Deja programado el próximo intento ([programarReintento]). Un rechazo (NoSePudoEnviar) marca solo
+         * la parte rechazada: no se reintenta solo y no frena lo demás.
          */
         private suspend fun fallo(paso: PasoDeEnvio, estado: EstadoEnvio) {
             estados.guardar(consulta.pacienteId, consulta.id, paso.parte, estado, hoy())
-            if (estado is EstadoEnvio.EnEspera && estado.causa == CausaEnEspera.SESION_VENCIDA) {
+            if (estado is EstadoEnvio.EnEspera) {
+                // Una causa ajena al dato deja en espera todo lo que faltaba de la consulta (RF-6), no solo la parte que se intentó.
                 plan.pasos.dropWhile { it !== paso }.drop(1).forEach {
                     estados.guardar(consulta.pacienteId, consulta.id, it.parte, estado, hoy())
                 }
+                huboEspera = true
+                programarReintento(consulta.id, estado)
             }
         }
 
@@ -459,7 +590,13 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
         pendientes = hq.pendientesDirty().lista { it.toModel() },
     )
 
-    private fun entradaDelPlan(consulta: Consulta, sucio: Sucio, lo: LoEnviado, estados: Map<String, EstadoEnvio>) = EntradaDelPlan(
+    private fun entradaDelPlan(
+        consulta: Consulta,
+        sucio: Sucio,
+        lo: LoEnviado,
+        estados: Map<String, EstadoEnvio>,
+        reintentoManual: Boolean = false,
+    ) = EntradaDelPlan(
         consulta = consulta,
         consultaSucia = consulta.id in sucio.consultas,
         valores = sucio.valores.filter { it.fila.consultaId == consulta.id },
@@ -469,6 +606,7 @@ ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF
         loEnviado = lo,
         estados = estados,
         habilitada = habilitada,
+        reintentoManual = reintentoManual,
         armadoEn = ahora(),
     )
 
