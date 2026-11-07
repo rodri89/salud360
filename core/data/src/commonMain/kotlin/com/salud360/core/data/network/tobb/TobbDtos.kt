@@ -363,6 +363,63 @@ data class TobbMedicoActivoResponse(
     val activo: Boolean,
 )
 
+/** Un tipo del catálogo global de tipos de turno (`GET`/`POST tipos-turno`); [activo] llega como `0`/`1`. */
+@Serializable
+data class TobbTipoTurno(val id: Int, val nombre: String = "", val activo: Int = 1)
+
+/** Respuesta `200` de `GET tipos-turno`. Sin valor por omisión: una respuesta sin la lista no informa nada. */
+@Serializable
+data class TobbTiposTurnoResponse(val tipos: List<TobbTipoTurno>)
+
+/** Cuerpo de `POST tipos-turno` (solo administrador). */
+@Serializable
+data class TobbCrearTipoTurnoRequest(val nombre: String)
+
+/** Respuesta `201` de `POST tipos-turno`. Sin valor por omisión: sin el tipo no se sabe qué se creó. */
+@Serializable
+data class TobbCrearTipoTurnoResponse(val tipo: TobbTipoTurno)
+
+/** Una opción (subtipo) de un tipo habilitado para un médico. */
+@Serializable
+data class TobbOpcionTipoTurno(val id: Int, val nombre: String = "")
+
+/** Un tipo habilitado para un médico. [primerControl]: `null` = siempre, `1` = solo primera consulta, `0` = solo seguimiento. */
+@Serializable
+data class TobbTipoDelMedico(
+    val id: Int,
+    val nombre: String = "",
+    @SerialName("primer_control") val primerControl: Int? = null,
+    val opciones: List<TobbOpcionTipoTurno> = emptyList(),
+)
+
+/**
+ * Respuesta `200` de `GET` y de `PUT medicos/{id}/tipos-turno`: los tipos habilitados tal como quedaron en turnos. Sin
+ * valor por omisión en [tipos]: una respuesta que no los traiga no confirma nada. [avisos] solo viene en el `PUT`
+ * (p. ej. un tipo deshabilitado que todavía tiene horarios).
+ */
+@Serializable
+data class TobbMedicoTiposResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    val tipos: List<TobbTipoDelMedico>,
+    val avisos: List<String> = emptyList(),
+)
+
+/**
+ * Un tipo del `PUT medicos/{id}/tipos-turno`. [primerControl] no tiene valor por omisión a propósito: con
+ * `encodeDefaults = false` un `null` por omisión no viajaría, y `null` es «Siempre». [opciones] sí: `null` = no se
+ * tocan las que turnos ya tiene; `[]` = se dejan vacías (y viaja).
+ */
+@Serializable
+data class TobbTipoConfig(
+    val id: Int,
+    @SerialName("primer_control") val primerControl: Int?,
+    val opciones: List<Int>? = null,
+)
+
+/** Cuerpo de `PUT medicos/{id}/tipos-turno` (solo administrador): la lista EXACTA que queda habilitada (`[]` = ninguno). */
+@Serializable
+data class TobbMedicoTiposRequest(val tipos: List<TobbTipoConfig>)
+
 /** El usuario recién creado, con los números que le asignó turnos. */
 @Serializable
 data class TobbUsuarioCreado(

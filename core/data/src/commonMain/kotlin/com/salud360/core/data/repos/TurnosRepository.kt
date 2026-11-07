@@ -30,6 +30,8 @@ import com.salud360.core.model.turnos.ObraSocialMedico
 import com.salud360.core.model.turnos.Receta
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
+import com.salud360.core.model.turnos.TipoTurnoCatalogo
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.model.pacientes.Paciente
 import kotlinx.coroutines.flow.Flow
@@ -140,6 +142,32 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> =
         online?.guardarHistoriasClinicas(medicoId, codigos)
             ?: throw IllegalStateException("Cambiar las historias clínicas necesita conexión con turnos.")
+
+    /**
+     * Catálogo global de tipos de turno (`GET tipos-turno`, solo administrador), con los inactivos. Exige conexión (el
+     * dueño del dato es turnos) y no se guarda en el dispositivo.
+     */
+    suspend fun tiposDeTurno(): List<TipoTurnoCatalogo> =
+        online?.tiposDeTurno()
+            ?: throw IllegalStateException("Ver los tipos de turno necesita conexión con turnos.")
+
+    /** Crea un tipo de turno en el catálogo de turnos (`POST tipos-turno`) y devuelve el que creó. Exige conexión. */
+    suspend fun crearTipoTurno(nombre: String): TipoTurnoCatalogo =
+        online?.crearTipoTurno(nombre)
+            ?: throw IllegalStateException("Crear un tipo de turno necesita conexión con turnos.")
+
+    /** Tipos habilitados de un médico con su condición y opciones (`GET medicos/{n}/tipos-turno`). Exige conexión. */
+    suspend fun tiposDelMedico(medicoId: Id): List<TipoTurnoDelMedico> =
+        online?.tiposDelMedico(medicoId)
+            ?: throw IllegalStateException("Ver los tipos de turno de un médico necesita conexión con turnos.")
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/tipos-turno`) la lista exacta de tipos habilitados de un médico y devuelve lo
+     * que quedó según turnos, con sus avisos. Exige conexión; no hay copia local. La lista la arma `aPedido`.
+     */
+    suspend fun guardarTiposDelMedico(medicoId: Id, config: List<ConfigTipoTurno>): GuardadoTipos =
+        online?.guardarTiposDelMedico(medicoId, config)
+            ?: throw IllegalStateException("Cambiar los tipos de turno necesita conexión con turnos.")
 
     /**
      * Activa o desactiva a un médico en turnos (`PUT medicos/{n}/activo`) y devuelve el estado final que informa turnos.

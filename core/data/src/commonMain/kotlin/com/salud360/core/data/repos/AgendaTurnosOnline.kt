@@ -12,6 +12,8 @@ import com.salud360.core.data.network.tobb.TobbAgendaDia
 import com.salud360.core.data.network.tobb.TobbAgendaRequest
 import com.salud360.core.data.network.tobb.TobbAgendaResponse
 import com.salud360.core.data.network.tobb.TobbAgendaSemana
+import com.salud360.core.data.network.tobb.TobbCrearTipoTurnoRequest
+import com.salud360.core.data.network.tobb.TobbCrearTipoTurnoResponse
 import com.salud360.core.data.network.tobb.TobbHistoriasClinicasRequest
 import com.salud360.core.data.network.tobb.TobbHistoriasClinicasResponse
 import com.salud360.core.data.network.tobb.TobbAltaResponse
@@ -24,6 +26,8 @@ import com.salud360.core.data.network.tobb.TobbFechas
 import com.salud360.core.data.network.tobb.TobbHorariosResponse
 import com.salud360.core.data.network.tobb.TobbMedicoActivoRequest
 import com.salud360.core.data.network.tobb.TobbMedicoActivoResponse
+import com.salud360.core.data.network.tobb.TobbMedicoTiposRequest
+import com.salud360.core.data.network.tobb.TobbMedicoTiposResponse
 import com.salud360.core.data.network.tobb.TobbMensajesResponse
 import com.salud360.core.data.network.tobb.TobbNuevoPaciente
 import com.salud360.core.data.network.tobb.TobbNuevoTurno
@@ -33,6 +37,8 @@ import com.salud360.core.data.network.tobb.TobbPacienteResponse
 import com.salud360.core.data.network.tobb.TobbPacienteResumen
 import com.salud360.core.data.network.tobb.TobbPacientesResponse
 import com.salud360.core.data.network.tobb.TobbPacientesVinculadosResponse
+import com.salud360.core.data.network.tobb.TobbTipoConfig
+import com.salud360.core.data.network.tobb.TobbTiposTurnoResponse
 import com.salud360.core.data.network.tobb.TobbTurno
 import com.salud360.core.data.network.tobb.TobbTurnoResponse
 import com.salud360.core.data.network.tobb.TobbTurnosResponse
@@ -42,6 +48,8 @@ import com.salud360.core.data.network.tobb.aFechaTobb
 import com.salud360.core.data.network.tobb.aCodigoTobb
 import com.salud360.core.data.network.tobb.esBloqueo
 import com.salud360.core.data.network.tobb.texto
+import com.salud360.core.data.network.tobb.toCatalogo
+import com.salud360.core.data.network.tobb.toTipoDelMedico
 import com.salud360.core.data.network.tobb.tobbJson
 import com.salud360.core.data.network.tobb.toFechaAgregada
 import com.salud360.core.data.network.tobb.toHorario
@@ -72,6 +80,8 @@ import com.salud360.core.model.turnos.ObraSocial
 import com.salud360.core.model.turnos.ObraSocialMedico
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
+import com.salud360.core.model.turnos.TipoTurnoCatalogo
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
 import kotlinx.datetime.DayOfWeek
@@ -595,6 +605,75 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         }
         log.d { "Historias clínicas de $medicoId en turnos: ${r.historiasClinicas}" }
         return r.historiasClinicas
+    }
+
+    // ------------------------------------------------------------------
+    // Tipos de turno (solo administrador; sin copia local: turnos es el dueño del dato)
+    // ------------------------------------------------------------------
+
+    /** Catálogo global de tipos de turno (`GET tipos-turno`), con los inactivos. No se guarda en el dispositivo. */
+    suspend fun tiposDeTurno(): List<TipoTurnoCatalogo> {
+        val r = sinRutaEnLaWeb("ver los tipos de turno") {
+            val obj = turnos.tobbGet("tipos-turno")
+            try {
+                decodificar(TobbTiposTurnoResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb respondió pero no informó el catálogo de tipos de turno.")
+            }
+        }
+        return r.tipos.map { it.toCatalogo() }
+    }
+
+    /**
+     * Crea un tipo en el catálogo (`POST tipos-turno`, solo administrador) y devuelve el que creó turnos. Un nombre
+     * repetido (`409 nombre_repetido`) o inválido (`422`) lanza [TobbException] con el mensaje de turnos.
+     */
+    suspend fun crearTipoTurno(nombre: String): TipoTurnoCatalogo {
+        val r = sinRutaEnLaWeb("crear tipos de turno") {
+            val obj = turnos.tobbPost("tipos-turno", cuerpo(TobbCrearTipoTurnoRequest.serializer(), TobbCrearTipoTurnoRequest(nombre.trim())))
+            try {
+                decodificar(TobbCrearTipoTurnoResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb confirmó el alta pero no informó el tipo de turno creado.")
+            }
+        }
+        log.d { "Tipo de turno creado en turnos: ${r.tipo.id}" }
+        return r.tipo.toCatalogo()
+    }
+
+    /** Tipos habilitados de un médico, con su condición y sus opciones (`GET medicos/{n}/tipos-turno`, solo administrador). */
+    suspend fun tiposDelMedico(medicoId: Id): List<TipoTurnoDelMedico> {
+        val n = numeroMedico(medicoId)
+        val r = sinRutaEnLaWeb("ver los tipos de turno de un médico") {
+            val obj = turnos.tobbGet("medicos/$n/tipos-turno")
+            try {
+                decodificar(TobbMedicoTiposResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb respondió pero no informó los tipos de turno del médico.")
+            }
+        }
+        return r.tipos.map { it.toTipoDelMedico() }
+    }
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/tipos-turno`, solo administrador) la lista EXACTA de tipos habilitados de un
+     * médico (`[]` = ninguno) con su condición y, donde [ConfigTipoTurno.opciones] no es `null`, sus opciones. No hay
+     * copia local que escribir: devuelve lo que quedó según turnos y sus avisos (un tipo deshabilitado que todavía tiene
+     * horarios no es un error). Un `200` que no informa los tipos no se toma como confirmación.
+     */
+    suspend fun guardarTiposDelMedico(medicoId: Id, config: List<ConfigTipoTurno>): GuardadoTipos {
+        val n = numeroMedico(medicoId)
+        val r = sinRutaEnLaWeb("cambiar los tipos de turno de un médico") {
+            val pedido = TobbMedicoTiposRequest(config.map { TobbTipoConfig(it.id, it.condicion.codigo, it.opciones) })
+            val obj = turnos.tobbPut("medicos/$n/tipos-turno", cuerpo(TobbMedicoTiposRequest.serializer(), pedido))
+            try {
+                decodificar(TobbMedicoTiposResponse.serializer(), obj)
+            } catch (e: SerializationException) {
+                throw TobbException(500, "respuesta", "turnosonlinebb confirmó el cambio pero no informó qué tipos de turno quedaron habilitados.")
+            }
+        }
+        log.d { "Tipos de turno de $medicoId en turnos: ${r.tipos.map { it.id }}, ${r.avisos.size} avisos" }
+        return GuardadoTipos(r.tipos.map { it.toTipoDelMedico() }, r.avisos)
     }
 
     // ------------------------------------------------------------------

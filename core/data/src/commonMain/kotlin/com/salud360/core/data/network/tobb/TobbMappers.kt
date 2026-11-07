@@ -4,11 +4,15 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Asistencia
+import com.salud360.core.model.turnos.CondicionTipoTurno
 import com.salud360.core.model.turnos.EstadoTurno
 import com.salud360.core.model.turnos.FechaAgregada
 import com.salud360.core.model.turnos.HorarioMedico
+import com.salud360.core.model.turnos.OpcionTipoTurno
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
+import com.salud360.core.model.turnos.TipoTurnoCatalogo
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -127,3 +131,10 @@ fun List<TobbSlot>.toSlots(turnos: List<Turno>, dobles: Boolean): List<SlotAgend
 }
 
 fun Id.numeroTobb(): Long? = TobbIds.numero(this)
+
+/** Tipo del catálogo de `tipos-turno`; `activo` llega como `0`/`1`. */
+fun TobbTipoTurno.toCatalogo(): TipoTurnoCatalogo = TipoTurnoCatalogo(id, nombre, activo == 1)
+
+/** Tipo habilitado de `medicos/{id}/tipos-turno`; un `primer_control` desconocido se lee como «Siempre». */
+fun TobbTipoDelMedico.toTipoDelMedico(): TipoTurnoDelMedico =
+    TipoTurnoDelMedico(id, nombre, CondicionTipoTurno.porCodigo(primerControl), opciones.map { OpcionTipoTurno(it.id, it.nombre) })

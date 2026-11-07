@@ -11,7 +11,8 @@ import java.net.InetSocketAddress
  * Escucha en `127.0.0.1` con un puerto libre y anota cada pedido (método, ruta, token y cuerpo) para que los tests
  * puedan comprobar qué sale hacia turnos. Contesta `GET catalogos`, `GET usuarios` y `GET secretarias` con datos
  * inventados y deja configurables el `PUT medicos/{n}/agenda` (T5), el `PUT medicos/{n}/historias-clinicas` y el
- * `PUT medicos/{n}/activo`; también el `POST pacientes` y el `PUT pacientes/{n}` de la ficha del paciente. Un médico con `activo = 0` sale en `GET usuarios` (con su `medico_id` y `activo:0`) pero
+ * `PUT medicos/{n}/activo`; también las cuatro rutas de los tipos de turno (`GET`/`POST tipos-turno` y `GET`/`PUT
+ * medicos/{n}/tipos-turno`, 404 por omisión) y el `POST pacientes` y el `PUT pacientes/{n}` de la ficha del paciente. Un médico con `activo = 0` sale en `GET usuarios` (con su `medico_id` y `activo:0`) pero
  * no en `GET catalogos`, igual que en turnos.
  *
  * Nunca se usa el `TurnosOnlineClient()` por omisión: ese apunta a producción.
@@ -48,6 +49,22 @@ class TurnosFalsoDeAgenda : AutoCloseable {
     /** Respuesta del `PUT medicos/{n}/activo`: `(estado, cuerpo)`. */
     @Volatile
     var respuestaDeActivo: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de activo no está en el servidor falso"}"""
+
+    /** Respuesta del `GET tipos-turno` (catálogo global de tipos de turno): `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeCatalogoDeTipos: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de los tipos de turno no está en el servidor falso"}"""
+
+    /** Respuesta del `POST tipos-turno` (alta de un tipo): `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeAltaDeTipo: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de los tipos de turno no está en el servidor falso"}"""
+
+    /** Respuesta del `GET medicos/{n}/tipos-turno` (tipos habilitados de un médico): `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeTiposDelMedico: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de los tipos de turno del médico no está en el servidor falso"}"""
+
+    /** Respuesta del `PUT medicos/{n}/tipos-turno` (lista exacta de tipos habilitados): `(estado, cuerpo)`. */
+    @Volatile
+    var respuestaDeGuardarTiposDelMedico: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de los tipos de turno del médico no está en el servidor falso"}"""
 
     /** Respuesta del `POST pacientes` (alta de un paciente): `(estado, cuerpo)`. */
     @Volatile
@@ -86,6 +103,12 @@ class TurnosFalsoDeAgenda : AutoCloseable {
             x.requestMethod == "GET" && ruta == "catalogos" -> responder(x, 200, catalogos())
             x.requestMethod == "GET" && ruta == "usuarios" -> responder(x, 200, usuarios())
             x.requestMethod == "GET" && ruta == "secretarias" -> responder(x, 200, """{"secretarias":[]}""")
+            x.requestMethod == "GET" && ruta == "tipos-turno" -> responder(x, respuestaDeCatalogoDeTipos.first, respuestaDeCatalogoDeTipos.second)
+            x.requestMethod == "POST" && ruta == "tipos-turno" -> responder(x, respuestaDeAltaDeTipo.first, respuestaDeAltaDeTipo.second)
+            x.requestMethod == "GET" && ruta.startsWith("medicos/") && ruta.endsWith("/tipos-turno") ->
+                responder(x, respuestaDeTiposDelMedico.first, respuestaDeTiposDelMedico.second)
+            x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/tipos-turno") ->
+                responder(x, respuestaDeGuardarTiposDelMedico.first, respuestaDeGuardarTiposDelMedico.second)
             x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/agenda") ->
                 responder(x, respuestaDeAgenda.first, respuestaDeAgenda.second)
             x.requestMethod == "PUT" && ruta.startsWith("medicos/") && ruta.endsWith("/historias-clinicas") ->
