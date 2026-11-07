@@ -7,12 +7,22 @@ import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
+import com.salud360.core.data.network.hc.HcPacienteFicha
+import com.salud360.core.data.network.hc.HcPacienteRequest
+import com.salud360.core.data.network.hc.HcResolverRespuesta
+import com.salud360.core.data.network.hc.PaginaCartera
+import com.salud360.core.data.network.hc.PacientesHcApi
+import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
 import com.salud360.core.data.repos.HcClinicaPruebas
+import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
+import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.database.Salud360Db
+import com.salud360.core.model.Id
+import com.salud360.core.model.especialidad.CodigosHc
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -181,6 +191,35 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         }
 }
 
+/**
+ * El `pacientes/resolver` de mentira (spec 005, T26): contesta lo que diga [respuesta] y anota cada pedido. Por omisión vincula con la
+ * ficha 5002 por documento. La cartera no se pide nunca al enviar.
+ */
+internal class ResolverFalso : PacientesHcApi {
+    val pedidos = CopyOnWriteArrayList<HcPacienteRequest>()
+    val elegidas = CopyOnWriteArrayList<Long?>()
+
+    @Volatile
+    var respuesta: (pedido: HcPacienteRequest, elegida: Long?) -> HcResolverRespuesta = { pedido, elegida ->
+        HcResolverRespuesta(ficha(elegida ?: 5002, pedido.dni), creado = false, vinculadoPor = if (elegida != null) "elegido" else "dni")
+    }
+
+    override suspend fun pagina(desde: Int, limite: Int): PaginaCartera = error("al enviar no se pide la cartera")
+
+    override suspend fun resolver(pedido: HcPacienteRequest, elegida: Long?): HcResolverRespuesta {
+        pedidos += pedido
+        elegidas += elegida
+        return respuesta(pedido, elegida)
+    }
+
+    companion object {
+        fun ficha(id: Long, dni: String) = HcPacienteFicha(id = id, nombre = "SALUD360 $id", apellido = "PRUEBA", dni = dni)
+
+        /** La respuesta de la web cuando vincula con la ficha [id]. */
+        fun vinculada(id: Long, dni: String) = HcResolverRespuesta(ficha(id, dni), creado = false, vinculadoPor = "dni")
+    }
+}
+
 /** Todo lo que un test del envío necesita a mano. [nuevoEnvio] arma otra cola sobre la misma base y el mismo servidor (como al reabrir la app). */
 internal class Escena(
     val db: Salud360Db,
@@ -189,9 +228,15 @@ internal class Escena(
     val reloj: RelojFalso,
     val scope: CoroutineScope,
     private val habilitada: SubentregaDeEscritura,
+    pacientesApi: PacientesHcApi,
+    /** El médico de la sesión, que el test puede cambiar (otro médico entra en el mismo dispositivo) o dejar en `null` (sin sesión). */
+    @Volatile var medicoDeLaSesion: Id? = MEDICO,
 ) {
     /** La fecha de «hoy» de la escena, para los estados: un día fijo, noviembre de 2026. */
     private val base = 1_793_000_000_000L
+
+    /** El repositorio de pacientes real, sobre [pacientesApi] (por omisión, una que falla si alguien resuelve algo). */
+    val pacientes = PacientesHcRepository(db, PacientesHcApis(mapOf(CodigosHc.GENERAL to pacientesApi)), mapOf(CodigosHc.GENERAL to "Clínica general"), esperar = {})
 
     fun nuevoEnvio(
         escritura: ClinicaEscrituraApi? = servidor,
@@ -200,9 +245,10 @@ internal class Escena(
     ) = HcClinicaEnvio(
         db, scope, reloj::esperar, { base + reloj.ahora }, habilitada,
         escritura = escritura,
-        pacientes = HcClinicaPruebas.pacientes(db),
+        pacientes = pacientes,
         dispositivo = dispositivo,
         nombreHc = "Clínica general",
+        medicoDeLaSesion = { medicoDeLaSesion },
     )
 
     val envio: HcClinicaEnvio = nuevoEnvio()
@@ -212,16 +258,20 @@ internal class Escena(
     }
 }
 
-/** Corre [bloque] con una base temporal (el paciente de prueba ya vinculado con la ficha 5001), un servidor falso y la cola real. */
+/**
+ * Corre [bloque] con una base temporal (el paciente de prueba ya vinculado con la ficha 5001, salvo [vinculado] = false), un servidor
+ * falso, la cola real y la sesión del médico de prueba.
+ */
 internal fun conServidor(
     habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
     servidor: ServidorFalso = ServidorFalso(),
     vinculado: Boolean = true,
+    pacientesApi: PacientesHcApi = HcClinicaPruebas.PacientesProhibida,
     bloque: suspend Escena.() -> Unit,
 ) = HcClinicaPruebas.conBase(vinculado) { db, driver ->
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     try {
-        Escena(db, driver, servidor, RelojFalso(), scope, habilitada).bloque()
+        Escena(db, driver, servidor, RelojFalso(), scope, habilitada, pacientesApi).bloque()
     } finally {
         scope.cancel()
     }

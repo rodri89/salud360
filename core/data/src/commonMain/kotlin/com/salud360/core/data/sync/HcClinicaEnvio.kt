@@ -11,15 +11,18 @@ import com.salud360.core.data.hcgeneral.PARTE_CREAR
 import com.salud360.core.data.hcgeneral.PlanDeEnvio
 import com.salud360.core.data.hcgeneral.PasoDeEnvio
 import com.salud360.core.data.hcgeneral.ResumenDeEnvio
+import com.salud360.core.data.hcgeneral.ResultadoVinculo
 import com.salud360.core.data.hcgeneral.SUBENTREGA_HABILITADA
 import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
+import com.salud360.core.data.hcgeneral.estadoDeVinculo
 import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.hcgeneral.planDeEnvio
 import com.salud360.core.data.hcgeneral.resumenDeEnvio
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
+import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.repos.EstadosDeEnvio
@@ -31,6 +34,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.CausaDeRechazo
+import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
@@ -90,8 +94,15 @@ import kotlinx.datetime.toLocalDateTime
  * - se quita el estado de la parte que llegó.
  * Lo que nunca va a viajar (la web no lo guarda, antecedentes desactivados, lo ya igual, D2) se limpia sin figurar como enviado.
  *
- * **Todavía no** (T26 a T28): resolver el vínculo del paciente (sin ficha conocida no se envía nada ni se marca estado), la sesión y el
- * médico, el reintento solo (con espera, periódico), «Reintentar» y «Descartar», ni cerrar/reabrir/anular desde la pantalla.
+ * **El vínculo del paciente** (RF-13, RF-19): antes de crear la primera consulta se resuelve la ficha de la web con
+ * PacientesHcRepository.vinculo (la lógica de la 002 y la 003). Si no queda vinculado la creación queda «En espera: <motivo>» y no sale
+ * nada (estadoDeVinculo). Un paciente dado de baja en la web deja «En espera» sin resolver de nuevo: el envío nunca crea fichas por su cuenta.
+ *
+ * **La sesión** (RF-50): se envía **solo** lo del médico de la sesión (medicoDeLaSesion), mirado al programar, al empezar y antes de
+ * cada paso. Con otra sesión, o sin ninguna, lo pendiente ni se envía ni se programa ni se toca, y vuelve a salir cuando vuelve su dueño.
+ * Un 401 a mitad de un envío deja lo que faltaba de esa consulta «En espera: sesión vencida».
+ *
+ * **Todavía no** (T27, T28): el reintento solo (con espera, periódico), «Reintentar» y «Descartar», ni cerrar/reabrir/anular desde la pantalla.
  *
  * El reloj es inyectable ([esperar]) y la corrutina también ([scope]): los tests mueven un reloj falso y no esperan tiempo real.
  * Todavía no se conecta a la pantalla: el autoguardado de la consulta no lo llama hasta T36.
@@ -107,12 +118,18 @@ open class HcClinicaEnvio(
     private val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
     /** La API de escritura de la HC general; sin ella (la HC general no tiene URL en este entorno) no se envía nada. */
     private val escritura: ClinicaEscrituraApi? = null,
-    /** De dónde sale la ficha de la web del paciente. Sin ficha conocida no se envía (resolver el vínculo es de T26). */
+    /** De dónde sale la ficha de la web del paciente (inculo). Sin él no se puede crear ninguna consulta. */
     private val pacientes: PacientesHcRepository? = null,
     /** El id estable de este dispositivo, que va en cada pedido de escritura. Sin él no se envía nada. */
     private val dispositivo: String = "",
     /** El nombre visible de la HC, que nombran los motivos de los estados. */
     private val nombreHc: String = CodigosHc.GENERAL,
+    /**
+     * El médico de la sesión actual (
+ull si no hay sesión de médico). La cola envía **solo** lo de ese médico (RF-50): sin sesión, o con
+     * la de otro, no programa ni manda ni toca nada. Por omisión no hay sesión: ante la duda no se manda con el token de nadie.
+     */
+    private val medicoDeLaSesion: () -> Id? = { null },
 ) {
     private val log = Logger.withTag("HcClinicaEnvio")
     private val hq get() = db.historiaClinicaQueries
@@ -143,7 +160,7 @@ open class HcClinicaEnvio(
      */
     fun marcarSucia(consultaId: Id, esperaMs: Long = ESPERA_MS) {
         scope.launch {
-            if (!esPropia(consultaId)) return@launch
+            if (!puedeEnviar(consultaId)) return@launch
             candado.withLock {
                 esperas.remove(consultaId)?.cancel()
                 esperas[consultaId] = scope.launch {
@@ -162,7 +179,7 @@ open class HcClinicaEnvio(
      * envío en curso, espera a que termine, RF-54). Devuelve el trabajo, que termina cuando termina ese envío.
      */
     fun empujarYa(consultaId: Id): Job = scope.launch {
-        if (!esPropia(consultaId)) return@launch
+        if (!puedeEnviar(consultaId)) return@launch
         candado.withLock { esperas.remove(consultaId)?.cancel() }
         enviarDeAUno(consultaId)
     }
@@ -198,22 +215,21 @@ open class HcClinicaEnvio(
             return
         }
         val consulta = hq.consultaPorId(consultaId).uno { it.toModel() } ?: return
-        if (!esPropia(consulta)) return
+        if (!puedeEnviar(consulta)) return
 
         val sucio = cargarSucio()
-        val envio = EnvioEnCurso(
-            consulta = consulta,
-            api = api,
-            webId = consulta.remotoId.toLongOrNull(),
-            lo = loEnviados.deLaConsulta(consulta.pacienteId, consulta.id),
-        )
-        val plan = planDeEnvio(entradaDelPlan(consulta, sucio, envio.lo, estadosDe(consulta)))
+        val lo = loEnviados.deLaConsulta(consulta.pacienteId, consulta.id)
+        val plan = planDeEnvio(entradaDelPlan(consulta, sucio, lo, estadosDe(consulta)))
+        val envio = EnvioEnCurso(consulta = consulta, api = api, plan = plan, webId = consulta.remotoId.toLongOrNull(), lo = lo)
 
         limpiarLoQueNoViaja(consulta, plan)
 
         val confirmadas = mutableSetOf<String>()
         while (true) {
             val paso = plan.siguiente(confirmadas) ?: break
+            // La sesión se mira antes de cada paso (RF-50): si entró otro médico mientras tanto, lo que sigue no sale con su token (crearía la
+            // consulta a nombre del otro, RF-14). Lo ya anotado queda; no se marca nada: lo del primero no se modifica.
+            if (!esDeLaSesion(consulta)) break
             // El envío se corta en el primer paso que no llega: nada de lo que sigue (y nunca el cierre) sale detrás.
             if (!envio.ejecutar(paso)) break
             confirmadas += paso.parte
@@ -224,6 +240,8 @@ open class HcClinicaEnvio(
     private inner class EnvioEnCurso(
         val consulta: Consulta,
         val api: ClinicaEscrituraApi,
+        /** El plan de este envío: de ahí salen los pasos que faltan si hay que dejarlos «En espera». */
+        val plan: PlanDeEnvio,
         /** El id de la web: el de antes, o el que contesta la creación de este envío. */
         var webId: Long?,
         /** Lo último que la web tiene confirmado, al día con cada paso. */
@@ -245,8 +263,7 @@ open class HcClinicaEnvio(
         }
 
         private suspend fun crear(paso: PasoDeEnvio.Crear): Boolean {
-            // Sin ficha conocida del paciente no hay a quién crearle la consulta; resolver el vínculo es de T26.
-            val ficha = pacientes?.fichaConocida(consulta.pacienteId, CodigosHc.GENERAL) ?: return false
+            val ficha = fichaDelPaciente(paso) ?: return false
             val respuesta = intentar(paso) { api.crear(paso.clave, dispositivo, ficha, paso.tipo, paso.fecha, paso.edadMostrar) } ?: return false
             val idDeLaWeb = respuesta.consulta.id
             db.transaction {
@@ -315,6 +332,28 @@ open class HcClinicaEnvio(
         }
 
         /**
+         * La ficha de la web del paciente, o `null` si no quedó vinculado (RF-13). Se resuelve acá, antes de crear la primera consulta, con
+         * `PacientesHcRepository.vinculo` (la lógica de la 002 y la 003): si ya se conoce, no pregunta nada (RF-35); si no, la web la busca
+         * y el vínculo queda guardado sin pendiente de envío. Si no queda vinculado (hay que elegir ficha, el documento no sirve, la ficha es
+         * de otro paciente, o no se pudo preguntar) la creación queda «En espera: <motivo>» y no sale nada. Un paciente dado de baja no pasa
+         * por acá: su ficha ya se conoce, y la web contesta `404 paciente_no_encontrado` al crear (RF-19), sin resolver de nuevo.
+         */
+        private suspend fun fichaDelPaciente(paso: PasoDeEnvio.Crear): Long? {
+            val repositorio = pacientes ?: return null
+            val resultado = try {
+                repositorio.vinculo(consulta.pacienteId, CodigosHc.GENERAL)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                ResultadoVinculo.NoSePudo(e as? TobbException ?: TobbException(0, "respuesta", e.message?.trim()?.ifEmpty { null } ?: "error"))
+            }
+            val estado = estadoDeVinculo(resultado, nombreHc) ?: return (resultado as ResultadoVinculo.Vinculado).fichaId
+            fallo(paso, estado)
+            log.w { "la consulta ${consulta.id} no se envía: el paciente no quedó vinculado ($resultado)" }
+            return null
+        }
+
+        /**
          * Hace la llamada a la web. Si falla, clasifica el error (T20), guarda el estado de la parte y devuelve `null`: quien llama corta
          * el envío. Solo envuelve la llamada: un fallo al anotar lo que la web confirmó es local y no se toma por un error de la web.
          */
@@ -323,10 +362,23 @@ open class HcClinicaEnvio(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            val clasificacion = clasificarErrorDeEnvio(e, nombreHc, yaEnviada = webId != null)
-            estados.guardar(consulta.pacienteId, consulta.id, paso.parte, clasificacion.estado, hoy())
+            fallo(paso, clasificarErrorDeEnvio(e, nombreHc, yaEnviada = webId != null).estado)
             log.w { "la web no aceptó ${paso.parte} de la consulta ${consulta.id}: ${e.message}" }
             null
+        }
+
+        /**
+         * Guarda el [estado] de la parte que no salió. Si es **sesión vencida** (`401`), vale para todo lo que faltaba de esta consulta: lo
+         * que seguía en el plan queda igual «En espera: sesión vencida» (RF-6, no se pierde ni se modifica nada) y se envía todo junto al
+         * volver a iniciar sesión. Las demás causas ajenas (servidor caído, sin red) solo marcan la parte que falló: el reintento lo decide T27.
+         */
+        private suspend fun fallo(paso: PasoDeEnvio, estado: EstadoEnvio) {
+            estados.guardar(consulta.pacienteId, consulta.id, paso.parte, estado, hoy())
+            if (estado is EstadoEnvio.EnEspera && estado.causa == CausaEnEspera.SESION_VENCIDA) {
+                plan.pasos.dropWhile { it !== paso }.drop(1).forEach {
+                    estados.guardar(consulta.pacienteId, consulta.id, it.parte, estado, hoy())
+                }
+            }
         }
 
         /** Llegó todo ([faltan] vacío): se quita el estado de la parte. Si no, la web no guardó [faltan] y la parte queda «No se pudo enviar». */
@@ -426,8 +478,14 @@ open class HcClinicaEnvio(
     private fun esPropia(consulta: Consulta): Boolean =
         consulta.especialidad == CodigosHc.GENERAL && consulta.origenDeConsulta() == OrigenDeConsulta.PROPIA
 
-    /** true si la consulta existe, es de la HC general y es propia de la app (RF-7, RF-8). */
-    private suspend fun esPropia(consultaId: Id): Boolean = hq.consultaPorId(consultaId).uno { it.toModel() }?.let { esPropia(it) } ?: false
+    /** La consulta es del médico de la sesión (RF-50). Sin sesión de médico, de nadie: no se manda con el token de otro. */
+    private fun esDeLaSesion(consulta: Consulta): Boolean = medicoDeLaSesion()?.let { it == consulta.medicoId } == true
+
+    /** La cola puede ocuparse de [consulta]: es propia de la app (RF-7, RF-8) y del médico de la sesión (RF-50). */
+    private fun puedeEnviar(consulta: Consulta): Boolean = esPropia(consulta) && esDeLaSesion(consulta)
+
+    /** true si la consulta existe y la cola puede ocuparse de ella ([puedeEnviar]). */
+    private suspend fun puedeEnviar(consultaId: Id): Boolean = hq.consultaPorId(consultaId).uno { it.toModel() }?.let { puedeEnviar(it) } ?: false
 
     /**
      * Cuántas consultas propias de la HC general tienen cambios sin enviar, con cuáles están «En espera» o «No se pudo enviar»
@@ -449,7 +507,7 @@ open class HcClinicaEnvio(
 
         val entradas = candidatas.sorted().mapNotNull { id ->
             val consulta = hq.consultaPorId(id).uno { it.toModel() } ?: return@mapNotNull null
-            if (!esPropia(consulta)) return@mapNotNull null
+            if (!puedeEnviar(consulta)) return@mapNotNull null // lo de otro médico no se cuenta ni se muestra (RF-50)
             val estados = estadosDe(consulta)
             EntradaDelContador(
                 pacienteId = consulta.pacienteId,

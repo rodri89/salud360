@@ -38,7 +38,9 @@ internal class EnvioProbado(
     scope: CoroutineScope,
     private val reloj: RelojFalso,
     habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
-) : HcClinicaEnvio(db, scope, reloj::esperar, { reloj.ahora }, habilitada) {
+    /** El médico de la sesión; por omisión, el de prueba (la cola solo toma las consultas del médico de la sesión). */
+    private val medicoDeLaSesion: Id? = MEDICO,
+) : HcClinicaEnvio(db, scope, reloj::esperar, { reloj.ahora }, habilitada, medicoDeLaSesion = { medicoDeLaSesion }) {
     /** `inicio <consulta>`, `fin <consulta>` (terminó) o `cancelado <consulta>`, en el orden en que pasaron. */
     val eventos = CopyOnWriteArrayList<String>()
 

@@ -342,20 +342,6 @@ class HcClinicaEnvioOrdenTest {
     }
 
     @Test
-    fun un_paciente_sin_ficha_vinculada_no_envia_nada_todavia() = conServidor(vinculado = false) {
-        db.sembrarPropia("u1")
-        db.sembrarTexto("u1")
-        val antes = db.filasSucias()
-
-        envio.empujarYa("u1").join()
-
-        // Resolver el vínculo y marcar «En espera: <motivo>» es T26.
-        assertEquals(emptyList(), servidor.pedidos)
-        assertEquals(antes, db.filasSucias())
-        assertEquals(emptyMap(), db.estadosDe("u1"))
-    }
-
-    @Test
     fun el_cuerpo_es_el_mismo_byte_a_byte_en_cada_intento() = conServidor {
         db.sembrarPropia("u1")
         db.sembrarTexto("u1", "nota", "A")

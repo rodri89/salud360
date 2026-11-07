@@ -1,5 +1,6 @@
 package com.salud360.core.data
 
+import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
 import com.salud360.core.data.network.hc.EnfermedadesApiRemota
@@ -108,12 +109,15 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     // entorno no tiene su URL, no envía nada), con el mismo id de dispositivo que el resto de la app. Todavía no la llama nadie: el
     // autoguardado y los disparadores se conectan en T31 y T36. `HcApiSync` ignora a la HC general por `envioPropio`.
     single {
+        val auth = lazy { get<AuthRepository>() }
         HcClinicaEnvio(
             db = get(),
             escritura = (get<HcBackends>().porEspecialidad[CodigosHc.GENERAL] as? HcClinicaBackend)?.escritura,
             pacientes = get(),
             dispositivo = get<Settings>().idDelDispositivo(),
             nombreHc = nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
+            // Solo se envía lo del médico de la sesión (RF-50). Se pregunta al enviar, no al armar: la sesión cambia con cada ingreso.
+            medicoDeLaSesion = { auth.value.sesion.value?.let(::medicoParaEnfermedades) },
         )
     }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).

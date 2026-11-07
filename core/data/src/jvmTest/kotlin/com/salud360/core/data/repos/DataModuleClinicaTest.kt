@@ -24,6 +24,10 @@ import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.auth.PerfilMedico
+import com.salud360.core.model.auth.Rol
+import com.salud360.core.model.auth.Sesion
+import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
@@ -378,7 +382,13 @@ class DataModuleClinicaTest {
         job.cancel()
     }
 
-    // ---- La cola de envío de la HC general (spec 005, T24) ----
+    /** Inicia la sesión del médico de prueba en el `AuthRepository` del módulo (sin red: guarda la sesión como después del login). */
+    private suspend fun Entorno.iniciarSesionComoMedico() {
+        val usuario = Usuario("u-medico", "medico@salud360.test", "Médico", "Prueba", Rol.MEDICO)
+        koin.get<AuthRepository>().guardarSesion(Sesion(usuario, "token-de-prueba-1", PerfilMedico(MEDICO, listOf(CodigosHc.GENERAL), tieneTurnos = false)))
+    }
+
+    // ---- La cola de envío de la HC general (spec 005, T24 a T26) ----
 
     @Test
     fun la_cola_de_envio_queda_registrada_una_sola_vez_y_envia_por_el_cliente_completo_de_la_hc_general() = conEntorno {
@@ -387,9 +397,15 @@ class DataModuleClinicaTest {
         db.sembrarPropia("propia-1", paciente = PACIENTE, medico = MEDICO)
         db.sembrarTexto("propia-1")
 
-        // La cola real, con la API de escritura del backend de la HC general: lo primero que sale es la creación. El servidor falso de
-        // este test contesta la lista de consultas a cualquier pedido a `consultas` (no sabe crear): lo que se mira es por dónde salió el
-        // pedido y qué quedó en el dispositivo.
+        // Sin sesión de médico (RF-50) la cola no manda nada: no hay token de nadie con el que mandarlo.
+        envio.empujarYa("propia-1").join()
+        assertEquals(emptyList(), pedidos.map { it.toString() }, "sin sesión no sale nada")
+        assertEquals(emptyMap(), EstadosDeEnvio(db).deLaConsulta(PACIENTE, "propia-1"), "y no se marca nada")
+
+        // Entra el médico dueño de la consulta. La cola real, con la API de escritura del backend de la HC general: lo primero que sale es la
+        // creación. El servidor falso de este test contesta la lista de consultas a cualquier pedido a `consultas` (no sabe crear): lo que se
+        // mira es por dónde salió el pedido y qué quedó en el dispositivo.
+        iniciarSesionComoMedico()
         envio.empujarYa("propia-1").join()
 
         val pedido = pedidos.single()
@@ -407,6 +423,19 @@ class DataModuleClinicaTest {
         assertEquals("1", textos(driver, "SELECT COUNT(*) FROM seccion_valor WHERE dirty <> 0").single())
         assertEquals("", textos(driver, "SELECT remoto_id FROM consulta WHERE id = 'propia-1'").single())
         assertEquals(1, envio.contarPendientes().enEspera)
+    }
+
+    @Test
+    fun la_cola_de_envio_solo_toma_lo_del_medico_de_la_sesion_aunque_haya_otras_consultas_propias() = conEntorno {
+        val envio = koin.get<HcClinicaEnvio>()
+        db.sembrarPropia("de-otro", paciente = PACIENTE, medico = "m-otro-medico")
+        db.sembrarTexto("de-otro")
+        iniciarSesionComoMedico()
+
+        envio.empujarYa("de-otro").join()
+
+        assertEquals(emptyList(), pedidos.map { it.toString() }, "la consulta de otro médico no sale con la sesión de éste")
+        assertEquals(0, envio.contarPendientes().total)
     }
     // ---- Licencias ----
 

@@ -56,6 +56,18 @@ enum class CausaEnEspera {
 
     /** La web no responde bien: `5xx`, `503 tobb_caido` o una respuesta que no se puede leer. */
     SERVIDOR,
+
+    /**
+     * Hay más de una ficha de la web posible para el paciente (o la elegida ya no sirve) y no se sabe cuál: el médico elige desde la
+     * consulta (RF-13, D15).
+     */
+    ELEGIR_FICHA,
+
+    /** El documento del paciente no sirve para la historia clínica (RF-12, RF-13): se corrige en la ficha del paciente. */
+    DOCUMENTO_INVALIDO,
+
+    /** Las fichas de la web con ese documento son de otro paciente de turnosonlinebb (RF-36, RF-13): lo resuelve el administrador. */
+    FICHA_DE_OTRO_PACIENTE,
 }
 
 /** Por qué la web rechazó un cambio (RF-30). */
