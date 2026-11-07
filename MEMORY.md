@@ -329,6 +329,12 @@ registros de personas): el repo es público.
   snackbar (`AdminViewModel.mensaje` ahora es `Aviso`). `AdminRepository.setEspecialidadHc` se eliminó. **El endpoint de turnos todavía no está en producción** (patch en el backup):
   hasta subirlo, la app contesta «todavía no permite cambiar las historias clínicas de un médico desde la app (falta actualizar turnosonlinebb)». Ojo al volver a `hc-general`:
   su T26 (spec 001) pide el mismo `TurnosRepository.guardarHistoriasClinicas` y `setEspecialidadHc` del ViewModel; hay que reconciliarlos en la unión.
+- Rama `feature/admin-tipos-turno` (sobre `main`, **sin commit**): el administrador, en Médicos → tarjeta del médico con agenda (de turnos), tiene la sección «Tipos de turno»:
+  tilda los tipos del catálogo global, elige su condición («Siempre», «Solo primera consulta», «Solo consultas de seguimiento») y sus opciones (subtipos), guarda con
+  `PUT medicos/{id}/tipos-turno` (lista exacta) y crea tipos nuevos con `POST tipos-turno`. Sin esquema local ni cambio optimista: viven en memoria del `AdminViewModel` y se piden
+  a demanda, al abrir la sección de ese médico. Reglas puras en `TiposDeTurnoDelMedico.kt` (`core/data`), modelo en `core/model/.../TiposDeTurno.kt` (el enum `TipoTurno` no se tocó).
+  La condición es solo configuración (la app no filtra con ella). **Dependencia:** el servidor de turnos con `tipos-turno` tiene que estar en producción; hasta entonces el panel
+  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** agenda con tipos, horarios con tipo, asignar turno con opciones; renombrar/borrar tipos.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del

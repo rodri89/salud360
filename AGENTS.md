@@ -85,7 +85,10 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
   (`AgendaTurnosOnline.guardarActivoMedico`): en turnos el «activo» del usuario es el del médico y secretaria/admin no tienen
   (siempre 1), por eso el botón de la pestaña Usuarios solo existe para médicos. `catalogos` no trae a los desactivados:
   se recuperan de `usuarios` (`medico_id`) para poder reactivarlos. El resto de los campos de la tarjeta del admin (consultorio, especialidad, teléfono, mail)
-  siguen siendo solo locales.
+  siguen siendo solo locales. Los tipos de turno habilitados de un médico, su condición («Siempre», solo primera consulta, solo
+  seguimiento) y sus opciones también se guardan en turnos, con `PUT medicos/{id}/tipos-turno` (lista exacta) y `POST tipos-turno`
+  (alta en el catálogo global): no se persisten en la base local (viven en memoria del `AdminViewModel`, se piden al abrir la sección
+  «Tipos de turno» de ese médico) y la entrega solo cubre al administrador; el enum `TipoTurno` sigue siendo el cerrado de siempre.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.
 - Los datos cuyo dueño es remoto no deben quedar `dirty` en el dispositivo (ese fue un bug real en licencias).
