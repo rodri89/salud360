@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.data.repos.CambioDeAgenda
+import com.salud360.core.data.repos.ConfigTiposEditor
+import com.salud360.core.data.repos.EstadoTiposDelMedico
 import com.salud360.core.data.repos.EstadoAgenda
 import com.salud360.core.data.repos.MOTIVO_SIN_MEDICO_DEL_USUARIO
 import com.salud360.core.data.repos.TurnosRepository
@@ -16,6 +18,18 @@ import com.salud360.core.data.repos.avisoDeLicenciaNoGuardada
 import com.salud360.core.data.repos.avisoDeLicenciaRenovada
 import com.salud360.core.data.repos.avisoDeMedicoActivoGuardado
 import com.salud360.core.data.repos.avisoDeMedicoActivoNoGuardado
+import com.salud360.core.data.repos.alternarOpcion
+import com.salud360.core.data.repos.alternarTipo
+import com.salud360.core.data.repos.aPedido
+import com.salud360.core.data.repos.avisoDeTipoCreado
+import com.salud360.core.data.repos.avisoDeTipoNoCreado
+import com.salud360.core.data.repos.avisoDeTiposGuardados
+import com.salud360.core.data.repos.avisoDeTiposNoGuardados
+import com.salud360.core.data.repos.cambiarCondicion
+import com.salud360.core.data.repos.conTipoCreado
+import com.salud360.core.data.repos.errorDelNombreDeTipo
+import com.salud360.core.data.repos.nombreNuevoDeTipo
+import com.salud360.core.data.repos.tiposListos
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasGuardadas
 import com.salud360.core.data.repos.avisoDeHistoriasClinicasNoGuardadas
 import com.salud360.core.data.repos.cambioDeAgenda
@@ -34,10 +48,14 @@ import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Secretaria
 import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.newId
+import com.salud360.core.model.turnos.CondicionTipoTurno
 import com.salud360.core.model.turnos.Consultorio
 import com.salud360.core.model.turnos.EspecialidadTurnos
 import com.salud360.core.model.turnos.Feriado
+import com.salud360.core.model.turnos.TipoTurnoCatalogo
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,6 +63,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -102,6 +121,32 @@ class AdminViewModel(
      * mientras espera, para no mandar dos listas pisadas una sobre la otra.
      */
     val guardandoHc: StateFlow<Set<Id>> = _guardandoHc
+
+    private val _guardandoTipos = MutableStateFlow<Set<Id>>(emptySet())
+
+    /**
+     * Médicos cuyos tipos de turno se están guardando en turnos ahora mismo: la sección deshabilita sus controles y un
+     * segundo guardado del mismo médico se ignora.
+     */
+    val guardandoTipos: StateFlow<Set<Id>> = _guardandoTipos
+
+    private val _tiposDelMedico = MutableStateFlow<Map<Id, EstadoTiposDelMedico>>(emptyMap())
+
+    /**
+     * Tipos de turno por médico, en memoria (turnos es el dueño: no se guardan en el dispositivo). Un médico entra acá
+     * recién cuando el administrador abre su sección de tipos ([cargarTiposDelMedico]).
+     */
+    val tiposDelMedico: StateFlow<Map<Id, EstadoTiposDelMedico>> = _tiposDelMedico
+
+    private val _catalogoTipos = MutableStateFlow<List<TipoTurnoCatalogo>>(emptyList())
+
+    /** Catálogo global de tipos de turno (con inactivos), compartido por todas las tarjetas; se trae junto con los tipos de cada médico. */
+    val catalogoTipos: StateFlow<List<TipoTurnoCatalogo>> = _catalogoTipos
+
+    private val _creandoTipo = MutableStateFlow(false)
+
+    /** Hay un alta de tipo de turno en vuelo: el botón «Crear» queda quieto. */
+    val creandoTipo: StateFlow<Boolean> = _creandoTipo
 
     private val _guardandoUsuarios = MutableStateFlow<Set<Id>>(emptySet())
 
@@ -247,6 +292,106 @@ class AdminViewModel(
                 .onFailure { avisarError(avisoDeHistoriasClinicasNoGuardadas(it.message)) }
         } finally {
             _guardandoHc.value = _guardandoHc.value - m.id
+        }
+    }
+
+    /**
+     * Trae de turnos el catálogo de tipos y los tipos habilitados de [medicoId]. Se llama a demanda, cuando el
+     * administrador abre la sección «Tipos de turno» de ESE médico (no al abrir la pestaña, para no hacer un pedido por
+     * médico). Si ya están cargados (o se están cargando) no vuelve a pedir, para no pisar lo que se esté editando;
+     * si falló, se vuelve a pedir (el botón «Reintentar»).
+     */
+    fun cargarTiposDelMedico(medicoId: Id) {
+        val actual = _tiposDelMedico.value[medicoId]
+        if (actual is EstadoTiposDelMedico.Listo || actual is EstadoTiposDelMedico.Cargando) return
+        _tiposDelMedico.update { it + (medicoId to EstadoTiposDelMedico.Cargando) }
+        viewModelScope.launch {
+            runCatching {
+                coroutineScope {
+                    val catalogo = async { turnos.tiposDeTurno() }
+                    val delMedico = async { turnos.tiposDelMedico(medicoId) }
+                    catalogo.await() to delMedico.await()
+                }
+            }
+                .onSuccess { (catalogo, delMedico) ->
+                    _catalogoTipos.value = catalogo
+                    _tiposDelMedico.update { it + (medicoId to tiposListos(catalogo, delMedico)) }
+                }
+                .onFailure { e -> _tiposDelMedico.update { it + (medicoId to EstadoTiposDelMedico.Error(e.message ?: "sin conexión")) } }
+        }
+    }
+
+    /** Tilda o destilda un tipo de turno del médico (solo en pantalla hasta [guardarTiposDelMedico]). */
+    fun alternarTipoDelMedico(medicoId: Id, tipoId: Int, habilitado: Boolean) =
+        editarTipos(medicoId) { alternarTipo(it, tipoId, habilitado) }
+
+    /** Cambia la condición («Siempre», primera consulta, seguimiento) de un tipo tildado. */
+    fun cambiarCondicionDelTipo(medicoId: Id, tipoId: Int, condicion: CondicionTipoTurno) =
+        editarTipos(medicoId) { cambiarCondicion(it, tipoId, condicion) }
+
+    /** Marca o desmarca una opción (subtipo que se elige al confirmar) de un tipo tildado. */
+    fun alternarOpcionDelTipo(medicoId: Id, tipoId: Int, opcionId: Int, marcada: Boolean) =
+        editarTipos(medicoId) { alternarOpcion(it, _catalogoTipos.value, tipoId, opcionId, marcada) }
+
+    /** Aplica una regla pura al editor del médico. Se ignora mientras se guarda, y borra los avisos del guardado anterior. */
+    private fun editarTipos(medicoId: Id, regla: (ConfigTiposEditor) -> ConfigTiposEditor) {
+        if (medicoId in _guardandoTipos.value) return
+        _tiposDelMedico.update { estados ->
+            val listo = estados[medicoId] as? EstadoTiposDelMedico.Listo ?: return@update estados
+            val nuevo = regla(listo.editor)
+            if (nuevo == listo.editor) estados else estados + (medicoId to listo.copy(editor = nuevo, avisos = emptyList()))
+        }
+    }
+
+    /**
+     * Guarda en turnos la lista exacta de tipos habilitados del médico. El dueño del dato es turnos: no hay cambio
+     * optimista, la sección sigue mostrando lo editado y recién con el `200` se reemplaza por lo que turnos informó (con
+     * sus avisos, p. ej. un tipo quitado que todavía tiene horarios, que no es un error). Mientras espera
+     * ([guardandoTipos]) un segundo guardado del mismo médico se ignora. Éxito o error se avisan por [mensaje].
+     */
+    fun guardarTiposDelMedico(medicoId: Id) = viewModelScope.launch {
+        if (medicoId in _guardandoTipos.value) return@launch
+        val listo = _tiposDelMedico.value[medicoId] as? EstadoTiposDelMedico.Listo ?: return@launch
+        if (!listo.hayCambios) return@launch
+        _guardandoTipos.value = _guardandoTipos.value + medicoId
+        try {
+            runCatching { turnos.guardarTiposDelMedico(medicoId, aPedido(listo.editor)) }
+                .onSuccess { guardado ->
+                    _tiposDelMedico.update { it + (medicoId to tiposListos(_catalogoTipos.value, guardado.tipos, guardado.avisos)) }
+                    avisar(avisoDeTiposGuardados(guardado.avisos))
+                }
+                .onFailure { avisarError(avisoDeTiposNoGuardados(it.message)) }
+        } finally {
+            _guardandoTipos.value = _guardandoTipos.value - medicoId
+        }
+    }
+
+    /**
+     * Crea un tipo de turno en el catálogo de turnos. Con éxito vuelve a pedir el catálogo (si ese pedido falla, suma el
+     * tipo creado al que ya había) y [onCreado] deja limpiar el campo; el tipo aparece en todas las listas sin tildar.
+     * Un nombre repetido (409), inválido (422) o cualquier otro error se avisan con el motivo real y no limpian el campo.
+     */
+    fun crearTipoTurno(nombre: String, onCreado: () -> Unit = {}) = viewModelScope.launch {
+        if (_creandoTipo.value) return@launch
+        val limpio = nombreNuevoDeTipo(nombre)
+        if (limpio == null) {
+            avisarError(avisoDeTipoNoCreado(errorDelNombreDeTipo(nombre) ?: "escribí el nombre del tipo"))
+            return@launch
+        }
+        _creandoTipo.value = true
+        try {
+            runCatching {
+                val creado = turnos.crearTipoTurno(limpio)
+                runCatching { turnos.tiposDeTurno() }.getOrElse { conTipoCreado(_catalogoTipos.value, creado) }
+            }
+                .onSuccess { catalogo ->
+                    _catalogoTipos.value = catalogo
+                    avisar(avisoDeTipoCreado())
+                    onCreado()
+                }
+                .onFailure { avisarError(avisoDeTipoNoCreado(it.message)) }
+        } finally {
+            _creandoTipo.value = false
         }
     }
 

@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
@@ -40,19 +42,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.EstadoTiposDelMedico
+import com.salud360.core.data.repos.avisoDeTiposNoCargados
+import com.salud360.core.data.repos.errorDelNombreDeTipo
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.data.repos.importeEscrito
 import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
+import com.salud360.core.data.repos.nombreNuevoDeTipo
+import com.salud360.core.data.repos.opcionesPosibles
 import com.salud360.core.data.repos.puedeCambiarActivoDelUsuario
 import com.salud360.core.data.repos.puedeCambiarVisible
 import com.salud360.core.data.repos.puedeMarcarMostrarEnElAlta
 import com.salud360.core.data.repos.puedeVerConfigDeAgenda
 import com.salud360.core.data.repos.puedeVerHorarios
+import com.salud360.core.data.repos.puedeVerTiposDeTurno
 import com.salud360.core.data.repos.textoDelImporte
+import com.salud360.core.data.repos.tiposOfrecidos
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Secretaria
+import com.salud360.core.model.turnos.CondicionTipoTurno
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
 import com.salud360.core.ui.components.CheckboxField
@@ -253,12 +263,85 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
             TextField("Teléfono", m.telefono, { vm.guardarMedico(m.copy(telefono = it)) }, Modifier.weight(1f))
             TextField("Mail de contacto", m.mail, { vm.guardarMedico(m.copy(mail = it)) }, Modifier.weight(1f))
         }
+        if (puedeVerTiposDeTurno(m.tieneTurnos, m.id)) TiposDeTurnoDelMedico(m, vm)
         val verConfig = puedeVerConfigDeAgenda(m.tieneTurnos)
         val verHorarios = puedeVerHorarios(m.tieneTurnos, m.consultorioId)
         if (verConfig || verHorarios) ActionRow {
             if (verConfig) AcceptButton("Módulos y configuración", onClick = { onConfig(m.id) })
             if (verHorarios) AcceptButton("Horarios", onClick = { onHorarios(m.id, m.consultorioId!!) })
         }
+    }
+}
+
+/**
+ * Sección «Tipos de turno» de la tarjeta del médico (solo administrador). `SectionCard` no compone su contenido mientras
+ * está cerrado, así que los tipos se piden a turnos recién cuando el administrador la abre —uno por médico, no uno por
+ * tarjeta al abrir la pestaña—. Las reglas están en `TiposDeTurnoDelMedico` (core/data); acá solo se muestran.
+ */
+@Composable
+private fun TiposDeTurnoDelMedico(m: Medico, vm: AdminViewModel) {
+    SectionCard("Tipos de turno", initiallyExpanded = false) {
+        val estados by vm.tiposDelMedico.collectAsState()
+        LaunchedEffect(m.id) { vm.cargarTiposDelMedico(m.id) }
+        when (val estado = estados[m.id]) {
+            null, EstadoTiposDelMedico.Cargando -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Cargando los tipos de turno…")
+            }
+            is EstadoTiposDelMedico.Error -> {
+                Text(avisoDeTiposNoCargados(estado.motivo), color = MaterialTheme.colorScheme.error)
+                ActionRow { AcceptButton("Reintentar", onClick = { vm.cargarTiposDelMedico(m.id) }) }
+            }
+            is EstadoTiposDelMedico.Listo -> TiposDeTurnoListos(m, estado, vm)
+        }
+    }
+}
+
+@Composable
+private fun TiposDeTurnoListos(m: Medico, estado: EstadoTiposDelMedico.Listo, vm: AdminViewModel) {
+    val catalogo by vm.catalogoTipos.collectAsState()
+    val guardandoTipos by vm.guardandoTipos.collectAsState()
+    val creandoTipo by vm.creandoTipo.collectAsState()
+    var nuevoTipo by remember { mutableStateOf("") }
+    // Se guarda en turnos y lo editado queda en pantalla hasta que turnos confirma: mientras tanto, controles quietos.
+    val guardando = m.id in guardandoTipos
+    val ofrecidos = tiposOfrecidos(catalogo)
+    Text(
+        "Tildá los tipos que atiende este médico. Cada uno puede ofrecerse siempre, solo en la primera consulta o solo en las consultas de seguimiento.",
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (ofrecidos.isEmpty()) Text("Todavía no hay tipos de turno. Creá el primero más abajo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    ofrecidos.forEach { tipo ->
+        val e = estado.editor.estadoDe(tipo.id)
+        CheckboxField(tipo.nombre, e.habilitado, { vm.alternarTipoDelMedico(m.id, tipo.id, it) }, enabled = !guardando)
+        // Como en la web: las opciones y la condición aparecen solo con el tipo tildado.
+        if (e.habilitado) Column(Modifier.padding(start = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SelectField(
+                "Se ofrece", e.condicion.etiqueta, CondicionTipoTurno.entries.map { it.etiqueta },
+                { v -> CondicionTipoTurno.entries.firstOrNull { it.etiqueta == v }?.let { vm.cambiarCondicionDelTipo(m.id, tipo.id, it) } },
+                Modifier.fillMaxWidth(), readOnly = guardando, allowEmpty = false,
+            )
+            val posibles = opcionesPosibles(catalogo, tipo.id)
+            if (posibles.isNotEmpty()) {
+                Text("Opciones que se eligen al confirmar el turno", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    posibles.forEach { o ->
+                        CheckboxField(o.nombre, o.id in e.opciones, { vm.alternarOpcionDelTipo(m.id, tipo.id, o.id, it) }, enabled = !guardando)
+                    }
+                }
+            }
+        }
+    }
+    // Avisos del último guardado (p. ej. un tipo quitado que sigue con horarios): no son un error, quedan visibles hasta la próxima edición.
+    estado.avisos.forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    ActionRow { PillButton("Guardar tipos de turno", enabled = estado.hayCambios && !guardando, onClick = { vm.guardarTiposDelMedico(m.id) }) }
+    HorizontalDivider()
+    TextField(
+        "Nuevo tipo de turno", nuevoTipo, { nuevoTipo = it }, Modifier.fillMaxWidth(),
+        isError = errorDelNombreDeTipo(nuevoTipo) != null, supportingText = errorDelNombreDeTipo(nuevoTipo),
+    )
+    ActionRow {
+        PillButton("Crear", enabled = nombreNuevoDeTipo(nuevoTipo) != null && !creandoTipo, onClick = { vm.crearTipoTurno(nuevoTipo) { nuevoTipo = "" } })
     }
 }
 
