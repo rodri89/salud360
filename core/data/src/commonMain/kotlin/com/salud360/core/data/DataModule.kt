@@ -26,6 +26,8 @@ import com.salud360.core.data.repos.RevocaSesion
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.data.sync.HcClinicaEnvio
+import com.salud360.core.data.sync.ObservadorDeConexion
+import com.salud360.core.data.sync.ObservadorDeConexionDelSistema
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.Salud360Db
 import com.russhwolf.settings.Settings
@@ -109,6 +111,9 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
     }
     single { PacientesHcRepository(get(), get(), nombresHc) }
     single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
+    // El observador de conexión (spec 005, T31, RF-57): lo aporta cada plataforma con `ObservadorDeConexionDelSistema` (como `ArchivoStore`)
+    // y `App` lo conecta con la cola de envío cuando hay sesión.
+    single<ObservadorDeConexion> { get<ObservadorDeConexionDelSistema>() }
     // La cola de envío de la HC general (spec 005, T24 y T25): una sola. Envía por la API de escritura del backend de la HC general (si el
     // entorno no tiene su URL, no envía nada), con el mismo id de dispositivo que el resto de la app. Todavía no la llama nadie: el
     // autoguardado y los disparadores se conectan en T31 y T36. `HcApiSync` ignora a la HC general por `envioPropio`.

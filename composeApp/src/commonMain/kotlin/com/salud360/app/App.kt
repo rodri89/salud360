@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavHostController
 import com.salud360.core.data.repos.AuthRepository
+import com.salud360.core.data.sync.HcClinicaEnvio
+import com.salud360.core.data.sync.ObservadorDeConexion
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.ui.components.LoadingIndicator
 import com.salud360.core.ui.theme.Salud360Theme
@@ -40,6 +42,8 @@ fun App(darkTheme: Boolean? = null, anchoMaximoContenido: Dp? = null, alIniciarN
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val auth = koinInject<AuthRepository>()
             val sync = koinInject<SyncEngine>()
+            val envioClinica = koinInject<HcClinicaEnvio>()
+            val conexion = koinInject<ObservadorDeConexion>()
             val sesion by auth.sesion.collectAsState()
             var restaurando by remember { mutableStateOf(true) }
             val appScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -49,7 +53,16 @@ fun App(darkTheme: Boolean? = null, anchoMaximoContenido: Dp? = null, alIniciarN
                 restaurando = false
             }
             LaunchedEffect(sesion?.token) {
-                if (sesion != null) sync.iniciarPeriodico(appScope) else sync.detener()
+                if (sesion != null) {
+                    sync.iniciarPeriodico(appScope)
+                    // Spec 005, T31 (RF-57): con sesión (la restaurada al abrir la app o la recién iniciada) se retoma lo propio pendiente de la
+                    // HC general, y cada vez que vuelva la conexión también. Sin sesión, ninguno de los dos hace nada.
+                    envioClinica.observar(conexion)
+                    envioClinica.alAbrirOIniciar()
+                } else {
+                    sync.detener()
+                    envioClinica.dejarDeObservar(conexion)
+                }
             }
 
             when {

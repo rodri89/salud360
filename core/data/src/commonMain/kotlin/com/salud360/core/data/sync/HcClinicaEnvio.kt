@@ -89,7 +89,7 @@ import kotlinx.datetime.toLocalDateTime
  *   espera y **no** cancela al que está en camino: la espera termina cuando empieza el envío.
  * - **Qué entra** (RF-7, D2): solo las consultas propias de la HC general. El histórico del dispositivo, lo que trajo la web, otras
  *   historias clínicas y las consultas que no existen no se programan ni se envían nunca; lo sucio de ellas queda como estaba.
- *   Abrir una consulta, iniciar sesión o volver la conexión **no** son disparadores de esta clase (los disparadores de RF-57 son T31).
+ *   Abrir una consulta no dispara nada; abrir la app, iniciar sesión y volver la conexión sí, pero solo lo propio ([alAbrirOIniciar], [alRecuperarConexion]).
  *
  * **Qué sale y en qué orden** ([enviar], RF-14, RF-56): lo decide `planDeEnvio` y esta clase lo ejecuta de a un paso: **primero la
  * creación** (clave `c:<id local>`), **después el contenido** (los textos y el examen) y **al final el cierre** (o la baja de una
@@ -124,9 +124,10 @@ import kotlinx.datetime.toLocalDateTime
  *   reintenta solo y no frena a las demás consultas. El médico puede [reintentar] (vuelve a mandar lo rechazado) o [descartar] (queda
  *   «Descartado: no se envió a la web», el dato se conserva en el dispositivo y el cierre que esperaba sale).
  *
- * **Todavía no** (T28, T29, T31): cerrar/reabrir/anular desde la pantalla, «Ya no figura en la web», y los disparadores de abrir la app,
- * iniciar sesión y recuperar la conexión. Al cerrar y abrir la app la cadena de reintentos no sigue sola: la retoma el disparador de abrir
- * la app (T31).
+ * **Los disparadores** (T31, RF-57, RF-29): abrir la app, iniciar sesión y recuperar la conexión ([alAbrirOIniciar], [alRecuperarConexion],
+ * [observar]) retoman lo propio del médico de la sesión que quedó pendiente o «En espera» con la misma espera de [ESPERA_MS] de siempre, una por
+ * consulta, sin atrasar una espera más cercana ni correr en paralelo con un envío de esa consulta. La cadena de reintentos vive en memoria: al
+ * cerrar y abrir la app no sigue sola, y la retoma [alAbrirOIniciar]. El histórico del dispositivo no se envía solo (RF-7, D2).
  * * El reloj es inyectable ([esperar]) y la corrutina también ([scope]): los tests mueven un reloj falso y no esperan tiempo real.
  * Todavía no se conecta a la pantalla: el autoguardado de la consulta no lo llama hasta T36.
  */
@@ -166,6 +167,9 @@ open class HcClinicaEnvio(
 
     /** La espera programada de cada consulta (solo la que todavía no empezó a enviar). */
     private val esperas = mutableMapOf<Id, Job>()
+
+    /** Cuándo vence la espera de [esperas] (en la hora de [ahora]); solo vale mientras esa espera siga activa. Lo escribe [programar], el único que arma esperas. */
+    private val vencimientos = mutableMapOf<Id, Long>()
 
     /**
      * Cuántas veces seguidas falló cada consulta por una causa ajena al dato: de ahí sale la espera del próximo reintento solo
@@ -220,11 +224,14 @@ open class HcClinicaEnvio(
      * ya no se la puede cancelar: un cambio nuevo arma otra y su envío hace cola detrás de éste. Si la web pidió esperar ([frenadoHasta]),
      * el envío espera a que se cumpla, también el de los cambios del médico.
      */
-    private suspend fun programar(consultaId: Id, esperaMs: Long, reemplazar: Boolean) {
+    private suspend fun programar(consultaId: Id, esperaMs: Long, reemplazar: Boolean, soloSiAdelanta: Boolean = false) {
         candado.withLock {
             val actual = esperas[consultaId]
             if (!reemplazar && actual != null && actual.isActive) return@withLock
+            // Un disparador de RF-57 solo adelanta: si la espera que hay vence antes de [esperaMs], se queda como está.
+            if (soloSiAdelanta && actual != null && actual.isActive && (vencimientos[consultaId] ?: Long.MAX_VALUE) <= ahora() + esperaMs) return@withLock
             actual?.cancel()
+            vencimientos[consultaId] = ahora() + esperaMs
             esperas[consultaId] = scope.launch {
                 val yo = currentCoroutineContext()[Job]
                 if (esperaMs > 0) esperar(esperaMs)
@@ -289,6 +296,50 @@ open class HcClinicaEnvio(
         enviarDeAUno(consultaId)
     }
 
+    /**
+     * Se abrió la app con una sesión, o el médico inició sesión (RF-57): retoma lo **propio** del médico de la sesión que quedó pendiente o
+     * «En espera». La cadena de reintentos vive en memoria y no sobrevive a cerrar la app (RF-29, T27): esto la retoma. Ver [reanudar].
+     */
+    fun alAbrirOIniciar(): Job = reanudar()
+
+    /**
+     * Volvió la conexión (RF-57), según el [ObservadorDeConexion] de la plataforma (ver [observar]): retoma lo pendiente o «En espera» del
+     * médico de la sesión sin esperar el reintento largo que tuviera programado. Ver [reanudar].
+     */
+    fun alRecuperarConexion(): Job = reanudar()
+
+    /** Conecta [observador] con [alRecuperarConexion]. Registrarse **no** dispara nada, aunque haya red y pendientes: abrir la app es otro disparador. */
+    fun observar(observador: ObservadorDeConexion) {
+        observador.iniciar { alRecuperarConexion() }
+    }
+
+    /** Desconecta a [observador] (cierre de sesión). */
+    fun dejarDeObservar(observador: ObservadorDeConexion) {
+        observador.detener()
+    }
+
+    /**
+     * Lo que hacen los tres disparadores de RF-57 (abrir la app, iniciar sesión, recuperar la conexión): para cada consulta **propia** del
+     * médico de la sesión con algo para mandar ahora (un cambio sin enviar o una parte «En espera»; no lo «No se pudo enviar», que espera al
+     * médico, ni lo que no viaja) arma **la misma espera de [ESPERA_MS]** que el autoguardado y los reintentos: una sola por consulta, que
+     * **adelanta** a una más larga (el reintento de 5 minutos) pero nunca atrasa a una más cercana, así varios eventos seguidos (la conexión que
+     * va y viene) no hacen ráfaga ni postergan el envío. Pasada la espera el envío pide el turno de la consulta, como siempre: si hay otro
+     * en curso espera a que termine (RF-54) y, si ya no queda nada, no pide nada. No envía el histórico (RF-7, D2), ni lo de la web, ni lo de
+     * otro médico (RF-50). Sin sesión de médico, sin API de escritura o sin id de dispositivo no hace nada.
+     */
+    private fun reanudar(): Job = scope.launch {
+        for (id in consultasParaReanudar()) programar(id, ESPERA_MS, reemplazar = true, soloSiAdelanta = true)
+    }
+
+    private suspend fun consultasParaReanudar(): List<Id> {
+        if (escritura == null || dispositivo.isBlank() || medicoDeLaSesion() == null) return emptyList()
+        val sucio = cargarSucio()
+        return consultasConAlgoSucio(sucio).sorted().filter { id ->
+            val consulta = hq.consultaPorId(id).uno { it.toModel() } ?: return@filter false
+            puedeEnviar(consulta) &&
+                planDeEnvio(entradaDelPlan(consulta, sucio, loEnviados.deLaConsulta(consulta.pacienteId, consulta.id), estadosDe(consulta))).pasos.isNotEmpty()
+        }
+    }
     /** Corre [bloque] con el turno de la consulta: nunca a la vez que un envío de la misma (RF-54). */
     override suspend fun <T> conTurno(consultaId: Id, bloque: suspend () -> T): T {
         return turnos.conTurno(consultaId, bloque)
@@ -614,6 +665,16 @@ open class HcClinicaEnvio(
         val pendientes: List<Pendiente>,
     )
 
+    /** Los ids de las consultas que tienen alguna fila sucia (la propia, sus textos, su examen, sus antecedentes, registros, laboratorios o pendientes). */
+    private fun consultasConAlgoSucio(sucio: Sucio): Set<Id> = mutableSetOf<Id>().apply {
+        addAll(sucio.consultas)
+        sucio.valores.mapTo(this) { it.fila.consultaId }
+        sucio.examenes.mapTo(this) { it.fila.consultaId }
+        sucio.antecedentes.mapNotNullTo(this) { it.fila.consultaId }
+        sucio.registros.mapNotNullTo(this) { it.fila.consultaId }
+        sucio.laboratorios.mapNotNullTo(this) { it.consultaId }
+        sucio.pendientes.mapNotNullTo(this) { it.consultaId }
+    }
     private suspend fun cargarSucio() = Sucio(
         consultas = hq.consultasDirty().lista { it.id }.toSet(),
         valores = hq.seccionValoresDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
@@ -700,17 +761,7 @@ open class HcClinicaEnvio(
      */
     suspend fun contarPendientes(): ResumenDeEnvio {
         val sucio = cargarSucio()
-        val candidatas = mutableSetOf<Id>().apply {
-            addAll(sucio.consultas)
-            sucio.valores.mapTo(this) { it.fila.consultaId }
-            sucio.examenes.mapTo(this) { it.fila.consultaId }
-            sucio.antecedentes.mapNotNullTo(this) { it.fila.consultaId }
-            sucio.registros.mapNotNullTo(this) { it.fila.consultaId }
-            sucio.laboratorios.mapNotNullTo(this) { it.consultaId }
-            sucio.pendientes.mapNotNullTo(this) { it.consultaId }
-        }
-
-        val entradas = candidatas.sorted().mapNotNull { id ->
+        val entradas = consultasConAlgoSucio(sucio).sorted().mapNotNull { id ->
             val consulta = hq.consultaPorId(id).uno { it.toModel() } ?: return@mapNotNull null
             if (!puedeEnviar(consulta)) return@mapNotNull null // lo de otro médico no se cuenta ni se muestra (RF-50)
             entradaDelContador(consulta, sucio)

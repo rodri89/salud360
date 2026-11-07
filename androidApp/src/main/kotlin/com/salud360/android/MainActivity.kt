@@ -9,6 +9,7 @@ import com.salud360.app.App
 import com.salud360.app.configEntorno
 import com.salud360.app.iniciarKoin
 import com.salud360.core.data.files.ArchivoStore
+import com.salud360.core.data.sync.ObservadorDeConexionDelSistema
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.createDatabase
 import com.salud360.features.hc.platform.contextGlobal
@@ -24,7 +25,12 @@ class Salud360Application : Application() {
         // En dev, 10.0.2.2 es la Mac vista desde el emulador; para un teléfono físico compilar con -PdevHost=<ip de la Mac>.
         iniciarKoin(
             db = db,
-            modulosPlataforma = listOf(module { single { ArchivoStore(this@Salud360Application) } }),
+            modulosPlataforma = listOf(
+                module {
+                    single { ArchivoStore(this@Salud360Application) }
+                    single { ObservadorDeConexionDelSistema(this@Salud360Application) }
+                },
+            ),
             config = configEntorno(hostLocal = "10.0.2.2"),
         ).androidContext(this)
     }

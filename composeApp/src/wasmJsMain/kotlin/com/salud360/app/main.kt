@@ -6,6 +6,7 @@ import androidx.compose.ui.window.ComposeViewport
 import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
 import com.salud360.core.data.files.ArchivoStore
+import com.salud360.core.data.sync.ObservadorDeConexionDelSistema
 import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.createDatabase
 import kotlinx.browser.document
@@ -28,7 +29,7 @@ fun main() {
     CoroutineScope(Dispatchers.Default).launch {
         // La base (sql.js en un worker) se crea de forma asíncrona antes de montar la UI.
         val db = createDatabase(DriverFactory())
-        iniciarKoin(db, listOf(module { single { ArchivoStore() } }), config)
+        iniciarKoin(db, listOf(module { single { ArchivoStore() }; single { ObservadorDeConexionDelSistema() } }), config)
         document.getElementById("cargando")?.remove()
         // En web el contenido se acota al ancho de una tablet para que las secciones no se estiren a todo el monitor.
         // Las rutas se reflejan en la URL (#pacientes/…): recargar la página vuelve a la misma pantalla.
