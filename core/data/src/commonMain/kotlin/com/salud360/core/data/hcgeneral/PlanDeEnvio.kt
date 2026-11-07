@@ -1,0 +1,428 @@
+package com.salud360.core.data.hcgeneral
+
+import com.salud360.core.data.network.hc.PayloadsClinica
+import com.salud360.core.model.Id
+import com.salud360.core.model.especialidad.SeccionesComunes
+import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.EstadoEnvio
+import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.RegistroClinico
+import com.salud360.core.model.hc.SeccionValor
+import kotlinx.datetime.LocalDate
+
+// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-55, RF-56, RF-60, RF-68, RF-69). **Puro**: las
+// filas, lo último que la web confirmó, los estados y el momento del armado entran como parámetros; no hay red, base ni reloj, y el
+// mismo ingreso da siempre el mismo plan. **Solo ordena**: no ejecuta ningún pedido ni escribe nada (un envío por consulta a la vez,
+// RF-54, es de quien envía, `HcClinicaEnvio`). Responde tres preguntas:
+// - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
+//   es un cambio real (T18): un vacío que el médico no tocó no se envía nunca; vaciar algo que la web tiene sí (RF-69).
+// - **Qué no viaja y se limpia** ([PlanDeEnvio.sinViaje]): lo que nunca va a viajar (lo que la web no guarda, antecedentes desactivados, lo
+//   que ya está igual en la web). Quien envía lo deja con `dirty = 0` **sin** figurar como enviado ni como pendiente (RF-60).
+// - **Qué no viaja y se queda** ([PlanDeEnvio.enReserva]): lo que la web guarda pero esta versión todavía no envía (RF-4): sigue sucio para
+//   cuando se habilite, no cuenta como pendiente y no frena el cierre.
+// Del histórico del dispositivo y de la web no sale nada (RF-7, RF-1): el plan es vacío y no toca nada de ellas.
+
+/** Las partes de una consulta que se envían por separado, en el orden en que se envían (y las claves de [EstadoEnvio] persistido). */
+const val PARTE_CREAR = "crear"
+const val PARTE_SECCIONES = "secciones"
+const val PARTE_EXAMEN = "examen"
+const val PARTE_FORMULARIOS = "formularios"
+const val PARTE_ANTECEDENTES = "antecedentes"
+const val PARTE_REGISTROS = "registros"
+const val PARTE_CIERRE = "cierre"
+const val PARTE_BAJA = "baja"
+
+private val PARTES_DE_CONTENIDO = listOf(PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS)
+private val ORDEN_DE_PARTES = listOf(PARTE_CREAR) + PARTES_DE_CONTENIDO + listOf(PARTE_CIERRE, PARTE_BAJA)
+
+/** Una fila con su marca de «tocado» y el momento (`updated_at`) en que se modificó por última vez. */
+data class FilaSucia<T>(val fila: T, val dirty: Boolean, val actualizadaEn: Long)
+
+/**
+ * Lo último que la web confirmó de esta consulta, que es lo que decide si algo es un cambio real o un vacío que el médico no tocó
+ * (RF-34, RF-69): el examen se guarda por fila y no sabe qué campo se tocó. Lo que no figura es lo que la web no tiene (la consulta
+ * nace vacía y solo la app la escribe). **Quien envía tiene que registrarlo** al confirmar cada paso ([conLoConfirmado]); si no, un
+ * texto vaciado después de enviarse no se notaría.
+ */
+data class LoEnviado(
+    /** `<sección>/<campo>` → texto (las secciones de texto: `nota/texto`). */
+    val valores: Map<String, String> = emptyMap(),
+    /** Nombre del contrato (`peso`, `talla`, `tension_arterial`, `imc`, `nota`) → valor. */
+    val examen: Map<String, String> = emptyMap(),
+) {
+    /** Lo que queda confirmado después de que la web aceptó [paso]. Un valor en blanco queda como `""` (vaciado). */
+    fun conLoConfirmado(paso: PasoDeEnvio): LoEnviado = when (paso) {
+        is PasoDeEnvio.Secciones -> copy(valores = valores + paso.textos.mapKeys { "${it.key}/$CAMPO_TEXTO" }.mapValues { normalizado(it.value) })
+        is PasoDeEnvio.Examen -> copy(
+            examen = examen + paso.campos.mapValues { (campo, valor) -> if (campo in MEDIDAS) medidaNormalizada(valor) else normalizado(valor) },
+        )
+        else -> this
+    }
+
+    private fun normalizado(valor: String) = if (esVacio(valor)) "" else valor
+    private fun medidaNormalizada(valor: String) = if (esVacioDeMedida(valor)) "" else valor
+}
+
+private val MEDIDAS = setOf("peso", "talla", "tension_arterial", "imc")
+
+/** Todo lo que el plan necesita saber de una consulta. */
+data class EntradaDelPlan(
+    val consulta: Consulta,
+    /** La fila de la consulta sigue sucia: falta crearla, cerrarla o darla de baja (se limpia cuando se confirma lo último). */
+    val consultaSucia: Boolean,
+    val valores: List<FilaSucia<SeccionValor>> = emptyList(),
+    val examen: FilaSucia<ExamenFisico>? = null,
+    /** Los antecedentes del paciente; solo cuentan los asociados a esta consulta (RF-68). */
+    val antecedentes: List<FilaSucia<Antecedente>> = emptyList(),
+    /** Las filas de registro del paciente; solo cuentan las asociadas a esta consulta (RF-68). */
+    val registros: List<FilaSucia<RegistroClinico>> = emptyList(),
+    val loEnviado: LoEnviado = LoEnviado(),
+    /** El estado guardado de cada parte (T20); lo que no figura es «Falta enviar». */
+    val estados: Map<String, EstadoEnvio> = emptyMap(),
+    /** Hasta qué subentrega trae el envío esta versión ([SUBENTREGA_HABILITADA]). */
+    val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    /** El médico tocó «Reintentar»: las partes rechazadas vuelven a incluirse (RF-30). */
+    val reintentoManual: Boolean = false,
+    /** El momento en que se arma el envío; el plan solo lo repite (RF-55). */
+    val armadoEn: Long,
+)
+
+enum class TablaDeLaFila { CONSULTA, SECCION_VALOR, EXAMEN_FISICO, ANTECEDENTE, REGISTRO }
+
+/**
+ * Una fila que viaja en un paso, con su `updated_at` al armar el plan: al confirmarse el paso, solo se limpia la que sigue igual (RF-55).
+ * [clave] es `<sección>/<campo>` en los valores, el id de la consulta en el examen y la consulta, y el id de la fila en lo demás.
+ */
+data class FilaCubierta(val tabla: TablaDeLaFila, val clave: String, val actualizadaEn: Long)
+
+sealed interface PasoDeEnvio {
+    val parte: String
+    val cubre: List<FilaCubierta>
+
+    /** `POST consultas`: la fecha y la edad son las que cargó el médico. */
+    data class Crear(val clave: String, val tipo: String, val fecha: LocalDate, val edadMostrar: String, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_CREAR
+    }
+
+    /** `PUT consultas/{id}/secciones`: sección → texto, solo lo cambiado (`""` vacía). */
+    data class Secciones(val textos: Map<String, String>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_SECCIONES
+    }
+
+    /** `PUT consultas/{id}/examen`: nombre del contrato → valor, solo los campos cambiados. */
+    data class Examen(val campos: Map<String, String>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_EXAMEN
+    }
+
+    /** Formularios (alimentación, serologías, Child-Pugh; E2). El cuerpo lo arma la entrega que los habilita. */
+    data class Formularios(val valores: List<SeccionValor>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_FORMULARIOS
+    }
+
+    /** Antecedentes familiares asociados a la consulta (E2). */
+    data class Antecedentes(val items: List<Antecedente>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_ANTECEDENTES
+    }
+
+    /** Filas de registro asociadas a la consulta (estudios, exámenes, interconsultas; E2), con las bajas. */
+    data class Registros(val items: List<RegistroClinico>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_REGISTROS
+    }
+
+    /** `POST consultas/{id}/cerrar`: con la clave de este cierre y la fecha y la edad de la consulta. Siempre el último. */
+    data class Cerrar(val clave: String, val fecha: LocalDate, val edadMostrar: String, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_CIERRE
+    }
+
+    /** `DELETE consultas/{id}`: la baja de una consulta creada y anulada. Va sola. */
+    data class Baja(val clave: String, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_BAJA
+    }
+}
+
+/** Por qué una fila sucia no viaja y se limpia sin figurar como enviada (RF-60). */
+enum class MotivoSinViaje {
+    /** Es lo que la web ya tiene, o un vacío que el médico no tocó: no hay nada que enviar. */
+    SIN_CAMBIO_REAL,
+
+    /** Un antecedente desactivado (los que dejó la migración de hepatología, RF-9). */
+    DESACTIVADO,
+
+    /** Lo que la web no guarda (RF-3, D9). */
+    LA_WEB_NO_LA_GUARDA,
+
+    /** La consulta se anuló antes de crearse en la web: queda solo en el dispositivo (RF-26). */
+    CONSULTA_ANULADA,
+
+    /** La consulta ya creada se anuló: lo pendiente se descarta y solo sale la baja (RF-26). */
+    DESCARTADO_POR_ANULAR,
+}
+
+data class FilaSinViaje(val tabla: TablaDeLaFila, val clave: String, val motivo: MotivoSinViaje, val actualizadaEn: Long)
+
+/** Por qué una fila sucia espera sin viajar ni limpiarse. */
+enum class MotivoEnReserva {
+    /** La web la guarda y esta versión todavía no la envía (RF-4): sale cuando se habilite. */
+    TODAVIA_NO_SE_ENVIA,
+
+    /** La app no sabe enviar ese dato (campo desconocido de una sección). */
+    NO_HAY_ENVIO_PARA_ESTE_DATO,
+
+    /** Dato por paciente de una consulta anulada: no se envía ni se tira. */
+    CONSULTA_ANULADA,
+}
+
+data class FilaEnReserva(val tabla: TablaDeLaFila, val clave: String, val motivo: MotivoEnReserva, val actualizadaEn: Long)
+
+/** Por qué una parte no sale (o el cierre no sale) aunque haya algo para enviar. */
+enum class MotivoRetencion {
+    /** La parte tiene el estado «No se pudo enviar»: no se reintenta sola; el médico reintenta o descarta (RF-30). */
+    RECHAZADA,
+
+    /** El cierre espera a que el médico resuelva una parte rechazada (RF-56). */
+    FRENADO_POR_UNA_PARTE_RECHAZADA,
+}
+
+data class Retencion(val parte: String, val motivo: MotivoRetencion)
+
+/** Por qué el plan está vacío sin mirar nada de la consulta. */
+enum class MotivoPlanVacio { DEL_HISTORICO, DE_LA_WEB }
+
+/**
+ * Lo que se decide de una consulta. [pasos] se ejecutan en orden y el envío se corta en el primero que falla ([siguiente]), así el
+ * cierre solo sale cuando todo lo anterior llegó (RF-56).
+ */
+data class PlanDeEnvio(
+    val consultaId: Id,
+    val pasos: List<PasoDeEnvio>,
+    val sinViaje: List<FilaSinViaje>,
+    val enReserva: List<FilaEnReserva>,
+    val retenciones: List<Retencion>,
+    val motivoVacio: MotivoPlanVacio?,
+    val armadoEn: Long,
+) {
+    /** Hay algo para enviar ahora: lo que espera ([enReserva]) o no viaja ([sinViaje]) no cuenta. */
+    val hayAlgoPorEnviar: Boolean get() = pasos.isNotEmpty()
+
+    /**
+     * El próximo paso: el primero que todavía no está en [confirmadas]. `null` si no queda ninguno o si ese está en [frenadas] (falló o
+     * está en espera): no se salta a los que siguen, y en particular el cierre nunca sale con algo anterior sin confirmar.
+     */
+    fun siguiente(confirmadas: Set<String>, frenadas: Set<String> = emptySet()): PasoDeEnvio? {
+        val proximo = pasos.firstOrNull { it.parte !in confirmadas } ?: return null
+        return proximo.takeIf { it.parte !in frenadas }
+    }
+}
+
+/** El plan de [entrada]. */
+fun planDeEnvio(entrada: EntradaDelPlan): PlanDeEnvio {
+    val c = entrada.consulta
+    val vacio = when (c.origenDeConsulta()) {
+        OrigenDeConsulta.HISTORICO -> MotivoPlanVacio.DEL_HISTORICO
+        OrigenDeConsulta.WEB -> MotivoPlanVacio.DE_LA_WEB
+        OrigenDeConsulta.PROPIA -> null
+    }
+    if (vacio != null) return PlanDeEnvio(c.id, emptyList(), emptyList(), emptyList(), emptyList(), vacio, entrada.armadoEn)
+    return Armado(entrada).armar()
+}
+
+private class Armado(private val e: EntradaDelPlan) {
+    private val c = e.consulta
+    private val yaCreada = c.remotoId.isNotBlank()
+    private val anulada = c.estado == EstadoConsulta.ANULADA
+    private val consultaEn = c.updatedAt?.toEpochMilliseconds() ?: 0L
+
+    private val sinViaje = mutableListOf<FilaSinViaje>()
+    private val enReserva = mutableListOf<FilaEnReserva>()
+    private val retenciones = mutableListOf<Retencion>()
+
+    fun armar(): PlanDeEnvio {
+        val pasos = if (anulada) pasosDeLaAnulada() else pasosNormales()
+        return PlanDeEnvio(c.id, pasos, sinViaje.toList(), enReserva.toList(), retenciones.toList(), null, e.armadoEn)
+    }
+
+    // ---------- Una consulta anulada ----------
+
+    private fun pasosDeLaAnulada(): List<PasoDeEnvio> {
+        val motivo = if (yaCreada) MotivoSinViaje.DESCARTADO_POR_ANULAR else MotivoSinViaje.CONSULTA_ANULADA
+        e.valores.filter { it.dirty }.sortedBy { it.fila.seccion + "/" + it.fila.campo }.forEach {
+            sinViaje += FilaSinViaje(TablaDeLaFila.SECCION_VALOR, clave(it.fila), motivo, it.actualizadaEn)
+        }
+        e.examen?.takeIf { it.dirty }?.let { sinViaje += FilaSinViaje(TablaDeLaFila.EXAMEN_FISICO, c.id, motivo, it.actualizadaEn) }
+        antecedentes(anulada = true)
+        registros(anulada = true)
+        if (!yaCreada || !e.consultaSucia) return emptyList()
+        if (rechazada(PARTE_BAJA)) {
+            retenciones += Retencion(PARTE_BAJA, MotivoRetencion.RECHAZADA)
+            return emptyList()
+        }
+        return listOf(PasoDeEnvio.Baja(PayloadsClinica.claveDeBaja(c.id), listOf(FilaCubierta(TablaDeLaFila.CONSULTA, c.id, consultaEn))))
+    }
+
+    // ---------- Una consulta abierta o cerrada ----------
+
+    private fun pasosNormales(): List<PasoDeEnvio> {
+        val pasos = mutableListOf<PasoDeEnvio>()
+        val (secciones, formularios) = valores()
+        val examen = examen()
+        val antecedentes = antecedentes(anulada = false)
+        val registros = registros(anulada = false)
+        val contenido = buildList {
+            secciones?.let { add(it) }
+            examen?.let { add(it) }
+            formularios?.let { add(it) }
+            antecedentes?.let { add(it) }
+            registros?.let { add(it) }
+        }.sortedBy { ORDEN_DE_PARTES.indexOf(it.parte) }
+
+        val quiereCrear = !yaCreada
+        val quiereCerrar = c.estado == EstadoConsulta.CERRADA && (e.consultaSucia || !yaCreada)
+
+        val crearBloqueada = quiereCrear && rechazada(PARTE_CREAR)
+        val partesRechazadas = PARTES_DE_CONTENIDO.filter { rechazada(it) }
+        val cierreRechazado = rechazada(PARTE_CIERRE)
+
+        if (crearBloqueada) retenciones += Retencion(PARTE_CREAR, MotivoRetencion.RECHAZADA)
+        partesRechazadas.forEach { retenciones += Retencion(it, MotivoRetencion.RECHAZADA) }
+        if (quiereCerrar) {
+            when {
+                cierreRechazado -> retenciones += Retencion(PARTE_CIERRE, MotivoRetencion.RECHAZADA)
+                crearBloqueada || partesRechazadas.isNotEmpty() -> retenciones += Retencion(PARTE_CIERRE, MotivoRetencion.FRENADO_POR_UNA_PARTE_RECHAZADA)
+            }
+        }
+        if (crearBloqueada) return emptyList()
+
+        if (quiereCrear) {
+            pasos += PasoDeEnvio.Crear(
+                PayloadsClinica.claveDeCrear(c.id), c.tipo, c.fecha, c.edadMostrar, listOf(FilaCubierta(TablaDeLaFila.CONSULTA, c.id, consultaEn)),
+            )
+        }
+        pasos += contenido.filter { it.parte !in partesRechazadas }
+        if (quiereCerrar && !cierreRechazado && partesRechazadas.isEmpty()) {
+            pasos += PasoDeEnvio.Cerrar(
+                PayloadsClinica.claveDeCierre(c.id), c.fecha, c.edadMostrar, listOf(FilaCubierta(TablaDeLaFila.CONSULTA, c.id, consultaEn)),
+            )
+        }
+        return pasos
+    }
+
+    /** La parte tiene «No se pudo enviar» y el médico no pidió reintentarla a mano. */
+    private fun rechazada(parte: String): Boolean = !e.reintentoManual && e.estados[parte] is EstadoEnvio.NoSePudoEnviar
+
+    private fun clave(v: SeccionValor) = "${v.seccion}/${v.campo}"
+
+    // ---------- Valores de sección ----------
+
+    private var seccionesCalculadas: Pair<PasoDeEnvio.Secciones?, PasoDeEnvio.Formularios?>? = null
+
+    private fun valores(): Pair<PasoDeEnvio.Secciones?, PasoDeEnvio.Formularios?> {
+        seccionesCalculadas?.let { return it }
+        val textos = linkedMapOf<String, String>()
+        val cubreTextos = mutableListOf<FilaCubierta>()
+        val formularios = mutableListOf<FilaSucia<SeccionValor>>()
+        for (f in e.valores.filter { it.dirty }.sortedBy { clave(it.fila) }) {
+            val v = f.fila
+            val ref = clave(v)
+            val envio = envioDeSeccion(v.seccion, e.habilitada)
+            when {
+                envio == EnvioDeSeccion.NUNCA -> sinViaje += FilaSinViaje(TablaDeLaFila.SECCION_VALOR, ref, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
+                envio == EnvioDeSeccion.TODAVIA_NO ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.SECCION_VALOR, ref, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                envio == EnvioDeSeccion.APARTE ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.SECCION_VALOR, ref, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                v.seccion in PayloadsClinica.SECCIONES_DE_TEXTO ->
+                    if (v.campo != CAMPO_TEXTO) {
+                        enReserva += FilaEnReserva(TablaDeLaFila.SECCION_VALOR, ref, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                    } else if (cambioReal(e.loEnviado.valores[ref], v.valor) == CambioReal.NINGUNO) {
+                        sinViaje += FilaSinViaje(TablaDeLaFila.SECCION_VALOR, ref, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                    } else {
+                        textos[v.seccion] = v.valor
+                        cubreTextos += FilaCubierta(TablaDeLaFila.SECCION_VALOR, ref, f.actualizadaEn)
+                    }
+                else -> formularios += f
+            }
+        }
+        val resultado = Pair(
+            if (textos.isEmpty()) null else PasoDeEnvio.Secciones(textos, cubreTextos),
+            if (formularios.isEmpty()) null
+            else PasoDeEnvio.Formularios(formularios.map { it.fila }, formularios.map { FilaCubierta(TablaDeLaFila.SECCION_VALOR, clave(it.fila), it.actualizadaEn) }),
+        )
+        seccionesCalculadas = resultado
+        return resultado
+    }
+
+    // ---------- Examen físico ----------
+
+    private var examenCalculado = false
+    private var examenPaso: PasoDeEnvio.Examen? = null
+
+    private fun examen(): PasoDeEnvio.Examen? {
+        if (examenCalculado) return examenPaso
+        examenCalculado = true
+        val f = e.examen?.takeIf { it.dirty } ?: return null
+        if (!seccionSeOfrece(SeccionesComunes.EXAMEN_FISICO, e.habilitada)) {
+            enReserva += FilaEnReserva(TablaDeLaFila.EXAMEN_FISICO, c.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+            return null
+        }
+        val x = f.fila
+        val actuales = linkedMapOf("imc" to x.imc, "nota" to x.nota, "peso" to x.peso, "talla" to x.talla, "tension_arterial" to x.tensionArterial)
+        val campos = linkedMapOf<String, String>()
+        for ((campo, valor) in actuales.toList().sortedBy { it.first }) {
+            val previo = e.loEnviado.examen[campo]
+            val cambio = if (campo in MEDIDAS) cambioRealDeMedida(previo, valor) else cambioReal(previo, valor)
+            if (cambio != CambioReal.NINGUNO) campos[campo] = valor
+        }
+        if (campos.isEmpty()) {
+            sinViaje += FilaSinViaje(TablaDeLaFila.EXAMEN_FISICO, c.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+            return null
+        }
+        examenPaso = PasoDeEnvio.Examen(campos, listOf(FilaCubierta(TablaDeLaFila.EXAMEN_FISICO, c.id, f.actualizadaEn)))
+        return examenPaso
+    }
+
+    // ---------- Datos por paciente asociados a esta consulta (RF-68) ----------
+
+    private fun antecedentes(anulada: Boolean): PasoDeEnvio.Antecedentes? {
+        val viajan = mutableListOf<FilaSucia<Antecedente>>()
+        for (f in e.antecedentes.filter { it.dirty && it.fila.consultaId == c.id }.sortedBy { it.fila.id }) {
+            val a = f.fila
+            when {
+                !a.activo -> sinViaje += FilaSinViaje(TablaDeLaFila.ANTECEDENTE, a.id, MotivoSinViaje.DESACTIVADO, f.actualizadaEn)
+                !casillaSeEnvia(a.categoria, a.clave) ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ANTECEDENTE, a.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
+                anulada -> enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
+                !seccionSeOfrece(SeccionesComunes.ANTECEDENTES_FAMILIARES, e.habilitada) ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                else -> viajan += f
+            }
+        }
+        if (viajan.isEmpty()) return null
+        return PasoDeEnvio.Antecedentes(viajan.map { it.fila }, viajan.map { FilaCubierta(TablaDeLaFila.ANTECEDENTE, it.fila.id, it.actualizadaEn) })
+    }
+
+    private fun registros(anulada: Boolean): PasoDeEnvio.Registros? {
+        val viajan = mutableListOf<FilaSucia<RegistroClinico>>()
+        for (f in e.registros.filter { it.dirty && it.fila.consultaId == c.id }.sortedBy { it.fila.id }) {
+            val r = f.fila
+            val seccion = seccionDelRegistro(r.tipo)
+            when {
+                envioDeSeccion(seccion, e.habilitada) == EnvioDeSeccion.NUNCA ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.REGISTRO, r.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
+                anulada -> enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
+                !seccionSeOfrece(seccion, e.habilitada) ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                else -> viajan += f
+            }
+        }
+        if (viajan.isEmpty()) return null
+        return PasoDeEnvio.Registros(viajan.map { it.fila }, viajan.map { FilaCubierta(TablaDeLaFila.REGISTRO, it.fila.id, it.actualizadaEn) })
+    }
+}
+
+/** La sección del catálogo a la que pertenece un tipo de registro (casi siempre el mismo id). */
+private fun seccionDelRegistro(tipo: String): String = when (tipo) {
+    "examen_complementario" -> SeccionesComunes.EXAMENES_COMPLEMENTARIOS
+    else -> tipo
+}
