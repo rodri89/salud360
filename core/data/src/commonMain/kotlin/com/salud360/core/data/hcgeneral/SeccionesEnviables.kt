@@ -124,6 +124,18 @@ fun avisoDeAntecedente(antecedente: Antecedente): String? =
 /** «No se envía a la web» si [campo] del examen es de los que la web no guarda; `null` si puede viajar. */
 fun avisoDeCampoDelExamen(campo: CampoExamenFisico): String? = AVISO_NO_SE_ENVIA.takeUnless { campoDelExamenSeEnvia(campo) }
 
+// Lo que dice la pantalla de una consulta (T37). [seEnvia] = la consulta se envía a la web (`Consulta.seEnviaALaWeb`): solo ahí valen estos avisos;
+// el histórico, lo de la web, pediatría y las demás historias se ven como siempre.
+
+/** El aviso que lleva la sección [seccion] en una consulta que se envía: «No se envía a la web» (RF-3) o «Esta sección todavía no se envía a la web» (RF-4); `null` si se ofrece. */
+fun avisoDeEnvioDeLaSeccion(seccion: String, seEnvia: Boolean): String? = if (seEnvia) avisoDeSeccion(seccion) else null
+
+/** La casilla que la web no guarda (el tabaquismo, [sinEnvio]) se ve, solo para leer, con «No se envía a la web». */
+fun avisoDeEnvioDeLaCasilla(sinEnvio: Boolean, seEnvia: Boolean): String? = AVISO_NO_SE_ENVIA.takeIf { seEnvia && sinEnvio }
+
+/** El campo del examen físico que la web no guarda (frecuencia cardíaca, circunferencia abdominal) se ve, solo para leer, con «No se envía a la web». */
+fun avisoDeEnvioDelCampoDelExamen(campo: CampoExamenFisico, seEnvia: Boolean): String? = if (seEnvia) avisoDeCampoDelExamen(campo) else null
+
 /** De [antecedentes], los que la web guarda y por lo tanto pueden viajar. No borra ni cambia los demás: siguen en el dispositivo. */
 fun antecedentesQueSePuedenEnviar(antecedentes: List<Antecedente>): List<Antecedente> =
     antecedentes.filter { casillaSeEnvia(it.categoria, it.clave) }

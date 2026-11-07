@@ -21,6 +21,12 @@ interface EnvioDeConsultas {
     /** El autoguardado guardó un cambio de [consultaId]: programa el envío para dentro de 4 s (RF-27, RF-28). No hace ningún pedido. */
     fun avisarCambio(consultaId: Id)
 
+    /** «Reintentar» a mano lo que no se pudo enviar de [consultaId] (RF-30): ver HcClinicaEnvio.reintentar. */
+    fun reintentar(consultaId: Id): Job
+
+    /** «Descartar» lo que la web rechazó (RF-30): ver HcClinicaEnvio.descartar. Sin [parte], todo lo rechazado. */
+    fun descartar(consultaId: Id, parte: String? = null): Job
+
     /** Las consultas cuyo cierre está viajando ahora mismo; cambia cuando empieza y cuando termina cada cierre. */
     val consultasEnviandoElCierre: Flow<Set<Id>>
 

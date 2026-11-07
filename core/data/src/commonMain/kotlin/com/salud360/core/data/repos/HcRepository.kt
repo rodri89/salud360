@@ -46,6 +46,7 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import com.salud360.core.model.hc.VacunaAplicada
 import com.salud360.core.model.newId
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
@@ -163,6 +164,19 @@ class HcRepository(
             cola.consultasEnviandoElCierre,
         ) { Unit }.conflate().map { cola.estadoDeLaConsulta(consulta.id) }.distinctUntilChanged()
     }
+
+    /**
+     * «Reintentar» (RF-6, RF-30; spec 005, T37): pide a la cola que mande ya lo pendiente de [consultaId] y vuelva a incluir lo que la web
+     * rechazó, con la misma clave y el mismo cuerpo. Sin lógica propia: la cola decide si la consulta es suya (propia y del médico de la sesión).
+     * Sin cola no hace nada. Devuelve el trabajo, que termina con ese envío.
+     */
+    fun reintentarEnvio(consultaId: Id): Job? = envio?.reintentar(consultaId)
+
+    /**
+     * «Descartar» (RF-30, D19(d)): lo que la web rechazó queda «Descartado: no se envió a la web» y se conserva en el dispositivo; la cola libera
+     * lo que esperaba (el cierre). Sin [parte], todo lo rechazado. Nunca descarta una espera. Sin cola no hace nada.
+     */
+    fun descartarEnvio(consultaId: Id, parte: String? = null): Job? = envio?.descartar(consultaId, parte)
 
     // ---- consultas ----
 

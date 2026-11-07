@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.salud360.core.crecimiento.CalculadoraOms
+import com.salud360.core.data.hcgeneral.avisoDeEnvioDelCampoDelExamen
+import com.salud360.features.hc.AvisoDeEnvioDelCampo
 import com.salud360.core.crecimiento.Medida
 import com.salud360.core.crecimiento.SexoOms
 import com.salud360.core.data.hcgeneral.ModoCampoExamen
@@ -91,6 +93,13 @@ fun ExamenFisicoSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, extr
             if (visible(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, ex.circunferenciaAbdominal)) NumberField("CA (cm)", ex.circunferenciaAbdominal, { v -> upd { it.copy(circunferenciaAbdominal = v) } }, Modifier.weight(1f), suffix = "cm", readOnly = soloLeer(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, ex.circunferenciaAbdominal))
             if (visible(CampoExamenFisico.TEMPERATURA, ex.temperatura)) NumberField("Temp.", ex.temperatura, { v -> upd { it.copy(temperatura = v) } }, Modifier.weight(0.8f), suffix = "°C", readOnly = ro)
             if (visible(CampoExamenFisico.SATURACION, ex.saturacion)) NumberField("Sat O2", ex.saturacion, { v -> upd { it.copy(saturacion = v) } }, Modifier.weight(0.8f), suffix = "%", readOnly = ro)
+        }
+        // Spec 005, T37 (RF-3): la frecuencia cardíaca y la circunferencia abdominal ya cargadas se ven, solo para leer, y dicen que no se envían.
+        listOf(
+            Triple(CampoExamenFisico.FRECUENCIA_CARDIACA, "Frecuencia cardíaca", ex.frecuenciaCardiaca),
+            Triple(CampoExamenFisico.CIRCUNFERENCIA_ABDOMINAL, "Circunferencia abdominal", ex.circunferenciaAbdominal),
+        ).forEach { (campo, nombre, valor) ->
+            if (visible(campo, valor)) avisoDeEnvioDelCampoDelExamen(campo, ui.seEnviaALaWeb)?.let { AvisoDeEnvioDelCampo("$nombre: $it") }
         }
         if (def.conPercentilos) {
             if (!ro) Text(

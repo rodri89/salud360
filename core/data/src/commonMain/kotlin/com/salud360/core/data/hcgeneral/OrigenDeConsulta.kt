@@ -1,5 +1,6 @@
 package com.salud360.core.data.hcgeneral
 
+import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Consulta
 
 // De dónde es una consulta de la HC general (spec 005, RF-8, RF-62, RF-64, RF-65, D26). Puro: sale de lo que la consulta guarda
@@ -14,6 +15,13 @@ import com.salud360.core.model.hc.Consulta
  *   mismo médico es esto mismo aquí (RF-64, RF-65): la lectura la guarda con id `hcc-…` y sin la marca.
  */
 enum class OrigenDeConsulta { PROPIA, HISTORICO, WEB }
+
+/**
+ * La consulta se envía a la web con la cola de la HC general (spec 005, T37): es una propia de la HC general, también la ya enviada que sigue
+ * abierta (RF-62). El histórico ("Solo en este dispositivo"), lo que trajo la web y las demás historias clínicas, no. La pantalla de consulta
+ * solo ofrece lo que se envía y avisa lo que no (RF-3, RF-4) cuando esto es verdad.
+ */
+fun Consulta.seEnviaALaWeb(): Boolean = especialidad == CodigosHc.GENERAL && origenDeConsulta() == OrigenDeConsulta.PROPIA
 
 /** El origen de una consulta de la HC general. El prefijo `hcc-` manda sobre la marca ([esDeLaWeb]). */
 fun Consulta.origenDeConsulta(): OrigenDeConsulta = when {

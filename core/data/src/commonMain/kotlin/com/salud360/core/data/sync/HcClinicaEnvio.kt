@@ -274,7 +274,7 @@ open class HcClinicaEnvio(
      * la misma clave y el mismo cuerpo. Si la web lo vuelve a rechazar, queda igual; no arma reintentos solos. Reinicia la cuenta de los
      * reintentos de las esperas. Solo para una consulta propia del médico de la sesión.
      */
-    fun reintentar(consultaId: Id): Job = scope.launch {
+    override fun reintentar(consultaId: Id): Job = scope.launch {
         if (!puedeEnviar(consultaId)) return@launch
         candado.withLock {
             aMano += consultaId
@@ -291,7 +291,7 @@ open class HcClinicaEnvio(
      * «No se pudo enviar», nunca una espera (se perdería lo que falta mandar), y nunca la creación (sin ella no hay consulta). Lo que el
      * médico edite después vuelve a viajar. Devuelve el trabajo, que termina cuando termina el descarte y el envío que lo sigue.
      */
-    fun descartar(consultaId: Id, parte: String? = null): Job = scope.launch {
+    override fun descartar(consultaId: Id, parte: String?): Job = scope.launch {
         if (!puedeEnviar(consultaId)) return@launch
         val descarto = conTurno(consultaId) { descartarRechazadas(consultaId, parte) }
         if (!descarto) return@launch
@@ -754,6 +754,7 @@ open class HcClinicaEnvio(
             estadoDelCierre = entrada.estados[PARTE_CIERRE],
             envio = estadoPendienteDeLaConsulta(entrada),
             enviandoElCierre = enviandoElCierre(consultaId),
+            partesDescartadas = entrada.estados.filterValues { it == EstadoEnvio.Descartado }.keys,
         )
     }
     /**

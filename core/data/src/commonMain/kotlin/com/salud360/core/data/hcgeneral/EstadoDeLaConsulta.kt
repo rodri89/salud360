@@ -22,6 +22,8 @@ data class EstadoDeLaConsulta(
     val cierreEnviado: Boolean,
     val puedeReabrir: Boolean,
     val puedeAnular: Boolean,
+    /** Las partes (secciones, examen, cierre...) que el médico descartó: siguen solo en el dispositivo (RF-30, D19(d)). */
+    val partesDescartadas: Set<String> = emptySet(),
 ) {
     /** La marca de la tarjeta: «Enviando el cierre.», «Falta enviar», «En espera: <motivo>» o «No se pudo enviar: <motivo>»; `null` si no hay. */
     val marca: String? get() = if (enviandoElCierre) TEXTO_ENVIANDO_EL_CIERRE else envio?.let { textoDelEstado(it) }
@@ -47,6 +49,7 @@ fun estadoDeLaConsulta(
     estadoDelCierre: EstadoEnvio?,
     envio: EstadoEnvio?,
     enviandoElCierre: Boolean,
+    partesDescartadas: Set<String> = emptySet(),
 ): EstadoDeLaConsulta {
     val enviado = cierreEnviado(consulta, filaSucia, estadoDelCierre)
     val cerradaSinEnviar = consulta.estado == EstadoConsulta.CERRADA && !enviado
@@ -56,5 +59,6 @@ fun estadoDeLaConsulta(
         cierreEnviado = enviado,
         puedeReabrir = cerradaSinEnviar && !enviandoElCierre,
         puedeAnular = (consulta.estado == EstadoConsulta.ABIERTA || cerradaSinEnviar) && !enviandoElCierre,
+        partesDescartadas = partesDescartadas,
     )
 }

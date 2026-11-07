@@ -25,10 +25,13 @@ import com.salud360.core.data.hcgeneral.copiaDiagnosticos
 import com.salud360.core.data.hcgeneral.edicionDeConsulta
 import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
+import com.salud360.core.data.hcgeneral.BannerDeEnvio
 import com.salud360.core.data.hcgeneral.EstadoDeLaConsulta
 import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.esIdDeLaWeb
+import com.salud360.core.data.hcgeneral.bannersDeEnvio
 import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
+import com.salud360.core.data.hcgeneral.seEnviaALaWeb
 import com.salud360.core.data.hcgeneral.extrasDeLectura
 import com.salud360.core.data.hcgeneral.layoutConsulta
 import com.salud360.core.data.hcgeneral.masConsultas
@@ -116,6 +119,11 @@ data class ConsultaUi(
      */
     val envio: EstadoDeLaConsulta? = null,
 ) {
+    /** La consulta se envía a la web con la cola de la HC general (propia): solo ahí valen las franjas de estado y los avisos de lo que no se envía (T37). */
+    val seEnviaALaWeb: Boolean get() = consulta?.seEnviaALaWeb() == true
+
+    /** Las franjas de estado de envío de la consulta (RF-24, RF-30, RF-55); ninguna si no se envía o no falta nada. */
+    val banners: List<BannerDeEnvio> get() = if (seEnviaALaWeb) bannersDeEnvio(envio) else emptyList()
     /** "HC digitalizada" en la HC general: se lee aunque haya quedado abierta ("Decidido" 5 del plan). */
     val soloLecturaPorTipo: Boolean get() = consulta?.let { resuelta?.soloLecturaPorTipo(it.tipo) } == true
 
@@ -546,6 +554,27 @@ class ConsultaViewModel(
         hcApi.empujarYa(consultaId)
         launch { sync.sincronizar() }
         onCerrada()
+    }
+
+    /** «Reintentar» (RF-6, RF-30): le pide a la cola que mande ya lo pendiente y vuelva a incluir lo rechazado. La cola decide; acá no hay lógica. */
+    fun reintentarEnvio() {
+        if (noSeEscribe) return
+        hc.reintentarEnvio(consultaId)
+    }
+
+    /** «Descartar» (RF-30): lo que la web rechazó queda «Descartado: no se envió a la web» y se conserva en el dispositivo. */
+    fun descartarEnvio() {
+        if (noSeEscribe) return
+        hc.descartarEnvio(consultaId)
+    }
+
+    /**
+     * «Anular consulta» (RF-26), tras la confirmación de la pantalla: una nunca creada en la web queda anulada solo acá; una creada se da de
+     * baja en la web. Avisa con [onAnulada] solo si el repositorio la anuló (no lo hace con una cerrada cuyo cierre ya se envió ni mientras viaja).
+     */
+    fun anularConsulta(onAnulada: () -> Unit) = viewModelScope.launch {
+        if (noSeEscribe) return@launch
+        if (hc.anularConsulta(consultaId)) onAnulada()
     }
 
     fun reabrir() = viewModelScope.launch {

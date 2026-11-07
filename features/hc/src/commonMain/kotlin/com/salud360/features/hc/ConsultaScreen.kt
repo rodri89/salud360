@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.DefinicionResuelta
+import com.salud360.core.data.hcgeneral.TEXTO_ANULAR_CONSULTA
+import com.salud360.core.data.hcgeneral.avisoDeEnvioDeLaSeccion
+import com.salud360.core.data.hcgeneral.confirmacionDeAnular
 import com.salud360.core.data.hcgeneral.ETIQUETA_WEB
 import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.etiquetaDeEstadoEnLectura
@@ -104,6 +107,7 @@ fun ConsultaScreen(
 
     var pestania by remember { mutableIntStateOf(0) }
     var mostrarCierre by remember { mutableStateOf(false) }
+    var mostrarAnular by remember { mutableStateOf(false) }
     // Una consulta de la web se lee siempre, abierta o cerrada allá: `ui.soloLectura` la incluye (RF-45).
     val soloLectura = ui.soloLectura
     val color = Salud360Colors.especialidad(consulta.especialidad)
@@ -175,6 +179,11 @@ fun ConsultaScreen(
             if (mensaje != null) FalloDeLaLecturaDeLaConsulta(mensaje, lecturaWeb.leyendo, vm::reintentarLectura)
             else if (lecturaWeb.leyendo) LeyendoLaConsulta()
         }
+
+        // Spec 005, T37: el estado de envío de una consulta propia de la HC general (RF-24, RF-30, RF-55): «Falta enviar», «En espera: .»,
+        // «No se pudo enviar: .» con Reintentar y Descartar, «Descartado: no se envió a la web» y «Enviando el cierre.». Las franjas y sus
+        // acciones las decide `bannersDeEnvio`; el histórico, lo de la web, pediatría y las demás historias no las tienen.
+        EstadoDeEnvioDeLaConsulta(ui.banners, onReintentar = vm::reintentarEnvio, onDescartar = vm::descartarEnvio)
 
         pendientesPrevios.takeIf { it.isNotEmpty() }?.let { lista ->
             SectionCard("Pendientes de la consulta anterior", icon = Icons.Default.NotificationsActive, initiallyExpanded = true) {
@@ -268,6 +277,9 @@ fun ConsultaScreen(
                 // Sin perfil, sin configuración o "HC digitalizada" de la HC general: solo para leer.
                 AcceptButton("Reabrir para editar", onClick = { vm.reabrir() })
             }
+            // Spec 005, T37 (RF-26): «Anular consulta» solo si la cola lo permite (`puedeAnular`): no una cerrada con el cierre enviado ni mientras
+            // el cierre viaja. Pide confirmación y avisa lo que se pierde.
+            if (ui.seEnviaALaWeb && ui.envio?.puedeAnular == true) LinkButton(TEXTO_ANULAR_CONSULTA, onClick = { mostrarAnular = true })
         }
         Spacer(Modifier.height(32.dp))
     }
@@ -278,6 +290,13 @@ fun ConsultaScreen(
         onConfirmar = { mostrarCierre = false; vm.cerrarConPendientes(it, onCerrada) },
         onCancelar = { mostrarCierre = false },
     )
+    if (mostrarAnular && ui.envio?.puedeAnular == true) {
+        val confirmacion = confirmacionDeAnular(consulta, ui.envio)
+        ConfirmDialog(
+            title = confirmacion.titulo, message = confirmacion.mensaje, confirmText = confirmacion.textoConfirmar, destructive = true,
+            onConfirm = { mostrarAnular = false; vm.anularConsulta(onVolver) }, onDismiss = { mostrarAnular = false },
+        )
+    }
     if (mostrarAviso) androidx.compose.material3.AlertDialog(
         onDismissRequest = { mostrarAviso = false },
         title = { Text("Pendientes de la consulta anterior") },
@@ -352,6 +371,12 @@ internal fun AvisoSeccionesDesconocidas(resuelta: DefinicionResuelta?) {
     )
 }
 
+/** El mismo contexto, solo para leer: no se escribe nada desde acá (una sección que no se envía, T37). */
+private fun SeccionContext.soloParaLeer(): SeccionContext = object : SeccionContext by this {
+    override val soloLectura = true
+    override fun setValor(seccion: String, campo: String, valor: String) = Unit
+}
+
 /** Despacha cada sección al renderizador que corresponde a su tipo y, debajo, sus [SeccionDef.subsecciones]. */
 @Composable
 fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>) {
@@ -363,11 +388,16 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
 }
 
 @Composable
-private fun RenderSeccionSola(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
+private fun RenderSeccionSola(s: SeccionDef, ctx0: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
     // RF-63: lo que la web dejó de mandar de esta sección (o de alguno de sus campos) se sigue viendo, con la marca arriba.
     if (ui.soloLecturaWeb) {
-        marcaDeSeccion(ui.ausencias, ctx.consultaId, s.id, s.campos.associate { it.clave to it.etiqueta })?.let { MarcaDeLaSeccion(it) }
+        marcaDeSeccion(ui.ausencias, ctx0.consultaId, s.id, s.campos.associate { it.clave to it.etiqueta })?.let { MarcaDeLaSeccion(it) }
     }
+    // Spec 005, T37 (RF-3, RF-4): en una consulta que se envía a la web, una sección que la web no guarda o que esta versión todavía no envía no
+    // se ofrece para cargar: se ve solo para leer, con lo que ya tenía cargado (nada se borra), y dice por qué. `avisoDeEnvioDeLaSeccion` lo decide.
+    val aviso = avisoDeEnvioDeLaSeccion(s.id, ui.seEnviaALaWeb)
+    aviso?.let { AvisoDeEnvioDeLaSeccion(s.titulo, it) }
+    val ctx = remember(ctx0, aviso != null) { if (aviso == null) ctx0 else ctx0.soloParaLeer() }
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
         TipoSeccion.TEXTO -> TextoSeccion(s, ctx, ui, valores[s.id] ?: emptyMap())
