@@ -290,6 +290,99 @@ salvo que se diga otra cosa. Nada de esto cambia la spec; las preguntas que sale
 - **Lectura de exámenes e interconsultas** (`ConsultasService::historia` `:150-161`): solo `activo = 1`; una fila `activo = 2` (pendiente de confirmar) **no se ve** hasta que se cierra la consulta.
 - **Baja de exámenes e interconsultas:** no existe (D27); sí para laboratorio, peso, PDF, audio (`:4033`), interconsultor (`:4699`) y enfermedad (`:784`).
 
+### 11.0 T48 - El esquema real de E2 (verificado el 2026-11-07, solo lectura)
+**Cómo se midió.** Solo `SELECT` sobre `information_schema` y sobre las tablas de `hc_clinica` (la copia local) y `hc_clinica_respaldo` (MariaDB 10.1.37 del XAMPP). La estructura de las once tablas que existen es **idéntica** en las dos bases (columnas, tipos, nulidad, defectos e índices). Antes y después se sacó la foto de `T11` (`snapshot.cmd`): ninguna tabla cambió (ver el resultado en `tasks.md`, T48).
+El servidor del XAMPP corre **sin** `STRICT` (`sql_mode = NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION`), pero la conexión de Laravel sí es **estricta** (`config/database.php:59`, `'strict' => true`): por eso un alta
+tiene que llenar todas las columnas obligatorias (`ColumnasLegacy`), y un texto más largo que la columna da error (`Data too long`) en vez de cortarse.
+
+**Columnas comunes a las once tablas que existen.** `id` `bigint(20) unsigned` PK `auto_increment` (**salvo `examenes_complementarios.id`: `int(10) unsigned`**); `consulta_id` y `paciente_id` `int(10) unsigned` NOT NULL con
+clave foránea (`RESTRICT`, sin cascada) a `consultas(id)` y `pacientes(id)`; `activo` `int(11)` NOT NULL **sin defecto**; `created_at` y `updated_at` `timestamp` NULL, defecto NULL. Índices: `PRIMARY(id)`,
+`KEY(consulta_id)` y `KEY(paciente_id)`; **ninguna tiene `UNIQUE`** (nada impide dos filas por consulta y paciente: lo evita el código). InnoDB, `utf8mb4_unicode_ci`. **Ninguna columna tiene valor por defecto**
+(salvo los `timestamp`): todas las demás son NOT NULL a secas.
+
+| Tabla (sección de la app) | Columnas propias, tal como están en la base real |
+|---|---|
+| `alimentacions` (`alimentacion`) | `hiposodica`, `diabetes`, `seliaco`, `otra` `int(11)`; `hiposodica_detalle`, `diabetes_detalle`, `seliaco_detalle`, `otra_detalle` **`text`** |
+| `antecedentes_familiares` | 15 casillas `int(11)`: `hta`, `dbt_nir`, `dbt_ir`, `acv`, `dsl`, `fa`, `mp`, `analfabeto`, `postrado`, `af_ca_mama`, `ca_mama`, `institucionalizado`, `psicofarmacos`, `dependientes_terceros`, `otro`; cada una con `<casilla>_detalle` **`text`**; `nota` **`text`** (37 columnas en total) |
+| `serologias_hepatitis` (`serologias`) | 16 `int(11)`: `igm_hav`, `ags_hbv`, `ig_anti_hcv`, `fan`, `anti_lkm`, `igg_hav`, `ig_anti_core`, `ig_anti_s_hbv`, `ig_anti_hdv`, `asma`, `fibrotest`, `hiv`, `ag_e`, `anti_ag_e`, `ig_anti_hev`, `ama` |
+| `c_p_s` (`child_pugh`) | `ascitis`, `bilirrubina`, `albumina`, `tp`, `encefalopatia`, `total_puntos` `int(11)` |
+| `ecografia_abdominals`, `videoendoscopia_digestiva_altas`, `biopsia_hepaticas`, `tc_rmn_colangiormns` | `descripcion` **`longtext` NOT NULL**; `fecha` **`date` NULL (admite NULL)** |
+| `estudios_cardiologicos` | `descripcion` **`varchar(191)` NOT NULL**; `fecha` **`date` NOT NULL** |
+| `examenes_complementarios` | `numero_consulta`, `numero` `int(11)`; `solicito` **`text`**; `fechaSolicitud` `date` NOT NULL; `respuesta` **`text`**; `consulta_respuesta` `int(11)` |
+| `interconsultas` | `numero_consulta`, `numero` `int(11)`; `especialista`, `solicito`, `respuesta` **`text`**; `fechaSolicitud` `date` NOT NULL; `consulta_respuesta` `int(11)` |
+| `antecedentes_familiares_perfil4` | **No existe** ni en `hc_clinica` ni en `hc_clinica_respaldo`. Hay una migración en el clon (`2026_08_18_000000_create_antecedentes_familiares_perfil4_table.php`: `nota` `string` con defecto `''` y `activo`) que **no se corrió** en la copia local |
+
+**Contra lo que dicen las migraciones y T48 (diferencias, todas verificadas).** Ninguna migración posterior altera estas tablas (la única `Schema::table` del clon es de `laboratorio_generals`), así que la base real **no sale de las migraciones**
+(la copia local es una restauración de otra base, la de producción o su respaldo; producción no se leyó, D18).
+
+| Dato | Migraciones / T48 | Base real | Consecuencia |
+|---|---|---|---|
+| `descripcion` de ecografía, videoendoscopia, biopsia y TC/RMN | `string` (191) | **`longtext`** (el máximo medido es de 974 caracteres; 5 ecografías y 1 TC/RMN superan 191) | No hay tope de 191 en esas cuatro |
+| `fecha` de esos mismos cuatro | `date` NOT NULL | **`date` NULL** (hoy ninguna fila la tiene en NULL ni en `0000-00-00`) | La lectura ya admite estudio con texto y sin fecha (`ConsultasReglas.php:564-567`) |
+| `descripcion` y `fecha` de `estudios_cardiologicos` | `string` (191) y `date` NOT NULL | **igual a la migración**: `varchar(191)` y `date` NOT NULL (el texto más largo que hay mide justo 191) | **Es la única columna de E2 con tope de 191 caracteres** |
+| `solicito`, `respuesta` (exámenes) y `especialista`, `solicito`, `respuesta` (interconsultas) | `string` (191) | **`text`** (65535 bytes) | Sin tope de 191 |
+| `*_detalle` y `nota` de alimentación y de antecedentes familiares | `string` (191) | **`text`** (65535 bytes) | Sin tope de 191 |
+| `fechaSolicitud` | `date` NOT NULL | igual | El servidor la tiene que poner siempre (ver `ColumnasLegacy`) |
+| `activo`, `consulta_respuesta` | `integer` NOT NULL | igual (sin defecto) | Igual |
+| `c_p_s` | `create_cps_table` crea `c_p_s` | igual; columna `ascitis` (la web la escribe como `$cps->ascitis`) | Sin diferencias |
+
+**Qué columnas cubre `ColumnasLegacy::vacias` (`app/Services/Salud360/ColumnasLegacy.php:38-57`).** Rellena toda columna NOT NULL, sin defecto y fuera de `[id, consulta_id, paciente_id, activo, created_at, updated_at]` (o las que
+pase quien llama en `$omitir`): las `date`/`datetime`/`timestamp` con **hoy** (`Carbon::now()->toDateString()`, y `config/app.php:70` tiene `timezone = UTC`, no Buenos Aires), las numéricas con `0` y el resto con `''`; una
+columna que figure en `$opciones` nace `2` (`SIN_CARGAR`) o, con `'opcion'`, `0`. Resultado sobre la base real:
+
+| Tabla | Columnas que rellena | Valor |
+|---|---|---|
+| `alimentacions` | las 4 casillas / los 4 detalles | `0` / `''` |
+| `antecedentes_familiares` | las 15 casillas / los 15 detalles / `nota` (31 en total) | `0` / `''` / `''` |
+| `serologias_hepatitis` | las 16 | `0` |
+| `c_p_s` | las 5 y `total_puntos` | `0` |
+| ecografía, videoendoscopia, biopsia, TC/RMN | `descripcion` | `''`; **`fecha` NO** (admite NULL: queda NULL si quien llama no la manda) |
+| `estudios_cardiologicos` | `descripcion` y **`fecha`** | `''` y **hoy en UTC** |
+| `examenes_complementarios` | `numero_consulta`, `numero`, `solicito`, `fechaSolicitud`, `respuesta`, `consulta_respuesta` | `0`, `0`, `''`, **hoy en UTC**, `''`, `0` |
+| `interconsultas` | las mismas más `especialista` | `''` (y `fechaSolicitud` hoy en UTC) |
+
+Hallazgos de esto: (a) para que `0` signifique «sin cargar» en serologías y Child-Pugh y «no marcada» en alimentación y antecedentes basta **no pasar `$opciones`** (el `2` de `SIN_CARGAR` es la convención de
+pediatría para 1/0 y la web de clínica no lo usa); (b) **nunca hay que dejar que `vacias` ponga `fecha` o `fechaSolicitud`**: las pone el servidor desde la fecha clínica de la consulta (E1 la guarda en
+`consultas.created_at`, `EscrituraService.php:116`) y la fecha UTC puede caer en otro día que la de Buenos Aires (la web usa `date_default_timezone_set('America/Argentina/Buenos_Aires')`, `MedicoController.php:2315` y `:2955`).
+
+**Datos (solo agregados, ningún dato de pacientes).** Filas por `activo` en `hc_clinica`: las tablas de formulario y estudios solo tienen `activo = 1` (alimentación 44; serologías 1676; Child-Pugh 1670; ecografía 1787; videoendoscopia
+1786; biopsia 1786; TC/RMN 1786; cardiológicos 708); `antecedentes_familiares` 962 con `activo = 1` y **1 con `activo = 0`**; exámenes: 11 con `1` y **1 con `2`**; interconsultas: 6 con `1` y **1 con `2`**. **Ninguna tabla tiene dos filas
+activas por (consulta, paciente)** salvo exámenes e interconsultas, donde varias por consulta son normales. Valores: serologías solo `0`, `1` y `2`; alimentación y antecedentes solo `0` y `1`; Child-Pugh de 0 a 3 por parámetro y
+`total_puntos` **igual a la suma en las 1670 filas**; 1667 de las 1670 filas de Child-Pugh están todas en 0 (la web las crea vacías al abrir). Largos máximos: nota de antecedentes 451, detalle de alimentación 30,
+`solicito` 49 (exámenes) y 56 (interconsultas), `respuesta` 35 (exámenes) y 211 (interconsultas), `especialista` 30. Exámenes: `consulta_respuesta` en 0 en 7, igual a la propia consulta en 2 y **de otra consulta en 3**; interconsultas: 3, 3 y **1** (completar
+desde otra consulta pasa de verdad). `numero` de 1 a 4; `numero_consulta` hasta 2. El registro `salud360_envios` guarda `remoto_id` `bigint(20) unsigned` (entran los ids `int(10) unsigned` de exámenes) y `clave` `varchar(191)`.
+
+**Cómo escribe hoy la web, verificado en el clon actual (rama `salud360-api`, `5ebb410`).** Se comprobó una por una, contra la función, que **siguen valiendo las líneas citadas** en T48 y en este anexo
+(`MedicoController.php`: `:1198-1315`, `:1202-1204`, `:1321-1338`, `:1340-1373`, `:1375-1385`, `:1390-1408`, `:1917-1959`, `:1961-1971`, `:2030-2038`, `:2040-2110`, `:2212-2216`, `:2225-2278`, `:2280-2350`,
+`:2954-3006`, `:3682-3734`, `:5955-5962`, `:5964-5999`, `:6017-6042`, `:6060-6193`; `ConsultasService.php:108-112`, `:150-161`, `:163-166`, `:299-306`; `ConsultasReglas.php:139-147`, `:192-203`, `:456-460`, `:585-616`,
+`:618-624`; `AppServiceProvider.php:31`): no hubo que corregir ninguna. Se agregan los detalles que faltaban:
+
+| Sección | Función y líneas | Qué hace exactamente (lo que importa al servidor de E2) |
+|---|---|---|
+| Alimentación | `guardarAlimentacion` `:1917-1959` | Fila de (consulta, paciente) con `activo` 1 o 2 (`existeAlimentacion` `:1961-1971`, `first()` = la de menor id); escribe **los cuatro** pares casilla/detalle del pedido (la web siempre manda todos); `null` en el detalle → `""`; fuerza `activo = 1` (`:1955`); `celiaco` → `seliaco` (`:1943`), `otro` → `otra` (`:1949`) |
+| Antecedentes familiares | `guardarAntecedentesFamiliares` `:1198-1315` | Igual: fila `activo` 1 o 2 de (consulta, paciente) (`:1375-1385`); las 15 casillas, sus detalles y la `nota`; `dependiente_terceros` → `dependientes_terceros` (`:1294`); fuerza `activo = 1`; perfiles 3 y 4 de la web: solo la nota (`:1202-1204`, `:1321-1338`, el resto en 0 por `:1340-1373`); pestaña del perfil 4 aparte en `antecedentes_familiares_perfil4` (`:1390-1408`, tabla que **no existe** en la copia local) |
+| Serologías | `guardarSerologiasHepatitis` `:5964-5999` | Fila `activo != 0` de (consulta, paciente) (`existeTablaConsultaPaciente` `:5955-5962`, `first()`); alta con `activo = 1`; los 16 valores del pedido tal cual (0/1/2); no toca `activo` en una existente |
+| Child-Pugh | `guardarCps` `:6017-6042` | Igual; los 5 puntos y **`total_puntos` los manda el navegador** (`:6037`), no el servidor |
+| Cinco estudios | `:6060-6193` (videoendoscopia `:6060`, ecografía `:6087`, TC/RMN `:6114`, biopsia `:6141`, cardiológicos `:6168`) | Fila `activo != 0`; alta `activo = 1`; `descripcion` null → `""` (`:6075-6078`, `:6183-6186`); `fecha` siempre de `convertirFechaGuardar($request->fecha)` (`:2212-2216`: `d/m/Y` → `Y-m-d`, sin validar). No hay baja. Con perfil 2 la web crea al abrir la consulta una fila vacía de motivo y de cada uno de los cinco estudios (seis filas; `inicializarCampos` `:2954-3006`, solo `if($user->perfil == 2)` `:3025-3027`, con `fecha` = hoy en Buenos Aires y `descripcion = ''`) |
+| Exámenes complementarios | `guardarExamenesComplementarios` `:2280-2350` | Alta (`ex_compl_id` 0 o -1) con `activo = 2` (`:2321`), `numero` del navegador (`:2285-2288`), `numero_consulta` = pendientes de la consulta + 1 (`:2290-2295`), `fechaSolicitud` = hoy en Buenos Aires (`:2315-2317`); **editar por id** (`:2323-2337`) no comprueba paciente ni consulta y **siempre reescribe** `solicito`, `respuesta` y `consulta_respuesta` (= la consulta actual si la respuesta no está vacía, `0` si está vacía) |
+| Interconsultas | `guardarInterconsulta` `:2040-2110` | Busca **solo** una confirmada (`activo = 1`) con ese `numero` del paciente (`existeInterconsulta` `:2030-2038`): si existe, solo cambia `respuesta` y `consulta_respuesta` (`:2054-2064`); si no (incluida una pendiente `activo = 2`), **inserta otra** con `activo = 2` (`:2095`) y `fechaSolicitud` del navegador (`""` si falta, `:2090-2093`). La API no debe copiar esto: editar una pendiente es actualizar su fila |
+| Confirmar al cerrar | `setActivoExamenesComplementarios` `:2225-2234`, `setActivoInterconsulta` `:2269-2278` (y `Laboratorio*`, `Peso` `:2236-2267`) | Ponen `activo = 1` a **todas** las filas de la consulta (también las dadas de baja); la API confirma solo las `activo = 2` |
+| Lectura | `ConsultasService::historia` `:101-190`, `leer` `:199-236`, ayudas `:299-306`, `:338-368` | Formularios por consulta: `ultimaActiva` = `activo = 1` de mayor `id` (`:360-367`); estudios, motivos, exámenes e interconsultas del paciente con `activo = 1` de consultas `activo` 1 o 2 (`delPaciente`); antecedentes y pendientes: la última fila activa del paciente. `ConsultasReglas::estudios` (`:569-572`) y `examenes` (`:585-616`) **omiten la fila sin texto**: un estudio vaciado deja de verse, igual que una fila de examen sin ningún texto |
+
+**Hallazgos de T48 que no coinciden con lo que se suponía (para quien decida las preguntas).**
+1. **El tope de 191 caracteres existe solo en `estudios_cardiologicos.descripcion`.** Las otras cuatro descripciones son `longtext` y los textos de exámenes, interconsultas, alimentación y antecedentes son `text`. La spec (RF-39) ya
+   decía «en estudios cardiológicos»; las migraciones y Q-E2-3 daban 191 para todos. Contra una base que se parezca más a las migraciones (la de producción no se leyó) el límite podría ser otro: se mide solo con la aprobación de producción.
+2. **Las migraciones no describen la base real** (tipos y nulidad de cinco tablas): cualquier cosa que se decida «porque la migración dice» hay que cotejarla con la base.
+3. **`fecha` admite NULL en cuatro de los cinco estudios** pero no en cardiología; el servidor tiene que exigir fecha en los cinco (RF-39 habla de «fecha y descripción» y la web siempre manda fecha).
+4. **`ColumnasLegacy::vacias` pone hoy en UTC** a `estudios_cardiologicos.fecha`, `examenes_complementarios.fechaSolicitud` e `interconsultas.fechaSolicitud` si quien llama no las manda: el servicio de E2 las manda siempre.
+5. **La web y la lectura no eligen la misma fila**: la web edita la de **menor id** con `activo != 0` (o 1 o 2), la lectura muestra la de **mayor id** con `activo = 1`. Con los datos de hoy (cero repetidas) coincide; si apareciera una repetida, el servidor
+   de E2 debe escribir la que lee la lectura (`activo = 1`, mayor id). Tampoco hay filas `activo = 2` en estas seis tablas hoy.
+6. **`antecedentes_familiares` tiene una fila `activo = 0`** (el cierre y los `set*` no la tocan): la lectura la ignora y la API tampoco la reactiva.
+7. **`antecedentes_familiares_perfil4` no existe en la copia local** (confirmado en las dos bases); la migración está en el clon sin correr. Cualquier prueba de esa nota necesitaría correrla en la copia local (es una tabla nueva, `Toca API Laravel: sí`).
+8. **La web no valida la fecha de un estudio** (`convertirFechaGuardar` solo parte el texto): el servidor de E2 la valida (formato y que exista en el calendario).
+9. **Editar una interconsulta pendiente en la web duplica la fila**; la API no lo replica (ver la tabla).
+10. **No hay `UNIQUE` en ninguna de las once tablas que existen**: la unicidad por (consulta, paciente) depende de la transacción con la consulta bloqueada (`conConsulta`), no de la base.
+
 ## 12. E3 — laboratorio, peso y pendientes
 - **Laboratorio general** `guardarLaboratorioGeneral` `:6195-6535`, **reducido** `guardarLaboratorioGeneral2` `:6537-6655` y **peso** `guardarPeso` `:6697-6731`: siempre un `INSERT` (la web no actualiza una
   carga ya guardada); cada columna que no viene queda `''`; la fecha llega `d/m/Y` y, **si falta, se guarda `2000-01-01`** (`:6515-6521`, `:6635-6641`, `:6711-6717`; la lectura lo trata como «sin fecha»,

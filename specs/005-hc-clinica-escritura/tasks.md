@@ -922,17 +922,20 @@ sin la respuesta.
   ausente. RF-36 habla de «la nota que los acompaña» sin distinguirla; T17 (c) la dejó «para que E2 decida». *Recomendación:* E2 envía
   solo `nota` (a `antecedentes_familiares.nota`) y la de perfil 4 queda de solo lectura con «No se envía a la web» hasta que se confirme
   que la tabla existe en producción. *Alternativa:* escribirla si la tabla existe (más código, no probable de verificar en local).
+  *Hallazgo de T48 (2026-11-07, sin resolver la pregunta):* la tabla `antecedentes_familiares_perfil4` (columna `nota`) **no existe** ni en `hc_clinica` ni en `hc_clinica_respaldo`; la migración está en el clon (`2026_08_18_000000_create_antecedentes_familiares_perfil4_table.php`) pero no se corrió. Fuente: `notas-para-el-plan.md` §11.0.
 - **Q-E2-2. Un estudio (los cinco con fecha) que el médico deja en blanco después de enviado.** RF-70 solo permite *dar de baja*
   exámenes complementarios e interconsultas; RF-69 manda enviar vacío un campo vaciado a propósito. La app hoy trata «texto en blanco» como
   `Borrar` (`EstudioConHistorial.kt`, `cambioEstudio`) y la web no tiene baja de estudios (deja la fila con `descripcion` vacía,
   `MedicoController.php:6075-6078`). *Recomendación:* el servidor **rechaza** `borrado` en un estudio y la app envía `detalle = ""`
   (vaciado a propósito, RF-69); la fila se conserva.
+  *Hallazgo de T48:* `descripcion` es NOT NULL y acepta `''` en los cinco estudios; la lectura omite la fila sin texto (`ConsultasReglas.php:569-572`), así que vaciar un estudio lo oculta igual que una baja. Fuente: §11.0.
 - **Q-E2-3. Alcance del tope de largo (RF-39).** La spec lo exige «en estudios cardiológicos, el límite que fija la web». Las migraciones
   declaran `string` (191 caracteres por `Schema::defaultStringLength(191)`, `AppServiceProvider.php:31`) para `descripcion` de **los
   cinco** estudios (p. ej. `2025_12_10_130248_create_estudios_cardiologicos_table.php:22`) y para `solicito`, `respuesta` y
   `especialista` de exámenes e interconsultas. *Recomendación:* aplicar el aviso («no deja escribir de más y lo dice, nunca corta en
   silencio») a **todo campo cuya columna tenga tope**, con el valor real que mida T48 en la base local (la de producción puede diferir:
   se mide solo con la aprobación de producción).
+  *Hallazgo de T48 - la premisa cambia:* **solo** `estudios_cardiologicos.descripcion` es `varchar(191)`; las otras cuatro descripciones son `longtext` y `solicito`/`respuesta`/`especialista`/`*_detalle`/`nota` son `text` (65535 bytes). La conexión de Laravel es estricta (`config/database.php:59`): pasarse da error, no corta. Fuente: §11.0.
 - **Q-E2-4. Completar el resultado de un examen o interconsulta de una consulta anterior (RF-40) frente a lo que hoy impide la app.**
   RF-40 dice «uno cargado en una consulta anterior se puede completar (resultado) pero no quitar desde otra consulta» (es el flujo real,
   `docs/hc-pediatria-estado-y-plan.md` «Los exámenes de otras consultas»). Pero: (a) la guarda 002 RF-62 impide editar desde la app una
@@ -945,15 +948,18 @@ sin la respuesta.
   (`campos.consulta_respuesta`, sin migración) para que el plan lo envíe con esa consulta; el servidor lo acepta únicamente sobre
   filas `activo = 1` del mismo paciente y deja intactos `consulta_id`, `solicito` y `fechaSolicitud`. *Alternativa descartada por el
   planificador:* reasignar la fila a la consulta actual (se pierde «la consulta donde se cargó», RF-39).
+  *Hallazgo de T48:* pasa en los datos locales (3 exámenes y 1 interconsulta con `consulta_respuesta` de otra consulta); la web siempre pisa `consulta_respuesta` con la consulta actual y editar por id no comprueba el paciente (`MedicoController.php:2054-2064`, `:2330-2336`). Fuente: §11.0.
 - **Q-E2-5. `fechaSolicitud` y `numero` de exámenes e interconsultas.** La spec no los nombra. La web guarda la fecha del servidor
   (zona Buenos Aires, `MedicoController.php:2315-2317`) y toma `numero` del navegador (`:2285-2288`); la lectura los muestra
   (`ConsultasReglas::examenes`, `:585-616`). *Recomendación:* `fechaSolicitud` = la fecha clínica de la consulta propia; `numero` y
   `numero_consulta` los asigna el servidor (máximo del paciente + 1, y cantidad de pendientes de la consulta + 1).
+  *Hallazgo de T48:* `fechaSolicitud`, `numero` y `numero_consulta` son NOT NULL sin defecto; si nadie manda la fecha, `ColumnasLegacy::vacias` pone el día **en UTC** (`config/app.php:70`) y la web usa Buenos Aires. La fecha clínica de la consulta está en `consultas.created_at`. Fuente: §11.0.
 - **Q-E2-6 (decisión de plan a confirmar, no es un hueco de la spec). Idempotencia con clave natural.** D21 dice que el registro de
   lo recibido vale «para las filas hijas (laboratorio, peso, registros, pendientes, adjuntos)». Formularios, antecedentes, los cinco
   estudios y el texto de pendientes se escriben con *upsert* por (consulta, paciente) y repetirlos ya no duplica nada (RF-15 se
   cumple); registrarlos con clave los dejaría en «ya recibido» y **no aplicaría una segunda edición**. *Recomendación:* registro con
   clave solo para las filas que **se crean** (exámenes, interconsultas, cargas de laboratorio y peso, PDF y fotos); upsert para lo demás.
+  *Hallazgo de T48 (la pregunta citaba solo D21; ahora cita su fuente):* ninguna de las once tablas que existen tiene `UNIQUE (consulta_id, paciente_id)`; `EnviosRegistro::PREFIJOS` ya trae `c r l p` (`EnviosRegistro.php:55`) y `salud360_envios.remoto_id` es `bigint unsigned`. Fuente: §11.0.
 - **Q-E3-1. Editar una carga de laboratorio o peso ya guardada.** RF-41 dice «editar una carga ya enviada la actualiza, no crea otra»;
   la interfaz de las specs 001/002 dice «las guardadas no se editan, se borran y se recargan» (`CargasLaboratorio.kt`, RF-55 a RF-64).
   *Recomendación:* sin cambio de pantalla; «editar» es seguir completando la columna **abierta** (el autoguardado la manda varias veces);
@@ -1035,7 +1041,7 @@ RF-35 a RF-40 y RF-70 (más RF-15, RF-16, RF-33, RF-34, RF-52, RF-53, RF-60, RF-
 migración local. Orden: servidor local (T48 a T60) → app: datos (T61 a T65), interfaz (T66), habilitar (T67) → pruebas y cierre (T68 a T72).
 
 ## Servidor local de E2 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
-- [ ] **T48. Verificación de solo lectura del esquema de E2 y contrato JSON (borrador).** RF-35 a RF-40, RF-70 — M — Toca API Laravel: no (solo
+- [x] **T48. Verificación de solo lectura del esquema de E2 y contrato JSON (borrador).** RF-35 a RF-40, RF-70 — M — Toca API Laravel: no (solo
   lectura de la base local y documentación)
   - `information_schema` de `hc_clinica` y de `hc_clinica_respaldo` (solo `SELECT`): tipo, largo, `NOT NULL`, defecto e índices de
     `alimentacions`, `antecedentes_familiares`, `antecedentes_familiares_perfil4` (¿existe?), `serologias_hepatitis`, `c_p_s`,
@@ -1051,7 +1057,10 @@ migración local. Orden: servidor local (T48 a T60) → app: datos (T61 a T65), 
     y decisiones») y como borrador en `md/API_SALUD360_CLINICA.md`, para que la app pueda construirse contra él.
   - Hecho cuando: la tabla de columnas está en las notas; el contrato está escrito; cada pregunta Q-E2-* cita la columna o el archivo
     que la motiva; **ninguna base cambió** (conteos y `CHECKSUM TABLE` iguales a la línea base de T5).
-- [ ] **T49. Scripts de la escritura ampliados con las tablas de E2.** D4 — S — Toca API Laravel: no
+  - Resultado (2026-11-07): **hecha; solo lectura y documentación.** Solo `SELECT` sobre `information_schema` y las tablas de `hc_clinica` y `hc_clinica_respaldo` (MariaDB 10.1.37 del XAMPP, que estaba apagado: se levantó `mysqld --standalone` y `httpd`); el clon `hclinica` **no se modificó** (`git status` limpio, HEAD `5ebb410`). **Ninguna base cambió:** `snapshot.cmd t48-despues` + `comparar.cmd base-antes t48-despues` muestra solo `salud360_token_cache` (filas 4 -> 0, la que cambia sola con la API), igual que `t48-antes` contra `base-antes` y `t48-antes` contra `t48-despues` (sin diferencias); `hc_clinica_respaldo`, antes y después, sin diferencias.
+    **Dónde quedó.** La tabla de columnas (tipo, largo, NOT NULL, defecto e índices de las once tablas que existen, más `antecedentes_familiares_perfil4`), las diferencias con las migraciones, lo que cubre `ColumnasLegacy::vacias`, los datos agregados y cómo escribe hoy la web cada sección con archivo y línea (todas las líneas citadas **siguen valiendo**, no hubo que corregir ninguna): `notas-para-el-plan.md` §11.0. El **contrato JSON de E2** y la tabla de cada Q-E2-* con su fuente: `plan.md`, «E2, E3 y E4: contrato y decisiones» (subsección «Contrato de E2»). **El borrador no se copió a `md/API_SALUD360_CLINICA.md` del clon:** ese `.md` no tiene sección de E2 (termina en «Lo que viene») y el clon no se toca en esta tarea; **se copia en T56** (documentación del servidor de E2-a).
+    **Hallazgos del esquema real (diferencias con lo supuesto; ninguna pregunta se resolvió).** (1) **El tope de 191 caracteres existe solo en `estudios_cardiologicos.descripcion`** (`varchar(191)`); `ecografia_abdominals`, `videoendoscopia_digestiva_altas`, `biopsia_hepaticas` y `tc_rmn_colangiormns` tienen `descripcion` **`longtext`** (5 ecografías y 1 TC/RMN locales ya superan 191), y `solicito`, `respuesta`, `especialista`, los `*_detalle` y `nota` son **`text`** (65535 bytes), no `string(191)` como dicen las migraciones. (2) **`fecha` admite NULL en esos cuatro estudios** (NOT NULL en cardiología, `fechaSolicitud` NOT NULL en exámenes e interconsultas); T48 decía `date NOT NULL` para todas. (3) **Ninguna migración posterior explica la diferencia:** la base real no sale de las migraciones. (4) **`antecedentes_familiares_perfil4` no existe en ninguna de las dos bases** (la migración está en el clon sin correr). (5) **`ColumnasLegacy::vacias` rellena** `estudios_cardiologicos.fecha`, `examenes_complementarios.fechaSolicitud` e `interconsultas.fechaSolicitud` con el día **en UTC** (`config/app.php:70`; la web usa Buenos Aires) y deja `fecha` en NULL en los otros cuatro estudios: el servicio de E2 tiene que mandar las fechas siempre. (6) La conexión de Laravel es **estricta** (`config/database.php:59`) aunque el servidor del XAMPP no lo sea: pasarse de largo da error. (7) **La web y la lectura no eligen la misma fila** (menor id con `activo` distinto de 0, contra mayor id con `activo = 1`); hoy no hay repetidas. (8) **Ninguna de las once tablas tiene `UNIQUE (consulta_id, paciente_id)`**. (9) Hay 1 fila de `antecedentes_familiares` con `activo = 0` y 1 examen y 1 interconsulta con `activo = 2`; 3 exámenes y 1 interconsulta tienen `consulta_respuesta` de otra consulta (completar desde otra consulta pasa de verdad). (10) La web **duplica** una interconsulta pendiente si se edita por número (solo busca las `activo = 1`) y edita un examen por id sin comprobar paciente ni consulta; la API no debe copiarlo.
+    **Preguntas abiertas que T48 cambia o aclara (sin resolverlas; cada una ya cita su fuente y lleva un «Hallazgo de T48» en su texto).** **Q-E2-3 cambia de premisa** (solo cardiología tiene 191). **Q-E2-1** pasa de «no probable de verificar en local» a «probable si se corre la migración en la copia local». **Q-E2-2** queda con evidencia (vaciar un estudio lo oculta en la lectura igual que una baja). **Q-E2-4** se confirma como caso real (hay datos). **Q-E2-5** gana el dato de la zona horaria. **Q-E2-6** no citaba una fuente más que D21: ahora cita la ausencia de `UNIQUE`, `EnviosRegistro::PREFIJOS` y `salud360_envios`. Ninguna tarea bloqueada se desbloquea.- [ ] **T49. Scripts de la escritura ampliados con las tablas de E2.** D4 — S — Toca API Laravel: no
   - En `%TEMP%\opencode\e0\` (fuera del repo): `escritura-contar.sql`, `escritura-suma.sql`, `escritura-limpiar.sql` y `cargar-prueba.sql`
     suman las tablas de T48 por `consulta_id` y `paciente_id` de prueba, con `DELETE` por id en el orden de las claves foráneas (hijas →
     `consultas` → ficha), sin `DROP`, sin tocar `medico_infos` ni vaciar `salud360_envios` (solo por clave).

@@ -416,6 +416,87 @@ que dice cada fila. **La lectura no se modifica.**
 Registro de lo recibido (`salud360_envios`): se agregan el tipo `registro`, `carga` y `adjunto` y el prefijo `a` (hoy `c r l p`, `EnviosRegistro::PREFIJOS`). El
 `remoto_id` guardado permite que **un reenvío con la misma clave actualice la misma fila** en vez de duplicarla.
 
+### Contrato de E2 (completado en T48 el 2026-11-07) - borrador, se copia a `md/API_SALUD360_CLINICA.md` del clon en T56
+Verificado contra el esquema **real** de `hc_clinica` y `hc_clinica_respaldo` (solo lectura; tabla de columnas, diferencias con las migraciones y cómo escribe hoy la web, con archivo y línea, en `notas-para-el-plan.md` §11.0 y §11).
+Los nombres de los campos son **provisorios hasta T54-T58**. Lo que depende de una pregunta abierta va marcado `[Q-E2-n]`: es la **recomendación del planificador, no está aprobada** y la tarea que lo implementa está bloqueada
+hasta que el usuario conteste. `md/API_SALUD360_CLINICA.md` del clon **no se tocó** en T48 (todavía no tiene sección de E2: termina en «Lo que viene»).
+
+**Reglas comunes** (las de «Reglas de toda la escritura de E1» de ese `.md`, que valen igual): solo médico y solo pacientes de su cartera; solo consultas **propias, creadas por la app y abiertas** (`403 consulta_no_propia`, `409 consulta_cerrada`);
+orden de los controles rol → `{id}` → cuerpo → consulta y cartera → con la consulta bloqueada (`FOR UPDATE`) propiedad y estado; una transacción por pedido (o se escribe todo o nada); cuerpo JSON **leído crudo** (`""` no se vuelve `null`);
+`500 escritura` sin detalle. Además, para E2:
+- **Solo lo presente se escribe** (RF-34); una clave ausente no se toca; `""` es el vaciado a propósito y **sí** se escribe (RF-69); `null` o un valor que no es del tipo esperado es `422 datos_invalidos` con `campo` y `motivo`.
+- **Qué fila:** la `activo = 1` de **mayor `id`** de (consulta, paciente) (la que lee la lectura, `ConsultasService.php:360-367`; en estas tablas hoy no hay repetidas ni `activo = 2`); si no hay, **alta con `activo = 1`** y el relleno de
+  `ColumnasLegacy::vacias` **sin `$opciones`** (así `0` es «sin cargar» o «no marcada») y **con `fecha` / `fechaSolicitud` siempre puestas por el servicio** (nunca el «hoy» en UTC del relleno).
+- **Límite de los textos:** columna `text` = 65535 **bytes** (`strlen`); `varchar(191)` = 191 **caracteres** (`mb_strlen`); si se pasa, `422 texto_demasiado_largo` con el `campo` y el tope, **sin escribir nada del pedido y sin cortar** (RF-39).
+- **No hace:** escribir `medico_infos`; crear las filas vacías de `inicializarCampos` (lo decide T11); ningún `DELETE` físico; tocar otra tabla que no esté en `EscrituraService::tablasEscribibles()` (E2 suma las once de abajo, con su test de «no escribe ninguna otra»); crear columnas;
+  tocar la lectura. Las rutas van en el grupo `salud360`, con el mismo middleware, y la CORS no cambia.
+
+**`PUT consultas/{id}/formularios`** - tablas `alimentacions`, `serologias_hepatitis`, `c_p_s` (una fila por consulta y paciente). Cuerpo:
+```json
+{"formularios": {
+  "alimentacion": {"hiposodica": "1|sin sal", "celiaco": "0|", "otra": ""},
+  "serologias":   {"hiv": "NO", "fan": "SI", "ama": ""},
+  "child_pugh":   {"ascitis": "2", "tp": ""}
+}}
+```
+- **Alimentación**: claves `hiposodica`, `diabetes`, `celiaco`, `otra`; valor `"<0|1>|<detalle>"` (se parte en el **primer** `|`; el detalle puede llevar más `|`, saltos de línea, tildes, emoji). `celiaco` → columnas `seliaco` / `seliaco_detalle`; `otra` → `otra` / `otra_detalle`
+  (`MapaClinica::ALIMENTACION`). `""` y `"0|"` = casilla en 0 con detalle vacío (vaciado a propósito). Flag distinto de 0 y 1 → `422 flag_invalido`. Detalle: `text`, 65535 bytes.
+- **Serologías**: las 16 claves = las 16 columnas (`igm_hav` … `ama`); `"SI"` → 1, `"NO"` → 2, `""` → **0** («sin cargar»: nunca `NO` por un vacío, RF-37; la lectura solo muestra 1 y 2, `ConsultasReglas.php:139-147`); otro valor → `422 valor_invalido`.
+- **Child-Pugh**: claves `ascitis`, `bilirrubina`, `albumina`, `tp`, `encefalopatia`; `"1"`..`"3"` → ese puntaje, `""` → 0; otro valor → `422 valor_invalido`. **`total_puntos` lo calcula el servidor** como la suma de las cinco columnas de la fila **resultante**
+  (lo que hace la web en el navegador, `resources/views/medico/seccion_new/cps.blade.php:124-131`; en las 1670 filas locales el total es exactamente la suma); la app no lo manda.
+- Respuesta: `200 {ok, guardadas, desconocidas}` con `guardadas` = `"<seccion>.<clave>"` de lo escrito (también lo vaciado), en el orden del pedido; una sección o clave que el mapa no conoce va en `desconocidas` y no falla. Repetible (upsert, sin registro [Q-E2-6]).
+
+**`PUT pacientes/{id}/antecedentes-familiares`** - tabla `antecedentes_familiares`. Cuerpo: `{consulta_id, casillas: {<clave>: {flag, detalle}}, nota}`.
+- `consulta_id` tiene que ser una consulta propia, creada por la app, abierta y **de ese paciente** (si no: `403 consulta_no_propia` / `409 consulta_cerrada` / `422 consulta_de_otro_paciente`).
+- Las 15 claves: `hta`, `dbt_nir`, `dbt_ir`, `acv`, `dsl`, `fa`, `mp`, `analfabeto`, `postrado`, `af_ca_mama`, `ca_mama`, `institucionalizado`, `psicofarmacos`, `dependiente_terceros` (columna `dependientes_terceros`), `otro`. `flag` 0 o 1 (`422 flag_invalido`);
+  `detalle` y `nota` son `text` (65535 bytes). **`tabaquismo`** (la web no lo guarda, RF-3) y cualquier otra clave van en `desconocidas`.
+- **Fila:** la de (consulta, paciente) con `activo = 1`; si no existe, **fila nueva de esa consulta = copia de la última fila activa del paciente** (la que muestra la lectura, `ConsultasService.php:108-112`) con solo lo tocado encima, y si el
+  paciente no tiene ninguna, el relleno de `ColumnasLegacy` (todo en 0 / `''`). **Nunca se modifica la fila de otra consulta** ni se reactiva una `activo = 0` (hay una en la base local). Solo viajan antecedentes activos (RF-9: la app no manda los desactivados).
+- **La nota del perfil 4** (`antecedentes_familiares_perfil4.nota`) **no está en el contrato**: la tabla no existe en la copia local [Q-E2-1]. Si el usuario decide escribirla, se agrega una clave aparte y la migración se corre en la copia local.
+- Respuesta: `200 {ok, id, guardadas, desconocidas}` (`id` = la fila escrita; `guardadas` = las claves, y `nota` si se escribió). Repetible (upsert, sin registro [Q-E2-6]).
+
+**`PUT consultas/{id}/registros`** - los cinco estudios, los exámenes complementarios y las interconsultas. Cuerpo: `{items: [{ref, tipo, id?, fecha?, campos, borrado?}]}`:
+```json
+{"items": [
+  {"ref": "r:3f2c9d1e-0a6b-4c11-9a77-5c1d2e3f4a5b", "tipo": "eco_abdominal", "fecha": "2026-11-06", "campos": {"detalle": "hígado de aspecto normal"}},
+  {"ref": "r:8b1a7c40-2d5e-4f33-8e90-1a2b3c4d5e6f", "tipo": "examen_complementario", "campos": {"solicito": "laboratorio", "respuesta": ""}},
+  {"ref": "r:5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b", "tipo": "interconsulta", "campos": {"especialista": "cardiología", "solicito": "control"}, "borrado": true}
+]}
+```
+- `ref` = `r:<id local>` (prefijo `r`, ya reservado en `EnviosRegistro::PREFIJOS`); `tipo` ∈ `eco_abdominal` (`ecografia_abdominals`), `veda` (`videoendoscopia_digestiva_altas`), `biopsia_hepatica` (`biopsia_hepaticas`), `tc_rmn` (`tc_rmn_colangiormns`),
+  `estudios_cardiologicos` (`estudios_cardiologicos`), `examen_complementario` (`examenes_complementarios`), `interconsulta` (`interconsultas`). Un `tipo` que no es ninguno va en `desconocidas` (el resto del pedido sigue); **un ítem inválido
+  rechaza todo el pedido** con `422` y no se escribe nada (atómico, P16).
+- **Estudios** (`campos: {detalle}` → `descripcion`): `fecha` **obligatoria**, `YYYY-MM-DD`, una fecha de calendario real (`422 fecha_invalida`; la web no la valida, `MedicoController.php:2212-2216`, y cardiología la tiene NOT NULL); `detalle: ""` = **vaciado a propósito**
+  (la fila se conserva y la lectura la oculta, `ConsultasReglas.php:569-572`) y `borrado: true` → `422 borrado_no_permitido` `[Q-E2-2]`. Es un **upsert** por (consulta, paciente) sobre la fila `activo = 1` de mayor id (alta `activo = 1`) y no usa el registro de claves `[Q-E2-6]`.
+  Tope de `detalle`: **191 caracteres solo en `estudios_cardiologicos`**; en los otros cuatro la columna es `longtext` y rige el tope general `[Q-E2-3]`.
+- **Exámenes e interconsultas** (`campos: {solicito?, respuesta?, especialista?}`, este último solo en interconsulta, todos `text`): **alta** (sin `id` y con `ref` nuevo) con `activo = 2` (pendiente, se confirma al cerrar, RF-22); `numero` y `numero_consulta` los asigna el servidor
+  (`numero` = el mayor del paciente + 1; `numero_consulta` = las pendientes de esa consulta + 1) y `fechaSolicitud` es la fecha clínica de la consulta (`consultas.created_at`) `[Q-E2-5]`; `consulta_respuesta` = esta consulta si `respuesta` no está vacía, `0` si lo está.
+  **Edición** (el `ref` ya registrado, o `id`): solo filas **de esta consulta**, del mismo paciente y `activo = 2` (las pendientes; otra cosa es `422 registro_no_editable`), campo por campo; **`""` se escribe** (RF-69). **Completar** una fila de **otra** consulta del mismo paciente
+  (`activo = 1`): solo `respuesta`, y `consulta_respuesta` = esta consulta; `consulta_id`, `solicito`, `especialista` y `fechaSolicitud` no cambian `[Q-E2-4]`. **Baja** (`borrado: true`): `activo = 0` de una fila **de esta consulta**, nunca borrado físico (RF-70, D27);
+  de otra consulta → `422 no_se_quita_desde_otra_consulta`; repetir la baja es `ok`. La web **no** tiene esta baja (capacidad nueva) y **sí** reactiva lo dado de baja al cerrar una consulta suya (`:2225-2278`); la API al cerrar confirma solo las `activo = 2`.
+- **Repetible:** `ref` ya registrado en `salud360_envios` (tipo `registro`) ⇒ se **actualiza esa misma fila** y no se crea otra (el `remoto_id` guardado es `bigint unsigned` y entra el `int unsigned` de exámenes).
+- Respuesta: `200 {ok, ids, guardadas, desconocidas}`; `ids` = `{ref: id de la web}` de todos los aceptados (también los estudios, aunque no se registren), `guardadas` = los `ref` escritos, `desconocidas` = los `ref` con `tipo` desconocido.
+
+**Errores nuevos de E2** (se suman a los de E1; `422 datos_invalidos` con `campo` y `motivo`): `flag_invalido`, `valor_invalido`, `fecha_invalida`, `texto_demasiado_largo` (con el tope), `consulta_de_otro_paciente`, `borrado_no_permitido` `[Q-E2-2]`,
+`no_se_quita_desde_otra_consulta` `[Q-E2-4]`, `registro_de_otro_paciente` (un `id` que no es del paciente), `registro_no_editable`, `ref_en_uso` (el mismo `ref` con otro `tipo` o de otra consulta).
+
+#### Qué cambia respecto del contrato provisorio, por lo que mostró el esquema real
+1. **Tope de largo:** solo `estudios_cardiologicos.descripcion` (191 caracteres); el resto es `text` o `longtext`. El borrador decía 191 para los cinco estudios y para los textos de exámenes e interconsultas.
+2. **`fecha` de estudio:** obligatoria en el contrato aunque cuatro columnas admitan NULL (la lectura ya tolera una fecha NULL, pero RF-39 habla de «fecha y descripción» y cardiología la exige).
+3. **Totales y fechas del relleno:** `total_puntos` y todas las fechas las pone el servicio; `ColumnasLegacy::vacias` pone el día en UTC y no sirve para fechas clínicas.
+4. **Fila a escribir:** la que lee la lectura (`activo = 1`, mayor id), no la que edita la web (`first()` de menor id con `activo != 0`).
+5. **Perfil 4:** la tabla no existe en la copia local, así que no está en el contrato `[Q-E2-1]`.
+
+#### Cada pregunta abierta Q-E2-*, con lo que la motiva (T48 verificó que lo cite)
+| Pregunta | Columna / archivo que la motiva | Qué aclara T48 (sin resolverla) |
+|---|---|---|
+| Q-E2-1 nota del perfil 4 | `antecedentes_familiares_perfil4.nota` (tabla opcional); `MedicoController.php:1390-1408`; `ConsultasService.php:168-176`; `LecturaClinica.kt:73` (`CLAVE_NOTA_PERFIL4`) | La tabla **no existe** en las dos bases locales; la migración del clon (`2026_08_18_000000_…`) no se corrió. «No probable de verificar en local» se vuelve «probable si se corre la migración en la copia local» |
+| Q-E2-2 estudio en blanco | `<estudio>.descripcion` NOT NULL (acepta `''`); `MedicoController.php:6075-6078`; `ConsultasReglas.php:569-572`; `EstudioConHistorial.kt:41-42` (`cambioEstudio` → `Borrar`) | Vaciar un estudio (`descripcion = ''`) lo oculta en la lectura: se ve igual que una baja. La web no tiene baja de estudios |
+| Q-E2-3 tope de largo | `estudios_cardiologicos.descripcion varchar(191)` (única); `AppServiceProvider.php:31`; `config/database.php:59` (conexión estricta) | **La premisa no se cumple en la base real**: solo cardiología tiene 191; el resto es `text` (65535 bytes) o `longtext`. En estricto, pasarse da error de base, no corta |
+| Q-E2-4 completar de otra consulta | `examenes_complementarios.consulta_respuesta` / `interconsultas.consulta_respuesta` (int NOT NULL); `MedicoController.php:2054-2064`, `:2330-2336`; `HcRepository.kt:526-527`, `:558`; `PlanDeEnvio.kt:405-421`; `docs/hc-pediatria-estado-y-plan.md:621` | Pasa en los datos: 3 exámenes y 1 interconsulta completados desde otra consulta. La web siempre pisa `consulta_respuesta` con la consulta actual; editar por id no comprueba paciente |
+| Q-E2-5 `fechaSolicitud` y `numero` | `fechaSolicitud date NOT NULL`, `numero`, `numero_consulta` int NOT NULL; `MedicoController.php:2285-2295`, `:2315-2317`; `ColumnasLegacy.php:38-57` + `config/app.php:70`; `ConsultasReglas.php:585-616` | Si nadie la manda, el relleno pone el día **en UTC**; la web usa Buenos Aires. La fecha clínica de la consulta está en `consultas.created_at` |
+| Q-E2-6 idempotencia | Ninguna de las tablas tiene `UNIQUE (consulta_id, paciente_id)`; `EnviosRegistro.php:55` (`PREFIJOS = c, r, l, p`); `salud360_envios` (`remoto_id bigint unsigned`, `clave varchar(191)`) | La unicidad depende de la transacción con la consulta bloqueada; no hay filas repetidas hoy. Registrar con clave solo lo que se crea cabe en la tabla actual |
+
 ## Decisiones del plan para E2 a E4 (con la alternativa descartada)
 - **P14. Contrato primero, servidor y app en paralelo.** La primera tarea de cada subentrega deja el contrato escrito; la app se construye contra un servidor falso.
   *Descartado:* que la app espere al servidor (alarga el camino sin bajar el riesgo: el E2E igual prueba los dos juntos).
