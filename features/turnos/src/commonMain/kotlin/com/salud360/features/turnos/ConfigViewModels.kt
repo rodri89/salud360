@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.avisoDeTiposNoLeidos
 import com.salud360.core.data.repos.hoy
 import com.salud360.core.model.Id
 import com.salud360.core.model.newId
@@ -17,11 +18,13 @@ import com.salud360.core.model.turnos.ObraSocial
 import com.salud360.core.model.turnos.ObraSocialMedico
 import com.salud360.core.model.turnos.Receta
 import com.salud360.core.model.turnos.TipoTurno
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
@@ -34,6 +37,8 @@ data class EstadoHorarios(val cargando: Boolean = false, val error: String? = nu
 /**
  * Horarios fijos semanales + fechas agregadas (`admin_horarios_fijos` + `admin_horarios`).
  * Al abrir, si el médico es de turnosonlinebb, trae su plantilla a la caché local; las altas/bajas van a la web.
+ * También vuelve a leer los tipos de turno que tiene habilitados: el selector de tipo ofrece solo esos (si no se pueden leer,
+ * degrada a «Consulta» sin bloquear la pantalla).
  */
 class HorariosViewModel(private val turnos: TurnosRepository, val medicoId: Id, val consultorioId: Id) : ViewModel() {
     val horarios: StateFlow<List<HorarioMedico>> = turnos.observarHorarios(medicoId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -41,7 +46,29 @@ class HorariosViewModel(private val turnos: TurnosRepository, val medicoId: Id, 
     private val _estado = MutableStateFlow(EstadoHorarios())
     val estado: StateFlow<EstadoHorarios> = _estado
 
-    init { refrescar() }
+    /** La plantilla de este médico vive en turnosonlinebb (si no, el selector de tipo conserva los del enum de siempre). */
+    val remota: Boolean = turnos.esRemota(medicoId)
+
+    /** Tipos habilitados del médico con sus opciones, si se pudieron leer (`null` = no se sabe: se ofrece solo «Consulta»). */
+    val tiposDelMedico: StateFlow<List<TipoTurnoDelMedico>?> = turnos.tiposHabilitados.map { it[medicoId] }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), turnos.tiposEnMemoria(medicoId))
+
+    /** Nombre de cada tipo (por código) que informó turnos: rotula los horarios de tipos que el enum cerrado no conoce. */
+    val nombresDeTipos: StateFlow<Map<Int, String>> = turnos.nombresDeTipos
+
+    private val _avisoDeTipos = MutableStateFlow<String?>(null)
+
+    /** Aviso discreto cuando no se pudieron leer los tipos por falta de conexión; con un servidor viejo no hay aviso. */
+    val avisoDeTipos: StateFlow<String?> = _avisoDeTipos
+
+    init { refrescar(); refrescarTipos() }
+
+    /** Vuelve a leer los tipos habilitados del médico. Nunca bloquea ni deja error en la pantalla: si falla, degrada. */
+    fun refrescarTipos() = viewModelScope.launch {
+        if (!remota) return@launch
+        val lectura = turnos.refrescarTiposDelMedico(medicoId)
+        _avisoDeTipos.value = avisoDeTiposNoLeidos(lectura, hayEnMemoria = turnos.tiposEnMemoria(medicoId) != null)
+    }
 
     fun refrescar() = viewModelScope.launch {
         if (!turnos.esRemota(medicoId)) return@launch
@@ -65,26 +92,32 @@ class HorariosViewModel(private val turnos: TurnosRepository, val medicoId: Id, 
     }
 
     /**
-     * Alta de un horario. Sin `validoDesde` rige desde hoy (para los quincenales se fija hoy como semana ancla);
-     * sin `validoHasta` rige para siempre. `onResultado` recibe null si se agregó o el motivo si no.
+     * Alta de un horario del tipo [tipoCodigo] (el código real de turnos: puede ser uno que el enum cerrado no conoce). Sin
+     * `validoDesde` rige desde hoy (para los quincenales se fija hoy como semana ancla); sin `validoHasta` rige para siempre.
+     * `onResultado` recibe null si se agregó o el motivo si no (p. ej. el `422 tipo_no_habilitado` con el mensaje de turnos).
      */
     fun agregar(
-        dia: DayOfWeek, hora: LocalTime, tipo: TipoTurno, doble: Boolean, quincenal: Boolean,
+        dia: DayOfWeek, hora: LocalTime, tipoCodigo: Int, doble: Boolean, quincenal: Boolean,
         validoDesde: LocalDate? = null, validoHasta: LocalDate? = null, onResultado: (String?) -> Unit,
     ) = viewModelScope.launch {
         var agregado = false
         val ok = intentar {
-            val h = HorarioMedico(newId(), medicoId, consultorioId, dia, hora, doble, tipo, validoDesde = anclaDesde(validoDesde, quincenal), validoHasta = validoHasta, quincenal = quincenal)
+            val h = HorarioMedico(
+                newId(), medicoId, consultorioId, dia, hora, doble, TipoTurno.porCodigo(tipoCodigo), validoDesde = anclaDesde(validoDesde, quincenal),
+                validoHasta = validoHasta, quincenal = quincenal, tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoCodigo),
+            )
             agregado = turnos.agregarHorario(h)
         }
+        if (!ok) refrescarTipos() // quizá la lista de tipos habilitados quedó vieja
         onResultado(when { !ok -> _estado.value.error; !agregado -> "Ese horario ya existe"; else -> null })
     }
     fun generar(
-        dia: DayOfWeek, desde: LocalTime, hasta: LocalTime, intervalo: Int, tipo: TipoTurno, quincenal: Boolean,
+        dia: DayOfWeek, desde: LocalTime, hasta: LocalTime, intervalo: Int, tipoCodigo: Int, quincenal: Boolean,
         validoDesde: LocalDate? = null, validoHasta: LocalDate? = null, onResultado: (Int) -> Unit,
     ) = viewModelScope.launch {
         var creados = 0
-        intentar { creados = turnos.generarHorarios(medicoId, consultorioId, dia, desde, hasta, intervalo, tipo, quincenal, anclaDesde(validoDesde, quincenal), validoHasta) }
+        val ok = intentar { creados = turnos.generarHorarios(medicoId, consultorioId, dia, desde, hasta, intervalo, tipoCodigo, quincenal, anclaDesde(validoDesde, quincenal), validoHasta) }
+        if (!ok) refrescarTipos()
         onResultado(creados)
     }
 

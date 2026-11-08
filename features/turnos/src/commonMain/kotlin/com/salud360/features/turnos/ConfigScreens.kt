@@ -40,13 +40,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.etiquetaVisibleDelTipo
+import com.salud360.core.data.repos.hayQueElegirTipo
+import com.salud360.core.data.repos.tipoElegidoParaHorario
+import com.salud360.core.data.repos.tiposOfrecidosParaHorario
 import com.salud360.core.model.Id
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.turnos.EstadoReceta
 import com.salud360.core.model.turnos.HorarioMedico
 import com.salud360.core.model.turnos.MensajeEspecial
 import com.salud360.core.model.turnos.ModuloTurnos
-import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
 import com.salud360.core.ui.components.BackButton
@@ -89,8 +92,14 @@ fun HorariosScreen(
     val horarios by vm.horarios.collectAsState()
     val fechas by vm.fechasAgregadas.collectAsState()
     val estado by vm.estado.collectAsState()
+    val tiposDelMedico by vm.tiposDelMedico.collectAsState()
+    val nombresDeTipos by vm.nombresDeTipos.collectAsState()
+    val avisoDeTipos by vm.avisoDeTipos.collectAsState()
     var dia by remember { mutableStateOf(DayOfWeek.MONDAY) }
-    var tipo by remember { mutableStateOf(TipoTurno.CONSULTA) }
+    // `null` = todavía no eligió: se usa el primer tipo que se ofrece (el de un médico sin Consulta no arranca en Consulta).
+    var tipoElegido by remember { mutableStateOf<Int?>(null) }
+    val ofrecidos = tiposOfrecidosParaHorario(tiposDelMedico, tipoElegido, nombresDeTipos, vm.remota)
+    val tipo = tipoElegidoParaHorario(ofrecidos, tipoElegido)
     var desde by remember { mutableStateOf("08:00") }
     var hasta by remember { mutableStateOf("12:00") }
     var intervalo by remember { mutableStateOf("30") }
@@ -117,8 +126,12 @@ fun HorariosScreen(
         SectionCard("Agregar horarios", collapsible = false) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 SelectField("Día", dia.nombre(), DIAS.map { it.nombre() }, { v -> DIAS.firstOrNull { it.nombre() == v }?.let { dia = it } }, Modifier.width(170.dp), allowEmpty = false)
-                SelectField("Tipo", tipo.etiqueta, TipoTurno.entries.map { it.etiqueta }, { v -> TipoTurno.entries.firstOrNull { it.etiqueta == v }?.let { tipo = it } }, Modifier.width(190.dp), allowEmpty = false)
+                if (hayQueElegirTipo(ofrecidos)) {
+                    val actual = ofrecidos.firstOrNull { it.codigo == tipo }?.etiqueta ?: ""
+                    SelectField("Tipo", actual, ofrecidos.map { it.etiqueta }, { v -> ofrecidos.firstOrNull { it.etiqueta == v }?.let { tipoElegido = it.codigo } }, Modifier.width(190.dp), allowEmpty = false)
+                }
             }
+            avisoDeTipos?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Text("Vigencia", style = MaterialTheme.typography.titleSmall)
             Text("Si no cargás \"Válido desde\" el horario rige a partir de hoy; si no cargás \"Válido hasta\" rige para siempre.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -173,7 +186,7 @@ fun HorariosScreen(
                 if (delDia.isEmpty()) Text("Sin horarios", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     delDia.forEach { h ->
-                        HorarioChip(h, onEliminar = { vm.eliminar(h) }, onDoble = { vm.doble(h, it) }, onQuincenal = { vm.quincenal(h, it) }, onVigencia = { a, b -> vm.vigencia(h, a, b) })
+                        HorarioChip(h, nombresDeTipos[h.codigoDeTipo], onEliminar = { vm.eliminar(h) }, onDoble = { vm.doble(h, it) }, onQuincenal = { vm.quincenal(h, it) }, onVigencia = { a, b -> vm.vigencia(h, a, b) })
                     }
                 }
             }
@@ -206,13 +219,14 @@ fun HorariosScreen(
 }
 
 @Composable
-private fun HorarioChip(h: HorarioMedico, onEliminar: () -> Unit, onDoble: (Boolean) -> Unit, onQuincenal: (Boolean) -> Unit, onVigencia: (LocalDate?, LocalDate?) -> Unit) {
+private fun HorarioChip(h: HorarioMedico, nombreDelTipo: String?, onEliminar: () -> Unit, onDoble: (Boolean) -> Unit, onQuincenal: (Boolean) -> Unit, onVigencia: (LocalDate?, LocalDate?) -> Unit) {
     var abierto by remember { mutableStateOf(false) }
     androidx.compose.material3.InputChip(
         selected = abierto, onClick = { abierto = !abierto },
         label = {
             Text(
-                h.horario.hhmm() + (if (h.tipoTurno != TipoTurno.CONSULTA) " ${h.tipoTurno.etiqueta}" else "") + (if (h.doble) " ×2" else "") +
+                // El tipo con su nombre real (también los que el enum cerrado no conoce); «Consulta» no se rotula.
+                h.horario.hhmm() + (etiquetaVisibleDelTipo(h.codigoDeTipo, emptyList(), nombreDelTipo)?.let { " $it" } ?: "") + (if (h.doble) " ×2" else "") +
                     (if (h.quincenal) " c/15d" else "") + (if (h.validoHasta != null || h.validoDesde != null) " *" else ""),
             )
         },

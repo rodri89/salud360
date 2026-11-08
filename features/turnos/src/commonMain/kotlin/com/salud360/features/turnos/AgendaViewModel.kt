@@ -6,8 +6,10 @@ import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.ResultadoTurno
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.repos.codigoParaRegistrar
+import com.salud360.core.data.repos.conTipo
 import com.salud360.core.data.repos.hoy
-import com.salud360.core.data.repos.sobreElSlot
+import com.salud360.core.data.repos.opcionesParaSlot
+import com.salud360.core.data.repos.tipoConQueSeRegistra
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.newId
@@ -15,7 +17,9 @@ import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.EstadoTurno
 import com.salud360.core.model.turnos.ModuloTurnos
+import com.salud360.core.model.turnos.OpcionTipoTurno
 import com.salud360.core.model.turnos.SlotAgenda
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -61,7 +65,12 @@ data class AgendaUiState(
     val remota: Boolean = false,
     /** Nombre de cada tipo de turno (por código) que informó turnos; sirve para rotular horarios y turnos. */
     val nombresDeTipos: Map<Int, String> = emptyMap(),
+    /** Tipos habilitados del médico con sus opciones, si se pudieron leer (`null` = no se sabe: se asigna como siempre, sin opciones). */
+    val tiposDelMedico: List<TipoTurnoDelMedico>? = null,
 ) {
+    /** Las opciones que se pueden elegir al asignar un turno sobre [slot] (vacío si el horario es desconocido o su tipo no tiene). */
+    fun opcionesPara(slot: SlotAgenda?): List<OpcionTipoTurno> = slot?.let { opcionesParaSlot(tiposDelMedico, it.codigoDeTipo) }.orEmpty()
+
     val conCaja: Boolean get() = ModuloTurnos.CAJA_COMENTARIO in modulos
     val primerControlDoble: Boolean get() = ModuloTurnos.PRIMER_CONTROL_DOBLE in modulos
 }
@@ -100,6 +109,8 @@ class AgendaViewModel(
         }
         if (remota) viewModelScope.launch { fecha.collectLatest { f -> refrescar(f) } }
         viewModelScope.launch { turnos.nombresDeTipos.collect { n -> _state.update { it.copy(nombresDeTipos = n) } } }
+        viewModelScope.launch { turnos.tiposHabilitados.collect { t -> _state.update { it.copy(tiposDelMedico = t[medicoId]) } } }
+        refrescarTipos()
         // Fichas de los pacientes del día (afiliado, plan): se observan para que la tarjeta muestre lo que haya en caché.
         viewModelScope.launch {
             turnosDelDia.map { ts -> ts.mapNotNull { it.pacienteId }.distinct().sorted() }.distinctUntilChanged()
@@ -112,6 +123,12 @@ class AgendaViewModel(
     fun irA(f: LocalDate) { fecha.value = f }
     fun diaSiguiente() = irA(fecha.value.plus(1, DateTimeUnit.DAY))
     fun diaAnterior() = irA(fecha.value.plus(-1, DateTimeUnit.DAY))
+
+    /**
+     * Vuelve a leer los tipos habilitados del médico (y sus opciones) de turnos; al abrir la agenda y cada vez que se abre Asignar.
+     * Si no se puede (servidor viejo, sin permiso, sin red) no pasa nada: se asigna como siempre, sin opciones.
+     */
+    fun refrescarTipos() { if (remota) viewModelScope.launch { turnos.refrescarTiposDelMedico(medicoId) } }
 
     /** Vuelve a pedir la agenda del día a turnosonlinebb (no hace nada para médicos locales). */
     fun refrescar() = viewModelScope.launch { refrescar(fecha.value) }
@@ -153,22 +170,29 @@ class AgendaViewModel(
         return pacientes.buscar(texto, null, 30)
     }
 
-    /** Asigna un turno a un paciente en un slot (`registrarAsignarTurno`); el turno lleva el tipo del [slot] (sin slot, Consulta). */
-    fun asignar(paciente: Paciente, f: LocalDate, horario: LocalTime, primerControl: Boolean, segundoHorario: LocalTime? = null, slot: SlotAgenda? = null, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
+    /**
+     * Asigna un turno a un paciente en un slot (`registrarAsignarTurno`); el turno lleva el tipo del [slot] (sin slot, Consulta) o, si
+     * se eligió una [opcionId] válida de ese tipo, el de la opción.
+     */
+    fun asignar(
+        paciente: Paciente, f: LocalDate, horario: LocalTime, primerControl: Boolean, segundoHorario: LocalTime? = null, slot: SlotAgenda? = null,
+        opcionId: Int? = null, onResultado: (ResultadoTurno) -> Unit,
+    ) = viewModelScope.launch {
         val t = Turno(
             newId(), paciente.id, medicoId, consultorioId, f, horario, otorgadoPor = operador, primerControl = primerControl,
             pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial,
-        ).sobreElSlot(slot)
+        ).conTipo(tipoConQueSeRegistra(slot, opcionId, _state.value.tiposDelMedico))
         val r = if (primerControl && segundoHorario != null) turnos.registrarTurnoDoble(t, segundoHorario) else turnos.registrarTurno(t)
         if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f); cargarProximasFechas() }
         cargarSemana(_state.value.semanaDesde ?: f)
         onResultado(r)
     }
 
-    /** Sobreturno; si cae en un horario de la plantilla ([slot]) lleva el tipo de ese horario, si no, Consulta. */
-    fun sobreturno(paciente: Paciente, f: LocalDate, horario: LocalTime, slot: SlotAgenda? = null, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
+    /** Sobreturno; si cae en un horario de la plantilla ([slot]) lleva el tipo de ese horario (o el de la [opcionId] válida), si no, Consulta. */
+    fun sobreturno(paciente: Paciente, f: LocalDate, horario: LocalTime, slot: SlotAgenda? = null, opcionId: Int? = null, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
         val t = Turno(newId(), paciente.id, medicoId, consultorioId, f, horario, otorgadoPor = operador, sobreturno = true,
-            pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial).sobreElSlot(slot)
+            pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial)
+            .conTipo(tipoConQueSeRegistra(slot, opcionId, _state.value.tiposDelMedico))
         val r = turnos.registrarSobreturno(t)
         if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f); cargarProximasFechas() }
         onResultado(r)
