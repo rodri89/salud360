@@ -21,7 +21,8 @@ pero sí **vuelve a preguntar** si el número ya lo tomó otra rama.
    registro propio de lo recibido (`salud360_envios`, creado por la API) que da la repetibilidad (RF-15) y el «esta consulta la
    creó la app» (RF-52). Ninguna tabla de la web recibe columnas.
 5. **Orden:** E0 (limpieza, respaldo, scripts) → T9 de la 004 (**precondición, pedido aparte**) → servidor local de E1 → app de E1 →
-   cierre de E1 (reviewer, prueba manual, limpieza). E2 a E5 se detallan al llegar a cada una, con aprobación aparte.
+   cierre de E1 (reviewer, prueba manual, limpieza). **E2, E3 y E4 quedaron detalladas y fueron aprobadas por el usuario el 2026-11-07 (Q-A sí; orden alternativo Q-B; las demás preguntas siguen abiertas)**
+   (T48 a T113 en `tasks.md`; contrato y decisiones al final de este documento); E5 se detalla al llegar, con aprobación aparte.
 6. **Licencia en el ingreso (D22/D25):** `HcClinicaBackend.licenciaDelServidor()` + la enmienda a `decidirLicencia` («se bloquea
    solo si todas las HC con licencia contestan vencida con fecha»). Depende de la T9 y de la enmienda de texto a la 004.
 7. **Panel de licencias sin regresión desde E1 (RF-66):** `HcBackend.administraLicencia` (clínica `false` hasta E5).
@@ -386,3 +387,81 @@ la copia servida; **jvm** = `jvmTest` de `core:data` (`.\gradlew :core:data:jvmT
    credenciales las pone el usuario en la sesión, nunca en el repo.
 7. **Antes de publicar:** la comprobación de solo lectura de médicos de clínica con licencia vencida o sin fila (en local y, con
    aprobación de producción, allá) — sin nombres ni datos de pacientes.
+
+---
+
+# E2, E3 y E4: contrato y decisiones (2026-11-07) — APROBADAS por el usuario el 2026-11-07 (salvo lo que dependa de una pregunta abierta)
+Borrador del planificador a pedido del usuario (llegar a «todo editable como en pediatría»). Las tareas están en `tasks.md` (T48 a T113); lo que la
+web hace hoy, con archivo y línea, en `notas-para-el-plan.md` §11 a §13. **No cambia la spec**; los huecos están como preguntas Q-… en `tasks.md` y
+no se resolvieron acá. Todo es «Toca API Laravel: sí» solo para la copia local (D3); producción, aparte (D4, D18).
+
+## Contrato provisorio (nombres a confirmar en T48, T73 y T95)
+Mismo grupo `salud360`, mismo middleware; cuerpo JSON salvo la subida; mismos errores que E1 (`401`, `403 sin_permiso|fuera_de_cartera|consulta_no_propia`,
+`404 consulta_no_encontrada|paciente_no_encontrado`, `409 consulta_cerrada`, `422 datos_invalidos` con `campo` y `motivo`, `500 escritura` sin detalle) más los
+que dice cada fila. **La lectura no se modifica.**
+
+| Sub | Ruta | Cuerpo → respuesta | Reglas del servidor | RF |
+|---|---|---|---|---|
+| E2 | `PUT consultas/{id}/formularios` | `{formularios:{alimentacion:{hiposodica,diabetes,celiaco,otra: "<0\|1>\|<detalle>"}, serologias:{<16 claves>: "SI"\|"NO"\|""}, child_pugh:{ascitis,bilirrubina,albumina,tp,encefalopatia: "1".."3"\|""}}}` → `{ok, guardadas, desconocidas}` | Solo lo presente; `celiaco`→`seliaco`; `SI`=1, `NO`=2, `""`=0 (nunca `NO` por un vacío); total de Child-Pugh = suma de la fila resultante; fila `activo = 1` de mayor id de la consulta o alta; upsert sin registro | RF-35, 37, 38 |
+| E2 | `PUT pacientes/{id}/antecedentes-familiares` | `{consulta_id, casillas:{<clave>:{flag,detalle}}, nota}` → `{ok, id, guardadas, desconocidas}` | Consulta propia/abierta/de ese paciente; `tabaquismo` y claves desconocidas → `desconocidas`; fila de (consulta, paciente) o **fila nueva = última activa del paciente mezclada con lo tocado**; nunca toca la fila de otra consulta | RF-36, RF-3, RF-9 |
+| E2 | `PUT consultas/{id}/registros` | `{items:[{ref:"r:<id local>", tipo, id?, fecha?, campos, borrado?}]}` → `{ok, ids:{ref:id}, guardadas, desconocidas}` | Atómico; cinco estudios (upsert por consulta/paciente; fecha obligatoria); exámenes/interconsultas: alta `activo = 2` con `numero`, `numero_consulta`, `fechaSolicitud` asignados por el servidor, edición, **completar** (`respuesta` de una fila `activo = 1` de otra consulta), **baja** (`activo = 0`, solo de esta consulta); `ref` registrado = actualizar esa fila; `422 borrado_no_permitido` (estudios), `422 no_se_quita_desde_otra_consulta` | RF-39, 40, 70 |
+| E3 | `PUT pacientes/{id}/laboratorios` / `PUT pacientes/{id}/pesos` | `{clave:"l:<id local>", dispositivo, consulta_id, tipo?, id?, fecha, valores}` → `{ok, id, guardadas, desconocidas}` | `activo = 1` desde el alta (D20); fecha obligatoria y nunca el marcador de «sin fecha» (`422 fecha_invalida`); alta repetible por clave; actualizar (`id`) solo una carga de esa consulta creada por la app (`403 carga_no_propia`); `422 carga_vacia`; no escribe `medico_infos` | RF-41, 42 |
+| E3 | `DELETE pacientes/{id}/laboratorios/{cargaId}` / `…/pesos/{cargaId}` | `{clave, dispositivo, consulta_id}` → `{ok, baja}` | `activo = 0`, nunca físico; solo cargas propias de esa consulta; repetir = ok | RF-41, 42 |
+| E3 | `PUT consultas/{id}/pendientes` | `{texto}` → `{ok, id}` | Un texto por consulta en `aux_pendientes` (`activo = 1`), el último manda; `""` vacía; sin `resuelto` (D10); upsert | RF-43 |
+| E4 | `POST consultas/{id}/adjuntos` (multipart) | `archivo`, `clave:"a:<id local>"`, `dispositivo`, `tipo: pdf\|foto_examen`, `registro_id?` → `201/200 {ok, adjunto:{id,nombre,tamanio,created_at}}` | Solo PDF (cabecera `%PDF-`) o, si D24, JPEG/PNG de un examen confirmado; tope = menor entre 15 MB y el hosting; archivo temporal → fila + registro en una transacción → renombrar; `422 archivo_grande\|archivo_invalido`; `500 carpeta_no_escribible` con la ruta | RF-44, 46 |
+| E4 | `GET consultas/{id}/adjuntos`, `GET adjuntos/{id}/archivo` | lista / bytes | Con sesión, paciente visible, nunca enlace público; la lista no trae rutas del disco | RF-45 |
+| E4 | `DELETE adjuntos/{id}` | `{clave, dispositivo, consulta_id}` → `{ok, baja}` | `activo = 0`; no borra el archivo; solo adjuntos propios | RF-46 |
+| E4 | `GET adjuntos/limites` | → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` | Solo lectura (`ini_get`); en producción solo con la aprobación de producción (D18) | RF-44 |
+
+Registro de lo recibido (`salud360_envios`): se agregan el tipo `registro`, `carga` y `adjunto` y el prefijo `a` (hoy `c r l p`, `EnviosRegistro::PREFIJOS`). El
+`remoto_id` guardado permite que **un reenvío con la misma clave actualice la misma fila** en vez de duplicarla.
+
+## Decisiones del plan para E2 a E4 (con la alternativa descartada)
+- **P14. Contrato primero, servidor y app en paralelo.** La primera tarea de cada subentrega deja el contrato escrito; la app se construye contra un servidor falso.
+  *Descartado:* que la app espere al servidor (alarga el camino sin bajar el riesgo: el E2E igual prueba los dos juntos).
+- **P15. Clave natural (upsert) para lo que ya tiene una fila por (consulta, paciente) y registro con clave para lo que se crea** (Q-E2-6). *Descartado:*
+  registrar todo con clave (un reenvío con otros datos no se aplicaría).
+- **P16. `registros` es atómico y se identifica por `ref`.** *Descartado:* una ruta por tipo (más pedidos con un límite de 60 por minuto por IP) y aplicar los ítems
+  buenos y rechazar los malos (rompe «entra completo o no entra»).
+- **P17. El total de Child-Pugh lo calcula el servidor.** *Descartado:* confiar en el total del cliente (la web lo hace con JavaScript; un total inconsistente quedaría guardado).
+- **P18. Antecedentes: fila nueva de la consulta, mezclada con la última activa.** *Descartado:* actualizar la última fila del paciente (pisaría el historial de otra consulta y de
+  otro médico) y reescribir las quince casillas (pisa lo que el médico no tocó, RF-36).
+- **P19. Cargas: `PUT` con `id` para actualizar y `DELETE` con id.** La web solo inserta y da de baja (`MedicoController.php:6195-6731`, `:3682-3734`); actualizar una carga es capacidad
+  nueva que pide RF-41. *Descartado:* borrar y recrear al editar (cambiaría el id de la web en cada autoguardado y rompería el emparejamiento).
+- **P20. Pendientes: fila portadora + huella (P4) y upsert en el servidor.**
+- **P21. Adjuntos: controlador y servicio aparte, archivo temporal + transacción + renombrar, nunca se borra un archivo del disco.** *Descartado:* ampliar el controlador de escritura
+  (mezclaría subidas de archivos con la garantía «la escritura de datos es JSON»), y borrar el archivo al dar de baja (la web no lo hace y el historial puede apuntar a él).
+- **P22. Una constante de subentrega por tarea de habilitación** (T67, T88, T108), la última antes del E2E de cada subentrega. Si el usuario acepta el orden alternativo (Q-B), una tarea chica
+  anterior la reemplaza por un conjunto de secciones habilitadas. *Descartado:* habilitar de a poco sin tarea propia (se publicaría una versión intermedia por accidente).
+- **P23. Pedidos por envío.** RF-28 pide fijar y justificar el número. Una consulta completa con cola real manda, en una ráfaga y en este orden: crear (1), secciones (1), examen (1), formularios
+  (1), antecedentes (1), registros (1), cargas (una por carga nueva o tocada), pendientes (1), adjuntos (uno por archivo) y cierre (1); lo ya enviado no se reenvía, así que una ráfaga normal de
+  cambios cuesta, **según una estimación del planificador (a medir en T68, T89 y T109)**, de 2 a 5 pedidos. Con 60 por minuto por IP y la espera de 4 s, un consultorio con varios médicos no se acerca al límite; si un envío grande se acerca, `429` frena a **todas**
+  las consultas (T27). *Descartado:* juntar todo en un solo pedido (perdería el envío parcial y la confirmación por parte, RF-32).
+
+## Cobertura de E2 a E4 (se suma a «Estrategia de tests»)
+| RF | Cobertura |
+|---|---|
+| RF-35, RF-37, RF-38 | PHP `FormulariosReglasTest`, PHP-base (T54); jvm `PayloadsClinicaE2Test`, `PlanDeEnvioE2Test`, `HcClinicaEnvioFormulariosTest`; E2E `HcClinicaFormulariosListasE2ETest` |
+| RF-36, RF-3, RF-9 | PHP `AntecedentesFamiliaresReglasTest`, PHP-base (T55); jvm `HcClinicaEnvioAntecedentesTest`, `HcClinicaBackendPropiasE2Test`; E2E |
+| RF-39 | PHP `RegistrosReglasTest`, PHP-base (T56); common `LimitesDeCampoTest`; jvm `HcClinicaEnvioRegistrosTest`; E2E; manual (T71) |
+| RF-40, RF-70 | PHP `RegistrosReglasTest`, `RegistrosBajaTest`, PHP-base (T57, T58, T59); common `ReglasDeRegistroTest`; jvm `HcRepositoryRegistrosTest`, `HcClinicaBackendPropiasE2Test` (las `activo = 2` no vuelven hasta cerrar); E2E |
+| RF-41, RF-42 | PHP `CargasReglasTest`, PHP-base (T76, T77); jvm `MigracionLaboratorioTest`, `HcRepositoryCargasTest`, `HcClinicaEnvioCargasTest`, `HcClinicaBackendPropiasE3Test`; E2E `HcClinicaLaboratorioE2ETest` |
+| RF-43 | PHP `PendientesReglasTest`, PHP-base (T78); common `PendientesTextoTest`; jvm `HcRepositoryPendientesTest`, `HcClinicaEnvioPendientesTest`, `HcClinicaBackendPropiasE3Test`; E2E |
+| RF-44 | PHP `AdjuntosReglasTest`, PHP-base (T97, T99); common `AdjuntosClinicaTest`; jvm `ClinicaAdjuntosApiTest`, `HcClinicaEnvioAdjuntosTest`; E2E `HcClinicaAdjuntosE2ETest` |
+| RF-45 | PHP-base (T98); jvm `HcClinicaBackendAdjuntosTest`; manual (T112) |
+| RF-46 | PHP-base (T98); common `AdjuntosClinicaTest`, jvm `AdjuntosPropiosTest` (nunca sin consulta ni de otra HC); E2E |
+| RF-15, RF-61 en E2 a E4 | PHP `EnviosRegistroTest` (T53) + PHP-base; jvm `HcClinicaEnvioRepetibleTest` y `…AtomicoTest` ampliados en T63, T85 y T104 |
+| RF-16 en E2 a E4 | E2E de cada subentrega: `medico_infos` idéntico (también tras laboratorio y peso) |
+
+## Riesgos de E2 a E4 (se suman a «Riesgos»)
+| Riesgo | Mitigación |
+|---|---|
+| **La app de E1 nunca habló con el servidor real** (todo con servidores falsos) | T40 antes de T61 (ver «Qué de E1 bloquea a E2» en `tasks.md`); el primer E2E real incluye E1 |
+| **Completar un examen de una consulta anterior** no cabe en el modelo «cada consulta envía lo suyo» (RF-68) | Q-E2-4; la tarea que lo toca (T62, T64) queda bloqueada hasta la respuesta |
+| **Las filas `activo = 2` no vuelven en `historia` hasta cerrar** y podrían parecer «ya no figura en la web» | Test explícito en T65; la marca solo se pone a lo que la app ya había traído |
+| **La web reactiva lo dado de baja si alguien cierra en la web una consulta de la app** (`setActivoExamenesComplementarios`/`Interconsulta`, `MedicoController.php:2225-2278`) | Ya declarado; documentado en T60 y en el manual |
+| **Migración v11 sin vuelta atrás y un solo puerto de `devWeb` (8080)** | Aviso al usuario en T80; 001 y 002 se publican juntas |
+| **Tope de largo de las columnas `string` (191)** distinto en producción | T48 mide la local; producción solo con su aprobación; el servidor devuelve `texto_demasiado_largo` en vez de truncar |
+| **Archivos en disco: carpeta, permisos, límite y espacio en el hosting** | T95 mide lo local; el paso de hosting se lista en T113 y se hace en la etapa de producción con aprobación; el servidor nombra la ruta si no puede escribir |
+| **Una subida cortada deja fila sin archivo o archivo sin fila** | Temporal + transacción + renombrar (T97); la lectura de la web ya responde 404 si falta el archivo |
+| **Más rondas de reviewer y prueba manual si se adopta el orden alternativo** | Es la contrapartida de Q-B; el usuario decide |

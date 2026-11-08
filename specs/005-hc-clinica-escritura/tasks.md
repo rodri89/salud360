@@ -1,12 +1,26 @@
-# Tareas 005 — La HC general escribe sus consultas (E0 y E1 detalladas; E2 a E5 en lista)
+# Tareas 005 — La HC general escribe sus consultas (E0, E1, E2, E3 y E4 detalladas; E5 en lista)
 
-Estado: **plan y tareas aprobados por el usuario el 2026-11-04**. Spec: `spec.md` (aprobada el 2026-11-04, RF-1 a
+Estado: **plan y tareas de E0 y E1 aprobados por el usuario el 2026-11-04**. Spec: `spec.md` (aprobada el 2026-11-04, RF-1 a
 RF-70). Plan: `plan.md`. Apoyo técnico: `notas-para-el-plan.md`.
 
-**Por qué solo E0 y E1 detalladas.** La skill pide proponer dividir si salen más de 10 tareas; esta spec ya está partida en
-subentregas (D5). Se detallan **E0 y E1** (lo que se puede empezar tras la aprobación); **E2 a E5 quedan como lista de tareas con
-título y RF** y se detallan **al llegar a cada subentrega, con aprobación aparte** (cada una necesita lo que enseñe la anterior y,
-E3, una migración con su número). Las tareas de producción **no se detallan**: «E9 de la escritura: aprobación aparte».
+> ## E2, E3 y E4 detalladas el 2026-11-07: APROBADAS por el usuario el 2026-11-07
+> Las tareas **T48 a T113** (E2: T48 a T72; E3: T73 a T94; E4: T95 a T113) las escribió el planificador a pedido del usuario
+> («llegar cuanto antes a la experiencia de pediatría: todas las secciones editables y enviadas a la web»). **Ninguna está hecha.** El
+> usuario las **aprobó el 2026-11-07** con estas decisiones (E5 **no** se detalla ahora):
+> - **Q-A: sí, arranca E2 sin esperar el cierre de E1.** E2 se escribe y se prueba con `SUBENTREGA_HABILITADA` (y el candado) **fuera** de
+>   lo que habilite: **no se habilita en la app ni se cierra E2 hasta decidirlo con el usuario** (ver «Qué de E1 bloquea a E2»: T43, T44 y
+>   T47 siguen pendientes y T40 conviene antes de la primera prueba contra el servidor real).
+> - **Q-B: se acepta el orden alternativo** (ver «Orden recomendado»): **E2-a** (T48 a T56 y las tareas de app de formularios,
+>   antecedentes y los cinco estudios) → **E3** → **E2-b** (exámenes, interconsultas, baja y completar) → **E4** (PDF primero), con la tarea
+>   chica del «candado por sección» **antes de T61** (todavía sin número: se agrega al llegar a ella, sin renumerar).
+> - **Las demás preguntas siguen ABIERTAS** (Q-E2-1 a Q-E2-6, Q-E3-1, Q-E3-2 y Q-E4-1 a Q-E4-3): las tareas marcadas «BLOQUEADA por
+>   Q-…» **no se empiezan sin la respuesta del usuario**. El usuario todavía no las respondió y **la recomendación del planificador NO está
+>   aprobada**; las «Decisiones de contrato» de más abajo se aprobaron con las tareas, salvo lo que dependa de una pregunta abierta.
+**Por qué E2, E3 y E4 se detallan juntas.** La skill pide proponer dividir si salen más de 10 tareas; esta spec ya está partida en
+subentregas (D5) y cada una se aprueba, se prueba y se cierra por separado: que estén detalladas no las junta. Se detallaron las
+tres para poder ordenar el camino más corto a «todo editable» (ver «Orden recomendado») y para fijar de una vez lo que enseñó E1 (las
+«Decisiones a revisar» de T17, T18, T21, T24 a T29, T31, T36 y T37 alimentan las tareas nuevas, que las citan). Las tareas de producción
+**no se detallan**: «E9 de la escritura: aprobación aparte».
 
 **Decisión del usuario (2026-11-07): el foco es la HC de clínica en la WEB (lectura y escritura).** iOS, Android y el modo sin conexión quedan para después: **T32 (iOS) está DIFERIDA**; T33, T34 y T35 quedan sin urgencia y no se hacen ahora. Lo que sigue es la interfaz web: T36 a T38 (T36 hecha), y luego la prueba manual en el navegador.
 
@@ -832,7 +846,8 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     **Funciones y textos nuevos (`core/data`, una sola tabla).** `hcgeneral/EstadoEnPantalla.kt`: `bannersDeEnvio(EstadoDeLaConsulta?)` + `BannerDeEnvio`/`TipoDeBanner` (texto y acciones de cada franja), `confirmacionDeAnular(consulta, estado)` + `ConfirmacionDeAnular`, y las constantes `TEXTO_DESCARTAR`, `TEXTO_ANULAR_CONSULTA`, `TEXTO_CONFIRMAR_ANULAR`, `AVISO_ANULAR_BASE`, `AVISO_ANULAR_YA_EN_LA_WEB`, `AVISO_ANULAR_DATOS_DEL_PACIENTE`, `AVISO_ANULAR_CIERRE_PENDIENTE`, `AVISO_ANULAR_PENDIENTE` (los textos de los estados ya estaban: `TEXTO_FALTA_ENVIAR`, `TEXTO_DESCARTADO`, `TEXTO_ENVIANDO_EL_CIERRE`, `AVISO_NO_SE_ENVIA`, `AVISO_TODAVIA_NO_SE_ENVIA`, y `TEXTO_REINTENTAR`; no hay literales nuevos en la pantalla). `Consulta.seEnviaALaWeb()` (propia de la HC general), `avisoDeEnvioDeLaSeccion`, `avisoDeEnvioDeLaCasilla` y `avisoDeEnvioDelCampoDelExamen` (solo valen si la consulta se envía). `EstadoDeLaConsulta.partesDescartadas`, `EnvioDeConsultas.reintentar/descartar` y `HcRepository.reintentarEnvio/descartarEnvio` (la cola decide; el ViewModel no tiene lógica). En `features/hc`: `EstadoDeEnvio.kt` (franjas y avisos), `ConsultaUi.seEnviaALaWeb`/`banners`, `ConsultaViewModel.reintentarEnvio/descartarEnvio/anularConsulta`, y cambios en `ConsultaScreen`, `AntecedentesSeccion` y `ExamenFisicoSeccion`.
     **Tests existentes que cambian.** Ninguno se modificó. Pediatría y las demás: `seEnviaALaWeb` es falso, no hay franja ni avisos ni «Anular consulta», y los 1816 tests anteriores siguen verdes.
     **Decisiones a revisar.** (a) **Cambio visible grande (es RF-4, pero conviene verlo):** con la subentrega E1, en una consulta propia nueva casi todo el perfil (laboratorio, antecedentes, estudios, interconsultas, formularios, adjuntos) pasa a **solo lectura con «Esta sección todavía no se envía a la web»**, porque la app aún no lo manda. Sube sola al habilitar E2 a E4 (`SUBENTREGA_HABILITADA`). (b) **«Reintentar» también en «En espera»** (RF-6: «a mano si el médico lo pide»); la tarea solo lo nombraba en «No se pudo enviar». «Descartar» solo en «No se pudo enviar» (descartar una espera perdería lo que falta mandar). (c) **«Descartar» no pide confirmación**: el dato se conserva en el dispositivo y no se borra nada. (d) **«Anular consulta»** se agregó a la pantalla de la consulta (antes solo estaba en la lista de la historia, que es de T38 y no se tocó): comparte `HcRepository.anularConsulta`. (e) **«Falta enviar» aparece en una consulta recién creada** (la creación es lo pendiente) y desaparece sola a los ~4 s. (f) **El histórico en curso** (`propia = 0`) sigue editable y sin franja, como pidió la tarea; su aviso y su «Enviar a la web» son T33/T38. (g) **No existe `-Psalud360.web.puerto`:** el dev server de la web usa el puerto fijo 8080 (`wasmJsBrowserDevelopmentRun`); para revisar en otro puerto habría que sumar `devServer.port` en `composeApp/build.gradle.kts` (no lo hice: toca la configuración de build). (h) Los avisos viven una línea por sección («<Sección>: ...») porque en solo lectura una sección sin datos no dibuja su tarjeta; así no se pierde el rastro de por qué no se ofrece.
-    **Revisión visual pendiente en `devWeb` (NO hecha).** Contra el XAMPP local, nunca producción; un médico con la HC general habilitada y un paciente vinculado. El `devWeb` de `:8080` lo manejás vos: si no corre en modo continuo, reinicialo para ver estos cambios (no existe otro puerto, ver (g)). Pasos: (1) Abrí una consulta nueva de la HC general: arriba debe verse **«Falta enviar»** y, a los ~4 s, desaparecer (la creó en la web). (2) Escribí en «Nota»: **«Falta enviar»** vuelve mientras escribís y desaparece a los ~4 s del último cambio. (3) Revisá las secciones: motivo, datos subjetivos y objetivos, conductas, nota, hábitos, diuresis, somnia, examen físico y enfermedades **editables y sin aviso**; las demás (laboratorio, antecedentes, estudios, interconsultas, etc.) **solo para leer** y con **«<Sección>: Esta sección todavía no se envía a la web»** arriba. (4) Examen físico de una consulta con frecuencia cardíaca o circunferencia abdominal cargadas de antes: debajo, **«Frecuencia cardíaca: No se envía a la web»** (igual para la otra). (5) DevTools, Network, **Offline**: escribí algo, esperá 4 s: **«En espera: Sin conexión con la historia clínica de Clínica general»** con **Reintentar**. Volvé a online: sale solo en pocos segundos (disparador de T31) y la franja desaparece; repetí tocando **Reintentar** con la red ya vuelta. (6) Con red, **«Guardar y cerrar consulta»**: se ve un instante **«Enviando el cierre.»** y la consulta queda cerrada **sin «Reabrir para editar» ni «Anular consulta»** y sin franja. (7) Cerrá estando **Offline**: la consulta queda cerrada con **«En espera: .»**, **«Reabrir para editar»** y **«Anular consulta»** visibles; reabrí y comprobá que vuelve a ser editable. (8) **«Anular consulta»** en una abierta que ya se creó: el diálogo dice que queda anulada, que se da de baja en la web (no se borra) y que lo ya enviado del paciente no se borra; en una **cerrada con el cierre sin enviar** suma «al anularla se pierde ese cierre»; en una nunca creada, solo lo básico. Confirmá: vuelve a la lista y ya no aparece «en curso». (9) Opcional, para ver «No se pudo enviar» y «Descartado»: dar de baja la consulta en la web del XAMPP local con la consulta propia ya creada y editar un texto: debe verse **«No se pudo enviar: .»** con **Reintentar** y **Descartar**; **Descartar** deja **«Descartado: no se envió a la web»**. (10) Una consulta **del histórico** abierta, una **de la web** y una de **pediatría**: iguales que antes (sin franja, sin avisos, sin «Anular consulta»).- [ ] **T38. `HistoriaClinicaScreen`: grupos, «Enviar a la web» y contador.** RF-8, RF-10, RF-18, RF-31, RF-62, RF-64, RF-65, RF-67 — M — Toca API Laravel: no
+    **Revisión visual pendiente en `devWeb` (NO hecha).** Contra el XAMPP local, nunca producción; un médico con la HC general habilitada y un paciente vinculado. El `devWeb` de `:8080` lo manejás vos: si no corre en modo continuo, reinicialo para ver estos cambios (no existe otro puerto, ver (g)). Pasos: (1) Abrí una consulta nueva de la HC general: arriba debe verse **«Falta enviar»** y, a los ~4 s, desaparecer (la creó en la web). (2) Escribí en «Nota»: **«Falta enviar»** vuelve mientras escribís y desaparece a los ~4 s del último cambio. (3) Revisá las secciones: motivo, datos subjetivos y objetivos, conductas, nota, hábitos, diuresis, somnia, examen físico y enfermedades **editables y sin aviso**; las demás (laboratorio, antecedentes, estudios, interconsultas, etc.) **solo para leer** y con **«<Sección>: Esta sección todavía no se envía a la web»** arriba. (4) Examen físico de una consulta con frecuencia cardíaca o circunferencia abdominal cargadas de antes: debajo, **«Frecuencia cardíaca: No se envía a la web»** (igual para la otra). (5) DevTools, Network, **Offline**: escribí algo, esperá 4 s: **«En espera: Sin conexión con la historia clínica de Clínica general»** con **Reintentar**. Volvé a online: sale solo en pocos segundos (disparador de T31) y la franja desaparece; repetí tocando **Reintentar** con la red ya vuelta. (6) Con red, **«Guardar y cerrar consulta»**: se ve un instante **«Enviando el cierre.»** y la consulta queda cerrada **sin «Reabrir para editar» ni «Anular consulta»** y sin franja. (7) Cerrá estando **Offline**: la consulta queda cerrada con **«En espera: .»**, **«Reabrir para editar»** y **«Anular consulta»** visibles; reabrí y comprobá que vuelve a ser editable. (8) **«Anular consulta»** en una abierta que ya se creó: el diálogo dice que queda anulada, que se da de baja en la web (no se borra) y que lo ya enviado del paciente no se borra; en una **cerrada con el cierre sin enviar** suma «al anularla se pierde ese cierre»; en una nunca creada, solo lo básico. Confirmá: vuelve a la lista y ya no aparece «en curso». (9) Opcional, para ver «No se pudo enviar» y «Descartado»: dar de baja la consulta en la web del XAMPP local con la consulta propia ya creada y editar un texto: debe verse **«No se pudo enviar: .»** con **Reintentar** y **Descartar**; **Descartar** deja **«Descartado: no se envió a la web»**. (10) Una consulta **del histórico** abierta, una **de la web** y una de **pediatría**: iguales que antes (sin franja, sin avisos, sin «Anular consulta»).
+- [ ] **T38. `HistoriaClinicaScreen`: grupos, «Enviar a la web» y contador.** RF-8, RF-10, RF-18, RF-31, RF-62, RF-64, RF-65, RF-67 — M — Toca API Laravel: no
   - «Consulta en curso» (propias abiertas), «Solo en este dispositivo» con el botón y el diálogo de confirmación (paciente, fecha, estado,
     secciones, lo que no viajará, ficha), o la lista de secciones que faltan; «Abierta en la web»; el contador de pendientes de clínica;
     el aviso previo de abierta.
@@ -889,48 +904,749 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
 
 ---
 
-# E2 a E5 — lista de tareas (se detallan al llegar a cada subentrega, con aprobación aparte)
-No llevan «Hecho cuando» detallado todavía. Cada subentrega se detalla con lo que enseñe la anterior y antes de empezarla.
+# E2 a E4 — Antes de empezar: preguntas, orden, qué bloquea y reglas comunes
+(E5 queda como lista al final; no se detalla ahora.) Todo lo de este bloque fue **propuesta del planificador (2026-11-07)**; el usuario lo **aprobó el 2026-11-07** con las decisiones del encabezado (Q-A sí, Q-B orden alternativo); las demás preguntas siguen abiertas y su recomendación no está aprobada. Las tareas de servidor son «Toca API Laravel: sí» (autorizado en D3 solo para la copia local); las de producción siguen
+siendo «E9 de la escritura: aprobación aparte».
 
-## E2 — Formularios y listas sin migración (RF-35 a RF-40, RF-70)
-- E2-1. Servidor: reglas puras de formularios, antecedentes familiares y registros (con baja) + phpunit. RF-35 a RF-40, RF-70.
-- E2-2. Servidor: formularios (alimentación, serologías, Child-Pugh) con `0|1|2` correctos. RF-35, RF-37, RF-38.
-- E2-3. Servidor: antecedentes familiares mezclados con la última fila activa, sin tabaquismo. RF-36.
-- E2-4. Servidor: registros (los 5 estudios, exámenes complementarios, interconsultas) con ids y **baja de exámenes e interconsultas
-  (capacidad nueva)**; límite de cardiológicos. RF-39, RF-40, RF-70.
-- E2-5. Servidor: el cierre confirma exámenes e interconsultas nuevos y no reactiva los de baja (ajuste de T13). RF-22, RF-23.
-- E2-6. Servidor: prueba de punta a punta, `medico_infos` intacto, documentación.
-- E2-7. App: API de formularios, antecedentes y registros + DTOs. RF-35 a RF-40.
-- E2-8. App: `SeccionesEnviables` habilita alimentación, serologías, Child-Pugh, antecedentes y listas. RF-4.
-- E2-9. App: antecedentes (solo activos, solo lo tocado) y límite de 191 en cardiológicos. RF-36, RF-39.
-- E2-10. App: borrar examen/interconsulta = baja; cierre. RF-70.
-- E2-11. App: refresco y emparejamiento por `remoto_id` de las listas. RF-33.
-- E2-12. E2E de E2; regresión; reviewer; prueba manual; limpieza.
+## Preguntas abiertas para el usuario (huecos y contradicciones: el planificador NO las resolvió)
+Cada una trae la recomendación del planificador, pero **la decisión es del usuario**. Una tarea marcada «BLOQUEADA por Q-…» no se empieza
+sin la respuesta.
+- **Q-A (general) - RESPONDIDA por el usuario el 2026-11-07: SÍ, arranca E2.** *Pregunta original:* **¿Se autoriza arrancar E2 sin tener E1 cerrada (T43 a T47)?** D5 dice «cada una se aprueba antes de pasar a la
+  siguiente» y los criterios de la spec dicen «la anterior debe estar cerrada». *Recomendación:* sí para **escribir** servidor y app de E2
+  (T48 a T65), pero **no habilitar** E2 (T67) ni cerrarla hasta que el usuario cierre E1 (T47). Ver «Qué de E1 bloquea a E2».
+- **Q-B (general) - RESPONDIDA por el usuario el 2026-11-07: SE ACEPTA el orden alternativo.** *Pregunta original:* **¿Se acepta el orden alternativo de «Orden recomendado»** (E2 en dos mitades, con E3 en el medio)? Cambia D5 (orden
+  E2 → E3 → E4) sin cambiar el contenido de ninguna subentrega.
+- **Q-E2-1. Nota de los antecedentes familiares del perfil 4 (RF-36).** La app tiene dos notas: `nota` y `nota_perfil4`
+  (`LecturaClinica.kt`, `CLAVE_NOTA_PERFIL4`). La web guarda la del perfil 4 en una tabla **aparte y opcional**
+  (`antecedentes_familiares_perfil4`, `MedicoController.php:1390-1408`; la copia local no la tiene) y la lectura no la marca nunca como
+  ausente. RF-36 habla de «la nota que los acompaña» sin distinguirla; T17 (c) la dejó «para que E2 decida». *Recomendación:* E2 envía
+  solo `nota` (a `antecedentes_familiares.nota`) y la de perfil 4 queda de solo lectura con «No se envía a la web» hasta que se confirme
+  que la tabla existe en producción. *Alternativa:* escribirla si la tabla existe (más código, no probable de verificar en local).
+- **Q-E2-2. Un estudio (los cinco con fecha) que el médico deja en blanco después de enviado.** RF-70 solo permite *dar de baja*
+  exámenes complementarios e interconsultas; RF-69 manda enviar vacío un campo vaciado a propósito. La app hoy trata «texto en blanco» como
+  `Borrar` (`EstudioConHistorial.kt`, `cambioEstudio`) y la web no tiene baja de estudios (deja la fila con `descripcion` vacía,
+  `MedicoController.php:6075-6078`). *Recomendación:* el servidor **rechaza** `borrado` en un estudio y la app envía `detalle = ""`
+  (vaciado a propósito, RF-69); la fila se conserva.
+- **Q-E2-3. Alcance del tope de largo (RF-39).** La spec lo exige «en estudios cardiológicos, el límite que fija la web». Las migraciones
+  declaran `string` (191 caracteres por `Schema::defaultStringLength(191)`, `AppServiceProvider.php:31`) para `descripcion` de **los
+  cinco** estudios (p. ej. `2025_12_10_130248_create_estudios_cardiologicos_table.php:22`) y para `solicito`, `respuesta` y
+  `especialista` de exámenes e interconsultas. *Recomendación:* aplicar el aviso («no deja escribir de más y lo dice, nunca corta en
+  silencio») a **todo campo cuya columna tenga tope**, con el valor real que mida T48 en la base local (la de producción puede diferir:
+  se mide solo con la aprobación de producción).
+- **Q-E2-4. Completar el resultado de un examen o interconsulta de una consulta anterior (RF-40) frente a lo que hoy impide la app.**
+  RF-40 dice «uno cargado en una consulta anterior se puede completar (resultado) pero no quitar desde otra consulta» (es el flujo real,
+  `docs/hc-pediatria-estado-y-plan.md` «Los exámenes de otras consultas»). Pero: (a) la guarda 002 RF-62 impide editar desde la app una
+  fila que vino de la web (`hcc-r…`: `HcRepository.guardarRegistro` la rechaza en `HcRepository.kt:526`); (b) `PlanDeEnvio` solo envía filas
+  cuyo `consulta_id` es la consulta que se está enviando (RF-68, `PlanDeEnvio.kt:405-420`), así que completar una fila de una consulta
+  **anterior propia** (cerrada y enviada) o no saldría nunca, o saldría con esa consulta ya cerrada y el servidor la rechazaría con `409
+  consulta_cerrada` (RF-53); (c) las barreras de T36 ya separan los dos casos: completar (`guardarRegistro` mira la consulta donde se edita,
+  `HcRepository.kt:527`) está permitido y quitar (`eliminarRegistro` mira la consulta de origen, `:558`) no. *Recomendación:* permitirlo **solo** para exámenes
+  e interconsultas y **solo** el campo `respuesta`, anotando de forma local en qué consulta propia abierta se completó
+  (`campos.consulta_respuesta`, sin migración) para que el plan lo envíe con esa consulta; el servidor lo acepta únicamente sobre
+  filas `activo = 1` del mismo paciente y deja intactos `consulta_id`, `solicito` y `fechaSolicitud`. *Alternativa descartada por el
+  planificador:* reasignar la fila a la consulta actual (se pierde «la consulta donde se cargó», RF-39).
+- **Q-E2-5. `fechaSolicitud` y `numero` de exámenes e interconsultas.** La spec no los nombra. La web guarda la fecha del servidor
+  (zona Buenos Aires, `MedicoController.php:2315-2317`) y toma `numero` del navegador (`:2285-2288`); la lectura los muestra
+  (`ConsultasReglas::examenes`, `:585-616`). *Recomendación:* `fechaSolicitud` = la fecha clínica de la consulta propia; `numero` y
+  `numero_consulta` los asigna el servidor (máximo del paciente + 1, y cantidad de pendientes de la consulta + 1).
+- **Q-E2-6 (decisión de plan a confirmar, no es un hueco de la spec). Idempotencia con clave natural.** D21 dice que el registro de
+  lo recibido vale «para las filas hijas (laboratorio, peso, registros, pendientes, adjuntos)». Formularios, antecedentes, los cinco
+  estudios y el texto de pendientes se escriben con *upsert* por (consulta, paciente) y repetirlos ya no duplica nada (RF-15 se
+  cumple); registrarlos con clave los dejaría en «ya recibido» y **no aplicaría una segunda edición**. *Recomendación:* registro con
+  clave solo para las filas que **se crean** (exámenes, interconsultas, cargas de laboratorio y peso, PDF y fotos); upsert para lo demás.
+- **Q-E3-1. Editar una carga de laboratorio o peso ya guardada.** RF-41 dice «editar una carga ya enviada la actualiza, no crea otra»;
+  la interfaz de las specs 001/002 dice «las guardadas no se editan, se borran y se recargan» (`CargasLaboratorio.kt`, RF-55 a RF-64).
+  *Recomendación:* sin cambio de pantalla; «editar» es seguir completando la columna **abierta** (el autoguardado la manda varias veces);
+  una carga cerrada se borra (baja) y se recarga.
+- **Q-E3-2. Datos por paciente sin enviar de una consulta propia anulada** (cargas de laboratorio, peso, estudios, antecedentes).
+  RF-26 solo habla de lo ya enviado (no se da de baja). T21 (d) y T28 (b) los dejaron «en reserva para siempre» (siguen `dirty = 1`,
+  no se envían ni se tiran). *Recomendación:* dejarlos así (lo conservador) y documentarlo; o preguntar si preferís descartarlos al anular.
+- **Q-E4-1. Imágenes que no son fotos de exámenes complementarios.** El selector de «Documentos (PDF e imágenes)» acepta imágenes
+  (`ArchivosSeccion.kt`); D24 deja afuera las demás fotos. *Recomendación:* en una consulta propia de clínica el selector de
+  `documentos` ofrece solo PDF; las imágenes ya cargadas (histórico) se ven con «No se envía a la web».
+- **Q-E4-2. Carpeta y límites del hosting en producción** (se mide en local; leer producción solo con la aprobación de producción,
+  D18). La web crea `img/<usuario>/consulta_pdf` con `mkdir` (`MedicoController.php:3630-3633`) y en el hosting de pediatría `mkdir` no
+  estaba permitido (carpeta creada a mano, `docs/hc-pediatria-estado-y-plan.md`). *Pregunta:* ¿se crea a mano una carpeta única
+  (p. ej. `img/salud360`) en producción, como en pediatría, y se fija `SALUD360_IMG_PATH`? Es un paso de hosting para E9, no de local.
+- **Q-E4-3. Qué adjuntos lista la app al abrir una consulta (RF-45).** La web lista los PDF **del paciente** (cualquier consulta, incluso
+  `consulta_id = 0`, `MedicoController.php:3571-3590`). RF-46 prohíbe *enviar* adjuntos sin consulta; no dice qué *mostrar*.
+  *Recomendación:* mostrar solo los de esa consulta (más simple y consistente con RF-46).
 
-## E3 — Laboratorio, peso y pendientes (RF-41 a RF-43) — con la migración de E3 (D8)
-- E3-1. **Migración** del identificador de la web en laboratorio y pendiente (reservar número mirando todas las ramas; **pregunta antes: ya
-  aprobada en D8**; si otra rama lo tomó, volver a preguntar). RF-41, RF-43.
-- E3-2. Servidor: laboratorio general/reducido y peso (visibles al instante, fecha de la consulta, baja) + phpunit. RF-41, RF-42.
-- E3-3. Servidor: texto único de pendientes. RF-43.
-- E3-4. Servidor: prueba de punta a punta, repetibilidad de las filas hijas, `medico_infos` (la web escribe `es_nueva_consulta = 8` al cargar
-  laboratorio y peso: la API no lo replica). RF-15, RF-16.
-- E3-5. App: API de laboratorio, peso y pendientes. RF-41 a RF-43.
-- E3-6. App: laboratorio y peso (cargas, borrar = baja, fecha de la consulta, reasignar al editar). RF-41, RF-42, RF-68.
-- E3-7. App: `PendientesTexto` (uno por línea, fila portadora, huella) y emparejamiento al leer. RF-43, RF-33.
-- E3-8. App: sin «Resuelto» en pendientes que se envían. RF-43.
-- E3-9. App: `SeccionesEnviables` habilita laboratorio, peso y pendientes; el histórico con esas secciones pasa a poder enviarse. RF-4, RF-67.
-- E3-10. E2E de E3; regresión; reviewer; prueba manual; limpieza.
-- E3-11. Cierre de E1 a E3: **recién acá puede pedirse la publicación (D23), con aprobación aparte y el servidor ya en producción.**
+## Decisiones de contrato que el plan propone (no son huecos; se revisan al aprobar)
+- **Serología y Child-Pugh «sin cargar» a propósito:** se envía `""` y el servidor escribe `0` (nunca `NO`/puntos inventados); coherente
+  con RF-37 y RF-69. El **total** de Child-Pugh lo calcula el servidor como la suma de los cinco puntos de la fila resultante (igual que la
+  web, `cps.blade.php:124-131`, y que `totalChildPugh` de la app); la app no manda el total.
+- **Antecedentes familiares:** el servidor escribe en la fila de (consulta, paciente) o, si no existe, **inserta una fila nueva** de esa
+  consulta copiando la última fila activa del paciente (la que lee `ConsultasService::historia`, `:108-112`) y pisando solo lo tocado; nunca
+  modifica la fila de otra consulta.
+- **Todo pedido de lista (`registros`) es atómico:** si un ítem no sirve, no entra ninguno (nada queda a medias).
+- **El registro de lo recibido guarda `ref → id de la web`**; una clave ya registrada significa «actualizá esa fila», no «saltear».
+- **`SUBENTREGA_HABILITADA` sigue siendo una sola constante** y se sube en la tarea «Habilitar» de cada subentrega (T67, T88, T108).
+  Si el usuario acepta Q-B, se agrega antes una tarea chica para habilitar **por sección** (ver «Orden recomendado»).
 
-## E4 — Adjuntos (RF-44 a RF-46)
-- E4-1. Verificar en la copia local que la web muestra las fotos de exámenes complementarios (D24); decidir su alcance. RF-44.
-- E4-2. Servidor: PDF (subir, bajar, baja), límite del hosting leído sin escribir, subida repetible. RF-44 a RF-46.
-- E4-3. Servidor: fotos de exámenes complementarios (si D24 lo confirma). RF-44.
-- E4-4. App: subir adjuntos (una sola vez, subida cortada sin duplicar), nunca de otra HC ni sin consulta. RF-44, RF-46.
-- E4-5. App: listar y abrir adjuntos de la web con la sesión. RF-45.
-- E4-6. E2E de E4; regresión; reviewer; prueba manual; limpieza.
+## Qué de E1 bloquea a E2 (y qué no)
+- **No bloquea para empezar a escribir E2:** T11 (RF-17, diferida), T32 (iOS), T33, T34, T35 (sin urgencia por decisión del usuario),
+  T38, T39, T41, T42, T45, T46. T11 conviene hacerla **junto con la prueba manual de E2 (T71)**: si decide que hace falta
+  `inicializarCampos`, el servidor pasa a crear seis filas vacías de estudios y motivo al crear la consulta y los estudios de E2 tienen que
+  *reutilizarlas*: T56 ya lo prueba con y sin esas filas.
+- **Debería estar hecha antes de la primera prueba contra el servidor real (T68):** **T40** (E2E de E1). Es la primera vez que la app de E1
+  hablaría con la copia local (hoy todo se probó con servidores falsos) y T68 reutiliza su soporte. Recomendación: hacerla antes de T61.
+- **Bloquea habilitar y cerrar E2:** T43 (reviewer de E1), T44 (prueba manual de E1) y T47 (el usuario cierra E1 y autoriza E2), por D5.
+  Hasta entonces se puede escribir y probar E2, pero `SUBENTREGA_HABILITADA` queda en `E1`.
+- **Bloquea publicar (no E2):** T35 y T42 (licencias), T32/T33/T34 según lo que decida el usuario para la versión web.
 
-## E5 — Aviso de vencimiento y panel de licencias (RF-47 a RF-49)
+## Orden recomendado para llegar antes a «todo editable como en pediatría»
+**(El usuario aceptó el orden alternativo del punto 2 el 2026-11-07, Q-B; los puntos 1 y 3 siguen valiendo.)**
+1. **Servidor y app en paralelo.** Cada subentrega empieza por una tarea de verificación que deja el **contrato JSON escrito** (T48, T73,
+   T95); con el contrato fijo, la app se construye contra servidores falsos (`HttpServer`) mientras el servidor se implementa. Lo único que
+   exige tener el servidor real listo es el E2E (T68, T89, T109).
+2. **No se cambia de orden de subentregas salvo que el usuario lo acepte (Q-B).** Si lo acepta, el orden más corto a «todo editable
+   para un médico de hepatología» es: **E2-a** (T48 a T56 + sus tareas de app: formularios, antecedentes y los cinco estudios) → **E3**
+   (laboratorio, peso y pendientes; es lo que más se usa y trae la única migración) → **E2-b** (exámenes, interconsultas, baja y completar:
+   lo más delicado, depende de Q-E2-2, Q-E2-4 y Q-E2-5) → **E4** (PDF primero; fotos de exámenes al final y solo si D24 lo confirma).
+   Para eso se agrega una tarea chica **antes de T61**: «candado por sección» (`SeccionesEnviables` con un conjunto de secciones
+   habilitadas en vez de una sola subentrega; no cambia lo que ofrece E1) y cada sección se habilita cuando su E2E pasa.
+3. **Costo del orden alternativo:** más rondas de reviewer y de prueba manual (una por mitad en vez de una por subentrega). Si el
+   usuario prefiere pocas rondas, se mantiene E2 → E3 → E4 tal como están las tareas de abajo.
+4. **La escritura no se publica hasta cerrar E1 a E3 (D23)**: el orden alternativo no la adelanta; solo hace que lo más usado esté
+   probado antes.
+
+## Reglas para las tareas de E2 a E4 (se suman a «Reglas para todas las tareas»)
+- **Nada de esto empieza sin la aprobación del usuario** y sin las respuestas que la tarea cita (Q-…).
+- **Servidor:** una escritura nueva necesita (1) su regla pura con phpunit, (2) un script contra la base descartable con `sql_mode`
+  estricto y sin él, (3) una prueba por HTTP con curl espaciado ~1,3 s y (4) limpieza por id y por clave. Greps estáticos en cada
+  tarea: `medico_infos` = 0, `DELETE`/`delete(` físico = 0, `Schema::` fuera de `EnviosRegistro` = 0, `fn (` y propiedades tipadas = 0.
+  Cada tabla nueva entra en `EscrituraService::tablasEscribibles()` con su test de «no escribe ninguna otra». Ninguna tabla de la web recibe
+  columnas. La lectura (`ConsultaController`, `ConsultasService`, `ConsultasReglas`, `Salud360Controller`) **no se modifica**.
+- **La API nunca replica lo que la web escribe en `medico_infos`** (qué paciente y qué consulta mira el médico, RF-16): ni
+  `es_nueva_consulta` (laboratorio general y reducido `MedicoController.php:6526-6532` y `:6646-6652`; fotos de exámenes `:2497-2506`),
+  ni nada. El E2E de cada subentrega compara `medico_infos` antes y después (puerta bloqueante).
+- **App:** tests primero (en rojo); nada llama a la API desde el autoguardado (RF-27); lo nuevo que no es de la HC general no cambia
+  pediatría (RF-5); cada tarea dice qué tests existentes cambian y por qué (como en E1). El candado por sección (RF-4) se levanta
+  **solo** en la tarea «Habilitar».
+- **Limpieza:** los scripts de T4 se amplían con las tablas de cada subentrega (T49, T73, T95); el registro `salud360_envios` no se vacía.
+- **Formato:** `- [ ] **Tn. Descripción.** RF-x — S/M — Toca API Laravel: sí/no`, con «Hecho cuando». M = hasta 30 min; las que dicen «si
+  no entra, se divide» se dividen antes de empezar.
+
+---
+
+# E2 — Formularios y listas sin migración
+RF-35 a RF-40 y RF-70 (más RF-15, RF-16, RF-33, RF-34, RF-52, RF-53, RF-60, RF-68, RF-69 que valen para todo lo que se envía). Sin
+migración local. Orden: servidor local (T48 a T60) → app: datos (T61 a T65), interfaz (T66), habilitar (T67) → pruebas y cierre (T68 a T72).
+
+## Servidor local de E2 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
+- [ ] **T48. Verificación de solo lectura del esquema de E2 y contrato JSON (borrador).** RF-35 a RF-40, RF-70 — M — Toca API Laravel: no (solo
+  lectura de la base local y documentación)
+  - `information_schema` de `hc_clinica` y de `hc_clinica_respaldo` (solo `SELECT`): tipo, largo, `NOT NULL`, defecto e índices de
+    `alimentacions`, `antecedentes_familiares`, `antecedentes_familiares_perfil4` (¿existe?), `serologias_hepatitis`, `c_p_s`,
+    `ecografia_abdominals`, `videoendoscopia_digestiva_altas`, `biopsia_hepaticas`, `tc_rmn_colangiormns`, `estudios_cardiologicos`,
+    `examenes_complementarios` e `interconsultas`; qué columnas cubre `ColumnasLegacy::vacias`. Las migraciones dicen: `descripcion`,
+    `solicito`, `respuesta` y `especialista` son `string` (191), `fecha` y `fechaSolicitud` son `date NOT NULL`, `activo` y
+    `consulta_respuesta` `integer NOT NULL` (p. ej. `2020_05_15_140913_create_examenes_complementarios_table.php:22-28`,
+    `2020_05_15_131141_create_interconsulta_table.php:22-29`): se verifica contra la base real.
+  - Se anota **cómo escribe hoy la web** cada sección con archivo y línea (alimentación `MedicoController.php:1917-1959`; antecedentes
+    `:1198-1315`, perfiles 3 y 4 solo nota `:1202-1204`, `:1321-1338`, `:1390-1408`; serologías `:5964-5999`; Child-Pugh `:6017-6042`;
+    estudios `:6060-6193`, fecha `d/m/Y` por `convertirFechaGuardar` `:2212-2216`; exámenes `:2280-2350`; interconsultas `:2040-2110`;
+    confirmación al cerrar `:2225-2278`) en `notas-para-el-plan.md` §11, y el **contrato JSON de E2** en `plan.md` («E2, E3 y E4: contrato
+    y decisiones») y como borrador en `md/API_SALUD360_CLINICA.md`, para que la app pueda construirse contra él.
+  - Hecho cuando: la tabla de columnas está en las notas; el contrato está escrito; cada pregunta Q-E2-* cita la columna o el archivo
+    que la motiva; **ninguna base cambió** (conteos y `CHECKSUM TABLE` iguales a la línea base de T5).
+- [ ] **T49. Scripts de la escritura ampliados con las tablas de E2.** D4 — S — Toca API Laravel: no
+  - En `%TEMP%\opencode\e0\` (fuera del repo): `escritura-contar.sql`, `escritura-suma.sql`, `escritura-limpiar.sql` y `cargar-prueba.sql`
+    suman las tablas de T48 por `consulta_id` y `paciente_id` de prueba, con `DELETE` por id en el orden de las claves foráneas (hijas →
+    `consultas` → ficha), sin `DROP`, sin tocar `medico_infos` ni vaciar `salud360_envios` (solo por clave).
+  - Hecho cuando: en `hc_clinica_respaldo` (estricto y sin modo estricto) cargar → limpiar → cargar → limpiar deja idénticas las sumas
+    de todas las tablas (incluida `medico_infos`); `limpiar` sigue negándose con consulta ajena, paciente real, documento inexistente o hija
+    de otro paciente, como en T4.
+- [ ] **T50. Reglas puras de los formularios (alimentación, serologías, Child-Pugh) y su test.** RF-35, RF-37, RF-38, RF-69 — M — Toca API Laravel: sí
+  - Tests primero: `tests/Unit/FormulariosReglasTest.php` (sin Laravel ni base). Cuerpo `{formularios:{alimentacion:{…}, serologias:{…},
+    child_pugh:{…}}}`: sección o campo que el mapa no conoce → `desconocidas`, sin fallar; clave ausente = no se toca (una casilla que
+    el médico no tocó no se envía, RF-35). Alimentación: valor `"<0|1>|<detalle>"` como lo guarda la app; `celiaco` → columna `seliaco`
+    y `otra` → `otra`, cada una con su `<columna>_detalle` (`MapaClinica::ALIMENTACION`, `columnaWeb`, `columnaDetalle`); `1|texto`,
+    `0|texto` y los vaciados `0|` y `""` (flag 0 y detalle vacío, a propósito); flag fuera de 0/1 → `422`; texto con tildes, ñ, emoji y
+    saltos de línea tal cual; largo máximo del detalle según T48 [Q-E2-3] (no corta: devuelve `texto_demasiado_largo` con el campo).
+    Serologías: `SI` → 1, `NO` → 2, `""` → 0 (vaciado a propósito); cualquier otro valor → `422`; **un marcador ausente o vacío nunca se
+    escribe como `NO`** (RF-37). Child-Pugh: `"1"|"2"|"3"` → entero, `""` → 0, otro → `422`; `totalChildPugh($fila)` = suma de los cinco
+    puntos de la fila resultante (RF-38; la clase A/B/C la muestra la app).
+  - Código: `EscrituraReglas::formularios($cuerpo)` → `{ok, escribir:[{tabla, columnas}], guardadas, desconocidas}` o el error del contrato
+    (`invalido(campo, motivo)`); constantes de tabla `alimentacions`, `serologias_hepatitis`, `c_p_s`; usa `MapaClinica`.
+  - Hecho cuando: el test en verde (antes, en rojo); `php -l` limpio; sin `fn (`, propiedades tipadas, `DB::` ni `medico_infos` en el
+    archivo; `tests/Unit` completo en verde (805 de T13 + los nuevos).
+- [ ] **T51. Reglas puras de los antecedentes familiares y su test.** RF-36, RF-3, RF-9, RF-69 — M — Toca API Laravel: sí — **BLOQUEADA por Q-E2-1**
+  - Tests primero: `tests/Unit/AntecedentesFamiliaresReglasTest.php`. Cuerpo `{consulta_id, casillas:{<clave>:{flag, detalle}}, nota}`:
+    las 15 casillas de `MapaClinica::ANTECEDENTES_FAMILIARES` (la app dice `dependiente_terceros`, la web `dependientes_terceros`);
+    `tabaquismo` y cualquier otra clave → `desconocidas` y **nunca** se escribe (RF-3); solo lo presente; una casilla `{flag:0, detalle:""}`
+    es un vaciado a propósito y se escribe; `flag` fuera de 0/1 → `422`; nota: texto o `""` (vaciado). `mezclarAntecedentes($ultimaFilaActiva,
+    $cambios)` → la fila completa a insertar: copia lo vigente de la última fila activa del paciente y pisa solo lo tocado; sin fila previa,
+    casillas en 0 y detalles vacíos (como `antecedentesFamiliaresSetCamposPorDefecto`, `MedicoController.php:1340-1373`). Largo del detalle
+    según T48 [Q-E2-3].
+  - Código: `EscrituraReglas::antecedentesFamiliares($cuerpo)` y `::mezclarAntecedentes`.
+  - Hecho cuando: el test en verde (antes, en rojo); mismos controles estáticos que T50; `tests/Unit` completo en verde.
+- [ ] **T52. Reglas puras de los registros (los cinco estudios, exámenes complementarios, interconsultas) y su test.** RF-39, RF-40, RF-70 — M —
+  Toca API Laravel: sí — **BLOQUEADA por Q-E2-2, Q-E2-3, Q-E2-4 y Q-E2-5**
+  - Tests primero: `tests/Unit/RegistrosReglasTest.php`. Cuerpo `{items:[{ref, tipo, id?, fecha?, campos, borrado?}]}`: 1 a 50 ítems;
+    `ref` obligatorio, único en el pedido y con la forma `r:<id local>` (`EscrituraReglas::clave($valor, ['r'])`, hasta 191); `tipo` ∈
+    {`eco_abdominal`, `veda`, `biopsia_hepatica`, `estudios_cardiologicos`, `tc_rmn`, `examen_complementario`, `interconsulta`} (tabla por
+    `MapaClinica::ESTUDIOS` y las dos de las listas); estudios: `fecha` AAAA-MM-DD válida y obligatoria, `campos.detalle` texto o `""`; `borrado`
+    en un estudio → `422 borrado_no_permitido` [Q-E2-2]; exámenes e interconsultas: `campos` ⊂ {`solicito`, `respuesta`, `especialista`
+    (solo interconsulta)}; vaciado a propósito `""`; largo por columna [Q-E2-3]; `accionDeRegistro($item, $filaExistente, $consultaDeLaRuta)`
+    → `alta` | `edicion` | `completar` | `baja` | `nada` | error: `completar` (fila de **otra** consulta) solo exámenes/interconsultas,
+    solo `respuesta` y `consulta_respuesta`, solo `activo = 1` y del mismo paciente [Q-E2-4]; quitar una fila de otra consulta →
+    `422 no_se_quita_desde_otra_consulta` (RF-40); `siguienteNumero($filasDelPaciente)` y `numeroDeConsulta($filasDeLaConsulta)` [Q-E2-5];
+    `fecha` de la solicitud = fecha clínica de la consulta [Q-E2-5]. Todo el pedido se valida antes de escribir: un ítem inválido rechaza
+    el pedido entero.
+  - Código: `EscrituraReglas::registros($cuerpo)`, `::accionDeRegistro`, `::siguienteNumero`, `::numeroDeConsulta`.
+  - Hecho cuando: el test en verde (antes, en rojo); controles estáticos; `tests/Unit` completo en verde.
+- [ ] **T53. `EnviosRegistro` para filas que se crean: tipo `registro`, varias claves en una transacción.** RF-15, RF-61 — M — Toca API Laravel: sí
+  - Tests primero: `EnviosRegistroTest` ampliado (puro: `validarTipo('registro')`; forma de la fila) y un script con base descartable
+    `%TEMP%\opencode\e2\registro-con-base.php` (estricto y sin él): `buscarVarias($medico, $claves)` devuelve lo registrado por clave
+    (`remoto_id`, `consulta_id`, `respuesta` con la tabla); `conTransaccionVarias($medico, $dispositivo, $claves, 'registro', callable)`
+    registra **cada clave nueva** en la misma transacción que la escritura y, si ya estaban, las devuelve para que el servicio **actualice
+    esa fila** (una clave registrada significa «actualizá», no «saltear»); carrera real de procesos hijos con las mismas claves → una fila
+    por clave; una clave usada por otra operación u otra consulta → `422 clave_en_uso`.
+  - Código: `EnviosRegistro::TIPO_REGISTRO`, `buscarVarias`, `conTransaccionVarias`. No toca columnas de las tablas de la web.
+  - Hecho cuando: phpunit en verde (antes, en rojo); el script pasa en modo estricto y sin él; `salud360_envios` no se altera (ni
+    `Schema::` nuevo salvo el `create` existente).
+- [ ] **T54. Formularios: servicio, controlador y ruta.** RF-35, RF-37, RF-38, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Código: `EscrituraService::formularios` (con `conConsulta` de T12: transacción, consulta bloqueada, propia + creada por la app +
+    abierta); por tabla, la fila `activo = 1` de mayor id de la consulta (`EscrituraReglas::filaDeDestino`) o un alta, relleno con
+    `ColumnasLegacy`; Child-Pugh recalcula `total_puntos` sobre la fila resultante; **upsert sin registro** (Q-E2-6);
+    `ConsultaEscrituraController@formularios` y `Route::put('consultas/{id}/formularios', …)` dentro del grupo `salud360`; `tablasEscribibles()`
+    suma las tres tablas.
+  - Hecho cuando: con PHP-base (estricto y sin) y curl: lo escrito se lee de vuelta con `GET consultas/{id}` (`secciones.alimentacion`,
+    `serologias`, `child_pugh`); repetir el pedido deja una sola fila; un campo ausente no cambia; `""` en una serología escribe 0 y la
+    lectura no la muestra (nunca «NO»); `celiaco` queda en `seliaco`; el total es la suma; sobre una cerrada, de baja, de la web, de otro
+    médico o con administrador/secretaria → los códigos de RF-52 y RF-53; dos pedidos simultáneos → una fila; `medico_infos` idéntico;
+    mutaciones detectadas (sin bloqueo, sin autorización, `NO` por vacío, total sin recalcular).
+- [ ] **T55. Antecedentes familiares: servicio, controlador y ruta.** RF-36, RF-3, RF-9, RF-34, RF-52 — M — Toca API Laravel: sí — **BLOQUEADA por Q-E2-1**
+  - Código: `EscrituraService::antecedentes` y `@antecedentes` + `Route::put('pacientes/{id}/antecedentes-familiares', …)`. Autoriza con rol
+    médico, `pacienteVisible` y la consulta del cuerpo (propia, creada por la app, abierta **y de ese paciente**; si no, `403`/`422`).
+    Escribe en la fila de (consulta, paciente) si existe y, si no, **inserta una fila nueva** de esa consulta: la última fila `activo = 1`
+    del paciente de consultas `activo` 1 o 2 (la misma que lee `ConsultasService::historia`) mezclada con lo tocado. Nunca modifica una
+    fila de otra consulta. Upsert sin registro (Q-E2-6).
+  - Hecho cuando: PHP-base y curl: sin fila previa (casillas en 0); con una fila de otra consulta (queda intacta y la lectura devuelve la
+    nueva, con lo no tocado conservado); solo lo tocado viaja; casilla en 0 a propósito se escribe; nota vaciada; `tabaquismo` en
+    `desconocidas`; el perfil 3 o 4 del médico no cambia nada (siempre se escribe `antecedentes_familiares`); consulta de otro paciente →
+    `422`; `GET pacientes/{id}/historia` y `GET consultas/{id}` la ven; `medico_infos` idéntico.
+- [ ] **T56. Los cinco estudios: servicio y ruta `registros` (primera parte).** RF-39, RF-15, RF-34, RF-52 — M — Toca API Laravel: sí — **BLOQUEADA por Q-E2-2 y Q-E2-3**
+  - Código: `EscrituraService::registros` (rama estudios) y `@registros` + `Route::put('consultas/{id}/registros', …)`. Por tipo: la fila de
+    (consulta, paciente) con `activo != 0` (como la web, `existeTablaConsultaPaciente`, `MedicoController.php:5955-5962`; **reutiliza la fila
+    vacía** que `inicializarCampos` pudo haber creado, T11) o un alta `activo = 1`; `fecha` y `descripcion`; registra `r:<ref>` con
+    `conTransaccionVarias` (T53) para devolver `{ids:{ref:id}}` también en un reintento; un estudio con texto `""` se escribe vacío
+    (vaciado a propósito, Q-E2-2). La respuesta es `{ok, ids, guardadas, desconocidas}`.
+  - Hecho cuando: PHP-base y curl con los cinco tipos: alta, edición de fecha y de texto, vaciado, reintento (misma fila, mismo id),
+    con y sin fila vacía previa de `inicializarCampos`; la lectura (`historia.estudios`) los devuelve con la consulta donde se cargaron;
+    un pedido con un ítem inválido no escribe ninguno; `borrado` en un estudio → `422`; largo excedido → `422` sin escribir; `medico_infos`
+    idéntico.
+- [ ] **T57. Exámenes complementarios e interconsultas: alta, edición y completar.** RF-40, RF-15, RF-34, RF-52 — M — Toca API Laravel: sí — **BLOQUEADA
+  por Q-E2-4 y Q-E2-5**
+  - Código: `EscrituraService::registros` (rama exámenes/interconsultas). **Alta** (`ref` sin registro): `activo = 2`, `numero`,
+    `numero_consulta`, `fechaSolicitud`, `consulta_respuesta` (0 o la consulta si trae `respuesta`), `especialista` en interconsulta,
+    relleno con `ColumnasLegacy`; registra `r:<ref>` → id. **Edición** (`ref` registrado, o `id` de una fila de esta consulta): solo los
+    campos presentes. **Completar** (`id` de una fila de otra consulta): solo `respuesta` y `consulta_respuesta` = esta consulta, solo si
+    está `activo = 1` y es del mismo paciente. Equivale a lo que la web hace con `existeInterconsulta` (`MedicoController.php:2054-2064`) y
+    a la edición de exámenes (`:2323-2337`), pero con ids explícitos.
+  - Hecho cuando: PHP-base y curl: el alta **no aparece** en `GET pacientes/{id}/historia` (queda `activo = 2`); reintento con el mismo `ref`
+    → misma fila y mismo id, cero filas nuevas; carrera de dos pedidos → una fila; edición de solo lo tocado; completar una fila `activo = 1` de
+    otra consulta cambia `respuesta` y `consulta_respuesta` y deja `consulta_id`, `solicito` y `fechaSolicitud` intactos; completar una `activo = 2`
+    de otra consulta, de otro paciente o de un tipo que no es examen/interconsulta → error sin escribir; `medico_infos` idéntico.
+- [ ] **T58. Baja de exámenes e interconsultas (capacidad nueva, D27).** RF-70, RF-40 — S — Toca API Laravel: sí — **BLOQUEADA por Q-E2-4**
+  - Tests primero: `tests/Unit/RegistrosBajaTest.php` (puro: `borrado` solo de fila de **esta** consulta, con `activo` 1 o 2; repetir una baja
+    = ok; de otra consulta → `422 no_se_quita_desde_otra_consulta`) y PHP-base.
+  - Código: `borrado: true` → `activo = 0` y `updated_at`; **nunca `DELETE`**; el ítem puede venir con `id` o con un `ref` registrado. La web no
+    tiene esta función (solo laboratorio, peso, PDF, audio, interconsultor y enfermedad: `MedicoController.php:3657-3734`, `:4033`,
+    `:4699`, `:784`).
+  - Hecho cuando: una fila `activo = 2` y una `activo = 1` de esta consulta pasan a 0 y siguen en la tabla; dar de baja dos veces = una;
+    desde otra consulta → error; `GET historia` ya no las muestra; el reintento no las revive; `medico_infos` idéntico.
+- [ ] **T59. Cierre y lectura de vuelta con las filas de E2.** RF-22, RF-23, RF-33, RF-70 — S — Toca API Laravel: sí (sin cambios de código esperados)
+  - Reemplaza al «E2-5» de la lista vieja: T13 ya confirma solo `activo = 2` de exámenes e interconsultas (`confirmarPendientes`) y no
+    reactiva las `activo = 0`; esta tarea lo **demuestra con filas creadas por las rutas nuevas**.
+  - Hecho cuando: PHP-base y curl: crear consulta → formularios, antecedentes, estudios, dos exámenes y una interconsulta (uno de los
+    exámenes se da de baja) → `GET historia` no muestra los `activo = 2` → `POST consultas/{id}/cerrar` → examen e interconsulta pasan a
+    `activo = 1`, el dado de baja sigue en 0, formularios/estudios/antecedentes intactos; `GET historia` y `GET consultas/{id}` los devuelven
+    con los ids de la web y el `numero`; cerrar dos veces = una; si algo difiere se corrige con su test.
+- [ ] **T60. Prueba de punta a punta del servidor de E2 y documentación.** RF-15, RF-16, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Pasada por HTTP con curl espaciado ~1,3 s de todos los códigos de T54 a T59 en un recorrido; los scripts de T50 a T58 contra la
+    descartable en modo estricto y sin él; `escritura-suma.sql` antes y después (cambian solo las tablas esperadas y `salud360_envios`);
+    greps estáticos de las reglas comunes; limpieza por id y por clave con los scripts de T49.
+  - Docs: `md/API_SALUD360_CLINICA.md`, sección «Escritura (E2)» (rutas, cuerpos, códigos, ref/ids, qué no hace, completar y baja);
+    tabla «Código» y «Lo que viene» al día.
+  - Hecho cuando: phpunit completo en verde; copia servida igual al clon (comparación de contenido); cero escrituras de `medico_infos`
+    (CHECKSUM idéntico); registro de Apache sin métodos inesperados; `salud360_token_cache` vaciada; las 8 rutas de escritura de E1 y E2 (las 5 de
+    E1 y `formularios`, `antecedentes-familiares` y `registros`) responden `401` (no `404`) sin token.
+
+## App de E2: datos
+- [ ] **T61. API de escritura de E2 (DTOs, remota y `PayloadsClinica`) con servidor falso.** RF-35 a RF-40, RF-70 — M — Toca API Laravel: no
+  - Tests primero: jvm `ClinicaEscrituraApiTest` ampliado (con `HttpServer` en `127.0.0.1`): método, ruta y cuerpo de `formularios`
+    (`PUT consultas/{id}/formularios`), `antecedentes` (`PUT pacientes/{id}/antecedentes-familiares`, con `consulta_id`) y `registros`
+    (`PUT consultas/{id}/registros`); los 401/403/404/409/422/429/500 llegan con `status` y `codigo` (el `campo` y el `motivo` del `422` en
+    `cuerpo`); un pedido por error; una respuesta `200` sin `ids`/`guardadas` no se toma por éxito. common `PayloadsClinicaE2Test`:
+    formularios solo con lo tocado y el vaciado como `""`; antecedentes solo casillas activas con cambio real, nunca `tabaquismo` ni
+    `personales`, `dependiente_terceros`; registros con `ref` = `r:<id local>`, estudio con fecha y `detalle`, `borrado` solo en
+    exámenes/interconsultas, tope de largo [Q-E2-3]; descarta lo que no se envía y, si no queda nada, **no arma cuerpo ni hace pedido**.
+  - Código: `ClinicaEscrituraApi` (+3 métodos), `ClinicaEscrituraApiRemota`, `HcClinicaEscrituraDtos.kt` (`RespuestaRegistrosDto{ids,
+    guardadas, desconocidas}`), `PayloadsClinica.formularios/antecedentes/registros/claveDeRegistro`.
+  - Hecho cuando: tests en verde (antes, en rojo); compila el wasm; nada cableado ni pedido a un servidor real. Se recuerda lo de T19 (a): la
+    app lee el `motivo` de un `422` desde `TobbException.cuerpo`.
+- [ ] **T62. `LoEnviado` ampliado y `PlanDeEnvio` de formularios, antecedentes y registros.** RF-9, RF-56, RF-60, RF-68, RF-69, RF-70 — M (si no
+  entra, se divide: formularios + antecedentes / registros) — Toca API Laravel: no — **BLOQUEADA por Q-E2-2, Q-E2-4 y Q-E2-5**
+  - Tests primero: common `PlanDeEnvioE2Test` y `LoEnviadoPersistidoTest` ampliado, con `habilitada = E2` (con `E1` siguen en `enReserva`,
+    ya cubierto). Formularios: por campo, solo `dirty` y cambio real contra `LoEnviado` (T21 (f): hoy formularios y antecedentes no lo usan);
+    alimentación `"0|"` sobre nada = sin cambio real; vaciar algo que la web tiene viaja `""`; una serología que vuelve a «sin cargar» viaja
+    `""`. Antecedentes: solo activos (RF-9), solo de la consulta propia (RF-68), casilla vaciada a propósito viaja `flag 0, detalle ""`,
+    `tabaquismo` y `personales` siguen en `sinViaje`. Registros: estudios (fecha + `detalle`; en blanco = vaciado, Q-E2-2); exámenes e
+    interconsultas: alta con todos sus campos, edición solo de los campos que cambiaron contra `LoEnviado.registros[remoto_id]`, **baja solo
+    si la fila ya tiene `remoto_id`** (si no, `sinViaje(SIN_CAMBIO_REAL)` y se limpia: «si todavía no se había enviado, no se envía nada»,
+    RF-70); completar una fila de una consulta anterior [Q-E2-4]; cada paso con su `cubre`; orden crear → secciones → examen → formularios
+    → antecedentes → registros → cierre; una parte rechazada frena el cierre (ya vale).
+  - Código: `PlanDeEnvio.kt` (armar `PasoDeEnvio.Formularios/Antecedentes/Registros`, que hoy existen sin cuerpo), `LoEnviado` con
+    `registros: Map<remotoId, Map<campo, valor>>` y `conLoConfirmado` para los tres pasos; `LoEnviadoPersistido.kt` (JSON compatible con el
+    actual: uno viejo se sigue leyendo).
+  - Hecho cuando: tests nuevos en verde (antes, en rojo); los 43 de `PlanDeEnvioTest` y los de `LoEnviadoPersistidoTest` siguen verdes (si uno
+    cambia, se dice cuál y por qué); compila el wasm.
+- [ ] **T63. `HcClinicaEnvio` ejecuta formularios, antecedentes y registros.** RF-15, RF-32, RF-55, RF-56, RF-61, RF-70 — M — Toca API Laravel: no
+  - Tests primero: jvm `HcClinicaEnvioFormulariosTest`, `HcClinicaEnvioAntecedentesTest` y `HcClinicaEnvioRegistrosTest` con el
+    `ServidorFalso` ampliado: orden (crear → secciones → examen → formularios → antecedentes → registros → cierre); parcial (lo que no
+    figura en `guardadas` no se limpia y la parte queda «No se pudo enviar», como T25 (b)); `ids` → `registro_clinico.remoto_id` por fila en
+    la **misma transacción** que limpia (RF-61) con `guardarRemotoIdRegistro`, y `dirty = 0` solo si `updated_at` no cambió en vuelo
+    (RF-55); respuesta perdida → el reenvío repite los mismos `ref` y no crea filas nuevas (`HcClinicaEnvioRepetibleTest` ampliado); la baja
+    de una fila con `remoto_id` queda `activo = 0, dirty = 0` al confirmarse y la fila local nunca se borra; corte entre confirmar y anotar con
+    los `TRIGGER` de `HcClinicaEnvioAtomicoTest`; `422` → «No se pudo enviar» sin reintento automático; `409` consulta cerrada; con la sesión de
+    otro médico no sale nada.
+  - Código: `HcClinicaEnvio.EnvioEnCurso` (`formularios`, `antecedentes`, `registros` reemplazan la rama `else` de `ejecutar`, que queda solo
+    para pasos desconocidos y lanza), `limpiarSiNoCambio` para `ANTECEDENTE` y `REGISTRO`.
+  - Hecho cuando: tests en verde (antes, en rojo); todos los tests de la cola de E1 (`HcClinicaEnvioOrdenTest`, `…RepetibleTest`, `…AtomicoTest`,
+    `…ParcialTest`, `…EnVueloTest`, `…ReintentoTest`, `…EsperaTest`, `…RechazoTest`, `…DisparadoresTest`, `SesionYEnvioTest`, `VinculoAlEnviarTest`)
+    siguen verdes sin cambios.
+- [ ] **T64. Tope de largo, borrar/completar y el repositorio.** RF-39, RF-40, RF-68, RF-70 — M — Toca API Laravel: no — **BLOQUEADA por Q-E2-3 y Q-E2-4**
+  - Tests primero: common `LimitesDeCampoTest` (largo por campo según T48; `limiteAlcanzado(texto)`; nunca recorta; cuenta caracteres con la misma regla que
+    el servidor) y `ReglasDeRegistroTest` (`puedeBorrar(registro, consulta)`: solo examen/interconsulta, de esta consulta, abierta y no `hcc-`;
+    `puedeCompletar(…)` [Q-E2-4]); jvm `HcRepositoryRegistrosTest`: borrar un registro **ya enviado** → `activo = 0, dirty = 1` y viaja la baja;
+    uno **nunca enviado** → se retira sin dejar nada pendiente; no se borra una fila de otra consulta (RF-40); completar una fila anterior
+    [Q-E2-4] sin tocar su `consulta_id`; la barrera de T36 no impide completar y sí impide escribir en una consulta cerrada y enviada;
+    estudio en blanco → `detalle = ""` y no baja [Q-E2-2].
+  - Código: `hcgeneral/LimitesDeCampo.kt`, `hcgeneral/ReglasDeRegistro.kt`, `HcRepository.eliminarRegistro/guardarRegistro`, y
+    `ConsultaViewModel.flushEstudios` (el caso `CambioEstudio.Borrar` según Q-E2-2).
+  - Hecho cuando: tests en verde (antes, en rojo); `HcRepositoryGuardasDeLaWebTest` y `DatosPorPacienteTest` siguen verdes.
+- [ ] **T65. La lectura refresca y empareja lo propio de E2 (sin duplicar).** RF-33, RF-34, RF-68 — M — Toca API Laravel: no
+  - Tests primero: jvm `HcClinicaBackendPropiasE2Test`: formularios de una propia ya enviada se refrescan con la regla de la L
+    (`valoresDeLaWebParaLaPropia`: no pendiente, vacío o igual a `LoEnviado`) y `LoEnviado` se actualiza tras la lectura; **antecedentes**: lo
+    que trae la historia (`hcc-a<ficha>-<clave>`) y lo que la app envió (id local) no se duplican (se empareja por categoría + clave, como
+    `fusionarAntecedente`, y lo sucio manda); **registros**: se empareja por tipo + `remoto_id`, nunca nace una `hcc-r…` aparte (T29 (4));
+    **un examen o interconsulta `activo = 2` no vuelve en `historia` hasta que se cierra**: la fila local con `remoto_id` queda como está y
+    **no** se marca «Ya no figura en la web» (test explícito), y al cerrar aparece con el mismo `remoto_id` y se empareja; una baja propia no
+    reaparece; el `numero` que asigna el servidor se guarda como campo; la `consulta_id` local no rebota entre la consulta de origen y la que
+    completó [Q-E2-4].
+  - Código: `HcClinicaBackend.aplicarHistoria` y `traerConsulta`, `LecturaClinica.kt` (`fusionarRegistro`, `fusionarAntecedente`,
+    `loEnviadoTrasLaLectura` para formularios y registros), `AusenciasEnLaWeb`.
+  - Hecho cuando: tests en verde (antes, en rojo); todos los `HcClinicaBackend*Test` y `HcClinicaLecturaYEnvioTest` de E1 siguen verdes.
+
+## App de E2: interfaz y candado
+- [ ] **T66. Pantallas de E2.** RF-39, RF-40, RF-70, RF-4 — M — Toca API Laravel: no
+  - Cambios en `features/hc` (la lógica ya está en `core/data`): alimentación, serologías, Child-Pugh, antecedentes y estudios dejan de decir
+    «Esta sección todavía no se envía a la web» cuando la sección se envía (lo decide `avisoDeEnvioDeLaSeccion`); aviso visible de tope de
+    largo con `LimitesDeCampo` (no corta); «Borrar» de examen/interconsulta con confirmación («se da de baja en la web; no se borra») solo si
+    `puedeBorrar`; en una fila de una consulta anterior, «Completar» sin «Borrar» [Q-E2-4]; las filas de la web (`hcc-r…`) siguen solo
+    lectura salvo lo que resuelva Q-E2-4; los adjuntos de un registro (`RegistrosSeccion.kt`, `conArchivos`) siguen ocultos hasta E4; el
+    `AntecedentesSeccion` ya no ofrece el tabaquismo (T37).
+  - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T71.
+- [ ] **T67. Habilitar E2 (levantar el candado) y ajustar los tests que fijaban E1.** RF-4 — S — Toca API Laravel: no — **No se hace antes de que el usuario cierre E1
+  (T47) [Q-A]**
+  - `SUBENTREGA_HABILITADA = E2` (lo único que se sube): la HC general ofrece 21 de las 25 secciones del catálogo (las 10 de E1 más
+    `alimentacion`, `serologias`, `child_pugh`, `antecedentes_familiares`, `eco_abdominal`, `veda`, `biopsia_hepatica`,
+    `estudios_cardiologicos`, `tc_rmn`, `examenes_complementarios` e `interconsulta`); quedan «todavía no» laboratorio general y reducido,
+    tabla de peso y documentos.
+  - Tests que cambian (por diseño: fijaban «E1 ofrece 10»): `SeccionesEnviablesTest`, `LecturaClinicaCatalogoTest` («las 25 siguen decididas
+    y E1 ofrece 10»), `EstadoEnPantallaTest` y los de `ContadorDeEnvioTest`/`PlanDeEnvioTest` que usan la constante por omisión (pasan
+    `habilitada = E1` explícito si hace falta); cada cambio se anota con su porqué.
+  - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; el
+    histórico con datos solo de E2 pasa a poder enviarse en cuanto se haga T33 (no se hace acá).
+
+## Pruebas y cierre de E2
+- [ ] **T68. E2E de E2 contra la copia local.** RF-15, RF-16, RF-22, RF-23, RF-33, RF-35 a RF-40, RF-69, RF-70 — M — Toca API Laravel: no
+  - `HcClinicaFormulariosListasE2ETest` en `core/data/src/jvmTest` (**se saltea sin las propiedades** de T40; reutiliza su soporte): con el
+    paciente «PRUEBA SALUD360» creado por la propia prueba, crea la consulta, carga alimentación, serologías (SI, NO y sin cargar),
+    Child-Pugh, antecedentes con nota (sin tabaquismo), los cinco estudios, dos exámenes (uno se borra) y una interconsulta; envía con la cola
+    real; **repite** el envío (mismas filas); lee de vuelta con la API de lectura (`consultas/{id}` e `historia`) y compara sección por
+    sección; cierra y comprueba que examen e interconsulta aparecen, que el borrado no reaparece y que completar un examen de una consulta
+    anterior [Q-E2-4] cambia solo el resultado; un vaciado a propósito; un texto que excede el tope no se envía ni se corta. Pedidos espaciados 1,1 s.
+  - Hecho cuando: en verde contra la copia servida; `suma.sql` antes/después igual salvo lo esperado y **`medico_infos` idéntico (puerta
+    RF-16)**; limpieza por id y por clave con los scripts de T49; sin propiedades el E2E se saltea y `:core:data:jvmTest` queda en verde; token
+    revocado y `salud360_token_cache` vacía (`salud360_envios` no se vacía).
+- [ ] **T69. Regresión de E2.** RF-5 — S — Toca API Laravel: no
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --rerun` completo, `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm`,
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde; `HcPediatriaE2ETest` y `HcCarteraE2ETest` con `--rerun` contra la copia de pediatría
+    en verde; `HcClinicaLecturaE2ETest` en verde; `tests/Unit` de hclinica completo en verde.
+- [ ] **T70. Validación del reviewer de E2.** RF-35 a RF-40, RF-70 y los transversales — S — Toca API Laravel: no
+  - RF por RF: qué test lo cubre y el resultado (`plan.md`, «Estrategia de tests»); lista de candados; los tests de E1 que cambiaron y por qué; las
+    preguntas Q-E2-* y cómo se resolvieron; los riesgos.
+  - Hecho cuando: el reviewer aprueba o devuelve observaciones y quedan cerradas o anotadas.
+- [ ] **T71. Prueba manual del usuario en `devWeb` (E2).** RF-35 a RF-40, RF-70, RF-17 — S — Toca API Laravel: no
+  - Copia local, paciente «PRUEBA SALUD360» (el `devWeb` usa el puerto 8080, ver T37 (g)): (1) consulta nueva con alimentación, serologías,
+    Child-Pugh, antecedentes con nota, los cinco estudios, dos exámenes y una interconsulta, y verlas lado a lado en la web de hclinica (los
+    exámenes e interconsultas aparecen allá **al cerrar**); (2) pegar más texto del permitido en un estudio: aviso, no corta; (3) borrar un
+    examen ya enviado: queda de baja y no reaparece al cerrar; uno no enviado: no se envía; (4) completar el resultado de un examen de una consulta
+    anterior y comprobar que no se puede borrar [Q-E2-4]; (5) una serología SI → «sin cargar»: en la web «sin cargar», nunca «NO»; (6)
+    vaciar a propósito el texto de un estudio; (7) Network → Offline: cargar, volver, una sola vez en la web; (8) el tabaquismo no se
+    ofrece y lo viejo se ve solo lectura; (9) **T11 (RF-17)**: abrir la consulta de la app en la web con los perfiles 1, 2, 3, 4 y 9.
+  - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar` aplicado; token revocado.
+- [ ] **T72. Limpieza, documentación y cierre de E2.** D4 — S — Toca API Laravel: no
+  - Con los scripts de T49: lo que dejaron T54 a T60 y T68 a T71, por id y por clave; conteos y sumas contra la línea base de T5;
+    `md/API_SALUD360_CLINICA.md` al día; `docs/ARQUITECTURA.md`; `MEMORY.md` (sin datos sensibles); tabla de `specs/README.md`; propuesta de
+    cambios permanentes para `AGENTS.md`. El usuario aprueba el cierre de E2 y autoriza empezar E3.
+  - Hecho cuando: todo igual a la línea base salvo `salud360_envios` (con 0 filas de prueba); el usuario cierra E2.
+
+---
+
+# E3 — Laboratorio, peso y pendientes (con la migración local `10.sqm`, D8)
+RF-41 a RF-43 (más RF-15, RF-16, RF-33, RF-34, RF-52, RF-53, RF-60, RF-67, RF-68, RF-69). **Con migración**: el identificador de la web
+en `laboratorio` y en `pendiente`. Orden: servidor local (T73 a T79) → app: migración (T80), datos (T81 a T86), interfaz (T87), habilitar (T88) →
+pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, que toca el esquema y se hace sola.
+
+## Servidor local de E3 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
+- [ ] **T73. Verificación de solo lectura del esquema de E3, contrato JSON (borrador) y scripts ampliados.** RF-41 a RF-43, RF-16 — M — Toca API Laravel: no
+  (solo lectura de la base local y documentación)
+  - `information_schema` de `laboratorio_generals` (52 analitos), `laboratorio_general2s` (15), `pesos` (`valor`, `fecha`, `activo`) y `aux_pendientes`
+    (`pendientes`: ¿`text`?, `paciente_id`, `consulta_id`, `activo`): tipos, largos, `NOT NULL`, defectos; `ColumnasLegacy`. Cómo escribe la web con
+    archivo y línea, en `notas-para-el-plan.md` §12: laboratorio general `MedicoController.php:6195-6535`, reducido `:6537-6655`, peso
+    `:6697-6731` (siempre un `INSERT`: la web no actualiza una carga, solo la da de baja `:3682-3734`; fecha vacía → `2000-01-01`
+    `:6515-6521`, `:6635-6641`, `:6711-6717`; `activo = 1` desde el alta `:6523`, `:6643`, `:6719`), pendientes `:4808-4842`.
+  - **Corrige una afirmación de las notas:** `notas-para-el-plan.md` §2 dice que `guardarPeso` escribe `medico_infos.es_nueva_consulta = 8`
+    (`:6727`); en el clon ese bloque está **comentado** (`MedicoController.php:6722-6728`). Quien sí lo escribe es el laboratorio general
+    (`:6526-6532`) y el reducido (`:6646-6652`). La puerta RF-16 se mantiene igual: la API no escribe `medico_infos` en ningún caso.
+  - Amplía los scripts de T4 (`escritura-contar/suma/limpiar/cargar-prueba`) con `laboratorio_generals`, `laboratorio_general2s`, `pesos` y
+    `aux_pendientes` (igual criterio que T49) y deja el **contrato JSON de E3** en `plan.md` y como borrador en `md/API_SALUD360_CLINICA.md`.
+  - Hecho cuando: tabla de columnas y corrección anotadas; contrato escrito; scripts ensayados en `hc_clinica_respaldo` (cargar → limpiar → cargar
+    → limpiar con sumas idénticas); **ninguna base cambió** (sumas iguales a la línea base de T5).
+- [ ] **T74. Reglas puras de las cargas de laboratorio y de peso y su test.** RF-41, RF-42, RF-69 — M — Toca API Laravel: sí
+  - Tests primero: `tests/Unit/CargasReglasTest.php`. Cuerpos: laboratorio `{clave "l:<id local>", dispositivo, consulta_id, tipo
+    laboratorio_general|laboratorio_reducido, id?, fecha, valores:{<clave de la app>:<texto>}}` y peso `{clave, dispositivo, consulta_id,
+    id?, fecha, valores:{valor}}`. `fecha` AAAA-MM-DD **obligatoria**; la vacía y los marcadores de «sin fecha» de la web (`2000-01-01`,
+    `1000-01-01`, `0000-00-00`, `ConsultasReglas::FECHAS_VACIAS_CARGA`) → `422 fecha_invalida`: la app resuelve la fecha de la consulta antes
+    de enviar (RF-41) y el servidor **nunca inventa ni acepta** la que la web lee como «sin fecha». Valores: las claves del mapa
+    (`MapaClinica::LABORATORIO_GENERAL`, `LABORATORIO_REDUCIDO`, `PESO`) por `columnaWeb`, con los cinco ids que no coinciden
+    (`albumina`→`alb_mina`, `fosforo`→`f_sforo`, `concentracion`→`concentraci_n`, `acido_urico`→`_cido_rico`,
+    `b12_homocisteina_folico`→`b12_homociste_na_f_lico`) y `otros`→`otro` en el reducido; clave que el mapa no conoce → `desconocidas`;
+    un `"0"` es un dato; `""` = vaciado a propósito (solo al actualizar); un alta **sin ningún valor con contenido** → `422 carga_vacia`
+    (RF-57 de la 002: la app no guarda cargas vacías); tope por columna según T73; dos cargas con la misma fecha conviven.
+    `puedeActualizarCarga($registro, $medico)` (puro): solo si el id figura en el registro de lo recibido como creado por la app para este médico.
+  - Código: `EscrituraReglas::carga($cuerpo, $tipo)`, `::puedeActualizarCarga`, constantes `TABLA_LABORATORIO_GENERAL`, `TABLA_LABORATORIO_REDUCIDO`, `TABLA_PESO`.
+  - Hecho cuando: el test en verde (antes, en rojo); controles estáticos de las reglas comunes; `tests/Unit` completo en verde.
+- [ ] **T75. Reglas puras de los pendientes (texto único) y su test.** RF-43, RF-69 — S — Toca API Laravel: sí
+  - Tests primero: `tests/Unit/PendientesReglasTest.php`: cuerpo `{texto}` obligatorio y de tipo texto; `""` (o solo espacios) = vaciado a propósito y se
+    escribe (RF-69); tildes, ñ, emoji y saltos de línea tal cual; tope según T73; **no hay `resuelto`**: un campo `resuelto` se informa como desconocido y
+    nunca se escribe (D10); la fila destino es la `activo = 1` del par (paciente, consulta).
+  - Código: `EscrituraReglas::pendientes($cuerpo)`.
+  - Hecho cuando: el test en verde (antes, en rojo); controles estáticos; `tests/Unit` completo en verde.
+- [ ] **T76. Cargas de laboratorio y de peso: alta y actualización (servicio, controlador y rutas).** RF-41, RF-42, RF-15, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Código: `EscrituraService::carga` (usa `EnviosRegistro::conTransaccion` con prefijo `l`, tipo `carga`): la ruta lleva el paciente
+    (`pacienteVisible`) y el cuerpo la consulta, que debe ser **propia, creada por la app, abierta y de ese paciente**. **Alta**: `activo = 1` desde el
+    alta (D20: visible al instante, no queda pendiente de confirmar), fecha del cuerpo, columnas no mandadas `''` como hace la web, relleno con
+    `ColumnasLegacy`; registra la clave `l:` con el id en la **misma transacción** → repetir devuelve el mismo id sin escribir. **Actualización**
+    (`id` presente): solo si la fila es de esa consulta, está `activo = 1` y fue creada por la app para este médico (`puedeActualizarCarga`); solo
+    las columnas presentes. **No escribe `medico_infos`** (la web sí lo hace, `:6526-6532`, `:6646-6652`). Rutas `Route::put('pacientes/{id}/laboratorios', …)` y
+    `Route::put('pacientes/{id}/pesos', …)`; respuesta `{ok, id, guardadas, desconocidas}`. `tablasEscribibles()` suma las tres tablas.
+  - Hecho cuando: PHP-base (estricto y sin) y curl: la carga **aparece en `GET pacientes/{id}/historia` apenas llega**, sin cerrar (D20); el reintento
+    con la misma clave deja una fila y el mismo id; editar con `id` es la misma fila, no crea otra; dos cargas con la misma fecha conviven; fecha
+    vacía o marcador de «sin fecha» → `422` y nada escrito; una carga de la web o de otra consulta no se actualiza (`403 carga_no_propia`);
+    consulta cerrada, de baja, de la web, de otro médico o rol sin permiso → los códigos de RF-52/RF-53; carrera de dos pedidos con la misma clave →
+    una fila; **`medico_infos` CHECKSUM idéntico después de cargar laboratorio general, reducido y peso**; mutaciones detectadas (alta `activo = 2`,
+    fecha `2000-01-01` aceptada, sin registro, escribe `medico_infos`, actualiza filas ajenas).
+- [ ] **T77. Cargas: baja (servicio, controlador y rutas).** RF-41, RF-42, RF-26, RF-52 — S — Toca API Laravel: sí
+  - Código: `Route::delete('pacientes/{id}/laboratorios/{cargaId}', …)` y `…/pesos/{cargaId}` (el plan decía `DELETE pacientes/{id}/laboratorios`: se
+    especifica con el id de la carga en la ruta; cuerpo JSON `{clave, dispositivo, consulta_id}` como la baja de la consulta). `activo = 0` solo si la carga es
+    de esa consulta, está `activo = 1` y la creó la app; repetir = ok; **nunca `DELETE`**; no se da de baja en cascada nada más. La web hace lo mismo con
+    otra autorización (`MedicoController.php:3682-3734`).
+  - Hecho cuando: PHP-base y curl: la baja deja la fila con `activo = 0` y la lectura deja de mostrarla; repetir la baja = ok; una carga de la web o de otra
+    consulta → `403`; el cierre posterior **no** la reactiva ni toca otras (D20); `medico_infos` idéntico.
+- [ ] **T78. Pendientes: servicio, controlador y ruta.** RF-43, RF-34, RF-52 — M — Toca API Laravel: sí
+  - Código: `EscrituraService::pendientes` y `Route::put('consultas/{id}/pendientes', …)`: escribe **un solo texto por consulta** en la fila
+    `activo = 1` del par (paciente, consulta) de `aux_pendientes` (la actualiza o la crea; `MedicoController.php:4808-4842`), **el último manda**;
+    devuelve `{ok, id}`. Repetible por naturaleza (upsert; Q-E2-6). No toca `resuelto` (no existe en la web), ni otras consultas. Atención a la
+    lectura: `historia.pendientes` devuelve la **última fila activa del paciente** (`ConsultasService.php:163-166`), de cualquier consulta.
+  - Hecho cuando: PHP-base y curl: crear, reemplazar y vaciar el texto (una sola fila por consulta); dos consultas del mismo paciente (la lectura devuelve la
+    de id mayor); sobre consulta cerrada/de la web/ajena → códigos de RF-52/RF-53; dos pedidos simultáneos → una fila; `medico_infos` idéntico.
+- [ ] **T79. Prueba de punta a punta del servidor de E3 y documentación.** RF-15, RF-16, RF-34, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Pasada por HTTP con curl espaciado ~1,3 s de T76 a T78 en un recorrido; scripts de T74 a T78 contra la descartable (estricto y sin él); sumas antes/después
+    (cambian solo las tablas esperadas y `salud360_envios`); **`medico_infos` idéntico tras laboratorio y peso**; un cierre posterior que no cambia
+    ninguna carga; greps estáticos; limpieza por id y por clave. Docs: «Escritura (E3)» en `md/API_SALUD360_CLINICA.md` (rutas, cuerpos, códigos, qué no
+    hace, por qué no replica `es_nueva_consulta`).
+  - Hecho cuando: phpunit completo en verde; copia servida igual al clon; cero escrituras de `medico_infos`; Apache sin métodos inesperados;
+    `salud360_token_cache` vaciada; las rutas nuevas responden `401` (no `404`) sin token.
+
+## App de E3: migración, datos
+- [ ] **T80. Migración local `10.sqm`: identificador de la web en `laboratorio` y `pendiente`.** RF-41, RF-43 (D8) — M — Toca API Laravel: no — **Migración: pregunta
+  antes: ya aprobada en D8; reservar el número mirando TODAS las ramas justo antes de crearla; si otra rama lo tomó, volver a preguntar**
+  - **Reserva del número (antes de escribir nada):** `git fetch`; `git ls-tree` de la carpeta `core/database/.../migrations/` en `origin/main`, en
+    `hc-general` y en **todas** las ramas (`git branch -a`: `hc-*`, `docs/sdd-y-guia-por-hc`, `pediatria-licencia-servidor`, `origin/hc_odontologia`…). Hoy
+    `hc-general` llega a `9.sqm` (esquema v10, la marca de T15) y la principal a `5.sqm`: el siguiente sería **`10.sqm` (v11)**, pero **no se asume**: si otra
+    rama ya lo tomó, se **para y se vuelve a preguntar**. El número va al commit y a `MEMORY.md`.
+  - Tests primero: jvm `MigracionLaboratorioTest` (como `MigracionMarcaTest`): una base v10 con laboratorios y pendientes de clínica, de pediatría y de la web,
+    migrada por el driver → todas las filas quedan con `remoto_id = ''` y nada más cambia (`dirty`, `updated_at`, resto de columnas y tablas fila por fila);
+    una fila nueva guarda su `remoto_id`; la columna queda igual (nombre, tipo, `NOT NULL`, defecto) que en una base nueva; `copy` + `toRow` la conserva; el
+    driver deja `user_version` en 11 y reabrir no cambia nada; el camino de la web (`migrate(10, 11)` sobre el mismo driver).
+  - Código: `10.sqm` con **una sentencia por columna** (`ALTER TABLE laboratorio ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';` y lo mismo en `pendiente`);
+    `HistoriaClinica.sq` con `remoto_id` **al final** de `laboratorio` y de `pendiente` (`upsertX` es posicional) y **sin comentarios entre las últimas
+    columnas del `CREATE TABLE`** (regla que dejó T15: `DROP COLUMN` de SQLite no reescribe bien una tabla con comentarios pegados a la columna que se
+    quita); consultas `guardarRemotoIdLaboratorio`, `guardarRemotoIdPendiente`, `laboratorioPorRemotoId`, `pendientePorRemotoId`; `Laboratorio.remotoId` y
+    `Pendiente.remotoId` **al final** del `data class` en `core/model` y `Mappers.kt`.
+  - **Regla de T15 para los tests que simulan una base vieja:** deben quitar también las columnas nuevas (`ALTER TABLE laboratorio DROP COLUMN remoto_id` y
+    `ALTER TABLE pendiente DROP COLUMN remoto_id`) antes de poner el `user_version` viejo, porque el driver reaplica las migraciones y `ADD COLUMN` chocaría:
+    `MigracionMarcaTest`, `MigracionHepatologiaTest` (`:251-252`), `HcApiSyncBaseMigradaTest` (`:142-143`), `ConfigHcRepositoryTest` y `CopiaEnfermedadesTest`. Las
+    aserciones de versión pasan de 10 a 11 (`MigracionMarcaTest` `:230`, `:237`, `:275`; `MigracionHepatologiaTest` `:257`, `:278`; `HcApiSyncBaseMigradaTest` `:300`).
+  - Hecho cuando: el test en verde (antes, en rojo); `.\gradlew :core:data:jvmTest` completo en verde (los demás no cambian salvo lo anotado);
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `MEMORY.md` anota el número reservado y que **no hay vuelta atrás**. **Aviso para el
+    usuario antes de levantar `devWeb` con esta tarea:** el `devWeb` usa siempre el puerto 8080 (T37 (g)); la base web de ese origen sube a v11 y una compilación
+    anterior (la rama principal, v6) la descartaría; 001 y 002 se publican juntas, así que no es un problema de producción, pero sí de las pruebas locales.
+- [ ] **T81. API de escritura de E3 (DTOs, remota y `PayloadsClinica`) con servidor falso.** RF-41 a RF-43, RF-69 — M — Toca API Laravel: no
+  - Tests primero: jvm `ClinicaEscrituraApiTest` ampliado: `carga` (`PUT pacientes/{id}/laboratorios` y `/pesos`), `bajaDeCarga` (`DELETE …/{cargaId}` con cuerpo
+    JSON) y `pendientes` (`PUT consultas/{id}/pendientes`): método, ruta, cuerpo; errores con `status` y `codigo`; un pedido por error. common
+    `PayloadsClinicaE3Test`: clave `l:<id local>` estable entre reintentos, `consulta_id`, `fecha` siempre presente y nunca el marcador de «sin fecha», valores
+    solo los tocados al actualizar y todos al alta, `""` como vaciado, peso con `valor`; pendientes `{texto}` con `""` si se borró todo; si no queda nada que mandar,
+    no arma cuerpo ni hace pedido.
+  - Código: `ClinicaEscrituraApi` (+3), `ClinicaEscrituraApiRemota`, DTOs (`RespuestaCargaDto{id, guardadas, desconocidas}`, `RespuestaPendientesDto{id}`),
+    `PayloadsClinica.carga/pendientes/claveDeCarga`.
+  - Hecho cuando: tests en verde (antes, en rojo); compila el wasm; nada cableado.
+- [ ] **T82. Funciones puras: texto de pendientes, huella y qué carga viaja con qué fecha.** RF-41, RF-43, RF-69 — M — Toca API Laravel: no
+  - Tests primero: common `PendientesTextoTest` (unir los pendientes de **una consulta propia** en un texto, uno por línea y en el orden en que están en la app —
+    por alta, estable—; `huella(texto)` determinista y común a todas las plataformas, no `hashCode()`; `esElEnviado(textoWeb, huellaGuardada)` verdadero si la web
+    devuelve lo que la app mandó; `filaPortadora(pendientes)` = la primera por alta; `portadoraTrasBorrar(…)` pasa el identificador a la siguiente; texto de la
+    web distinto → un solo pendiente «de la web»; sin «Resuelto») y `CargasAEnviarTest` (`fechaAEnviar(carga, consulta)`: la de la carga o, si no tiene, la de la
+    consulta, nunca vacía ni el marcador de «sin fecha»; qué valores viajan al alta y cuáles al actualizar contra `LoEnviado.cargas`).
+  - Código: `hcgeneral/PendientesTexto.kt` (el plan ya lo nombra), `hcgeneral/CargasAEnviar.kt`.
+  - Hecho cuando: tests en verde (antes, en rojo); sin Compose ni red; el reloj entra como parámetro.
+- [ ] **T83. `HcRepository`: laboratorio, peso y pendientes con cambio real, reasignación, baja, fila portadora y aviso a la cola.** RF-41 a RF-43, RF-68, RF-69 — M — Toca API
+  Laravel: no — **BLOQUEADA por Q-E3-1 y Q-E3-2**
+  - Hoy `guardarLaboratorio`, `eliminarLaboratorio` y `guardarPendiente` (`HcRepository.kt:569-617`) **no** aplican el cambio real de T18, **no** reasignan la consulta (T18 lo dejó
+    para E3) y **no** respetan la barrera de T36 (una propia con el cierre enviado o viajando rechaza toda escritura); `ConsultaViewModel` no avisa a la cola desde
+    `guardarLaboratorio`, `eliminarLaboratorio`, `resolverPendiente` ni `cerrarConPendientes` (T36 (a)).
+  - Tests primero: jvm `HcRepositoryCargasTest` y `HcRepositoryPendientesTest` (solo HC general; pediatría y las demás siguen como hoy): guardar lo mismo no marca ni
+    reasigna (cambio real); editar una carga del histórico dentro de una propia la reasigna y la marca (viaja solo eso, RF-68); una carga propia ya enviada que se vacía
+    a propósito viaja vacía; `eliminarLaboratorio` de una carga con `remoto_id` → `activo = 0, dirty = 1` y viaja la baja; **sin `remoto_id` se retira sin dejar nada
+    pendiente**; una carga `hcc-l…` no se toca; la barrera de T36 impide escribir cargas y pendientes en una consulta cerrada y enviada; `guardarPendiente`
+    conserva el `remoto_id` de la portadora y, al borrarla, el identificador pasa a la siguiente **en la misma transacción**; en una consulta propia de clínica
+    `cerrarConPendientes` no resuelve pendientes ni los marca resueltos (D19(b)); los pendientes del histórico o sin consulta propia no viajan (RF-43).
+  - Código: `HcRepository.guardarLaboratorio/eliminarLaboratorio/guardarPendiente`, `EnvioDeConsultas.avisarCambio` desde `ConsultaViewModel` (laboratorio,
+    pendientes) y la regla de la portadora en `hcgeneral/PendientesTexto.kt`.
+  - Hecho cuando: tests en verde (antes, en rojo); `DatosPorPacienteTest` y `HcRepositoryGuardasDeLaWebTest` siguen verdes; compilan `:features:hc` y el wasm.
+- [ ] **T84. `PlanDeEnvio` y `LoEnviado` con cargas y pendientes.** RF-41 a RF-43, RF-56, RF-60, RF-68, RF-69 — M — Toca API Laravel: no
+  - Tests primero: common `PlanDeEnvioE3Test` y `LoEnviadoPersistidoTest` ampliado, con `habilitada = E3` (con `E2` siguen en `enReserva`): nuevos pasos
+    `Cargas` (altas, actualizaciones solo de lo tocado, bajas con `remoto_id`) y `Pendientes` (el texto único de la consulta propia); orden crear → secciones
+    → examen → formularios → antecedentes → registros → **cargas → pendientes** → cierre; una carga nunca enviada y borrada no viaja; un texto de pendientes
+    igual a la huella enviada es `sinViaje(SIN_CAMBIO_REAL)`; borrar todos los pendientes a propósito viaja `""`; cargas de una consulta anulada, del
+    histórico o sin consulta no viajan; cada paso con su `cubre`; el cierre no sale con algo anterior sin confirmar.
+  - Código: `PlanDeEnvio.kt` (`PARTE_CARGAS`, `PARTE_PENDIENTES`, `PasoDeEnvio.Cargas/Pendientes`, `TablaDeLaFila.LABORATORIO/PENDIENTE`, `EntradaDelPlan.cargas/pendientes`),
+    `LoEnviado.cargas: Map<remotoId, valores>` y `pendientes: huella`, `LoEnviadoPersistido.kt` (JSON compatible).
+  - Hecho cuando: tests nuevos en verde (antes, en rojo); `PlanDeEnvioTest` y `PlanDeEnvioE2Test` siguen verdes (si uno cambia, se dice cuál y por qué); compila el wasm.
+- [ ] **T85. `HcClinicaEnvio` ejecuta cargas y pendientes.** RF-15, RF-32, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
+  - Tests primero: jvm `HcClinicaEnvioCargasTest` y `HcClinicaEnvioPendientesTest` con el `ServidorFalso`: el `id` de la web → `laboratorio.remoto_id` en la misma
+    transacción que limpia (RF-61); parcial; cambio en vuelo no se da por enviado (RF-55); respuesta perdida → mismo `l:` y una sola carga (`…RepetibleTest` ampliado);
+    corte entre confirmar y anotar (`…AtomicoTest` ampliado); la huella del último texto enviado se guarda en `paciente_extra` (`hce_pend_<consulta>`, `dirty = 0`)
+    y el `remoto_id` en la fila portadora; `422` → «No se pudo enviar» sin reintento solo; `409` consulta cerrada; sesión de otro médico no envía.
+  - Código: `HcClinicaEnvio.EnvioEnCurso.cargas/pendientes`, `limpiarSiNoCambio` para `LABORATORIO` y `PENDIENTE`, `contarPendientes` (con `habilitada = E3` cuenta
+    laboratorio y pendientes, T24).
+  - Hecho cuando: tests en verde (antes, en rojo); los tests de la cola de E1 y E2 siguen verdes sin cambios.
+- [ ] **T86. La lectura empareja cargas y pendiente por `remoto_id` (sin duplicar).** RF-33, RF-41, RF-43 — M — Toca API Laravel: no
+  - Esto cierra T29 (c): hasta acá las cargas y el pendiente se emparejaban por id (`laboratorioPorId`, `pendientePorId`) y una fila enviada por la app habría
+    reaparecido como `hcc-l…`/`hcc-p…`.
+  - Tests primero: jvm `HcClinicaBackendPropiasE3Test`: una carga enviada (con `remoto_id`) y la que trae `historia` (`hcc-l<tipo>-<id>`) son **una sola**
+    (`laboratoriosDeLaWeb` y `fusionarLaboratorio` empareja por `remoto_id` y respeta lo sucio); una baja propia no reaparece; una carga editada en la web
+    mientras el dispositivo no tiene pendiente se refresca (RF-34: lo pendiente manda); **pendientes**: si el texto de la web es el que la app envió
+    (huella) no nace ningún `hcc-p…`; si cambió y el dispositivo no tiene cambios sin enviar → un solo pendiente «de la web» solo lectura y los propios quedan «Ya no figura
+    en la web»; con cambios sin enviar manda el dispositivo; el pendiente de otra HC o de otro paciente no se mezcla.
+  - Código: `HcClinicaBackend.aplicarHistoria`, `LecturaClinica.kt` (`laboratoriosDeLaWeb`, `fusionarLaboratorio`, `pendienteDeLaWeb`), `AusenciasEnLaWeb`.
+  - Hecho cuando: tests en verde (antes, en rojo); todos los `HcClinicaBackend*Test` y `HcClinicaLecturaYEnvioTest` siguen verdes.
+
+## App de E3: interfaz y candado
+- [ ] **T87. Pantallas de E3.** RF-41 a RF-43, RF-4 — M — Toca API Laravel: no — **BLOQUEADA por Q-E3-1**
+  - `features/hc`: laboratorio general y reducido, peso y pendientes dejan de decir «Esta sección todavía no se envía a la web»; «Resuelto» **no se ofrece** en
+    los pendientes de una consulta propia de clínica (D19(b)); los pendientes de la web siguen solo lectura; las cargas propias ya enviadas conservan su tacho (baja)
+    y las de la web no (`puedeBorrarCarga`); la carga abierta se completa con el autoguardado (Q-E3-1); aviso de «sin fecha: se usa la de la consulta».
+  - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T92.
+- [ ] **T88. Habilitar E3 (levantar el candado) y el histórico con esas secciones.** RF-4, RF-67 — S — Toca API Laravel: no — **Solo con E2 cerrada y la migración aplicada**
+  - `SUBENTREGA_HABILITADA = E3`: la HC general ofrece 24 de las 25 secciones (suma `laboratorio_general`, `laboratorio_reducido` y `tabla_peso`; los pendientes viajan con la
+    consulta); queda «todavía no» solo `documentos`. RF-67: una consulta del histórico con laboratorio, peso o pendientes pasa a poder enviarse (el botón es T33, que sigue sin
+    urgencia).
+  - Tests que cambian: `SeccionesEnviablesTest`, `LecturaClinicaCatalogoTest` (cuenta de secciones que se ofrecen), `EstadoEnPantallaTest` y los que usan la constante por omisión; cada
+    cambio con su porqué.
+  - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; el wasm compila.
+
+## Pruebas y cierre de E3
+- [ ] **T89. E2E de E3 contra la copia local.** RF-15, RF-16, RF-22, RF-33, RF-41 a RF-43, RF-69 — M — Toca API Laravel: no
+  - `HcClinicaLaboratorioE2ETest` (**se saltea sin las propiedades** de T40): con el paciente «PRUEBA SALUD360» creado por la prueba: carga de laboratorio general, de
+    reducido y de peso con fecha; una **sin fecha** (se usa la de la consulta); dos con la misma fecha; completar una enviada (misma fila); borrar una (baja);
+    pendientes con tres líneas, reemplazo y vaciado; **repite** el envío (mismas filas); lee de vuelta con `historia` y compara **sin duplicar** (emparejamiento por
+    `remoto_id`); cierra y comprueba que el cierre no toca ninguna carga ni la baja; un `422` por fecha inválida. Pedidos espaciados 1,1 s.
+  - Hecho cuando: en verde contra la copia servida; `suma.sql` antes/después igual salvo lo esperado y **`medico_infos` idéntico después de cargar laboratorio y peso
+    (puerta RF-16)**; limpieza por id y por clave; sin propiedades se saltea y `:core:data:jvmTest` queda en verde; token revocado, `salud360_token_cache` vacía.
+- [ ] **T90. Regresión de E3.** RF-5 — S — Toca API Laravel: no
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --rerun` completo, `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev`
+    en verde; `HcPediatriaE2ETest` y `HcCarteraE2ETest` con `--rerun`; `HcClinicaLecturaE2ETest`; `tests/Unit` de hclinica completo; **pediatría no cambia** (no tiene
+    `remoto_id` en laboratorio ni pendiente: la migración solo agrega la columna).
+- [ ] **T91. Validación del reviewer de E3.** RF-41 a RF-43 y los transversales — S — Toca API Laravel: no
+  - RF por RF con su test; la migración (número, forma, pruebas, sin vuelta atrás); los tests de E1/E2 que cambiaron; preguntas Q-E3-* resueltas; riesgos.
+  - Hecho cuando: el reviewer aprueba o devuelve observaciones y quedan cerradas o anotadas.
+- [ ] **T92. Prueba manual del usuario en `devWeb` (E3).** RF-41 a RF-43, RF-67 — S — Toca API Laravel: no
+  - Copia local, paciente «PRUEBA SALUD360»: (1) cargar laboratorio general y reducido y peso y verlos en la web **apenas llegan** (sin cerrar); (2) una carga sin fecha: se ve con
+    la fecha de la consulta; (3) dos cargas con la misma fecha; (4) seguir completando una carga abierta; (5) borrar una carga enviada: desaparece en las dos; (6) pendientes: tres
+    líneas, cambiar, borrar todo; en la web se ven como un solo texto; (7) «Resuelto» no aparece en los pendientes de la consulta; (8) cerrar: nada de laboratorio ni peso cambia;
+    (9) modo Offline; (10) lo que se carga en la web (una carga nueva, otro texto de pendientes) llega a la app sin duplicar lo enviado; (11) **no se movió la pantalla del médico
+    en la web** (puerta RF-16).
+  - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar` aplicado; token revocado.
+- [ ] **T93. Limpieza, documentación y cierre de E3.** D4 — S — Toca API Laravel: no
+  - Con los scripts de T73: lo que dejaron T76 a T79 y T89 a T92, por id y por clave; conteos y sumas contra la línea base de T5; `md/API_SALUD360_CLINICA.md`,
+    `docs/ARQUITECTURA.md`, `MEMORY.md`, `specs/README.md`, propuesta para `AGENTS.md` (la migración y la regla del `CREATE TABLE`).
+  - Hecho cuando: todo igual a la línea base salvo `salud360_envios`; el usuario cierra E3.
+- [ ] **T94. Cierre de E1 a E3: paquete para decidir la publicación (D23).** — S — Toca API Laravel: no
+  - **No publica nada.** Reúne en un solo lugar lo que D23 y los criterios de la spec piden antes de publicar la escritura: E1, E2 y E3 cerradas; el conteo de licencias (T42);
+    la lista de capacidades del servidor a subir (las 5 de E1, las 3 de E2 y las de E3) y la de lo que **no** se sube (E4); lo que hace falta del lado de producción
+    (respaldo restaurable verificado, tabla `salud360_envios`, privilegio `CREATE`, `APP_DEBUG=false`, comprobación sin token); y el aviso de que la migración v11 no tiene
+    vuelta atrás. La publicación y la «E9 de la escritura» siguen siendo **aprobación aparte**.
+  - Hecho cuando: el usuario revisa el paquete y decide si pide la etapa de producción.
+
+---
+
+# E4 — Adjuntos (PDF y fotos de exámenes complementarios)
+RF-44 a RF-46 (más RF-15, RF-16, RF-33, RF-52, RF-53, RF-60). Sin migración (`archivo.remoto_id` ya existe desde `5.sqm`). **Es lo más frágil y lo primero que se
+recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95 a T101) → app (T102 a T108) → pruebas y cierre (T109 a T113). Las **fotos de exámenes**
+(T100, T105) solo se hacen si T95 confirma que la web las muestra (D24); si no, se cancelan y se documenta.
+
+## Servidor local de E4 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
+- [ ] **T95. Verificación de las fotos de exámenes (D24), de los límites locales y contrato JSON (borrador).** RF-44 — M — Toca API Laravel: no (verificación a mano con
+  el usuario; la única escritura es una fila y un archivo de prueba, que se limpian por id)
+  - **Fotos (D24):** por lectura del código, la web muestra una foto de examen si la fila de `examenes_complementarios_fotos` tiene `activo = 1` y el examen al que apunta
+    está confirmado (`activo = 1`): `cargarExamenesComplementarios` cuenta y busca esas fotos (`MedicoController.php:2352-2404`) y la vista arma `img/<foto>`
+    (`resources/views/medico/seccion/examenes_complementarios.blade.php:504-518`). Falta **verlo en la copia local**: con un examen confirmado creado por la API (E2)
+    insertar por SQL una fila de foto de prueba (más un archivo chico en la carpeta `img` de la copia servida) y que el usuario la abra en la web. Se anota también que la
+    web crea el examen con `activo = 1` si no existe (`:2437-2459`), que redimensiona con `Image::make(...)->resize(1980, 1920)` (`:2490`; paquete ya presente en la web) y que escribe
+    `medico_infos` (`:2497-2506`, lo que la API **no** hace).
+  - **Límites locales (solo lectura):** `upload_max_filesize`, `post_max_size`, `memory_limit` y `max_execution_time` de `C:\xampp\php\php.ini` (con `php -i`), el máximo de la web
+    (15 MB, `MedicoController.php:3624`), la carpeta `img/` de la copia servida y `config('salud360.img_path')` (`config/salud360.php:37`), y si la extensión GD está.
+    Contrato JSON de E4 en `plan.md` y borrador en `md/API_SALUD360_CLINICA.md`. La lectura de los límites de **producción** solo con la aprobación de producción (D18).
+  - Hecho cuando: «las fotos de exámenes se ven en la web: sí/no» queda anotado en `notas-para-el-plan.md` §13 con el resultado del usuario y la decisión sobre T100 y T105; los
+    límites locales anotados; el contrato escrito; la fila y el archivo de prueba, borrados por id/ruta; scripts de T4 ampliados con `consulta_pdfs`,
+    `examenes_complementarios_fotos` (igual criterio que T49); sumas iguales a la línea base salvo lo borrado.
+- [ ] **T96. Reglas puras de los adjuntos (servidor) y su test.** RF-44, RF-46, RF-15 — M — Toca API Laravel: sí
+  - Tests primero: `tests/Unit/AdjuntosReglasTest.php`: clave `a:<id local>` (hasta 191; el prefijo `a` se suma a `EnviosRegistro::PREFIJOS`, que hoy es `c r l p`, T9 lo dejó
+    «a definir en E4»); solo PDF: extensión `.pdf`, `Content-Type` y la **cabecera `%PDF-`** de los primeros bytes (no se confía en el nombre); nombre original saneado (sin rutas, `basename`,
+    UTF-8, hasta 255); tamaño máximo = el **menor** entre el de la web (15 MB) y el del hosting (`min(upload_max_filesize, post_max_size)`), función pura `limiteEfectivo($web,
+    $upload, $post)` con el parseo de «8M»/«2G»; nombre en disco **generado por el servidor** (`time()_azar.pdf`), nunca el del cliente; ruta relativa guardada como la web
+    (`<carpeta>/consulta_pdf/<archivo>`); `UPLOAD_ERR_PARTIAL`/`INI_SIZE`/`FORM_SIZE` → `archivo_invalido`/`archivo_grande`; foto de examen (si T95 lo confirma): JPEG/PNG por
+    `getimagesize`, `registro_id` obligatorio; la baja y la subida exigen consulta propia, creada por la app y abierta.
+  - Código: `app/Services/Salud360/AdjuntosReglas.php`.
+  - Hecho cuando: el test en verde (antes, en rojo); controles estáticos de las reglas comunes; `tests/Unit` completo en verde.
+- [ ] **T97. Subir un PDF: servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Código: `app/Services/Salud360/AdjuntosService.php` y `app/Http/Controllers/Api/Salud360/AdjuntosController.php` (nuevos: la lectura sigue sin escribir), `Route::post('consultas/{id}/adjuntos', …)`
+    (multipart: `archivo`, `clave`, `dispositivo`, `tipo`). Orden para que no queden filas sin archivo ni archivos sin fila: el archivo se guarda con un nombre temporal; la fila de
+    `consulta_pdfs` (`consulta_id`, `paciente_id`, `nombre_original`, `ruta_archivo`, `activo = 1`; `ConsultaPdf`) y el registro `a:` se escriben en una transacción; recién
+    entonces se renombra al definitivo; si algo falla se borra el temporal y se hace rollback. **Misma `clave` otra vez (subida cortada y reintento) → la misma fila, un solo archivo.** Carpeta
+    como la web resuelve el archivo (`public_path('img/'.ruta)`, o `config('salud360.img_path')` si está definida); si no existe y el hosting no deja crearla →
+    `500 carpeta_no_escribible` **nombrando la ruta exacta** (como pediatría) [Q-E4-2]. La respuesta no trae la ruta del disco.
+  - Hecho cuando: PHP-base y curl con un PDF chico real generado por la prueba: sube (`201`), el reintento con la misma clave da `200` con la misma fila y un solo archivo en disco; un PDF mayor
+    que el límite → `422 archivo_grande` sin escribir; un archivo que dice `.pdf` y no empieza con `%PDF-` → `422 archivo_invalido`; una subida cortada (cuerpo parcial) no deja fila ni archivo;
+    consulta de la web, cerrada, ajena o rol sin permiso → los códigos de RF-52/RF-53; el archivo de prueba **se borra** del disco en la limpieza (con su SHA-256 verificado antes, como T2);
+    `medico_infos` idéntico.
+- [ ] **T98. Listar, bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí — **BLOQUEADA por Q-E4-3 (qué se lista)**
+  - Código en `AdjuntosController`: `GET consultas/{id}/adjuntos` (PDF `activo = 1` de esa consulta: `id`, `nombre_original`, `tamanio`, `created_at`; nunca la ruta del disco ni una URL pública; el
+    paciente tiene que ser visible para el médico); `GET adjuntos/{id}/archivo` (stream con `Content-Type: application/pdf`, solo si la fila está `activo = 1`, el archivo existe y el paciente es visible;
+    **con la sesión, nunca por enlace público**, RF-45); `DELETE adjuntos/{id}` (cuerpo `{clave, dispositivo, consulta_id}`: `activo = 0` solo si la creó la app para este médico en esa consulta abierta; **no borra
+    el archivo del disco**, como `eliminarConsultaPdf`, `MedicoController.php:3657-3680`; repetir = ok).
+  - Hecho cuando: PHP-base y curl: la lista trae lo subido desde la web y desde la API; el `GET` del archivo devuelve los mismos bytes (SHA-256); sin token → `401`; de un paciente fuera de la cartera → `403`; la baja
+    deja la fila en 0 y el archivo en el disco; un PDF de la web no se da de baja desde la API (`403`); `medico_infos` idéntico.
+- [ ] **T99. Límites de subida (solo lectura).** RF-44, D18 — S — Toca API Laravel: sí
+  - Tests primero: `AdjuntosReglasTest` (la forma de la respuesta con `limiteEfectivo`). Código: `Route::get('adjuntos/limites', …)` → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` con
+    `ini_get`; **no escribe nada** y no toca el disco. En producción solo se llama cuando el usuario apruebe la etapa de producción (D18).
+  - Hecho cuando: curl con token devuelve los límites de la copia local (iguales a los de T95); sin token `401`; ningún archivo ni fila cambió.
+- [ ] **T100. Fotos de exámenes complementarios (condicional a T95).** RF-44 (D24) — M — Toca API Laravel: sí — **Solo si T95 confirma que la web las muestra; si no, se cancela**
+  - Código: `AdjuntosService::subirFotoDeExamen` (`tipo = foto_examen`, `registro_id` = id de la web de un examen **confirmado** del paciente o de esta consulta): escribe
+    `examenes_complementarios_fotos` (`paciente_id`, `consulta_id`, `examen_complementario_id`, `numero` = cantidad + 1 como `getNumeroExamenComplementarioFoto`, `MedicoController.php:2512-2522`, `foto` =
+    ruta relativa, `activo = 1`) y el archivo con las mismas garantías de T97 (clave `a:`, temporal, transacción). **La API no crea el examen** (la web lo crea si falta, `:2437-2459`: acá ya existe por E2) y
+    no redimensiona salvo que T95 diga que hace falta (si sí, con el paquete que la web ya usa: ninguna dependencia nueva). Baja: `activo = 0`. Poder adjuntar a un examen de una consulta
+    anterior es lo que hace pediatría (`docs/hc-pediatria-estado-y-plan.md` «Los exámenes de otras consultas»).
+  - Hecho cuando: PHP-base y curl: una foto de prueba (generada por la prueba) queda asociada al examen y la web la muestra (a mano, T112); el reintento con la misma clave da la misma fila; sobre un examen
+    `activo = 2` (todavía no confirmado) → error claro sin escribir; `medico_infos` idéntico; el archivo se borra en la limpieza.
+- [ ] **T101. Prueba de punta a punta del servidor de E4 y documentación.** RF-15, RF-16, RF-44 a RF-46, RF-52, RF-53 — M — Toca API Laravel: sí
+  - Pasada por HTTP con curl espaciado ~1,3 s de T97 a T100; scripts contra la descartable; sumas antes/después (cambian solo `consulta_pdfs`, `examenes_complementarios_fotos` si corresponde y `salud360_envios`);
+    greps estáticos (en este caso `unlink`/`delete` de archivos = 0: nunca se borra un archivo); limpieza por id y por clave **y borrado de los archivos de prueba del disco**.
+    Docs: «Escritura (E4)» en `md/API_SALUD360_CLINICA.md` (rutas, multipart, códigos, límites, carpeta y el paso de hosting [Q-E4-2]).
+  - Hecho cuando: phpunit completo en verde; copia servida igual al clon; cero escrituras de `medico_infos`; `salud360_token_cache` vaciada; las rutas nuevas responden `401` sin token.
+
+## App de E4
+- [ ] **T102. API de adjuntos (subir, listar, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no
+  - Tests primero: jvm `ClinicaAdjuntosApiTest` con `HttpServer`: `subir` usa `HcApiClient.subir` (ya existe, multipart con tiempo largo) con los campos `clave`, `dispositivo`, `tipo`, `registro_id?`;
+    el servidor falso recibe los bytes y los campos exactos; `listar`, `bajar` (`HcApiClient.descargar`, que rechaza un JSON en lugar del archivo), `borrar` (`DELETE` con cuerpo) y `limites`;
+    errores `401/403/404/409/413/422/429/500` con `status` y `codigo` (`archivo_grande`, `archivo_invalido`, `carpeta_no_escribible`); un pedido por error; JSON cortado.
+  - Código: `ClinicaEscrituraApi` (+ adjuntos) o `ClinicaAdjuntosApi` aparte, remota sobre el `HcApiClient` completo; DTOs; `PayloadsClinica.claveDeAdjunto`. Ninguna dependencia nueva.
+  - Hecho cuando: tests en verde (antes, en rojo); compila el wasm (el multipart de la web se prueba a mano en T112).
+- [ ] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir.** RF-44, RF-46, RF-60 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-1**
+  - Tests primero: common `AdjuntosClinicaTest`: `adjuntoViaja(archivo, consulta)` solo si cuelga de **esa** consulta propia (`consulta_id` no nulo), es de la sección `documentos`, es PDF (o foto de un
+    registro de examen con `remoto_id`, T105) y no está desactivado; **nunca** uno sin consulta ni de otra historia clínica del mismo paciente (RF-46); `limiteExcedido(tamanio, limites)` → texto «El archivo
+    pesa X MB y el máximo es Y MB» **antes** de subir, sin marcarlo enviado; imágenes que no son de exámenes → «No se envía a la web» [Q-E4-1]. jvm `AdjuntosPropiosTest`: una consulta SQL nueva
+    (`archivosDeConsultaPropia`, sin cambiar el esquema) que **no** incluye los `consulta_id IS NULL` por paciente que hoy toma `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`).
+  - Código: `hcgeneral/AdjuntosClinica.kt`, `HistoriaClinica.sq` (solo consultas), `HcRepository` (barrera de T36 en `guardarArchivo/eliminarArchivo`, hoy sin ella: `HcRepository.kt:592-603`).
+  - Hecho cuando: tests en verde (antes, en rojo); `HcApiSync` (pediatría) sigue sin cambios y sus tests verdes.
+- [ ] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los PDF.** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
+  - Tests primero: common `PlanDeEnvioE4Test` (con `habilitada = E4`; con `E3` siguen en `enReserva`): paso `Adjuntos` (`TablaDeLaFila.ARCHIVO`) con las altas (sin `remoto_id`) y las bajas
+    (`activo = false` con `remoto_id`), después de los registros y las cargas y antes del cierre; un adjunto nunca subido y borrado no viaja. jvm `HcClinicaEnvioAdjuntosTest`: **un archivo por pedido**;
+    lee los bytes de `ArchivoStore`; si falta el archivo local → «No se pudo enviar: falta el archivo en este dispositivo» sin reintento solo (lo trae otro dispositivo sin archivo); el `remoto_id` va a
+    `archivo.remoto_id` en la misma transacción (RF-61); **subida cortada y reintento con la misma `clave` → una sola fila y un solo archivo** (`…RepetibleTest` ampliado); tope excedido no se sube
+    ni figura enviado (RF-44); `429`/`5xx` con espera sin ráfaga; `…AtomicoTest` (corte entre confirmar y anotar); el cierre espera a que todo suba.
+  - Código: `PlanDeEnvio.kt` (`PARTE_ADJUNTOS`, `PasoDeEnvio.Adjuntos`), `HcClinicaEnvio.EnvioEnCurso.adjuntos` (con `ArchivoStore` y `HcApiClient.subir`), `limpiarSiNoCambio` para `ARCHIVO`.
+    `ConsultaViewModel.agregarArchivo` y `eliminarArchivo` **ya** llaman a `marcarSucia()` (`ConsultaViewModel.kt:466-497`), así que la cola los ve: un test lo fija y no se agrega nada
+    (lo que T36 (a) dejó sin avisar son el laboratorio y los pendientes, T83).
+  - Hecho cuando: tests en verde (antes, en rojo); los de la cola de E1, E2 y E3 siguen verdes sin cambios; `SyncEngine` sigue sin subir adjuntos (T30).
+- [ ] **T105. Fotos de exámenes en el plan y en el envío (condicional a T95).** RF-44 (D24) — M — Toca API Laravel: no — **Solo si T95 confirma que la web las muestra**
+  - Tests primero: common `PlanDeEnvioE4Test` ampliado y jvm `HcClinicaEnvioAdjuntosTest` ampliado: el adjunto de un registro `examen_complementario` (`archivo.registro_id`) viaja como
+    `tipo = foto_examen` con el `remoto_id` del registro; **si el examen todavía no tiene `remoto_id` o no está confirmado, la foto espera** (el registro va primero y la web solo lo confirma al cerrar la
+    consulta: la foto de un examen `activo = 2` se sube después del cierre o queda «En espera: el examen todavía no está confirmado» — decisión a revisar al implementar); adjuntar a un examen de una consulta
+    anterior [Q-E2-4]; baja de la foto.
+  - Hecho cuando: tests en verde (antes, en rojo); `RegistrosSeccion` (`conArchivos`, `RegistrosSeccion.kt:173`) muestra el adjunto solo cuando E4 está habilitada y T105 hecha.
+- [ ] **T106. La lectura lista y abre los adjuntos de la web con la sesión.** RF-45, RF-33 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-3**
+  - Hoy la lectura solo avisa que existen (`no_leidas = documentos`). Tests primero: jvm `HcClinicaBackendAdjuntosTest`: al **abrir** una consulta (nunca desde el autoguardado) se pide
+    `GET consultas/{id}/adjuntos` y se guardan filas `archivo` locales **sin archivo** (`rutaLocal` nula, `remoto_id` = id de la web, id determinista `hcc-f…` con un `idArchivoWeb` nuevo);
+    lo que la app subió (con `remoto_id`) y lo que trae la lectura son **uno solo**; `bytesDe` baja el archivo la primera vez con `HcApiClient.descargar` (con la sesión, sin enlace público) y lo cachea
+    en `ArchivoStore`; un adjunto dado de baja en la web deja de listarse sin borrar el archivo local (Q15 de la 002: nunca borrar); un `404` del archivo no rompe la pantalla.
+  - Código: `HcClinicaBackend` (lectura de adjuntos de la consulta), `LecturaClinica.kt` (`archivosDeLaWeb`), `ConsultaViewModel.bytesDe` (ya baja por `hc.bajarArchivo`; clínica lo implementa).
+  - Hecho cuando: tests en verde (antes, en rojo); `HcClinicaBackend*Test` de la L siguen verdes; `HcClinicaLecturaE2ETest` se saltea sola.
+- [ ] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-1**
+  - `features/hc` (`ArchivosSeccion.kt`): en una consulta propia de clínica el selector de `documentos` ofrece solo PDF [Q-E4-1]; mensaje del tope antes de subir (T103); estado de cada adjunto
+    («Falta enviar», «En espera», «No se pudo enviar», ya cubiertos por T37); abrir un adjunto de la web con la sesión (`abrirArchivo`); miniatura/ícono de PDF; los adjuntos de registros de examen visibles
+    solo si T105 está hecha; «Esta sección todavía no se envía a la web» desaparece de `documentos`.
+  - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T112.
+- [ ] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
+  - `SUBENTREGA_HABILITADA = E4`: la HC general ofrece las 25 secciones (menos las que D9 deja afuera, que no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
+    `LecturaClinicaCatalogoTest`, `EstadoEnPantallaTest` y los que usan la constante por omisión (con su porqué). **Con esto "casi todo el perfil queda editable"**: lo único que sigue de solo lectura
+    es lo que D9 dice (ver el resumen final del planificador).
+  - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; el wasm compila.
+
+## Pruebas y cierre de E4
+- [ ] **T109. E2E de E4 contra la copia local.** RF-15, RF-16, RF-44 a RF-46 — M — Toca API Laravel: no
+  - `HcClinicaAdjuntosE2ETest` (**se saltea sin las propiedades** de T40): con el paciente «PRUEBA SALUD360» creado por la prueba, sube un **PDF generado por la propia prueba** (pocos KB) a una consulta
+    propia; **repite** la subida (misma clave: una sola fila y un solo archivo); lista de vuelta; lo baja con la sesión y compara el SHA-256; lo da de baja (deja de listarse, el archivo sigue en el disco); un PDF
+    por encima del límite que informa `adjuntos/limites` no se sube ni figura enviado; foto de examen si T95 la confirmó. Pedidos espaciados 1,1 s.
+  - Hecho cuando: en verde contra la copia servida; `suma.sql` antes/después igual salvo lo esperado y **`medico_infos` idéntico (puerta RF-16)**; limpieza por id y por clave **y archivos de prueba borrados del
+    disco** (con su ruta y SHA-256 anotados antes); sin propiedades se saltea y `:core:data:jvmTest` queda en verde.
+- [ ] **T110. Regresión de E4.** RF-5 — S — Toca API Laravel: no
+  - Hecho cuando: `.\gradlew :core:data:jvmTest --rerun` completo, `:especialidades:clinica:jvmTest`, `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev` en verde;
+    `HcPediatriaE2ETest` (que sube fotos y PDF por su camino) y `HcCarteraE2ETest` con `--rerun`; `HcClinicaLecturaE2ETest`; `tests/Unit` de hclinica completo.
+- [ ] **T111. Validación del reviewer de E4.** RF-44 a RF-46 y los transversales — S — Toca API Laravel: no
+  - RF por RF con su test; el límite (de dónde sale y cómo se mide); lo que nunca se envía a clínica (otra HC, sin consulta); los archivos que quedan en disco y por qué; D24; preguntas Q-E4-*; riesgos.
+  - Hecho cuando: el reviewer aprueba o devuelve observaciones y quedan cerradas o anotadas.
+- [ ] **T112. Prueba manual del usuario en `devWeb` (E4).** RF-44 a RF-46 — S — Toca API Laravel: no
+  - Copia local, paciente «PRUEBA SALUD360»: (1) adjuntar un PDF a la consulta y verlo en la web de hclinica (`consulta_pdf/{id}/ver`); (2) Network → Offline: adjuntar, volver, una sola vez en la web; (3) un
+    PDF demasiado grande: el aviso sale antes de subir; (4) un PDF subido desde la web aparece en la app y se abre con la sesión; (5) borrar el PDF propio: desaparece en las dos; (6) el selector de `documentos`
+    ofrece solo PDF [Q-E4-1]; (7) **si T95 lo confirmó**: foto de un examen complementario y verla en la web; (8) **la subida multipart desde el navegador funciona** (el CORS ya permite `POST` y
+    `Authorization`).
+  - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar` aplicado y archivos de prueba borrados; token revocado.
+- [ ] **T113. Limpieza, documentación y cierre de E4.** D4 — S — Toca API Laravel: no
+  - Con los scripts de T95: lo que dejaron T97 a T101 y T109 a T112, por id y por clave, **y los archivos del disco**; conteos y sumas contra la línea base de T5; docs y `MEMORY.md`; propuesta para `AGENTS.md`;
+    la lista de pasos de hosting para la etapa de producción (carpeta de archivos, `SALUD360_IMG_PATH`, límites, privilegios) [Q-E4-2].
+  - Hecho cuando: todo igual a la línea base salvo `salud360_envios`; el usuario cierra E4.
+
+---
+
+# E5 — Aviso de vencimiento y panel de licencias (RF-47 a RF-49) — solo lista, NO se detalla ahora
+Se detalla al llegar a E5, con aprobación aparte (no entra en el camino a «todo editable»; el ingreso con licencia ya está en E1, T35).
 - E5-1. Servidor: leer y guardar la licencia de cada médico para la HC general. RF-47, RF-48.
 - E5-2. App: `HcClinicaBackend.avisoDeLicencia()` y el cartel de «por vencer». RF-47.
 - E5-3. App: panel de licencias con una licencia por médico y por HC, sin copia local por HC; `administraLicencia = true` para clínica

@@ -56,6 +56,8 @@ Archivo: `hclinica/app/Http/Controllers/MedicoController.php`.
   reutilizaba la abierta (`nuevaConsulta`, `:282-320`, y `consultaGet`, `:252-275`) está marcado DEPRECATED.
 - **También `guardarLaboratorioGeneral`, `guardarLaboratorioGeneral2` y `guardarPeso` escriben `medico_infos.es_nueva_consulta = 8`**
   (`:6531`, `:6651`, `:6727`), y otras acciones de la web lo ponen en 0, 1, 3 o 4 (`:909-944`, `:2503-2505`, `:3036-3072`, `:3136`).
+  **[Corregido el 2026-11-07, ver §12]** en el clon el de `guardarPeso` (`:6722-6728`) está **comentado**: lo escriben el laboratorio general
+  (`:6526-6532`) y el reducido (`:6646-6652`) y las fotos de exámenes (`:2497-2506`). La puerta RF-16 no cambia (la API no escribe `medico_infos`).
   Importa para la **puerta bloqueante de RF-16**: la API **no replica** esas escrituras (cargar laboratorio o peso por la API no
   cambia ese estado), y la comparación antes/después de la prueba debe incluir esa tabla **después de cargar laboratorio y peso**.
 - **Cerrar** `establecerActivo` (`:3442-3461`): `activo = 1`, cambia `created_at` por la fecha enviada y la edad, y llama a
@@ -254,3 +256,64 @@ el segundo médico de lo pendiente del primero en el mismo dispositivo (RF-50).
 ## 10. Corrección de una afirmación falsa
 El 2026-11-03 la spec 005 y las anotaciones puestas en la 002 afirmaron que el laboratorio y el peso «nacen pendientes de confirmar
 hasta el cierre». Es falso (ver el punto 2). Se corrigió en la 005 con D20 y se retiró de las anotaciones de la 002 (RF-20 y RF-22).
+
+---
+
+# Anexo del 2026-11-07: cómo escribe hoy la web lo de E2, E3 y E4 (para las tareas T48 a T113)
+Solo lectura del clon `C:\Users\flor\rebonline\hclinica` (rama `salud360-api`). Todos los números de línea son de `app/Http/Controllers/MedicoController.php`
+salvo que se diga otra cosa. Nada de esto cambia la spec; las preguntas que salen están en `tasks.md` («Preguntas abiertas»).
+
+## 11. E2 — formularios y listas
+- **Alimentación** `guardarAlimentacion` `:1917-1959`: una fila por (consulta, paciente) con `activo` 1 o 2 (`existeAlimentacion` `:1961-1971`); reescribe las cuatro casillas y sus
+  detalles cada vez (null → `""`); la casilla «celíaco» se guarda en `seliaco` (`:1943`) y «otra» en `otra` (`:1949`, el parámetro se llama `otro`). Siempre `activo = 1`.
+- **Antecedentes familiares** `guardarAntecedentesFamiliares` `:1198-1315`: una fila por (consulta, paciente) con `activo` 1 o 2 (`existeAntecedentesFamiliares` `:1375-1385`); reescribe las 15
+  casillas y la nota; `dependientes_terceros` recibe el parámetro `dependiente_terceros` (`:1294`). **Perfiles 3 y 4 de la web** (`users.perfil`): solo la nota (`:1202-1204`,
+  `:1321-1338`, con las demás casillas en 0 por `antecedentesFamiliaresSetCamposPorDefecto` `:1340-1373`); el perfil 4 además tiene una **pestaña propia** que guarda en
+  `antecedentes_familiares_perfil4` (`guardarAntecedentesFamiliaresPerfil4` `:1390-1408`; tabla opcional, la copia local no la tiene: ver Q-E2-1). La lectura toma la **última fila activa del
+  paciente** (`ConsultasService.php:108-112`, `delPaciente` `:299-306`: `activo = 1` de consultas con `activo` 1 o 2).
+- **Serologías** `guardarSerologiasHepatitis` `:5964-5999` y **Child-Pugh** `guardarCps` `:6017-6042`: una fila por (consulta, paciente) con `activo != 0` (`existeTablaConsultaPaciente`
+  `:5955-5962`), alta con `activo = 1`; los valores van tal cual del navegador (serologías 0/1/2, puntos 0 a 3); `total_puntos` lo manda el navegador (`:6037`, calculado en `cps.blade.php:124-131`
+  como la suma de los cinco). La lectura: `ConsultasReglas::serologia` (`:139-147`: solo 1 y 2, nunca `NO` por un 0) y `childPugh` (`:192-203`: solo 1 a 3, sin total).
+- **Los cinco estudios** `:6060-6193` (videoendoscopia, ecografía, TC/RMN, biopsia hepática, estudios cardiológicos): una fila por (consulta, paciente) con `activo != 0`, alta con `activo = 1`;
+  `descripcion` (null → `""`) y `fecha` en formato `d/m/Y` convertida por `convertirFechaGuardar` (`:2212-2216`). Columnas: `descripcion` `string` (191) y `fecha` `date NOT NULL` en las migraciones
+  (`2024_08_25_001739_create_ecografia_abdominals_table.php:22-23`, `2025_12_10_130248_create_estudios_cardiologicos_table.php:22-23`). La web **no tiene baja de estudios**. Con perfil 2,
+  `inicializarCampos` (`:2954-3006`) crea al abrir una consulta una fila vacía de motivo y de cada estudio (T11 decide si la API la replica).
+- **Exámenes complementarios** `guardarExamenesComplementarios` `:2280-2350`: el alta es `activo = 2` (`:2321`), `numero_consulta` = pendientes de la consulta + 1 (`:2290-2295`), `numero` del navegador
+  (`:2285-2288`), `fechaSolicitud` = hoy en el servidor (`:2315-2317`), `consulta_respuesta` = la consulta si trae respuesta (`:2307-2313`); editar una fila por id cambia `solicito` y
+  `respuesta`/`consulta_respuesta` (`:2323-2337`) y **escribe `""` si el parámetro viene vacío** (la web no distingue «no tocado»). Columnas `solicito`, `respuesta` `string` (191)
+  (`2020_05_15_140913_create_examenes_complementarios_table.php:22-28`).
+- **Interconsultas** `guardarInterconsulta` `:2040-2110`: si ya existe una fila **confirmada** (`activo = 1`) con ese `numero` para el paciente (`existeInterconsulta` `:2030-2038`), solo se actualiza la
+  `respuesta` y `consulta_respuesta` (`:2054-2064`); si no, alta `activo = 2` (`:2095`). `especialista`, `solicito`, `respuesta` `string` (191)
+  (`2020_05_15_131141_create_interconsulta_table.php:22-29`).
+- **Confirmación al cerrar** `setActivoExamenesComplementarios`, `…Interconsulta`, `…LaboratorioGeneral`, `…General2`, `…Peso` `:2225-2278`: ponen `activo = 1` a **todas** las filas de la consulta, también
+  las dadas de baja (defecto de la web que la API no copia: `EscrituraService::confirmarPendientes` toma solo `activo = 2`).
+- **Lectura de exámenes e interconsultas** (`ConsultasService::historia` `:150-161`): solo `activo = 1`; una fila `activo = 2` (pendiente de confirmar) **no se ve** hasta que se cierra la consulta.
+- **Baja de exámenes e interconsultas:** no existe (D27); sí para laboratorio, peso, PDF, audio (`:4033`), interconsultor (`:4699`) y enfermedad (`:784`).
+
+## 12. E3 — laboratorio, peso y pendientes
+- **Laboratorio general** `guardarLaboratorioGeneral` `:6195-6535`, **reducido** `guardarLaboratorioGeneral2` `:6537-6655` y **peso** `guardarPeso` `:6697-6731`: siempre un `INSERT` (la web no actualiza una
+  carga ya guardada); cada columna que no viene queda `''`; la fecha llega `d/m/Y` y, **si falta, se guarda `2000-01-01`** (`:6515-6521`, `:6635-6641`, `:6711-6717`; la lectura lo trata como «sin fecha»,
+  `ConsultasReglas::fechaDeCarga` `:456-460`); **`activo = 1` desde el alta** (`:6523`, `:6643`, `:6719`): visibles al instante (D20).
+- **`medico_infos`:** el laboratorio general (`:6526-6532`) y el reducido (`:6646-6652`) ponen `es_nueva_consulta = 8`; el de `guardarPeso` está **comentado** en el clon (`:6722-6728`) — corrige §2.
+- **Baja** `eliminarLaboratorioGeneral` `:3682-3698`, `…General2` `:3700-3716`, `eliminarPeso` `:3718-3734`: `activo = 0` solo si estaba en 1 y el paciente coincide. Es la única forma de «editar» en la web:
+  borrar y volver a cargar.
+- **Pendientes** `guardarPendientes` `:4808-4842` (y `guardarPendientesCancelar` `:4773-4806`, que escribe `""`): una fila por (paciente, consulta) con `activo = 1` en `aux_pendientes`, texto completo en
+  `pendientes`; la lectura devuelve la **última fila activa del paciente** (`ConsultasService.php:163-166`, `ConsultasReglas::pendientes` `:618-624`). No existe «resuelto».
+- Pasos de la app que dependen de esto: `laboratorio` y `pendiente` no tienen `remoto_id` hoy (`HistoriaClinica.sq`), los emparejaba por id la lectura (T29 (c)); `CargasLaboratorio.kt` dice «las guardadas no se
+  editan, se borran y se recargan» (Q-E3-1).
+
+## 13. E4 — adjuntos
+- **PDF** `subirConsultaPdf` `:3592-3655`: hasta 15 MB (`:3624`), solo extensión `.pdf` (`:3619-3622`), carpeta `public_path('img/<usuario>/consulta_pdf')` con `mkdir` si falta (`:3628-3633`; en el hosting de
+  pediatría `mkdir` no estaba permitido), nombre `time()_azar.pdf` (`:3635`), fila `consulta_pdfs` (`consulta_id` o 0, `paciente_id`, `nombre_original`, `ruta_archivo` relativa a `img/`, `activo = 1`).
+  `listarConsultaPdf` `:3571-3590` lista **por paciente** (todas las consultas). Se abre con `verConsultaPdf` / `descargarConsultaPdf` (`:3769-3797`, rutas `routes/web.php:271-275`), que
+  comprueban que el archivo exista (`resolveConsultaPdfFile` `:3739-3767`). Baja `eliminarConsultaPdf` `:3657-3680`: `activo = 0`, **no borra el archivo**.
+- **Fotos de exámenes complementarios** `guardarExamenesComplementariosFotos` `:2432-2510`: si el examen no existe lo **crea con `activo = 1`** (`:2437-2459`); guarda cada foto con
+  `Image::make(...)->resize(1980, 1920)` (`:2490`) en `img/<usuario>/examenes_complementarios` y la fila en `examenes_complementarios_fotos` (`numero` = cantidad + 1, `:2512-2522`); y **escribe
+  `medico_infos.es_nueva_consulta` 3 o 4** (`:2497-2506`; la API no lo hace). Se muestran en `cargarExamenesComplementarios` (`:2352-2404`: fotos `activo = 1` del examen `activo = 1`) y la vista arma
+  `img/<foto>` (`resources/views/medico/seccion/examenes_complementarios.blade.php:504-518`). Pendiente de confirmar a mano en la copia local (T95, D24).
+- **Límites:** `config/salud360.php:37` (`SALUD360_IMG_PATH`) existe para forzar la carpeta `img` cuando `public_path()` no coincide con la que sirve el hosting; los límites de PHP del hosting
+  (`upload_max_filesize`, `post_max_size`) mandan sobre los 15 MB (`docs/hc-pediatria-estado-y-plan.md`, «Al subir un adjunto…»). CORS ya permite `POST`, `PUT`, `DELETE`, `Authorization` y `X-Salud360-Token`
+  (`app/Http/Middleware/Salud360Cors.php:33-35`).
+- **App:** `HcApiClient.subir` (multipart, un archivo por pedido, tiempo largo) y `descargar` (rechaza un JSON en lugar del archivo) ya existen (`HcApiClient.kt:139-194`); `archivo.remoto_id` existe desde `5.sqm`;
+  el selector de `documentos` acepta `image/*` y `application/pdf` (`ArchivosSeccion.kt:78`); `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`) toma también los adjuntos por paciente sin consulta
+  (lo que RF-46 prohíbe enviar a clínica).
