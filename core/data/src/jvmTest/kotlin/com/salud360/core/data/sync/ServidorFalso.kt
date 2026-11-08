@@ -13,10 +13,12 @@ import com.salud360.core.data.network.hc.HcResolverRespuesta
 import com.salud360.core.data.network.hc.PaginaCartera
 import com.salud360.core.data.network.hc.PacientesHcApi
 import com.salud360.core.data.network.hc.PacientesHcApis
+import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
+import com.salud360.core.data.network.hc.RespuestaRegistrosDto
 import com.salud360.core.data.repos.HcClinicaBackend
 import com.salud360.core.data.repos.HcClinicaPruebas
 import com.salud360.core.data.repos.HcRepository
@@ -25,7 +27,9 @@ import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.TurnosPorConsulta
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
+import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.especialidad.CodigosHc
+import com.salud360.core.model.hc.RegistroClinico
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -170,6 +174,12 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         }
     }
 
+    // T61 suma las tres operaciones de E2 a la interfaz; el servidor falso que las aplica llega con T63 (ejecutar formularios, antecedentes y registros).
+    override suspend fun formularios(consultaWebId: Long, valores: Map<String, Map<String, String>>): RespuestaEscrituraDto = error("el servidor falso de E2 llega con T63")
+    override suspend fun antecedentes(pacienteWebId: Long, consultaWebId: Long, antecedentes: List<Antecedente>, enviados: Map<String, Antecedente>): RespuestaAntecedentesDto =
+        error("el servidor falso de E2 llega con T63")
+    override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto =
+        error("el servidor falso de E2 llega con T63")
     override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto {
         cierres += CerrarRecibido(consultaWebId, clave, dispositivo, fecha, edadMostrar)
         return operar("cerrar", "$consultaWebId $clave") {

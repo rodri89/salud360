@@ -6,15 +6,20 @@ import com.salud360.core.data.network.hc.ClinicaEscrituraApiRemota
 import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.EjemplosConsultasClinica
 import com.salud360.core.data.network.hc.HcApiClient
+import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
+import com.salud360.core.data.network.hc.RespuestaRegistrosDto
+import com.salud360.core.model.Id
+import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.data.repos.HcClinicaPruebas.MEDICO
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.RegistroClinico
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +60,21 @@ class HcClinicaBackendEscrituraTest {
 
         override suspend fun examen(consultaWebId: Long, campos: Map<String, String>): RespuestaEscrituraDto {
             llamadas += "examen"
+            error("no se usa en T23")
+        }
+
+        override suspend fun formularios(consultaWebId: Long, valores: Map<String, Map<String, String>>): RespuestaEscrituraDto {
+            llamadas += "formularios"
+            error("no se usa en T23")
+        }
+
+        override suspend fun antecedentes(pacienteWebId: Long, consultaWebId: Long, antecedentes: List<Antecedente>, enviados: Map<String, Antecedente>): RespuestaAntecedentesDto {
+            llamadas += "antecedentes"
+            error("no se usa en T23")
+        }
+
+        override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto {
+            llamadas += "registros"
             error("no se usa en T23")
         }
 

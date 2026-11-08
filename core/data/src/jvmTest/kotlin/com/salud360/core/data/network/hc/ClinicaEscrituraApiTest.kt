@@ -1,6 +1,8 @@
 package com.salud360.core.data.network.hc
 
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.RegistroClinico
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.LocalDate
@@ -19,7 +21,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Spec 005 RF-12 a RF-15, RF-20 a RF-22, RF-26 (T19): la API de escritura de la HC general en la app, contra un servidor falso
+ * Spec 005 RF-12 a RF-15, RF-20 a RF-22, RF-26 (T19) y RF-35 a RF-40, RF-70 (T61, E2): la API de escritura de la HC general en la app, contra un servidor falso
  * en `127.0.0.1` (puerto libre, sin dependencias de prueba nuevas). **Ningún pedido sale a un servidor real**: el contrato es
  * el de `md/API_SALUD360_CLINICA.md` de hclinica, «Escritura (E1)». Se prueba el método, la ruta y el cuerpo de cada pedido, que
  * el token va como en la lectura, que cada error llega con su `status` y su `codigo`, que un error es **un solo pedido** (el
@@ -187,6 +189,188 @@ class ClinicaEscrituraApiTest {
         assertEquals(7011L, r.consultaId)
     }
 
+    // ---------- E2: formularios, antecedentes y registros (T61) ----------
+
+    private fun ant(clave: String, flag: Boolean = false, detalle: String = "", activo: Boolean = true, categoria: String = "familiares") = Antecedente(
+        id = "a-$clave", pacienteId = "p1", especialidad = "clinica", categoria = categoria, clave = clave, flag = flag, detalle = detalle,
+        consultaId = "c1", activo = activo,
+    )
+
+    private fun reg(
+        id: String,
+        tipo: String,
+        campos: Map<String, String> = emptyMap(),
+        fecha: LocalDate? = null,
+        activo: Boolean = true,
+        remotoId: String = "",
+    ) = RegistroClinico(
+        id = id, pacienteId = "p1", consultaId = "c1", especialidad = "clinica", tipo = tipo, fecha = fecha, campos = campos, activo = activo, remotoId = remotoId,
+    )
+
+    @Test
+    fun formularios_es_un_put_con_solo_lo_tocado_y_contesta_guardadas_y_desconocidas() = conServidor(
+        200, """{"ok":true,"guardadas":["alimentacion.hiposodica","serologias.hiv","child_pugh.ascitis"],"desconocidas":["serologias.xx"]}""",
+    ) {
+        val r = api.formularios(
+            7011,
+            mapOf(
+                "alimentacion" to mapOf("hiposodica" to "1|sin sal", "otra" to ""),
+                "serologias" to mapOf("hiv" to "NO"),
+                "child_pugh" to mapOf("ascitis" to "2"),
+            ),
+        )
+
+        val p = pedidos.single()
+        assertEquals("PUT", p.metodo)
+        assertEquals("/api/salud360/consultas/7011/formularios", p.ruta)
+        assertNull(p.query)
+        assertEquals(
+            json("""{"formularios":{"alimentacion":{"hiposodica":"1|sin sal","otra":""},"serologias":{"hiv":"NO"},"child_pugh":{"ascitis":"2"}}}"""),
+            p.cuerpoJson(),
+        )
+        p.assertEnviadoConElToken()
+        assertEquals(listOf("alimentacion.hiposodica", "serologias.hiv", "child_pugh.ascitis"), r.guardadas)
+        assertEquals(listOf("serologias.xx"), r.desconocidas)
+    }
+
+    @Test
+    fun antecedentes_es_un_put_a_la_ficha_con_la_consulta_las_casillas_y_la_nota() = conServidor(
+        200, """{"ok":true,"id":321,"guardadas":["hta","nota"],"desconocidas":[]}""",
+    ) {
+        val r = api.antecedentes(5001, 7011, listOf(ant("hta", true, "padre"), ant("nota", true, "Madre diabética"), ant("tabaquismo", true, "no viaja")))
+
+        val p = pedidos.single()
+        assertEquals("PUT", p.metodo)
+        assertEquals("/api/salud360/pacientes/5001/antecedentes-familiares", p.ruta)
+        assertNull(p.query)
+        assertEquals(json("""{"consulta_id":"7011","casillas":{"hta":{"flag":"1","detalle":"padre"}},"nota":"Madre diabética"}"""), p.cuerpoJson())
+        p.assertEnviadoConElToken()
+        assertEquals(321L, r.id)
+        assertEquals(listOf("hta", "nota"), r.guardadas)
+        assertEquals(emptyList(), r.desconocidas)
+    }
+
+    @Test
+    fun antecedentes_manda_solo_lo_que_cambio_contra_lo_enviado() = conServidor(200, """{"ok":true,"id":321,"guardadas":["acv"],"desconocidas":[]}""") {
+        api.antecedentes(5001, 7011, listOf(ant("hta", true, "padre"), ant("acv", true, "madre")), mapOf("hta" to ant("hta", true, "padre")))
+
+        assertEquals(json("""{"consulta_id":"7011","casillas":{"acv":{"flag":"1","detalle":"madre"}}}"""), pedidos.single().cuerpoJson())
+    }
+
+    @Test
+    fun registros_es_un_put_con_los_items_y_lee_los_ids_por_ref() = conServidor(
+        200, """{"ok":true,"ids":{"r:e1":501,"r:x1":"40"},"guardadas":["r:x1"],"desconocidas":["r:z9"]}""",
+    ) {
+        val r = api.registros(
+            7011,
+            listOf(
+                reg("e1", "eco_abdominal", mapOf("detalle" to "Normal"), LocalDate(2026, 10, 1)),
+                reg("x1", "examen_complementario", mapOf("solicito" to "Eco"), activo = false, remotoId = "40"),
+            ),
+        )
+
+        val p = pedidos.single()
+        assertEquals("PUT", p.metodo)
+        assertEquals("/api/salud360/consultas/7011/registros", p.ruta)
+        assertNull(p.query)
+        assertEquals(
+            json(
+                """{"items":[{"ref":"r:e1","tipo":"eco_abdominal","fecha":"2026-10-01","campos":{"detalle":"Normal"}},
+                    {"ref":"r:x1","tipo":"examen_complementario","id":"40","campos":{},"borrado":true}]}""",
+            ),
+            p.cuerpoJson(),
+        )
+        p.assertEnviadoConElToken()
+        assertEquals(mapOf("r:e1" to 501L, "r:x1" to 40L), r.idsPorRef(), "el id como número o como texto")
+        assertEquals(listOf("r:x1"), r.guardadas)
+        assertEquals(listOf("r:z9"), r.desconocidas)
+    }
+
+    @Test
+    fun registros_tolera_un_ids_vacio_codificado_como_lista_por_php() = conServidor(200, """{"ok":true,"ids":[],"guardadas":[],"desconocidas":["r:z9"]}""") {
+        val r = api.registros(7011, listOf(reg("e1", "eco_abdominal", mapOf("detalle" to "x"), LocalDate(2026, 10, 1))))
+
+        assertEquals(emptyMap(), r.idsPorRef())
+        assertEquals(listOf("r:z9"), r.desconocidas)
+    }
+
+    @Test
+    fun el_422_de_los_formularios_y_de_los_registros_trae_el_campo_y_el_motivo() {
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato no es válido.","codigo":"datos_invalidos","campo":"formularios.alimentacion.hiposodica","motivo":"flag_invalido"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.formularios(7011, mapOf("alimentacion" to mapOf("hiposodica" to "1|x"))) }
+
+            assertEquals(422, e.status)
+            assertEquals("datos_invalidos", e.codigo)
+            assertEquals("formularios.alimentacion.hiposodica", e.cuerpo?.get("campo")?.jsonPrimitive?.content)
+            assertEquals("flag_invalido", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+            assertEquals(1, pedidos.size)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato no es válido.","codigo":"datos_invalidos","campo":"items.0.fecha","motivo":"fecha_invalida"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.registros(7011, listOf(reg("e1", "veda", mapOf("detalle" to "x"), LocalDate(2026, 10, 1)))) }
+
+            assertEquals("items.0.fecha", e.cuerpo?.get("campo")?.jsonPrimitive?.content)
+            assertEquals("fecha_invalida", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"Es demasiado largo.","codigo":"datos_invalidos","campo":"items.0.campos.detalle","motivo":"texto_demasiado_largo"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.registros(7011, listOf(reg("e1", "estudios_cardiologicos", mapOf("detalle" to "x"), LocalDate(2026, 10, 1)))) }
+
+            assertEquals("texto_demasiado_largo", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+        }
+    }
+
+    @Test
+    fun una_respuesta_200_sin_guardadas_o_sin_ids_no_es_un_exito() {
+        // formularios y antecedentes: sin `guardadas` no se sabe qué se escribió.
+        conServidor(200, """{"ok":true,"desconocidas":[]}""") {
+            val e = assertFailsWith<TobbException> { api.formularios(7011, mapOf("serologias" to mapOf("hiv" to "NO"))) }
+            assertEquals("respuesta", e.codigo)
+        }
+        conServidor(200, """{"ok":true,"id":321}""") {
+            val e = assertFailsWith<TobbException> { api.antecedentes(5001, 7011, listOf(ant("hta", true, "x"))) }
+            assertEquals("respuesta", e.codigo)
+        }
+        // registros: sin `ids` no se puede anotar el `remoto_id`; sin `guardadas` no se sabe qué se escribió.
+        conServidor(200, """{"ok":true,"guardadas":["r:e1"],"desconocidas":[]}""") {
+            val e = assertFailsWith<TobbException> { api.registros(7011, listOf(reg("e1", "veda", mapOf("detalle" to "x"), LocalDate(2026, 10, 1)))) }
+            assertEquals("respuesta", e.codigo)
+        }
+        conServidor(200, """{"ok":true,"ids":{"r:e1":501},"desconocidas":[]}""") {
+            val e = assertFailsWith<TobbException> { api.registros(7011, listOf(reg("e1", "veda", mapOf("detalle" to "x"), LocalDate(2026, 10, 1)))) }
+            assertEquals("respuesta", e.codigo)
+        }
+    }
+
+    @Test
+    fun sin_nada_que_mandar_las_tres_operaciones_de_E2_no_hacen_ningun_pedido() = conServidor {
+        val a = api.formularios(7011, emptyMap())
+        val b = api.formularios(7011, mapOf("serologias" to mapOf("hiv" to "quizás"), "tabaquismo" to mapOf("x" to "1")))
+        val c = api.antecedentes(5001, 7011, listOf(ant("tabaquismo", true, "x"), ant("hta", true, "x", categoria = "personales"), ant("acv", true, "x", activo = false)))
+        val d = api.antecedentes(5001, 7011, listOf(ant("hta", true, "padre")), mapOf("hta" to ant("hta", true, "padre")))
+        val e = api.registros(7011, emptyList())
+        val f = api.registros(7011, listOf(reg("n1", "documentos", mapOf("detalle" to "x"), LocalDate(2026, 10, 1)), reg("e2", "veda", mapOf("detalle" to ""), LocalDate(2026, 10, 1))))
+
+        assertEquals(0, pedidos.size, "un cuerpo vacío no se manda")
+        for (r in listOf(a, b)) {
+            assertEquals(emptyList(), r.guardadas)
+            assertEquals(emptyList(), r.desconocidas)
+        }
+        for (r in listOf(c, d)) {
+            assertNull(r.id)
+            assertEquals(emptyList(), r.guardadas)
+        }
+        for (r in listOf(e, f)) {
+            assertEquals(emptyMap(), r.idsPorRef())
+            assertEquals(emptyList(), r.guardadas)
+            assertEquals(emptyList(), r.desconocidas)
+        }
+    }
+
     // ---------- Errores ----------
 
     private class Operacion(val nombre: String, val llamar: suspend (ClinicaEscrituraApi) -> Unit)
@@ -198,6 +382,9 @@ class ClinicaEscrituraApiTest {
         Operacion("examen") { it.examen(7011, mapOf("peso" to "70")) },
         Operacion("cerrar") { it.cerrar(7011, "c:uuid-1-cierre", dispositivo, fecha2, null) },
         Operacion("baja") { it.baja(7011, "c:uuid-1-baja", dispositivo) },
+        Operacion("formularios") { it.formularios(7011, mapOf("serologias" to mapOf("hiv" to "NO"))) },
+        Operacion("antecedentes") { it.antecedentes(5001, 7011, listOf(ant("hta", true, "padre"))) },
+        Operacion("registros") { it.registros(7011, listOf(reg("e1", "eco_abdominal", mapOf("detalle" to "Normal"), LocalDate(2026, 10, 1)))) },
     )
 
     private val errores = listOf(
@@ -330,9 +517,10 @@ class ClinicaEscrituraApiTest {
     // ---------- Por construcción ----------
 
     @Test
-    fun la_remota_recibe_el_cliente_completo_y_la_interfaz_tiene_las_cinco_operaciones() {
+    fun la_remota_recibe_el_cliente_completo_y_la_interfaz_tiene_las_ocho_operaciones() {
         assertEquals(listOf(HcApiClient::class.java), ClinicaEscrituraApiRemota::class.java.constructors.single().parameterTypes.toList())
         val operacionesDeLaInterfaz = ClinicaEscrituraApi::class.java.declaredMethods.map { it.name }.filter { '$' !in it }.toSet()
-        assertEquals(setOf("crear", "secciones", "examen", "cerrar", "baja"), operacionesDeLaInterfaz)
+        // T61 suma las tres de E2; ninguna es de laboratorio, peso, pendientes ni adjuntos (E3 y E4).
+        assertEquals(setOf("crear", "secciones", "examen", "cerrar", "baja", "formularios", "antecedentes", "registros"), operacionesDeLaInterfaz)
     }
 }

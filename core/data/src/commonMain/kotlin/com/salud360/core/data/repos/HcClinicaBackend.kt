@@ -45,6 +45,7 @@ import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.ConsultasClinicaApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiSoloLectura
+import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
@@ -52,10 +53,12 @@ import com.salud360.core.data.network.hc.RespuestaEscrituraDto
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
 import com.salud360.core.data.network.hc.RespuestaHistoriaDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
+import com.salud360.core.data.network.hc.RespuestaRegistrosDto
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
+import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
@@ -561,6 +564,9 @@ private object SinEscritura : ClinicaEscrituraApi {
     override suspend fun crear(clave: String, dispositivo: String, pacienteWebId: Long, tipo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCrearConsultaDto = sinApi()
     override suspend fun secciones(consultaWebId: Long, textos: Map<String, String>): RespuestaEscrituraDto = sinApi()
     override suspend fun examen(consultaWebId: Long, campos: Map<String, String>): RespuestaEscrituraDto = sinApi()
+    override suspend fun formularios(consultaWebId: Long, valores: Map<String, Map<String, String>>): RespuestaEscrituraDto = sinApi()
+    override suspend fun antecedentes(pacienteWebId: Long, consultaWebId: Long, antecedentes: List<Antecedente>, enviados: Map<String, Antecedente>): RespuestaAntecedentesDto = sinApi()
+    override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto = sinApi()
     override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto = sinApi()
     override suspend fun baja(consultaWebId: Long, clave: String, dispositivo: String): RespuestaBajaDto = sinApi()
 }
