@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.salud360.core.data.repos.PacientesRepository
 import com.salud360.core.data.repos.ResultadoTurno
 import com.salud360.core.data.repos.TurnosRepository
+import com.salud360.core.data.repos.codigoParaRegistrar
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.sobreElSlot
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.model.Id
 import com.salud360.core.model.newId
@@ -14,7 +16,6 @@ import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.EstadoTurno
 import com.salud360.core.model.turnos.ModuloTurnos
 import com.salud360.core.model.turnos.SlotAgenda
-import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,6 +59,8 @@ data class AgendaUiState(
     val esFeriado: Boolean = false,
     /** La agenda de este médico vive en turnosonlinebb (se lee y escribe contra su API). */
     val remota: Boolean = false,
+    /** Nombre de cada tipo de turno (por código) que informó turnos; sirve para rotular horarios y turnos. */
+    val nombresDeTipos: Map<Int, String> = emptyMap(),
 ) {
     val conCaja: Boolean get() = ModuloTurnos.CAJA_COMENTARIO in modulos
     val primerControlDoble: Boolean get() = ModuloTurnos.PRIMER_CONTROL_DOBLE in modulos
@@ -96,6 +99,7 @@ class AgendaViewModel(
             }
         }
         if (remota) viewModelScope.launch { fecha.collectLatest { f -> refrescar(f) } }
+        viewModelScope.launch { turnos.nombresDeTipos.collect { n -> _state.update { it.copy(nombresDeTipos = n) } } }
         // Fichas de los pacientes del día (afiliado, plan): se observan para que la tarjeta muestre lo que haya en caché.
         viewModelScope.launch {
             turnosDelDia.map { ts -> ts.mapNotNull { it.pacienteId }.distinct().sorted() }.distinctUntilChanged()
@@ -149,28 +153,30 @@ class AgendaViewModel(
         return pacientes.buscar(texto, null, 30)
     }
 
-    /** Asigna un turno a un paciente en un slot (`registrarAsignarTurno`). */
-    fun asignar(paciente: Paciente, f: LocalDate, horario: LocalTime, primerControl: Boolean, segundoHorario: LocalTime? = null, tipo: TipoTurno = TipoTurno.CONSULTA, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
+    /** Asigna un turno a un paciente en un slot (`registrarAsignarTurno`); el turno lleva el tipo del [slot] (sin slot, Consulta). */
+    fun asignar(paciente: Paciente, f: LocalDate, horario: LocalTime, primerControl: Boolean, segundoHorario: LocalTime? = null, slot: SlotAgenda? = null, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
         val t = Turno(
-            newId(), paciente.id, medicoId, consultorioId, f, horario, tipo, otorgadoPor = operador, primerControl = primerControl,
+            newId(), paciente.id, medicoId, consultorioId, f, horario, otorgadoPor = operador, primerControl = primerControl,
             pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial,
-        )
+        ).sobreElSlot(slot)
         val r = if (primerControl && segundoHorario != null) turnos.registrarTurnoDoble(t, segundoHorario) else turnos.registrarTurno(t)
         if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f); cargarProximasFechas() }
         cargarSemana(_state.value.semanaDesde ?: f)
         onResultado(r)
     }
 
-    fun sobreturno(paciente: Paciente, f: LocalDate, horario: LocalTime, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
+    /** Sobreturno; si cae en un horario de la plantilla ([slot]) lleva el tipo de ese horario, si no, Consulta. */
+    fun sobreturno(paciente: Paciente, f: LocalDate, horario: LocalTime, slot: SlotAgenda? = null, onResultado: (ResultadoTurno) -> Unit) = viewModelScope.launch {
         val t = Turno(newId(), paciente.id, medicoId, consultorioId, f, horario, otorgadoPor = operador, sobreturno = true,
-            pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial)
+            pacienteNombre = paciente.nombreCompleto, pacienteDni = paciente.dni, pacienteTelefono = paciente.telefono, pacienteObraSocial = paciente.obraSocial).sobreElSlot(slot)
         val r = turnos.registrarSobreturno(t)
         if (r is ResultadoTurno.Ok) { pacientes.vincular(medicoId, paciente.id); despuesDeCambiar(f); cargarProximasFechas() }
         onResultado(r)
     }
 
-    fun bloquear(f: LocalDate, horario: LocalTime, onResultado: (ResultadoTurno) -> Unit = {}) = viewModelScope.launch {
-        val r = turnos.bloquearHorario(medicoId, consultorioId, f, horario, operador)
+    /** Bloquea un horario; el bloqueo lleva el tipo del [slot] (sin slot, Consulta). */
+    fun bloquear(f: LocalDate, horario: LocalTime, slot: SlotAgenda? = null, onResultado: (ResultadoTurno) -> Unit = {}) = viewModelScope.launch {
+        val r = turnos.bloquearHorario(medicoId, consultorioId, f, horario, operador, codigoParaRegistrar(slot))
         if (r is ResultadoTurno.Ok) { despuesDeCambiar(f); cargarProximasFechas() }
         cargarSemana(_state.value.semanaDesde ?: f)
         onResultado(r)
