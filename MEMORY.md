@@ -329,12 +329,20 @@ registros de personas): el repo es público.
   snackbar (`AdminViewModel.mensaje` ahora es `Aviso`). `AdminRepository.setEspecialidadHc` se eliminó. **El endpoint de turnos todavía no está en producción** (patch en el backup):
   hasta subirlo, la app contesta «todavía no permite cambiar las historias clínicas de un médico desde la app (falta actualizar turnosonlinebb)». Ojo al volver a `hc-general`:
   su T26 (spec 001) pide el mismo `TurnosRepository.guardarHistoriasClinicas` y `setEspecialidadHc` del ViewModel; hay que reconciliarlos en la unión.
-- Rama `feature/admin-tipos-turno` (sobre `main`, **sin commit**): el administrador, en Médicos → tarjeta del médico con agenda (de turnos), tiene la sección «Tipos de turno»:
+- Feature `admin-tipos-turno` (ya commiteado y mergeado en `main`: `5b965c5`, `e616f4c`, `fbae9e2`): el administrador, en Médicos → tarjeta del médico con agenda (de turnos), tiene la sección «Tipos de turno»:
   tilda los tipos del catálogo global, elige su condición («Siempre», «Solo primera consulta», «Solo consultas de seguimiento») y sus opciones (subtipos), guarda con
   `PUT medicos/{id}/tipos-turno` (lista exacta) y crea tipos nuevos con `POST tipos-turno`. Sin esquema local ni cambio optimista: viven en memoria del `AdminViewModel` y se piden
   a demanda, al abrir la sección de ese médico. Reglas puras en `TiposDeTurnoDelMedico.kt` (`core/data`), modelo en `core/model/.../TiposDeTurno.kt` (el enum `TipoTurno` no se tocó).
   La condición es solo configuración (la app no filtra con ella). **Dependencia:** el servidor de turnos con `tipos-turno` tiene que estar en producción; hasta entonces el panel
-  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** agenda con tipos, horarios con tipo, asignar turno con opciones; renombrar/borrar tipos.
+  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** horarios con tipo habilitado, asignar turno con opciones; renombrar/borrar tipos (la agenda con tipos está en la rama de abajo).
+- Feature `agenda-con-tipos` (rama `feature/agenda-con-tipos`, commiteada sobre `main`): la agenda de la app (día, semana, próximas fechas) pide `todos_los_tipos=1`, así que un médico con horarios de otro tipo
+  (deportología, ecografías, tipos creados por el admin) ya no la ve vacía. El código real del tipo se conserva en `Turno`/`HorarioMedico`/`SlotAgenda` (`tipoCodigo`, `codigoDeTipo`; el enum
+  `TipoTurno` sigue igual y su `porCodigo` cae en Consulta, pero el código no se pierde) y se guarda en la columna `tipo_turno` que ya existía (sin migración). Cada horario libre y la semana
+  muestran una etiqueta con el tipo solo si no es «Consulta» o si el día mezcla tipos; el chip de cada turno usa el nombre real. Asignar, sobreturno y bloquear mandan el tipo del horario
+  (reglas puras en `core/data/.../repos/TiposEnLaAgenda.kt`). Los nombres de los tipos viven en memoria (`TurnosRepository.nombresDeTipos`): la base solo guarda el código.
+  **Dependencia:** el servidor de turnos con `todos_los_tipos` ya está en producción desde 2026-11-08; con un servidor viejo el parámetro se ignora y la agenda se ve como hoy (tipo 1).
+  **Pendientes:** selector de tipo en los horarios fijos (`ConfigScreens` sigue con el enum cerrado y no rotula los tipos desconocidos), asignar con opciones, mover un turno a un horario de
+  otro tipo (conserva el tipo original), `agenda/dias-atencion` no recibe el parámetro, y la lista de turnos del paciente (`PacientesScreens`) muestra «Consulta» para un tipo desconocido.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
