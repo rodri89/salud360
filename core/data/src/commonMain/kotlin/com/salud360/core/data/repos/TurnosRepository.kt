@@ -166,6 +166,23 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
         online?.tiposDelMedico(medicoId)
             ?: throw IllegalStateException("Ver los tipos de turno de un médico necesita conexión con turnos.")
 
+    /** Tipos habilitados de cada médico que se leyeron en esta sesión (por id de médico); vacío sin turnos en línea. */
+    val tiposHabilitados: StateFlow<Map<Id, List<TipoTurnoDelMedico>>> = online?.tiposHabilitados ?: MutableStateFlow(emptyMap())
+
+    /** Los tipos habilitados del médico que hay en memoria, o `null` si no se leyeron o no se pudieron leer (se degrada al comportamiento de antes). */
+    fun tiposEnMemoria(medicoId: Id): List<TipoTurnoDelMedico>? = tiposHabilitados.value[medicoId]
+
+    /**
+     * Vuelve a leer de turnos los tipos habilitados del médico (lo hace cualquier rol: administrador, médico o secretaria) para
+     * horarios y asignar. No lanza: [LecturaDeTiposDelMedico] cuenta cómo salió. Un médico propio de Salud 360 no tiene tipos de
+     * turnos ([LecturaDeTiposDelMedico.NoDisponible], sin tocar la red).
+     */
+    suspend fun refrescarTiposDelMedico(medicoId: Id): LecturaDeTiposDelMedico =
+        remota(medicoId)?.refrescarTiposDelMedico(medicoId) ?: LecturaDeTiposDelMedico.NoDisponible
+
+    /** Olvida los tipos en memoria de un médico; se vuelven a leer al abrir Horarios o Asignar. */
+    fun invalidarTiposDelMedico(medicoId: Id) { online?.invalidarTiposDelMedico(medicoId) }
+
     /**
      * Guarda en turnos (`PUT medicos/{n}/tipos-turno`) la lista exacta de tipos habilitados de un médico y devuelve lo
      * que quedó según turnos, con sus avisos. Exige conexión; no hay copia local. La lista la arma `aPedido`.
@@ -252,14 +269,18 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Genera slots cada `intervaloMinutos` entre `desde` y `hasta` para un día (`crear_turnos_dia_dh`). */
     suspend fun generarHorarios(
         medicoId: Id, consultorioId: Id, dia: kotlinx.datetime.DayOfWeek, desde: LocalTime, hasta: LocalTime, intervaloMinutos: Int,
-        tipo: TipoTurno = TipoTurno.CONSULTA, quincenal: Boolean = false, validoDesde: LocalDate? = null, validoHasta: LocalDate? = null,
+        tipoCodigo: Int = CODIGO_TIPO_CONSULTA, quincenal: Boolean = false, validoDesde: LocalDate? = null, validoHasta: LocalDate? = null,
     ): Int {
         var minutos = desde.hour * 60 + desde.minute
         val fin = hasta.hour * 60 + hasta.minute
         var creados = 0
         while (minutos < fin) {
             val h = LocalTime(minutos / 60, minutos % 60)
-            if (agregarHorario(HorarioMedico(newId(), medicoId, consultorioId, dia, h, tipoTurno = tipo, validoDesde = validoDesde, validoHasta = validoHasta, quincenal = quincenal))) creados++
+            val nuevo = HorarioMedico(
+                newId(), medicoId, consultorioId, dia, h, tipoTurno = TipoTurno.porCodigo(tipoCodigo), validoDesde = validoDesde, validoHasta = validoHasta,
+                quincenal = quincenal, tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoCodigo),
+            )
+            if (agregarHorario(nuevo)) creados++
             minutos += intervaloMinutos
         }
         return creados

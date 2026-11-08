@@ -142,6 +142,15 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         if (nuevos.isNotEmpty()) _nombresDeTipos.update { it + nuevos }
     }
 
+    private val _tiposHabilitados = MutableStateFlow<Map<Id, List<TipoTurnoDelMedico>>>(emptyMap())
+
+    /**
+     * Tipos habilitados de cada médico (por id de médico) que se leyeron de turnos en esta sesión, con sus opciones: de
+     * ahí salen los tipos que se ofrecen al cargar un horario y las opciones que se ofrecen al asignar un turno. Vive en
+     * memoria (turnos es el dueño del dato). Un médico que no está en el mapa no se leyó o no se pudo leer.
+     */
+    val tiposHabilitados: StateFlow<Map<Id, List<TipoTurnoDelMedico>>> = _tiposHabilitados
+
     // ------------------------------------------------------------------
     // Lectura
     // ------------------------------------------------------------------
@@ -634,7 +643,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     }
 
     // ------------------------------------------------------------------
-    // Tipos de turno (solo administrador; sin copia local: turnos es el dueño del dato)
+    // Tipos de turno (catálogo y edición: solo administrador; los habilitados de un médico los lee también él y su secretaria;
+    // sin copia local: turnos es el dueño del dato)
     // ------------------------------------------------------------------
 
     /** Catálogo global de tipos de turno (`GET tipos-turno`), con los inactivos. No se guarda en el dispositivo. */
@@ -667,7 +677,33 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         return r.tipo.toCatalogo()
     }
 
-    /** Tipos habilitados de un médico, con su condición y sus opciones (`GET medicos/{n}/tipos-turno`, solo administrador). */
+    /**
+     * Vuelve a leer los tipos habilitados del médico (el rol que sea: administrador, el propio médico o la secretaria con
+     * permiso) y los deja en memoria ([tiposHabilitados]) junto con sus nombres. Nunca lanza (salvo cancelación): si falla
+     * lo cuenta con [LecturaDeTiposDelMedico]. Un servidor viejo (403 al no administrador, sin ruta) o cualquier respuesta
+     * que no sirva descarta la lista de ese médico; la falta de conexión conserva la que ya había.
+     */
+    suspend fun refrescarTiposDelMedico(medicoId: Id): LecturaDeTiposDelMedico = try {
+        val tipos = tiposDelMedico(medicoId)
+        _tiposHabilitados.update { it + (medicoId to tipos) }
+        aprenderNombres(
+            (tipos.map { it.id to it.nombre } + tipos.flatMap { t -> t.opciones.map { it.id to it.nombre } })
+                .filter { it.second.isNotBlank() }.toMap(),
+        )
+        LecturaDeTiposDelMedico.Leidos(tipos)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.d { "No se pudieron leer los tipos de turno de $medicoId: ${e.message}" }
+        lecturaDeTiposFallida(e).also { if (it is LecturaDeTiposDelMedico.NoDisponible) invalidarTiposDelMedico(medicoId) }
+    }
+
+    /** Olvida los tipos en memoria de un médico (se vuelven a leer al abrir Horarios o Asignar). */
+    fun invalidarTiposDelMedico(medicoId: Id) {
+        _tiposHabilitados.update { it - medicoId }
+    }
+
+    /** Tipos habilitados de un médico, con su condición y sus opciones (`GET medicos/{n}/tipos-turno`: administrador, el médico dueño y la secretaria con permiso). */
     suspend fun tiposDelMedico(medicoId: Id): List<TipoTurnoDelMedico> {
         val n = numeroMedico(medicoId)
         val r = sinRutaEnLaWeb("ver los tipos de turno de un médico") {
@@ -699,6 +735,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             }
         }
         log.d { "Tipos de turno de $medicoId en turnos: ${r.tipos.map { it.id }}, ${r.avisos.size} avisos" }
+        // Lo que había en memoria para horarios y asignar ya no vale: se vuelve a leer al abrirlos.
+        invalidarTiposDelMedico(medicoId)
         return GuardadoTipos(r.tipos.map { it.toTipoDelMedico() }, r.avisos)
     }
 
