@@ -334,15 +334,22 @@ registros de personas): el repo es público.
   `PUT medicos/{id}/tipos-turno` (lista exacta) y crea tipos nuevos con `POST tipos-turno`. Sin esquema local ni cambio optimista: viven en memoria del `AdminViewModel` y se piden
   a demanda, al abrir la sección de ese médico. Reglas puras en `TiposDeTurnoDelMedico.kt` (`core/data`), modelo en `core/model/.../TiposDeTurno.kt` (el enum `TipoTurno` no se tocó).
   La condición es solo configuración (la app no filtra con ella). **Dependencia:** el servidor de turnos con `tipos-turno` tiene que estar en producción; hasta entonces el panel
-  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** horarios con tipo habilitado, asignar turno con opciones; renombrar/borrar tipos (la agenda con tipos está en la rama de abajo).
+  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** renombrar/borrar tipos (la agenda con tipos y los horarios/asignar con tipos habilitados están en las ramas de abajo).
 - Feature `agenda-con-tipos` (rama `feature/agenda-con-tipos`, commiteada sobre `main`): la agenda de la app (día, semana, próximas fechas) pide `todos_los_tipos=1`, así que un médico con horarios de otro tipo
   (deportología, ecografías, tipos creados por el admin) ya no la ve vacía. El código real del tipo se conserva en `Turno`/`HorarioMedico`/`SlotAgenda` (`tipoCodigo`, `codigoDeTipo`; el enum
   `TipoTurno` sigue igual y su `porCodigo` cae en Consulta, pero el código no se pierde) y se guarda en la columna `tipo_turno` que ya existía (sin migración). Cada horario libre y la semana
   muestran una etiqueta con el tipo solo si no es «Consulta» o si el día mezcla tipos; el chip de cada turno usa el nombre real. Asignar, sobreturno y bloquear mandan el tipo del horario
   (reglas puras en `core/data/.../repos/TiposEnLaAgenda.kt`). Los nombres de los tipos viven en memoria (`TurnosRepository.nombresDeTipos`): la base solo guarda el código.
   **Dependencia:** el servidor de turnos con `todos_los_tipos` ya está en producción desde 2026-11-08; con un servidor viejo el parámetro se ignora y la agenda se ve como hoy (tipo 1).
-  **Pendientes:** selector de tipo en los horarios fijos (`ConfigScreens` sigue con el enum cerrado y no rotula los tipos desconocidos), asignar con opciones, mover un turno a un horario de
-  otro tipo (conserva el tipo original), `agenda/dias-atencion` no recibe el parámetro, y la lista de turnos del paciente (`PacientesScreens`) muestra «Consulta» para un tipo desconocido.
+  **Pendientes:** mover un turno a un horario de otro tipo (conserva el tipo original), `agenda/dias-atencion` no recibe el parámetro, y la lista de turnos del paciente (`PacientesScreens`)
+  muestra «Consulta» para un tipo desconocido. (El selector de tipo de los horarios y asignar con opciones se hicieron en la rama de abajo.)
+- Feature `horarios-turnos-con-tipos` (rama `feature/horarios-turnos-con-tipos`, sobre `main`): el selector de tipo de Horarios ofrece solo los tipos habilitados del médico
+  (se oculta si hay uno solo; un horario con un tipo que el enum no conoce se rotula con su nombre real y nunca se reescribe a Consulta). Al asignar un turno o un sobreturno sobre un horario
+  cuyo tipo tiene opciones aparece «Opción del turno (opcional)» con «Sin especificar» (= el tipo del horario) y el turno viaja con el código de la opción; el chip de la lista del día
+  muestra «Tipo: Opción» si el padre es conocido. La condición (primera consulta/seguimiento) sigue siendo solo informativa. Reglas puras en `TiposParaHorariosYTurnos.kt` (`core/data`); los tipos
+  del médico se leen con `GET medicos/{n}/tipos-turno` desde cualquier rol y viven en memoria por médico (`AgendaTurnosOnline.tiposHabilitados`; se vuelven a leer al abrir Horarios/Agenda/Asignar y se
+  invalidan al guardar tipos desde el admin). **Dependencia:** el servidor de turnos con la lectura de `tipos-turno` para médico/secretaria y las validaciones `tipo_no_habilitado` / `tipo_invalido`
+  ya está en producción desde 2026-11-08; con un servidor viejo (403/404/405) la app degrada sin romper: Horarios ofrece solo «Consulta» y Asignar queda como antes (sin opciones). Sin esquema local.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del

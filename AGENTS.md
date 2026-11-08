@@ -88,7 +88,9 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
   siguen siendo solo locales. Los tipos de turno habilitados de un médico, su condición («Siempre», solo primera consulta, solo
   seguimiento) y sus opciones también se guardan en turnos, con `PUT medicos/{id}/tipos-turno` (lista exacta) y `POST tipos-turno`
   (alta en el catálogo global): no se persisten en la base local (viven en memoria del `AdminViewModel`, se piden al abrir la sección
-  «Tipos de turno» de ese médico) y la entrega solo cubre al administrador; el enum `TipoTurno` sigue siendo el cerrado de siempre.
+  «Tipos de turno» de ese médico); el alta y la edición son solo del administrador, pero la lectura de los tipos habilitados de un médico (`GET medicos/{n}/tipos-turno`)
+  la hace también el propio médico y su secretaria: el selector de tipo de Horarios y las opciones al asignar un turno salen de ahí (`TurnosRepository.tiposHabilitados`, en memoria; sin
+  lectura —servidor viejo o sin red— se degrada a «Consulta» y a asignar sin opciones); el enum `TipoTurno` sigue siendo el cerrado de siempre.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.
 - Los datos cuyo dueño es remoto no deben quedar `dirty` en el dispositivo (ese fue un bug real en licencias).
