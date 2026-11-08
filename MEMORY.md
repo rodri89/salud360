@@ -242,6 +242,13 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
+- Bloqueos y tipos de turno (servidor turnosonlinebb, **pendiente de subir a producción**, sin commit): los bloqueos (paciente
+  DNI 99999) ocupan el horario sin importar el tipo de turno. Causa: la lista de horarios libres filtra los turnos por `tipo_turno`
+  (y el bloqueo nace con tipo 1) pero la validación al reservar no, así que un médico con varios tipos mostraba libre un horario
+  bloqueado y recién al elegirlo decía «ocupado». `bloquear-dia` ahora bloquea los horarios de todos los tipos. Sin migración
+  ni cambios en la app. Reserva interna de la secretaria (panel web): corregida en el servidor (filtraba por tipo en
+  `consultarTurno`, así que dejaba reservar sobre un bloqueo, y al mover un turno cancelaba el original antes de validar el
+  destino); también **pendiente de subir**, sin commit.
 - Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
   `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
   commit `19e4e2c`). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Commits hechos** (`19e4e2c` ocultar
@@ -350,6 +357,10 @@ registros de personas): el repo es público.
   del médico se leen con `GET medicos/{n}/tipos-turno` desde cualquier rol y viven en memoria por médico (`AgendaTurnosOnline.tiposHabilitados`; se vuelven a leer al abrir Horarios/Agenda/Asignar y se
   invalidan al guardar tipos desde el admin). **Dependencia:** el servidor de turnos con la lectura de `tipos-turno` para médico/secretaria y las validaciones `tipo_no_habilitado` / `tipo_invalido`
   ya está en producción desde 2026-11-08; con un servidor viejo (403/404/405) la app degrada sin romper: Horarios ofrece solo «Consulta» y Asignar queda como antes (sin opciones). Sin esquema local.
+- Rama `feature/ajustes-turnos` (commit `d505e26`, mergeado sobre la agenda con tipos): agenda del día con barra compacta (`BarraAgendaDia` en `AgendaScreens.kt`): fecha con
+  flechas y «Hoy» en una línea (la fecha abre el calendario), «Sobreturno», «Ver semana» y total de caja contra la derecha (solo con
+  módulo caja), en un `FlowRow`; las próximas fechas siguen como 3 pills en una fila propia debajo del picker. Solo cambia la
+  disposición; las acciones y el ViewModel son los mismos.
 
 ## Entorno local (Windows + XAMPP)
 - Clones de trabajo: `rebonline\hclinica` (no `C:\Users\flor\hclinica`, que tiene cambios sin commitear del
