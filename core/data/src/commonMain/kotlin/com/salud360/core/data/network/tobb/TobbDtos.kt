@@ -46,6 +46,8 @@ data class TobbTurno(
     val caja: Double = 0.0,
     val comentario: String? = "",
     @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    /** Nombre del tipo según el catálogo de turnos; un servidor viejo no lo manda. */
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
     val especialidad: String? = null,
     @SerialName("otorgado_por") val otorgadoPor: String? = null,
     @SerialName("cancelado_por") val canceladoPor: String? = null,
@@ -56,9 +58,18 @@ data class TobbTurno(
     val paciente: TobbPacienteResumen? = null,
 )
 
-/** `{horario, libre}`; con primer control doble también `horario2`. */
+/**
+ * `{horario, libre}`; con primer control doble también `horario2`. Con `todos_los_tipos=1` cada horario trae su `tipo_turno` y
+ * `tipo_turno_nombre`; un servidor viejo (que ignora el parámetro) no los manda: el tipo queda en 1 y el nombre en `null`.
+ */
 @Serializable
-data class TobbSlot(val horario: String, val horario2: String? = null, val libre: Int = 0)
+data class TobbSlot(
+    val horario: String,
+    val horario2: String? = null,
+    val libre: Int = 0,
+    @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
+)
 
 @Serializable
 data class TobbAgendaDia(
@@ -153,6 +164,8 @@ data class TobbHorarioFijo(
     val horario: String,
     val doble: Int = 0,
     @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    /** Nombre del tipo según el catálogo de turnos; un servidor viejo no lo manda. */
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
     @SerialName("valido_desde") val validoDesde: String? = null,
     @SerialName("valido_hasta") val validoHasta: String? = null,
     val quincenal: Int = 0,

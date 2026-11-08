@@ -228,9 +228,10 @@ fun Consultorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean 
 fun HorarioRow.toModel() = HorarioMedico(
     id, medico_id, consultorio_id, dia.toDayOfWeek(), horario.toLocalTime(), doble.b(), TipoTurno.porCodigo(tipo_turno.toInt()),
     valido_desde.toLocalDateOrNull(), valido_hasta.toLocalDateOrNull(), activo.b(), quincenal.b(),
+    tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipo_turno.toInt()),
 )
 fun HorarioMedico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = HorarioRow(
-    id, medicoId, consultorioId, dia.toNumero(), horario.hhmm(), doble.l(), tipoTurno.codigo.toLong(),
+    id, medicoId, consultorioId, dia.toNumero(), horario.hhmm(), doble.l(), codigoDeTipo.toLong(),
     validoDesde?.toString(), validoHasta?.toString(), activo.l(), updatedAt, deleted.l(), dirty.l(), quincenal.l(),
 )
 
@@ -246,9 +247,10 @@ fun TurnoRow.toModel() = Turno(
     id, paciente_id, medico_id, consultorio_id, LocalDate.parse(fecha), horario.toLocalTime(), TipoTurno.porCodigo(tipo_turno.toInt()),
     EstadoTurno.valueOf(estado), Asistencia.valueOf(asistencia), sobreturno.b(), primer_control.b(), caja, comentario, otorgado_por,
     cancelado_por, recordatorio_enviado.b(), pagado.b(), importe_reserva, especialidad, paciente_nombre, paciente_dni, paciente_telefono, paciente_obra_social,
+    tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipo_turno.toInt()),
 )
 fun Turno.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = TurnoRow(
-    id, pacienteId, medicoId, consultorioId, fecha.toString(), horario.hhmm(), tipoTurno.codigo.toLong(), estado.name, asistencia.name,
+    id, pacienteId, medicoId, consultorioId, fecha.toString(), horario.hhmm(), codigoDeTipo.toLong(), estado.name, asistencia.name,
     sobreturno.l(), primerControl.l(), caja, comentario, otorgadoPor, canceladoPor, recordatorioEnviado.l(), pagado.l(), importeReserva,
     especialidad, pacienteNombre, pacienteDni, pacienteTelefono, pacienteObraSocial, updatedAt, deleted.l(), dirty.l(),
 )

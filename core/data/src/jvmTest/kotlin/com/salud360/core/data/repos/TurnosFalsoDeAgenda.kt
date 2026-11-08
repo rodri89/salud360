@@ -19,7 +19,11 @@ import java.net.InetSocketAddress
  */
 class TurnosFalsoDeAgenda : AutoCloseable {
     /** Un pedido recibido: lo que el test necesita para comprobar método, ruta, token y cuerpo. */
-    data class Pedido(val metodo: String, val ruta: String, val token: String?, val cuerpo: String)
+    data class Pedido(val metodo: String, val ruta: String, val token: String?, val cuerpo: String, val consulta: String = "") {
+        /** Los parámetros de la URL (`?a=1&b=2`) como mapa; sin ellos, vacío. */
+        val parametros: Map<String, String>
+            get() = consulta.split('&').filter { it.contains('=') }.associate { it.substringBefore('=') to it.substringAfter('=') }
+    }
 
     /** Médico inventado del catálogo. Un campo en `null` no viaja: es el servidor que todavía no lo informa. */
     data class MedicoFalso(
@@ -74,6 +78,16 @@ class TurnosFalsoDeAgenda : AutoCloseable {
     @Volatile
     var respuestaDeEdicionDePaciente: Pair<Int, String> = 404 to """{"ok":false,"mensaje":"la ruta de pacientes no está en el servidor falso"}"""
 
+    private val rutasLibres = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
+
+    /**
+     * Contesta `metodo ruta` (la ruta sin el prefijo `/api/salud360/`, por ejemplo `agenda/dia`) con `(estado, cuerpo)`.
+     * Sirve para las rutas de la agenda y de los turnos; lo que no se configura sigue dando 404.
+     */
+    fun responderA(metodo: String, ruta: String, estado: Int, cuerpo: String) {
+        rutasLibres["$metodo $ruta"] = estado to cuerpo
+    }
+
     private val anotados = mutableListOf<Pedido>()
 
     fun pedidos(): List<Pedido> = synchronized(anotados) { anotados.toList() }
@@ -96,6 +110,7 @@ class TurnosFalsoDeAgenda : AutoCloseable {
                 ruta = x.requestURI.path,
                 token = x.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer "),
                 cuerpo = cuerpo,
+                consulta = x.requestURI.rawQuery.orEmpty(),
             )
         }
         val ruta = x.requestURI.path.removePrefix(PREFIJO)
@@ -118,6 +133,7 @@ class TurnosFalsoDeAgenda : AutoCloseable {
             x.requestMethod == "POST" && ruta == "pacientes" -> responder(x, respuestaDeAltaDePaciente.first, respuestaDeAltaDePaciente.second)
             x.requestMethod == "PUT" && ruta.startsWith("pacientes/") ->
                 responder(x, respuestaDeEdicionDePaciente.first, respuestaDeEdicionDePaciente.second)
+            rutasLibres.containsKey("${x.requestMethod} $ruta") -> rutasLibres.getValue("${x.requestMethod} $ruta").let { responder(x, it.first, it.second) }
             else -> responder(x, 404, """{"ok":false,"mensaje":"la ruta $ruta no está en el servidor falso"}""")
         }
     }

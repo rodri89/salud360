@@ -52,8 +52,24 @@ fun TobbHorarioFijo.toHorario(medicoId: Id, consultorioId: Id): HorarioMedico? {
     return HorarioMedico(
         TobbIds.horario(id), medicoId, consultorioId, DayOfWeek(dia), hora, doble = doble == 1, tipoTurno = TipoTurno.porCodigo(tipoTurno),
         validoDesde = validoDesde?.aFechaTobb(), validoHasta = validoHasta?.aFechaTobb(), activo = true, quincenal = quincenal == 1,
+        tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoTurno),
     )
 }
+
+/** Los nombres de tipo que vinieron con un código (`tipo_turno_nombre`): los vacíos o en blanco no cuentan. */
+private fun soloLosQueTienenNombre(pares: List<Pair<Int, String?>>): Map<Int, String> =
+    pares.mapNotNull { (codigo, nombre) -> nombre?.trim()?.takeIf { it.isNotEmpty() }?.let { codigo to it } }.toMap()
+
+/** Nombre de cada tipo que informa un día de agenda (en sus horarios y en sus turnos), por código. */
+fun TobbAgendaDia.nombresDeTipos(): Map<Int, String> =
+    soloLosQueTienenNombre(slots.map { it.tipoTurno to it.tipoTurnoNombre } + turnos.map { it.tipoTurno to it.tipoTurnoNombre })
+
+/** Nombre de cada tipo que informan los horarios fijos de `GET horarios`, por código. */
+fun TobbHorariosResponse.nombresDeTipos(): Map<Int, String> =
+    soloLosQueTienenNombre(horariosFijos.map { it.tipoTurno to it.tipoTurnoNombre })
+
+/** Nombre de cada tipo que informan los turnos de una respuesta (alta, sobreturno, bloqueo), por código. */
+fun List<TobbTurno>.nombresDeTipos(): Map<Int, String> = soloLosQueTienenNombre(map { it.tipoTurno to it.tipoTurnoNombre })
 
 /** Fecha especial de `GET horarios` → modelo local con id `tobb-f<id>`. */
 fun TobbFechaEspecial.toFechaAgregada(medicoId: Id, consultorioId: Id): FechaAgregada? {
@@ -97,6 +113,7 @@ fun TobbTurno.toTurno(): Turno? {
         pacienteDni = if (bloqueo) "" else p?.dni.texto(),
         pacienteTelefono = if (bloqueo) "" else p?.telefono.texto(),
         pacienteObraSocial = if (bloqueo) "" else p?.obraSocial ?: "",
+        tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoTurno),
     )
 }
 
@@ -123,10 +140,13 @@ fun TobbPaciente.toPaciente(): Paciente = Paciente(
  */
 fun List<TobbSlot>.toSlots(turnos: List<Turno>, dobles: Boolean): List<SlotAgenda> {
     val porHorario = turnos.filter { it.estado != EstadoTurno.CANCELADO }.associateBy { it.horario }
-    val ordenados = mapNotNull { s -> s.horario.aHoraTobb()?.let { it to (s.libre == 1) } }.sortedBy { it.first }
-    return ordenados.mapIndexed { i, (h, libre) ->
+    val ordenados = mapNotNull { s -> s.horario.aHoraTobb()?.let { Triple(it, s.libre == 1, s.tipoTurno) } }.sortedBy { it.first }
+    return ordenados.mapIndexed { i, (h, libre, tipo) ->
         val siguienteLibre = ordenados.getOrNull(i + 1)?.second == true
-        SlotAgenda(horario = h, libre = libre && porHorario[h] == null, turno = porHorario[h], doble = dobles && libre && siguienteLibre)
+        SlotAgenda(
+            horario = h, libre = libre && porHorario[h] == null, turno = porHorario[h], doble = dobles && libre && siguienteLibre,
+            tipoTurno = TipoTurno.porCodigo(tipo), tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipo),
+        )
     }
 }
 

@@ -35,6 +35,8 @@ import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.model.pacientes.Paciente
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -70,6 +72,9 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** true si la agenda de este médico se gestiona en turnosonlinebb. */
     fun esRemota(medicoId: Id): Boolean = online != null && TobbIds.esTobb(medicoId)
     private fun remota(medicoId: Id): AgendaTurnosOnline? = online?.takeIf { TobbIds.esTobb(medicoId) }
+
+    /** Nombre de cada tipo de turno (por código) que informó turnos en esta sesión; vacío si no hay turnos en línea o no los manda. */
+    val nombresDeTipos: StateFlow<Map<Int, String>> = online?.nombresDeTipos ?: MutableStateFlow(emptyMap())
 
     /**
      * Trae de turnosonlinebb la agenda del día y la deja en la caché local (los flujos `observar…` se actualizan solos).
@@ -228,7 +233,7 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Alta de un horario fijo; rechaza duplicados (día + horario + consultorio + tipo). En médicos de turnosonlinebb se crea en la web. */
     suspend fun agregarHorario(h: HorarioMedico): Boolean {
         val existe = q.horariosDeMedicoDia(h.medicoId, h.consultorioId, h.dia.ordinal + 1L).lista { it.toModel() }
-            .any { it.horario == h.horario && it.tipoTurno == h.tipoTurno }
+            .any { it.horario == h.horario && it.codigoDeTipo == h.codigoDeTipo }
         if (existe) return false
         remota(h.medicoId)?.let { return it.agregarHorario(h) }
         q.upsertHorario(h.toRow(ahoraMillis()))
@@ -294,14 +299,18 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
      * 2. cruzados con turnos activos/bloqueados
      * 3. feriado → sin turnos
      * 4. módulo "mostrar de a dos" → solo el primer par no ocupado es reservable online
+     *
+     * Sin [tipo], un médico de turnosonlinebb devuelve los horarios de todos los tipos (cada slot lleva el suyo); uno propio
+     * de Salud 360, solo los de Consulta, como siempre.
      */
-    suspend fun slotsDelDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno = TipoTurno.CONSULTA): List<SlotAgenda> {
+    suspend fun slotsDelDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno? = null): List<SlotAgenda> {
         remota(medicoId)?.let { return it.dia(medicoId, consultorioId, fecha, tipo).slots }
         if (esFeriado(fecha)) return emptyList()
+        val tipoLocal = tipo ?: TipoTurno.CONSULTA
         val modulos = modulos(medicoId)
         val agregada = q.fechaAgregada(medicoId, consultorioId, fecha.toString()).uno { it.toModel() }
         val plantilla = q.horariosDeMedicoDia(medicoId, consultorioId, fecha.dayOfWeek.ordinal + 1L).lista { it.toModel() }
-            .filter { it.tipoTurno == tipo && it.vigenteEn(fecha) }
+            .filter { it.tipoTurno == tipoLocal && it.vigenteEn(fecha) }
         val horarios: List<Pair<LocalTime, Boolean>> = agregada?.horarios?.map { it to false }
             ?: plantilla.map { it.horario to it.doble }
         val ocupados = q.turnosOcupados(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }.associateBy { it.horario }
@@ -396,12 +405,20 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
         return ResultadoTurno.Ok(t)
     }
 
-    /** Bloquea un horario sin paciente (`estado = BLOQUEADO`, equivalente a `activo = 2`). */
-    suspend fun bloquearHorario(medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String): ResultadoTurno {
-        remota(medicoId)?.let { return it.bloquearHorario(medicoId, consultorioId, fecha, horario) }
+    /**
+     * Bloquea un horario sin paciente (`estado = BLOQUEADO`, equivalente a `activo = 2`). [tipoCodigo] es el tipo del horario
+     * que se bloquea (`codigoParaRegistrar` del slot): en turnos de otro tipo el bloqueo lo lleva, el de tipo 1 no lo manda.
+     */
+    suspend fun bloquearHorario(
+        medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String, tipoCodigo: Int = CODIGO_TIPO_CONSULTA,
+    ): ResultadoTurno {
+        remota(medicoId)?.let { return it.bloquearHorario(medicoId, consultorioId, fecha, horario, tipoCodigo) }
         val ocupados = q.turnosOcupados(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }
         if (ocupados.any { it.horario == horario }) return ResultadoTurno.HorarioOcupado
-        val t = Turno(newId(), null, medicoId, consultorioId, fecha, horario, estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Bloqueado")
+        val t = Turno(
+            newId(), null, medicoId, consultorioId, fecha, horario, TipoTurno.porCodigo(tipoCodigo),
+            estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Bloqueado", tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoCodigo),
+        )
         q.upsertTurno(t.toRow(ahoraMillis()))
         return ResultadoTurno.Ok(t)
     }

@@ -47,6 +47,7 @@ import com.salud360.core.data.network.tobb.TobbSecretariasResponse
 import com.salud360.core.data.network.tobb.aFechaTobb
 import com.salud360.core.data.network.tobb.aCodigoTobb
 import com.salud360.core.data.network.tobb.esBloqueo
+import com.salud360.core.data.network.tobb.nombresDeTipos
 import com.salud360.core.data.network.tobb.texto
 import com.salud360.core.data.network.tobb.toCatalogo
 import com.salud360.core.data.network.tobb.toTipoDelMedico
@@ -84,6 +85,9 @@ import com.salud360.core.model.turnos.TipoTurnoCatalogo
 import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
@@ -125,23 +129,41 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
 
     fun esFeriadoCacheado(fecha: LocalDate): Boolean = feriados[fecha] == true
 
+    private val _nombresDeTipos = MutableStateFlow<Map<Int, String>>(emptyMap())
+
+    /**
+     * Nombre de cada tipo de turno (por código) que turnos informó en las lecturas de esta sesión. Los turnos de la caché
+     * local solo guardan el código (el esquema no cambia), así que la pantalla rotula con este mapa. Vive en memoria; si
+     * turnos no manda nombres (servidor viejo) queda vacío y se rotula con el del enum o «Tipo <código>».
+     */
+    val nombresDeTipos: StateFlow<Map<Int, String>> = _nombresDeTipos
+
+    private fun aprenderNombres(nuevos: Map<Int, String>) {
+        if (nuevos.isNotEmpty()) _nombresDeTipos.update { it + nuevos }
+    }
+
     // ------------------------------------------------------------------
     // Lectura
     // ------------------------------------------------------------------
 
-    suspend fun dia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno = TipoTurno.CONSULTA): DiaAgendaResuelto {
-        val obj = turnos.tobbGet("agenda/dia", params(medicoId, consultorioId, "fecha" to fecha.toString(), "tipo_turno" to tipo.codigo))
+    /**
+     * Agenda de un día. Sin [tipo] pide los horarios de TODOS los tipos (`todos_los_tipos=1`: un servidor viejo ignora el
+     * parámetro y sigue devolviendo solo los de tipo 1); con [tipo] pide solo los de ese tipo, como antes.
+     */
+    suspend fun dia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno? = null): DiaAgendaResuelto {
+        val filtro = if (tipo == null) TODOS_LOS_TIPOS else "tipo_turno" to tipo.codigo
+        val obj = turnos.tobbGet("agenda/dia", params(medicoId, consultorioId, "fecha" to fecha.toString(), filtro))
         return cachearDia(medicoId, consultorioId, decodificar(TobbAgendaDia.serializer(), obj))
     }
 
-    /** Próximos días con horarios cargados a partir de `desde` (equivalente a la agenda semanal de la web). */
+    /** Próximos días con horarios cargados a partir de `desde` (equivalente a la agenda semanal de la web), de todos los tipos. */
     suspend fun semana(medicoId: Id, consultorioId: Id, desde: LocalDate, cantidad: Int = 5): List<DiaAgendaResuelto> {
-        val obj = turnos.tobbGet("agenda/semana", params(medicoId, consultorioId, "desde" to desde.toString(), "cantidad" to cantidad))
+        val obj = turnos.tobbGet("agenda/semana", params(medicoId, consultorioId, "desde" to desde.toString(), "cantidad" to cantidad, TODOS_LOS_TIPOS))
         return decodificar(TobbAgendaSemana.serializer(), obj).dias.map { cachearDia(medicoId, consultorioId, it) }
     }
 
     suspend fun proximasFechas(medicoId: Id, consultorioId: Id, desde: LocalDate, cantidad: Int = 3): List<LocalDate> {
-        val obj = turnos.tobbGet("agenda/proximas-fechas", params(medicoId, consultorioId, "desde" to desde.toString(), "cantidad" to cantidad))
+        val obj = turnos.tobbGet("agenda/proximas-fechas", params(medicoId, consultorioId, "desde" to desde.toString(), "cantidad" to cantidad, TODOS_LOS_TIPOS))
         return decodificar(TobbFechas.serializer(), obj).fechas.mapNotNull { it.aFechaTobb() }
     }
 
@@ -161,7 +183,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
             medicoId = numeroMedico(turno.medicoId), consultorioId = numeroConsultorio(turno.consultorioId),
             pacienteId = pacienteTobbId(pacienteId, turno.medicoId, turno.consultorioId),
             fecha = turno.fecha.toString(), horario = turno.horario.aTextoTobb(), horario2 = segundoHorario?.aTextoTobb(),
-            tipoTurno = turno.tipoTurno.codigo, primerControl = if (turno.primerControl) 1 else 0, comentario = turno.comentario,
+            tipoTurno = turno.codigoDeTipo, primerControl = if (turno.primerControl) 1 else 0, comentario = turno.comentario,
         )
         val r = decodificar(TobbTurnosResponse.serializer(), turnos.tobbPost("turnos", cuerpo(TobbNuevoTurno.serializer(), cuerpo)))
         val creados = cachearTurnos(turno.medicoId, r.turnos)
@@ -174,7 +196,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
         val cuerpo = TobbNuevoTurno(
             medicoId = numeroMedico(turno.medicoId), consultorioId = numeroConsultorio(turno.consultorioId),
             pacienteId = pacienteTobbId(pacienteId, turno.medicoId, turno.consultorioId),
-            fecha = turno.fecha.toString(), horario = turno.horario.aTextoTobb(), tipoTurno = turno.tipoTurno.codigo, comentario = turno.comentario,
+            fecha = turno.fecha.toString(), horario = turno.horario.aTextoTobb(), tipoTurno = turno.codigoDeTipo, comentario = turno.comentario,
         )
         val r = decodificar(TobbTurnoResponse.serializer(), turnos.tobbPost("turnos/sobreturno", cuerpo(TobbNuevoTurno.serializer(), cuerpo)))
         val creado = r.turno?.let { cachearTurnos(turno.medicoId, listOf(it)).firstOrNull() } ?: throw TobbException(500, null, "turnosonlinebb no devolvió el sobreturno")
@@ -184,11 +206,14 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     /**
      * Bloquea un horario registrando un turno para el paciente ficticio de bloqueo (DNI 99999), como hace la web.
      * La API rechaza un segundo bloqueo el mismo día con `mismo_dia`; en ese caso hay que usar "bloquear día".
+     * [tipoCodigo] es el tipo del horario que se bloquea: el de tipo 1 no viaja (turnos lo usa por omisión), el resto sí.
      */
-    suspend fun bloquearHorario(medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime): ResultadoTurno = intentar {
+    suspend fun bloquearHorario(
+        medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, tipoCodigo: Int = CODIGO_TIPO_CONSULTA,
+    ): ResultadoTurno = intentar {
         val cuerpo = TobbNuevoTurno(
             medicoId = numeroMedico(medicoId), consultorioId = numeroConsultorio(consultorioId), pacienteId = pacienteBloqueo(),
-            fecha = fecha.toString(), horario = horario.aTextoTobb(), comentario = "Bloqueado desde Salud 360",
+            fecha = fecha.toString(), horario = horario.aTextoTobb(), tipoTurno = tipoCodigo, comentario = "Bloqueado desde Salud 360",
         )
         val r = decodificar(TobbTurnosResponse.serializer(), turnos.tobbPost("turnos", cuerpo(TobbNuevoTurno.serializer(), cuerpo)))
         val creado = cachearTurnos(medicoId, r.turnos).firstOrNull() ?: throw TobbException(500, null, "turnosonlinebb no devolvió el bloqueo")
@@ -238,6 +263,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
      */
     suspend fun sincronizarHorarios(medicoId: Id, consultorioId: Id) {
         val r = decodificar(TobbHorariosResponse.serializer(), turnos.tobbGet("horarios", params(medicoId, consultorioId)))
+        aprenderNombres(r.nombresDeTipos())
         val ahora = ahoraMillis()
         val fijos = r.horariosFijos.mapNotNull { it.toHorario(medicoId, consultorioId) }
         val especiales = r.fechasEspeciales.mapNotNull { it.toFechaAgregada(medicoId, consultorioId) }
@@ -258,7 +284,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     suspend fun agregarHorario(h: HorarioMedico): Boolean {
         val cuerpo = mapOf(
             "medico_id" to numeroMedico(h.medicoId), "consultorio_id" to numeroConsultorio(h.consultorioId),
-            "dia" to h.dia.isoDayNumber, "horario" to h.horario.aTextoTobb(), "tipo_turno" to h.tipoTurno.codigo,
+            "dia" to h.dia.isoDayNumber, "horario" to h.horario.aTextoTobb(), "tipo_turno" to h.codigoDeTipo,
             "valido_desde" to h.validoDesde?.toString(), "valido_hasta" to h.validoHasta?.toString(),
             "quincenal" to if (h.quincenal) 1 else 0,
         )
@@ -862,6 +888,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     private suspend fun cachearDia(medicoId: Id, consultorioId: Id, d: TobbAgendaDia): DiaAgendaResuelto {
         val fecha = d.fecha.aFechaTobb() ?: hoy()
         feriados[fecha] = d.esFeriado
+        aprenderNombres(d.nombresDeTipos())
         val turnos = guardarTurnosDelDia(medicoId, consultorioId, fecha, d.turnos)
         val dobles = ModuloTurnos.PRIMER_CONTROL_DOBLE in modulos(medicoId)
         return DiaAgendaResuelto(fecha, d.slots.toSlots(turnos, dobles), d.esFeriado, turnos, d.cantidadSobreturnos)
@@ -882,6 +909,7 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     }
 
     private suspend fun cachearTurnos(medicoId: Id, dtos: List<TobbTurno>): List<Turno> {
+        aprenderNombres(dtos.nombresDeTipos())
         val ahora = ahoraMillis()
         val turnos = dtos.mapNotNull { it.toTurno() }
         db.transaction {
@@ -945,6 +973,9 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
     }
 
     companion object {
+        /** Parámetro que pide los horarios de todos los tipos de turno (menos videollamada); un servidor viejo lo ignora. */
+        private val TODOS_LOS_TIPOS = "todos_los_tipos" to 1
+
         /** Clave de `paciente_extra` donde se guarda el id del paciente en turnosonlinebb. */
         const val EXTRA_TURNOS = "turnos"
         const val EXTRA_TOBB_ID = "tobb_id"
