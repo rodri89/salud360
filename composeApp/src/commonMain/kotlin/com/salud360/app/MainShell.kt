@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,6 +67,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.historiasClinicasVisibles
+import com.salud360.core.data.repos.puedeAbrirHistoriaClinica
 import com.salud360.core.data.repos.puedeVerAgenda
 import com.salud360.core.data.repos.puedeVerConfigDeAgenda
 import com.salud360.core.data.repos.puedeVerHorarios
@@ -76,6 +79,7 @@ import com.salud360.core.model.auth.AvisoLicencia
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Sesion
 import com.salud360.core.ui.components.InitialsAvatar
+import com.salud360.core.ui.components.LoadingIndicator
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.admin.AdminScreen
@@ -146,6 +150,9 @@ private const val MOSTRAR_RECETAS = false
  * Médico que está siendo gestionado (el propio, o el elegido por la secretaria). [tieneTurnos] es «tiene agenda» tal como
  * lo informa turnos (el del médico en su sesión; el de `Medico.tieneTurnos` del elegido en el caso de la secretaria): no se
  * deduce del consultorio. Qué se ve con ese dato lo decide `AgendaDelMedico`.
+ *
+ * [especialidades] son las historias clínicas que el rol puede ver (`historiasClinicasVisibles`): las que el administrador
+ * le habilitó al médico y la app trae; para la secretaria siempre queda vacía, porque solo ve turnos.
  */
 data class ContextoMedico(val medicoId: String, val consultorioId: String?, val nombre: String, val especialidades: List<String>, val tieneTurnos: Boolean)
 
@@ -175,6 +182,15 @@ private fun SoloConAgenda(
 }
 
 /**
+ * Aviso de las rutas de historia clínica y de consulta cuando el rol o la habilitación no alcanzan. En web la URL restaura
+ * la ruta aunque el administrador haya quitado la historia clínica después, o la haya abierto una secretaria.
+ */
+@Composable
+private fun SinHistoriaClinicaHabilitada() {
+    Text("No tenés habilitada esta historia clínica", Modifier.padding(16.dp))
+}
+
+/**
  * Shell principal con navegación adaptativa: barra lateral (con el degradado de marca) en
  * pantallas anchas, barra inferior en teléfonos. El menú depende del rol y de lo que tiene
  * habilitado el médico (agenda y/o historias clínicas).
@@ -193,7 +209,7 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
 
     // Para el médico el contexto es él mismo; la secretaria lo elige en el selector.
     var contexto by remember(sesion) {
-        mutableStateOf(sesion.medico?.let { m -> ContextoMedico(m.medicoId, m.consultorioId, sesion.usuario.nombreCompleto, m.especialidades.filter { registry.existe(it) }, m.tieneTurnos) })
+        mutableStateOf(sesion.medico?.let { m -> ContextoMedico(m.medicoId, m.consultorioId, sesion.usuario.nombreCompleto, historiasClinicasVisibles(rol, m.especialidades, registry::existe), m.tieneTurnos) })
     }
 
     // Señal «nueva consulta» de la ficha hacia la historia clínica (paciente y especialidad). Es estado en memoria y no
@@ -278,10 +294,11 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                                 foto = { m -> FotoMedico(m.id, m.nombreCompleto, size = 52) },
                                 medicoActualId = contexto?.medicoId,
                                 onElegido = { m, consultorioId ->
-                                    // La secretaria opera la agenda y también puede abrir las historias clínicas habilitadas al médico.
+                                    // La secretaria solo opera turnos: agenda, pacientes y obras sociales del médico elegido. No ve
+                                    // historias clínicas (sus `especialidades` quedan vacías por la regla), aunque el médico las tenga.
                                     // «Tiene agenda» es el dato de turnos del médico elegido, no se deduce del consultorio.
                                     val consultorio = consultorioId.ifBlank { null }
-                                    contexto = ContextoMedico(m.id, consultorio, m.nombreCompleto, m.especialidadesHc.filter { registry.existe(it) }, m.tieneTurnos)
+                                    contexto = ContextoMedico(m.id, consultorio, m.nombreCompleto, historiasClinicasVisibles(rol, m.especialidadesHc, registry::existe), m.tieneTurnos)
                                     nav.navigate(if (puedeVerAgenda(m.tieneTurnos, consultorio)) Rutas.AGENDA else Rutas.PACIENTES) { launchSingleTop = true }
                                 },
                             )
@@ -306,7 +323,8 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                         composable(Rutas.PACIENTE_NUEVO) { PacienteFormScreen(null, contexto?.medicoId, onGuardado = { nav.popBackStack(); nav.navigate("pacientes/${it.id}") }, onVolver = { nav.popBackStack() }) }
                         composable(Rutas.PACIENTE) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
-                            val esp = contexto?.especialidades?.map { it to registry.nombre(it) } ?: emptyList()
+                            // Solo las historias clínicas que el rol puede ver: la secretaria y el administrador, ninguna (sin tarjeta).
+                            val esp = historiasClinicasVisibles(rol, contexto?.especialidades.orEmpty(), registry::existe).map { it to registry.nombre(it) }
                             PacienteDetalleScreen(id, esp, contexto?.medicoId.orEmpty(), onEditar = { nav.navigate("pacientes/$id/editar") }, onAbrirHc = { hcConNuevaConsulta = null; nav.navigate("hc/$id/$it") },
                                 // Solo este camino lleva la señal «nueva consulta»; no viaja en la ruta (ver hcConNuevaConsulta).
                                 onNuevaConsulta = { hcConNuevaConsulta = id to it; nav.navigate("hc/$id/$it") },
@@ -321,13 +339,25 @@ fun MainShell(sesion: Sesion, onLogout: () -> Unit, anchoMaximoContenido: Dp? = 
                             val pacienteId = entry.savedStateHandle.get<String>("pacienteId") ?: return@composable
                             val especialidad = entry.savedStateHandle.get<String>("especialidad") ?: return@composable
                             val medicoId = contexto?.medicoId ?: return@composable
+                            // Cerrada por ruta: solo el médico con esa historia habilitada (también si la URL la restaura en web).
+                            if (!puedeAbrirHistoriaClinica(rol, contexto?.especialidades.orEmpty(), especialidad)) return@composable SinHistoriaClinicaHabilitada()
                             HistoriaClinicaScreen(pacienteId, especialidad, medicoId, onAbrirConsulta = { nav.navigate("consulta/${it.id}") }, onVolver = { nav.popBackStack() },
                                 iniciarNueva = hcConNuevaConsulta == (pacienteId to especialidad), onNuevaConsultaAtendida = { hcConNuevaConsulta = null })
                         }
                         composable(Rutas.CONSULTA) { entry ->
                             val id = entry.savedStateHandle.get<String>("id") ?: return@composable
                             val medicoId = contexto?.medicoId ?: sesion.usuario.id
-                            ConsultaScreen(id, medicoId, onCerrada = { nav.popBackStack() }, onVolver = { nav.popBackStack() })
+                            // La consulta pertenece a una especialidad: se la busca para comprobar que el médico la tiene habilitada.
+                            // `null` = todavía leyendo; vacío = no existe o no es de un médico (la regla la cierra igual).
+                            val especialidad by produceState<String?>(null, id, rol) {
+                                value = if (rol == Rol.MEDICO) hc.consulta(id)?.especialidad.orEmpty() else ""
+                            }
+                            val de = especialidad
+                            when {
+                                de == null -> LoadingIndicator()
+                                !puedeAbrirHistoriaClinica(rol, contexto?.especialidades.orEmpty(), de) -> SinHistoriaClinicaHabilitada()
+                                else -> ConsultaScreen(id, medicoId, onCerrada = { nav.popBackStack() }, onVolver = { nav.popBackStack() })
+                            }
                         }
                         composable(Rutas.RECETAS) {
                             val ids = if (rol == Rol.SECRETARIA) sesion.secretaria?.medicoIds ?: emptyList() else listOfNotNull(contexto?.medicoId)
