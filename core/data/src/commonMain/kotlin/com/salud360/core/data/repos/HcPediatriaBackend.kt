@@ -68,6 +68,9 @@ class HcPediatriaBackend(
     private val hq get() = db.historiaClinicaQueries
     private val pq get() = db.pacientesQueries
 
+    /** Pacientes ya vinculados a los que, en esta sesión, se les preguntó a pediatría por el sexo (ver [completarSexoDeUnVinculado]). */
+    private val preguntadosPorSexo = mutableSetOf<Id>()
+
     // ------------------------------------------------------------------
     // Consultas
     // ------------------------------------------------------------------
@@ -315,10 +318,59 @@ class HcPediatriaBackend(
      * Id del paciente en pediatría. Si todavía no se conoce, se lo resuelve mandando la ficha completa:
      * pediatría lo busca por su vínculo con turnos o por documento, y lo crea si hace falta.
      * El vínculo queda guardado para no repetir la llamada.
+     *
+     * Pediatría devuelve también el sexo, que turnos no tiene: si la ficha local no lo tiene se completa con ese
+     * (nunca se pisa uno ya cargado). Ver [completarSexoLocal] y [completarSexoDeUnVinculado].
      */
     suspend fun resolverPaciente(pacienteId: Id): Long? {
-        idConocido(pacienteId)?.let { return it }
+        idConocido(pacienteId)?.let { conocido ->
+            completarSexoDeUnVinculado(pacienteId)
+            return conocido
+        }
         val p = pq.pacientePorId(pacienteId).uno { it.toModel() } ?: return null
+        val remoto = pedirResolver(p)
+        pq.upsertPacienteExtra(
+            PacienteExtra(pacienteId, especialidad, EXTRA_HC_PACIENTE_ID, remoto.id.toString()).toRow(ahoraMillis(), dirty = true),
+        )
+        completarSexoLocal(pacienteId, remoto.sexo)
+        return remoto.id
+    }
+
+    /**
+     * El paciente ya vinculado con pediatría no se vuelve a resolver, pero si su ficha local no tiene sexo (las de
+     * turnos nacen así) se le pregunta a pediatría **una sola vez por sesión de la app**: si allá tampoco está, no
+     * se insiste en cada apertura. Es solo un complemento: cualquier falla (sin red, un rechazo) se anota y no
+     * impide seguir con el id que ya se conoce. El vínculo guardado manda aunque la respuesta traiga otro id.
+     */
+    private suspend fun completarSexoDeUnVinculado(pacienteId: Id) {
+        val p = pq.pacientePorId(pacienteId).uno { it.toModel() } ?: return
+        if (p.sexo != null || !preguntadosPorSexo.add(pacienteId)) return
+        try {
+            completarSexoLocal(pacienteId, pedirResolver(p).sexo)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            log.w { "no se pudo completar el sexo desde pediatría: ${(e as? TobbException)?.codigo ?: e::class.simpleName}" }
+        }
+    }
+
+    /**
+     * Completa SOLO el sexo de la ficha local con el de pediatría, si la ficha no tiene ninguno y el de allá es
+     * reconocible (ver [sexoDesdeHc] y [completarSexo]). No toca los demás datos ni el `dirty`: el dato lo tiene
+     * pediatría, así que no es un cambio del médico que haya que enviar; si la ficha ya estaba pendiente por otra
+     * edición, sigue pendiente. Se lee la fila de nuevo acá para no pisar una edición hecha mientras se esperaba.
+     */
+    private suspend fun completarSexoLocal(pacienteId: Id, sexoHc: String?) {
+        val desdeHc = sexoDesdeHc(sexoHc) ?: return
+        val fila = pq.pacientePorId(pacienteId).uno { it } ?: return
+        val actual = fila.toModel().sexo
+        val nuevo = completarSexo(actual, desdeHc)
+        if (nuevo == actual) return
+        pq.upsertPaciente(fila.copy(sexo = nuevo?.name, updated_at = ahoraMillis()))
+    }
+
+    private suspend fun pedirResolver(p: Paciente): HcPaciente {
+        val pacienteId = p.id
         val cuerpo = HcPacienteRequest(
             dni = p.dni.trim(),
             nombre = p.nombre,
@@ -338,11 +390,7 @@ class HcPediatriaBackend(
             cantidadHermanos = p.cantidadHermanos,
         )
         val r = api.post("pacientes/resolver", api.cuerpo(HcPacienteRequest.serializer(), cuerpo))
-        val remoto = api.leer(HcPaciente.serializer(), r, "paciente")
-        pq.upsertPacienteExtra(
-            PacienteExtra(pacienteId, especialidad, EXTRA_HC_PACIENTE_ID, remoto.id.toString()).toRow(ahoraMillis(), dirty = true),
-        )
-        return remoto.id
+        return api.leer(HcPaciente.serializer(), r, "paciente")
     }
 
     private suspend fun idConocido(pacienteId: Id): Long? =

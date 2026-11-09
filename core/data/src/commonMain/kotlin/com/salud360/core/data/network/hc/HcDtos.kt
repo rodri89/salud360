@@ -39,6 +39,8 @@ data class HcPaciente(
     val nombre: String = "",
     val apellido: String = "",
     val dni: String = "",
+    /** Como lo guarda pediatría («M», «F»); tolerante a que un servidor viejo no lo informe (ver `sexoDesdeHc`). */
+    val sexo: String? = null,
 )
 
 /** Candidato devuelto cuando hay varios pacientes con el mismo documento. */
