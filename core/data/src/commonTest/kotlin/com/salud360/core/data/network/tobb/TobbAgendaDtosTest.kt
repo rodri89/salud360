@@ -7,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Los DTO de la agenda por médico (spec 005): el pedido de `PUT medicos/{id}/agenda`, su respuesta y los
@@ -77,6 +76,13 @@ class TobbAgendaDtosTest {
         assertNull(m.tieneAgenda, "null = el servidor no lo informa (distinto de 0)")
         assertNull(m.visibleEnTurnos)
         assertEquals(0, m.tieneHorarios)
-        assertTrue(m.historiasClinicas.isEmpty())
+        assertNull(m.historiasClinicas, "null = el servidor no informa las historias clínicas (distinto de [])")
+    }
+
+    @Test
+    fun elCatalogoDistingueLasHistoriasClinicasVaciasDeLasAusentes() {
+        assertEquals(emptyList(), catalogo("""{"id":3,"nombre":"Ana","apellido":"Vera","historias_clinicas":[]}""").historiasClinicas)
+        assertEquals(listOf("pediatria"), catalogo("""{"id":3,"nombre":"Ana","apellido":"Vera","historias_clinicas":["pediatria"]}""").historiasClinicas)
+        assertNull(catalogo("""{"id":3,"nombre":"Ana","apellido":"Vera","historias_clinicas":null}""").historiasClinicas)
     }
 }

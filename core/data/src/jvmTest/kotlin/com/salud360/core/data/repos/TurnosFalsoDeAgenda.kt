@@ -25,7 +25,10 @@ class TurnosFalsoDeAgenda : AutoCloseable {
             get() = consulta.split('&').filter { it.contains('=') }.associate { it.substringBefore('=') to it.substringAfter('=') }
     }
 
-    /** Médico inventado del catálogo. Un campo en `null` no viaja: es el servidor que todavía no lo informa. */
+    /**
+     * Médico inventado del catálogo. Un campo en `null` no viaja: es el servidor que todavía no lo informa
+     * (`historiasClinicas = emptyList()` sí viaja, como `[]`: el administrador no le habilitó ninguna).
+     */
     data class MedicoFalso(
         val id: Long,
         val nombre: String = "Medico$id",
@@ -34,7 +37,7 @@ class TurnosFalsoDeAgenda : AutoCloseable {
         val tieneAgenda: Int? = null,
         val visibleEnTurnos: Int? = null,
         val consultorioId: Long = 0,
-        val historiasClinicas: List<String> = emptyList(),
+        val historiasClinicas: List<String>? = null,
         val activo: Int = 1,
     )
 
@@ -172,9 +175,7 @@ class TurnosFalsoDeAgenda : AutoCloseable {
         m.tieneHorarios?.let { campos += "\"tiene_horarios\":$it" }
         m.tieneAgenda?.let { campos += "\"tiene_agenda\":$it" }
         m.visibleEnTurnos?.let { campos += "\"visible_en_turnos\":$it" }
-        if (m.historiasClinicas.isNotEmpty()) {
-            campos += "\"historias_clinicas\":[${m.historiasClinicas.joinToString(",") { "\"$it\"" }}]"
-        }
+        m.historiasClinicas?.let { campos += "\"historias_clinicas\":[${it.joinToString(",") { c -> "\"$c\"" }}]" }
         return "{" + campos.joinToString(",") + "}"
     }
 

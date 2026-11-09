@@ -25,8 +25,8 @@ import kotlinx.datetime.DayOfWeek
  * secretaria, sus consultorios, módulos y configuración de agenda. Los ids se derivan de los de
  * turnosonlinebb (`tobb-u12`, `tobb-m3`, ...) para que sean estables entre inicios de sesión.
  *
- * Los datos propios de Salud 360 que ya existieran (historias clínicas habilitadas, licencia,
- * código de HC de una especialidad) se conservan. Réplica en el cliente de `TurnosBridge` (server),
+ * Los datos propios de Salud 360 que ya existieran (licencia, código de HC de una especialidad) se conservan; las
+ * historias clínicas habilitadas las manda turnos y solo se conservan si el servidor no informa el campo. Réplica en el cliente de `TurnosBridge` (server),
  * sin el registro de cambios de sincronización entre dispositivos (eso requiere el servidor propio).
  */
 class TurnosImportador(private val db: Salud360Db) {
@@ -116,16 +116,17 @@ class TurnosImportador(private val db: Salud360Db) {
 
     /**
      * Historias clínicas habilitadas al médico. Manda lo que informa turnosonlinebb (`historias_clinicas`, gestionado
-     * por el administrador de la web); si la web todavía no manda el campo se conserva lo que ya había en el dispositivo
-     * y, como último recurso, se deduce de la especialidad de turnos (ver [FALLBACK_HC_POR_ESPECIALIDAD]).
+     * por el administrador de la web), también si viene vacío (una baja); solo si la web no manda el campo se conserva lo
+     * que ya había en el dispositivo (ver [historiasClinicasDeTurnos]). Nunca se deduce de la especialidad: ningún médico
+     * ve una historia clínica que el administrador no le habilitó.
      */
-    private fun historiasClinicasDe(m: TobbMedico, previo: Medico?): List<String> {
-        if (m.historiasClinicas.isNotEmpty()) return m.historiasClinicas.map { it.trim().lowercase() }.distinct()
-        previo?.especialidadesHc?.takeIf { it.isNotEmpty() }?.let { return it }
-        return if (FALLBACK_HC_POR_ESPECIALIDAD) listOfNotNull(codigoHcPorNombre(m.especialidad)) else emptyList()
-    }
+    private fun historiasClinicasDe(m: TobbMedico, previo: Medico?): List<String> =
+        historiasClinicasDeTurnos(m.historiasClinicas, previo?.especialidadesHc.orEmpty())
 
-    /** Sugerencia inicial del código de HC según el nombre de la especialidad de turnos; el admin puede cambiarlo. */
+    /**
+     * Sugerencia inicial del código de HC de una especialidad de turnos (`EspecialidadTurnos.codigoHc`) según su nombre;
+     * el admin puede cambiarlo. No habilita nada al médico: las historias clínicas las decide el administrador.
+     */
     internal fun codigoHcPorNombre(nombre: String?): String? {
         val n = nombre?.lowercase() ?: return null
         return when {
@@ -139,14 +140,5 @@ class TurnosImportador(private val db: Salud360Db) {
             "desarrollo" in n || "neurodesarrollo" in n -> "desarrollo_infantil"
             else -> null
         }
-    }
-
-    companion object {
-        /**
-         * Mientras turnosonlinebb no devuelva `historias_clinicas` en el perfil, se habilita la HC que coincide con la
-         * especialidad de turnos (Pediatría → `pediatria`). Poner en `false` cuando la web esté desplegada con la tabla
-         * `salud360_medico_hc`, para que solo el administrador decida quién ve cada historia clínica.
-         */
-        const val FALLBACK_HC_POR_ESPECIALIDAD = true
     }
 }

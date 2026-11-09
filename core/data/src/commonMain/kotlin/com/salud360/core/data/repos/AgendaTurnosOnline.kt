@@ -487,7 +487,8 @@ class AgendaTurnosOnline(private val db: Salud360Db, private val turnos: TurnosO
                         sexo = m.sexo.orEmpty(), foto = m.foto,
                         consultorioId = TobbIds.consultorio(m.consultorioId),
                         especialidadId = TobbIds.especialidad(m.especialidadId),
-                        especialidadesHc = m.historiasClinicas,
+                        // Lo que turnos informa es la lista (también vacía: una baja); sin el campo se conserva la copia.
+                        especialidadesHc = historiasClinicasDeTurnos(m.historiasClinicas, previos[id]?.especialidadesHc.orEmpty()),
                         // Tiene agenda y es visible lo que informa turnos (decisión del administrador); sin esos
                         // campos rige `tiene_horarios` y el valor previo del dispositivo. Ver `AgendaDelMedico`.
                         tieneTurnos = tieneAgendaDe(m.tieneAgenda, m.tieneHorarios),

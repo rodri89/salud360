@@ -246,7 +246,8 @@ data class TobbMedicoCatalogo(
     @SerialName("tiene_agenda") val tieneAgenda: Int? = null,
     /** Si figura para que el paciente pida turno (`0`/`1`). `null` = el servidor no lo informa. */
     @SerialName("visible_en_turnos") val visibleEnTurnos: Int? = null,
-    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+    /** Historias clínicas que el administrador le habilitó. `[]` = ninguna; `null` = el servidor no informa el campo. */
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>? = null,
     val activo: Int = 1,
 )
 

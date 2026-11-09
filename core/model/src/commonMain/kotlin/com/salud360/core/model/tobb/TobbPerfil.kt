@@ -61,9 +61,10 @@ data class TobbMedico(
     /**
      * Códigos de las historias clínicas habilitadas al médico en turnosonlinebb (tabla `salud360_medico_hc`,
      * ej. `["pediatria"]`). turnosonlinebb es la identidad única de Salud 360: acá se decide quién ve qué HC.
-     * Vacío si la web todavía no informa el campo.
+     * `[]` = el administrador no le habilitó ninguna (es una baja); `null` = el servidor no informa el campo
+     * (versión vieja): en ese caso se conserva lo que el dispositivo ya tenía.
      */
-    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>? = null,
 )
 
 @Serializable

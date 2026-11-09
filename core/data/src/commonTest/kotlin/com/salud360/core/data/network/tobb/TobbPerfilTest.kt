@@ -5,7 +5,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class TobbPerfilTest {
     private fun perfil(medico: String): TobbPerfil = tobbJson.decodeFromJsonElement(
@@ -20,9 +19,10 @@ class TobbPerfilTest {
     }
 
     @Test
-    fun sinElCampoLaListaQuedaVacia() {
+    fun sinElCampoLaListaQuedaEnNullYNoEsLoMismoQueVacia() {
         val p = perfil("""{"id":3,"nombre":"Ana","apellido":"Perez","consultorio_id":0}""")
-        assertTrue(p.medico?.historiasClinicas?.isEmpty() == true)
+        assertNull(p.medico?.historiasClinicas, "null = el servidor no informa el campo")
+        assertEquals(emptyList(), perfil("""{"id":3,"nombre":"Ana","apellido":"Perez","historias_clinicas":[]}""").medico?.historiasClinicas)
         assertEquals(0L, p.medico?.consultorioId)
         assertNull(p.secretaria)
     }
