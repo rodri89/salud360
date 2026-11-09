@@ -242,6 +242,16 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
+- Rama `feature/hc-solo-medico-habilitado` (commiteada y mergeada en `main` local, sin pushear aún; 2026-11-09): **la secretaria ya no ve historias clínicas, solo turnos**
+  (agenda, pacientes, obras sociales); cambia el RF-4 de la spec 003, por decisión del usuario. Su ficha del paciente no tiene
+  la tarjeta «Historia clínica» ni «Nueva consulta», y las rutas `hc/...` y `consulta/...` quedan cerradas (también al restaurar
+  la URL en web) para secretaria, administrador y médico sin esa HC habilitada («No tenés habilitada esta historia clínica»).
+  El médico ve solo las HC que el administrador le habilitó en turnos: se apagó el fallback por especialidad
+  (`FALLBACK_HC_POR_ESPECIALIDAD`, eliminado) y `historias_clinicas` distingue `[]` (baja, se propaga) de campo ausente
+  (servidor viejo, se conserva la copia). Reglas puras en `HistoriasClinicasDelMedico.kt` (`historiasClinicasVisibles`,
+  `puedeAbrirHistoriaClinica`, `historiasClinicasDeTurnos`). Sin migración ni cambios de API. **Riesgo:** los médicos que
+  dependían del fallback (p. ej. un pediatra al que el admin nunca le habilitó pediatría) quedan sin HC hasta que el admin se
+  las habilite. La copia local contaminada se corrige sola en el próximo login/restauración (perfil) o sync de catálogos.
 - Rama `feature/sexo-desde-hc` (commiteada y mergeada en `main` local, sin pushear aún): los pacientes que vienen de turnos no tienen sexo (turnos no lo tiene)
   pero pediatría sí. Al resolver/abrir la HC de pediatría (`HcPediatriaBackend.resolverPaciente`, que corre en segundo plano al abrir
   la ficha o la lista de consultas) se completa el sexo vacío de la ficha local con el que devuelve `pacientes/resolver`
@@ -443,7 +453,8 @@ registros de personas): el repo es público.
   tocarla: no poner topes de reloj de 5 s. Un cambio de la lista actualiza la ventana y un paso después la sección: un test
   que espere una también espera la otra (`marcado.guardado`). Las intermitencias (1) y (3) nunca se reprodujeron: la causa
   más probable es ese frenón, no demostrada.
-- RF-4: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
+- ~~RF-4~~ **(reemplazado el 2026-11-09: la secretaria ya no abre HC, solo turnos; ver rama `feature/hc-solo-medico-habilitado` en
+  «Estado actual»; vale solo el médico y `ConsultaScreen` sigue recibiendo su propio `medicoId`)**: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
   Enfermedades sale de la sesión (`medicoParaEnfermedades`), nunca de la pantalla. `EnfermedadesViewModel.editable` no es
   observable: la pantalla calcula `puedeAdministrar` en la misma composición que el estado del controlador.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose

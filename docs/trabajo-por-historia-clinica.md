@@ -61,8 +61,8 @@ La base local es una sola (SQLDelight, `core/database/.../migrations/N.sqm`). Do
 Antes de escribir la primera spec hay que contestar, con el usuario (de a una pregunta):
 1. ¿Existe un Laravel y una base de esa especialidad? ¿Repo, rama (`salud360-api`), URL de producción, tablas que la web usa hoy?
 2. ¿Va **con API propia** (como pediatría y clínica) o primero **solo declarativa y local** (como el resto de las especialidades)? Recomendado: declarativa primero, API después.
-3. Código de la HC (`odontologia`): lo habilita turnos en `salud360_medico_hc` (Administración → Médico → "Historias clínicas Salud 360"); mirar `TurnosImportador.FALLBACK_HC_POR_ESPECIALIDAD`.
-4. Roles: ¿lo usa la secretaria? ¿el médico con y sin agenda?
+3. Código de la HC (`odontologia`): lo habilita turnos en `salud360_medico_hc` (Administración → Médico → "Historias clínicas Salud 360"); la app no la deduce de la especialidad (el fallback se eliminó), solo la ve el médico que la tiene habilitada.
+4. Roles: la secretaria no ve ninguna historia clínica (decisión del 2026-11-09, solo ve turnos). ¿El médico con y sin agenda?
 5. ¿Cobra licencia como pediatría (`medico_licencias`)? ¿Cartera de pacientes y vínculo con turnos (`paciente_id_tobb`)?
 6. ¿Qué pasa sin señal y qué se sincroniza?
 7. Alcance de la primera entrega: **solo lectura primero** (patrón de clínica: mostrar lo de la web sin escribir, con candados) o lectura y escritura (pediatría). Recomendado: lectura primero, escritura en una entrega aparte con su spec.

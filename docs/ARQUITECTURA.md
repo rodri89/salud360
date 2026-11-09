@@ -83,8 +83,10 @@ tengan o no agenda. Un médico puede tener agenda, historias clínicas o ambas:
 - **Historias clínicas**: el administrador de turnosonlinebb las habilita por médico en Administración → Médico →
   "Historias clínicas Salud 360" (tabla `salud360_medico_hc`). El perfil de login las devuelve en
   `medico.historias_clinicas` (`["pediatria", ...]`) y `TurnosImportador` las copia a `medico.especialidades_hc`.
-  Mientras la web no informe el campo, `TurnosImportador.FALLBACK_HC_POR_ESPECIALIDAD` deduce la HC del nombre de la
-  especialidad de turnos (Pediatría → `pediatria`); hay que ponerlo en `false` cuando la web esté desplegada.
+  Lo que informa turnos manda, también `[]` (una baja del administrador se propaga); solo si el servidor no manda el
+  campo (versión vieja) se conserva lo que el dispositivo ya tenía (`historiasClinicasDeTurnos`). Ya no se deduce nada
+  de la especialidad: el fallback `FALLBACK_HC_POR_ESPECIALIDAD` se eliminó. Solo el médico ve y abre las HC que tiene
+  habilitadas; la secretaria únicamente ve turnos (`historiasClinicasVisibles`, `puedeAbrirHistoriaClinica`).
 
 Antes, cada historia clínica tenía sus propios usuarios y guardaba el id del médico de turnos en
 `users.medico_id_tobb`. Ese campo se conserva, pero invertido: ahora es la forma en que cada sistema de HC
