@@ -242,13 +242,21 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
-- Bloqueos y tipos de turno (servidor turnosonlinebb, **pendiente de subir a producción**, sin commit): los bloqueos (paciente
+- Rama `feature/sexo-desde-hc` (commiteada y mergeada en `main` local, sin pushear aún): los pacientes que vienen de turnos no tienen sexo (turnos no lo tiene)
+  pero pediatría sí. Al resolver/abrir la HC de pediatría (`HcPediatriaBackend.resolverPaciente`, que corre en segundo plano al abrir
+  la ficha o la lista de consultas) se completa el sexo vacío de la ficha local con el que devuelve `pacientes/resolver`
+  (`SexoDesdeHc.kt`: `sexoDesdeHc` tolerante, `completarSexo` nunca pisa uno cargado). Solo cambia ese campo, sin marcar `dirty`.
+  Si el paciente ya estaba vinculado y sigue sin sexo, se vuelve a preguntar una sola vez por sesión. Las curvas y la ficha se
+  actualizan solas porque observan la base. Sin migración ni queries nuevas ni cambios de API. **Pendiente:** la cartera (opción B,
+  `guardarPacienteDeCartera` solo inserta pacientes nuevos) cuando `GET pacientes` de pediatría esté en producción. El sexo cargado
+  en la app sigue sin viajar a turnos, porque turnos no lo tiene.
+- Bloqueos y tipos de turno (servidor turnosonlinebb, **en producción desde 2026-11-08**; los cambios de la app están en `main`): los bloqueos (paciente
   DNI 99999) ocupan el horario sin importar el tipo de turno. Causa: la lista de horarios libres filtra los turnos por `tipo_turno`
   (y el bloqueo nace con tipo 1) pero la validación al reservar no, así que un médico con varios tipos mostraba libre un horario
   bloqueado y recién al elegirlo decía «ocupado». `bloquear-dia` ahora bloquea los horarios de todos los tipos. Sin migración
   ni cambios en la app. Reserva interna de la secretaria (panel web): corregida en el servidor (filtraba por tipo en
   `consultarTurno`, así que dejaba reservar sobre un bloqueo, y al mover un turno cancelaba el original antes de validar el
-  destino); también **pendiente de subir**, sin commit.
+  destino); también en producción.
 - Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
   `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
   commit `19e4e2c`). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Commits hechos** (`19e4e2c` ocultar
