@@ -16,6 +16,7 @@ import com.salud360.core.data.hcgeneral.ResumenDeEnvio
 import com.salud360.core.data.hcgeneral.ResultadoVinculo
 import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
+import com.salud360.core.data.hcgeneral.antecedenteEnviado
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
 import com.salud360.core.data.hcgeneral.esperaDeReintento
 import com.salud360.core.data.hcgeneral.estadoDeLaConsulta
@@ -457,10 +458,12 @@ open class HcClinicaEnvio(
             is PasoDeEnvio.Crear -> crear(paso)
             is PasoDeEnvio.Secciones -> secciones(paso)
             is PasoDeEnvio.Examen -> examen(paso)
+            is PasoDeEnvio.Formularios -> formularios(paso)
+            is PasoDeEnvio.Antecedentes -> antecedentes(paso)
             is PasoDeEnvio.Cerrar -> cerrar(paso)
             is PasoDeEnvio.Baja -> baja(paso)
-            // Formularios, antecedentes y registros son de E2: su cuerpo para la API todavía no existe (con `E1` quedan en reserva y
-            // no llegan hasta acá). Si alguien sube la subentrega sin ellos, el envío se corta sin mandar nada.
+            // Los registros (estudios, exámenes, interconsultas) son de T63-b: todavía no se saben enviar (con `E1`, o con un conjunto de secciones
+            // sin ellos, quedan en reserva y no llegan hasta acá). Si alguien los habilita sin esa tarea, el envío se corta sin mandar nada.
             else -> {
                 log.w { "el paso ${paso.parte} de la consulta ${consulta.id} todavía no se sabe enviar" }
                 false
@@ -516,6 +519,54 @@ open class HcClinicaEnvio(
             return faltan.isEmpty()
         }
 
+        /**
+         * `PUT consultas/{id}/formularios` (T63-a): un solo pedido con los campos que cambiaron de verdad (lo arma el plan, T62-a). La web confirma en `guardadas`
+         * (`<sección>.<clave>`): solo eso se anota como lo que la web tiene (`LoEnviado`) y se limpia, y solo si la fila no cambió mientras viajaba (RF-55). Lo que no
+         * figura queda sucio y la parte «No se pudo enviar» (como los textos, T25 (b)). Una respuesta perdida no anota nada: el reenvío repite el mismo pedido.
+         */
+        private suspend fun formularios(paso: PasoDeEnvio.Formularios): Boolean {
+            val id = webId ?: return false
+            val valores = paso.valores.groupBy({ it.seccion }, { it.campo to it.valor }).mapValues { (_, campos) -> campos.toMap() }
+            val respuesta = intentar(paso) { api.formularios(id, valores) } ?: return false
+            val guardadas = respuesta.guardadas.toSet()
+            val llegaron = paso.valores.filter { "${it.seccion}.${it.campo}" in guardadas }
+            val faltan = paso.valores.filter { it !in llegaron }.map { "${it.seccion}.${it.campo}" }.toSet()
+            val claves = llegaron.map { "${it.seccion}/${it.campo}" }.toSet()
+            val nuevo = lo.conLoConfirmado(PasoDeEnvio.Formularios(llegaron, emptyList()))
+            db.transaction {
+                if (llegaron.isNotEmpty()) loEnviados.guardar(consulta.pacienteId, consulta.id, nuevo)
+                // Una clave es `<sección>/<campo>`, la misma de la fila de `seccion_valor`.
+                paso.cubre.filter { it.clave in claves }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                anotarEstado(paso.parte, faltan)
+            }
+            lo = nuevo
+            return faltan.isEmpty()
+        }
+
+        /**
+         * `PUT pacientes/{ficha}/antecedentes-familiares` (T63-a): un solo pedido a la ficha de la web del paciente, con la consulta de la web y las casillas (y la
+         * nota) que cambiaron de verdad contra lo último confirmado. La web confirma las claves en `guardadas`; igual que los formularios, solo eso se anota y se
+         * limpia (por id de fila y si no cambió en vuelo) y lo demás queda sucio y «No se pudo enviar». Sin la ficha vinculada no sale (queda «En espera»).
+         */
+        private suspend fun antecedentes(paso: PasoDeEnvio.Antecedentes): Boolean {
+            val id = webId ?: return false
+            val ficha = fichaDelPaciente(paso) ?: return false
+            val enviados = paso.items.mapNotNull { a -> lo.antecedenteEnviado(a)?.let { a.clave to it } }.toMap()
+            val respuesta = intentar(paso) { api.antecedentes(ficha, id, paso.items, enviados) } ?: return false
+            val guardadas = respuesta.guardadas.toSet()
+            val llegaron = paso.items.filter { it.clave in guardadas }
+            val faltan = paso.items.filter { it !in llegaron }.map { it.clave }.toSet()
+            val ids = llegaron.map { it.id }.toSet()
+            val nuevo = lo.conLoConfirmado(PasoDeEnvio.Antecedentes(llegaron, emptyList()))
+            db.transaction {
+                if (llegaron.isNotEmpty()) loEnviados.guardar(consulta.pacienteId, consulta.id, nuevo)
+                paso.cubre.filter { it.clave in ids }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                anotarEstado(paso.parte, faltan)
+            }
+            lo = nuevo
+            return faltan.isEmpty()
+        }
+
         private suspend fun cerrar(paso: PasoDeEnvio.Cerrar): Boolean {
             val id = webId ?: return false
             // «Enviando el cierre.» (RF-55): desde que sale el pedido hasta que queda anotado, así no se reabre ni se anula en el medio.
@@ -549,7 +600,7 @@ open class HcClinicaEnvio(
          * de otro paciente, o no se pudo preguntar) la creación queda «En espera: <motivo>» y no sale nada. Un paciente dado de baja no pasa
          * por acá: su ficha ya se conoce, y la web contesta `404 paciente_no_encontrado` al crear (RF-19), sin resolver de nuevo.
          */
-        private suspend fun fichaDelPaciente(paso: PasoDeEnvio.Crear): Long? {
+        private suspend fun fichaDelPaciente(paso: PasoDeEnvio): Long? {
             val repositorio = pacientes ?: return null
             val resultado = try {
                 repositorio.vinculo(consulta.pacienteId, CodigosHc.GENERAL)

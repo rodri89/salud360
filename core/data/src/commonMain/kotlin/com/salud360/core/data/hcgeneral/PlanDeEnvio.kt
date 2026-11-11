@@ -91,6 +91,14 @@ private fun casillaConfirmada(a: Antecedente): String = when {
     else -> "${if (a.flag) 1 else 0}|${a.detalle}"
 }
 
+/**
+ * La casilla [a] como la tiene la web según lo último confirmado (el mismo flag y detalle de [LoEnviado.antecedentes] sobre la fila [a]), o `null` si todavía
+ * no se confirmó nada de esa clave. Es lo que el cuerpo de la API (`PayloadsClinica.antecedentes`) necesita como «lo ya enviado»: el plan y el cuerpo deciden
+ * el cambio real con la misma información.
+ */
+fun LoEnviado.antecedenteEnviado(a: Antecedente): Antecedente? =
+    antecedentes[a.clave]?.let { a.copy(flag = flagDeLaCasilla(it), detalle = detalleDeLaCasilla(it)) }
+
 private fun flagDeLaCasilla(confirmada: String): Boolean = confirmada.substringBefore("|") == "1"
 
 private fun detalleDeLaCasilla(confirmada: String): String = confirmada.substringAfter("|", "")
@@ -467,9 +475,8 @@ private class Armado(private val e: EntradaDelPlan) {
 
     /** Qué es guardar [a] donde la web tenía lo último confirmado (RF-34, RF-69): la nota se compara por su texto; las casillas por flag y detalle. */
     private fun cambioDeLaCasilla(a: Antecedente): CambioReal {
-        val confirmada = e.loEnviado.antecedentes[a.clave]
-        if (a.clave == CLAVE_NOTA) return cambioReal(confirmada?.let(::detalleDeLaCasilla), a.detalle)
-        val anterior = confirmada?.let { a.copy(flag = flagDeLaCasilla(it), detalle = detalleDeLaCasilla(it)) }
+        val anterior = e.loEnviado.antecedenteEnviado(a)
+        if (a.clave == CLAVE_NOTA) return cambioReal(anterior?.detalle, a.detalle)
         return cambioRealDeAntecedente(anterior, a.flag, a.detalle)
     }
 

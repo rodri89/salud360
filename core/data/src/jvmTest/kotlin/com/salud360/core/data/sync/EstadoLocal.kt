@@ -59,4 +59,14 @@ internal suspend fun Salud360Db.sembrarAntecedente(
     activo: Boolean = true,
     categoria: String = "familiares",
     actualizadaEn: Long = 140,
-) = historiaClinicaQueries.upsertAntecedente(Antecedente(id, PACIENTE, "clinica", categoria, clave, true, "padre", consultaId, activo = activo).toRow(actualizadaEn))
+    flag: Boolean = true,
+    detalle: String = "padre",
+) = historiaClinicaQueries.upsertAntecedente(Antecedente(id, PACIENTE, "clinica", categoria, clave, flag, detalle, consultaId, activo = activo).toRow(actualizadaEn))
+
+/** Un valor de formulario (alimentación, serologías, Child-Pugh) sin enviar en [consultaId]: fila `dirty` de `seccion_valor`. */
+internal suspend fun Salud360Db.sembrarFormulario(consultaId: Id, seccion: String, campo: String, valor: String, actualizadaEn: Long = 125) =
+    historiaClinicaQueries.upsertSeccionValor(SeccionValor(consultaId, seccion, campo, valor).toRow(actualizadaEn))
+
+/** `<sección>/<campo>` de los valores sin enviar que **no** son un texto (los formularios). */
+internal suspend fun Salud360Db.formulariosSucios(consultaId: Id): Set<String> =
+    historiaClinicaQueries.seccionValoresDirty().lista { it }.filter { it.consulta_id == consultaId && it.campo != "texto" }.map { "${it.seccion}/${it.campo}" }.toSet()

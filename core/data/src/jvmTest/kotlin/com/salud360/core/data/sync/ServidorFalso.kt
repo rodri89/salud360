@@ -6,6 +6,7 @@ import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
+import com.salud360.core.data.network.hc.PayloadsClinica
 import com.salud360.core.data.network.hc.HcPacienteFicha
 import com.salud360.core.data.network.hc.HcPacienteRequest
 import com.salud360.core.data.network.hc.HcResolverRespuesta
@@ -34,6 +35,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.datetime.LocalDate
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -58,6 +61,12 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         var claveDeBaja: String? = null
         val secciones = linkedMapOf<String, String>()
         val examen = linkedMapOf<String, String>()
+
+        /** `<sección>.<clave>` -> valor de los formularios (`""` = vaciado). */
+        val formularios = linkedMapOf<String, String>()
+
+        /** Clave de la casilla -> `<0|1>|<detalle>`; la `nota` va con su texto tal cual. */
+        val antecedentes = linkedMapOf<String, String>()
     }
 
     data class CrearRecibido(
@@ -84,6 +93,14 @@ internal class ServidorFalso : ClinicaEscrituraApi {
     val cierres = CopyOnWriteArrayList<CerrarRecibido>()
     val textosEnviados = CopyOnWriteArrayList<Map<String, String>>()
     val camposEnviados = CopyOnWriteArrayList<Map<String, String>>()
+
+    /** Lo que llegó a `formularios` (sección -> clave -> valor), ya con las reglas del cuerpo de la API (T61). */
+    val formulariosEnviados = CopyOnWriteArrayList<Map<String, Map<String, String>>>()
+
+    /** Cada cuerpo de `antecedentes` que llegó, con la ficha y la consulta de la ruta. */
+    class AntecedentesRecibido(val pacienteWebId: Long, val consultaWebId: Long, val cuerpo: JsonObject)
+
+    val antecedentesRecibidos = CopyOnWriteArrayList<AntecedentesRecibido>()
 
     /** Las consultas que el paciente ya tenía abiertas, que `crear` informa en `otras_abiertas`. */
     var otrasAbiertas: List<ConsultaAbiertaDto> = emptyList()
@@ -173,12 +190,58 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         }
     }
 
-    // T61 suma las tres operaciones de E2 a la interfaz; el servidor falso que las aplica llega con T63 (ejecutar formularios, antecedentes y registros).
-    override suspend fun formularios(consultaWebId: Long, valores: Map<String, Map<String, String>>): RespuestaEscrituraDto = error("el servidor falso de E2 llega con T63")
-    override suspend fun antecedentes(pacienteWebId: Long, consultaWebId: Long, antecedentes: List<Antecedente>, enviados: Map<String, Antecedente>): RespuestaAntecedentesDto =
-        error("el servidor falso de E2 llega con T63")
+    /**
+     * `PUT consultas/{id}/formularios` (T54, T61). Como la remota real, arma el cuerpo con `PayloadsClinica` y **sin nada que mandar no hace ningún pedido**.
+     * Es un upsert por campo: `guardadas` son `<sección>.<clave>` y las que figuran en [noConoce] van en `desconocidas` sin escribirse.
+     */
+    override suspend fun formularios(consultaWebId: Long, valores: Map<String, Map<String, String>>): RespuestaEscrituraDto {
+        val cuerpo = PayloadsClinica.formularios(valores) ?: return RespuestaEscrituraDto(guardadas = emptyList(), desconocidas = emptyList())
+        val enviados = (cuerpo.getValue("formularios") as JsonObject).mapValues { (_, secc) ->
+            (secc as JsonObject).mapValues { (_, v) -> (v as JsonPrimitive).content }
+        }
+        formulariosEnviados += enviados
+        val claves = enviados.flatMap { (seccion, campos) -> campos.keys.map { "$seccion.$it" } }
+        return operar("formularios", "$consultaWebId ${claves.sorted().joinToString(",")}") {
+            val c = consulta(consultaWebId)
+            if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+            enviados.forEach { (seccion, campos) -> campos.forEach { (clave, valor) -> if ("$seccion.$clave" !in noConoce) c.formularios["$seccion.$clave"] = valor } }
+            RespuestaEscrituraDto(guardadas = claves.filter { it !in noConoce }, desconocidas = claves.filter { it in noConoce })
+        }
+    }
+
+    /**
+     * `PUT pacientes/{id}/antecedentes-familiares` (T61). Arma el cuerpo con `PayloadsClinica` (lo que cambió contra [enviados]) y sin nada que mandar no
+     * hace ningún pedido. La consulta tiene que ser de esa ficha (`422`) y estar abierta (`409`); `guardadas` son las claves de las casillas (y `nota`).
+     */
+    override suspend fun antecedentes(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        antecedentes: List<Antecedente>,
+        enviados: Map<String, Antecedente>,
+    ): RespuestaAntecedentesDto {
+        val cuerpo = PayloadsClinica.antecedentes(consultaWebId, antecedentes, enviados) ?: return RespuestaAntecedentesDto(id = null, guardadas = emptyList())
+        antecedentesRecibidos += AntecedentesRecibido(pacienteWebId, consultaWebId, cuerpo)
+        val casillas = cuerpo.getValue("casillas") as JsonObject
+        val claves = casillas.keys.toList() + listOfNotNull("nota".takeIf { cuerpo.containsKey("nota") })
+        return operar("antecedentes", "$pacienteWebId $consultaWebId ${claves.sorted().joinToString(",")}") {
+            val c = consulta(consultaWebId)
+            if (c.pacienteWebId != pacienteWebId) throw TobbException(422, "datos_invalidos", "La consulta no es de ese paciente.")
+            if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+            casillas.forEach { (clave, casilla) ->
+                if (clave !in noConoce) {
+                    casilla as JsonObject
+                    c.antecedentes[clave] = "${(casilla.getValue("flag") as JsonPrimitive).content}|${(casilla.getValue("detalle") as JsonPrimitive).content}"
+                }
+            }
+            if (cuerpo.containsKey("nota") && "nota" !in noConoce) c.antecedentes["nota"] = (cuerpo.getValue("nota") as JsonPrimitive).content
+            RespuestaAntecedentesDto(id = 900L + consultaWebId, guardadas = claves.filter { it !in noConoce }, desconocidas = claves.filter { it in noConoce })
+        }
+    }
+
+    // T63-b: el servidor falso de los registros (estudios, exámenes, interconsultas) llega con la mitad de registros.
     override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto =
-        error("el servidor falso de E2 llega con T63")
+        error("el servidor falso de los registros llega con T63-b")
+
     override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto {
         cierres += CerrarRecibido(consultaWebId, clave, dispositivo, fecha, edadMostrar)
         return operar("cerrar", "$consultaWebId $clave") {
