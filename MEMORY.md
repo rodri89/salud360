@@ -49,6 +49,11 @@ registros de personas): el repo es público.
   vea. No usar modelos externos en tareas que lean bases locales con datos de pacientes ni `bd_test/`.
   **Para retomar.** El servidor local (MySQL y Apache de XAMPP) hay que levantarlo a mano tras un reinicio; los datos de prueba P1 a P5 siguen en `hc_clinica`
   hasta la prueba general.
+  **Avance 2026-11-11 (respuestas del usuario: Q-E2-1 sin la nota del perfil 4, Q-E2-2 vaciar y conservar la fila, Q-E2-3 sin tope salvo el de la columna).**
+  Hechas: T60-bis (candado por sección, `SECCIONES_HABILITADAS` sigue en E1), T62-a y T63-a (formularios y antecedentes: plan y cola), T62-b y T63-b (los cinco
+  estudios: plan y cola), T51 y T55 (antecedentes en hclinica `267d17e`), T52-a y T56 (estudios en hclinica `e11dff9`). `core:data` 2011 en verde y
+  `tests/Unit` 1199. Los dos pacientes sintéticos de la prueba de T56 se limpiaron; P1–P5, 1997–2001 y `medico_infos` intactos. Sigue T65 (la lectura), T66
+  (pantallas) y T67 (habilitar, solo tras cerrar E1); la verificación manual de E1 (T11) sigue en manos del usuario.
   **T60-bis hecha (2026-11-11, `49fbf56`): el candado es un conjunto de secciones (`SECCIONES_HABILITADAS`), sigue en E1.**
   **T62-a hecha (2026-11-11, `87d6195`): el plan de envío arma formularios y antecedentes con cambio real contra `LoEnviado` (aún sin cablear a `HcClinicaEnvio`: T63); T62-b (registros) bloqueada por Q-E2-2/4/5.**
   **T63-a hecha (2026-11-11, `f6f2c92`): la cola (`HcClinicaEnvio`) envía formularios y antecedentes (un pedido por paso; parcial y limpieza como los textos). El candado sigue en E1: nada de esto sale todavía en la app.**
