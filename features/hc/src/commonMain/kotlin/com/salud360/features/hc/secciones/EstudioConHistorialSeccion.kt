@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
 import com.salud360.core.data.hcgeneral.historialEstudio
+import com.salud360.core.data.hcgeneral.puedeEditarRegistro
 import com.salud360.core.data.hcgeneral.textoEstudio
 import com.salud360.core.model.especialidad.RegistroDef
 import com.salud360.core.model.especialidad.SeccionDef
@@ -29,6 +30,11 @@ import kotlinx.datetime.LocalDate
  * Estudio con historial (`ModoRegistro.UNO_POR_CONSULTA`, RF-38 a RF-42), como `biopsia_hepatica.blade.php` de la
  * web: la fecha y el texto de esta consulta con "Consultas previas" al lado ([CampoConHistorial]). Las previas no se
  * editan desde acá. Qué se edita y qué va a la derecha lo deciden `entradaDeConsulta`/`historialEstudio`.
+ *
+ * Spec 005, T65-a/T66-a: la entrada de esta consulta es la del dispositivo (la que se envió, emparejada por
+ * `remoto_id`); si la única que hay vino de la web (`hcc-r…`), se ve **solo para lectura** (RF-62) con la misma regla
+ * que los demás registros (`puedeEditarRegistro`): lo de la web no se pisa desde acá. Cuando la sección se envía
+ * (T67), sus campos se editan como en cualquier consulta propia y el envío manda la fecha y el `detalle` (T62-b).
  */
 @Composable
 fun EstudioConHistorialSeccion(s: SeccionDef, regDef: RegistroDef, ctx: SeccionContext, ui: ConsultaUi) {
@@ -40,6 +46,8 @@ fun EstudioConHistorialSeccion(s: SeccionDef, regDef: RegistroDef, ctx: SeccionC
     var escrito by remember(regDef.tipo) { mutableStateOf(ctx.vm.estudioPendiente(regDef.tipo)) }
     val fecha = escrito?.first ?: entrada?.fecha ?: fechaConsulta(ui)
     val texto = escrito?.second ?: entrada?.textoEstudio.orEmpty()
+    // RF-62: una fila que vino de la web no se edita desde una consulta del dispositivo (lo decide `puedeEditarRegistro`).
+    val puedeEditar = entrada?.let { puedeEditarRegistro(it, editable = !ctx.soloLectura) } ?: !ctx.soloLectura
 
     if (ctx.soloLectura && texto.isBlank() && previas.isEmpty()) { SeccionVacia(); return }
 
@@ -57,9 +65,9 @@ fun EstudioConHistorialSeccion(s: SeccionDef, regDef: RegistroDef, ctx: SeccionC
         ) { modifier ->
             Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (ausenteEnEstaConsulta) MarcaYaNoFigura()
-                DateField("Fecha", fecha, { it?.let { f -> cambiar(f, texto) } }, readOnly = ctx.soloLectura)
-                if (ctx.soloLectura && texto.isBlank()) Text("Sin datos en esta consulta", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else TextAreaField(s.titulo, texto, { cambiar(fecha, it) }, minLines = 10, readOnly = ctx.soloLectura)
+                DateField("Fecha", fecha, { it?.let { f -> cambiar(f, texto) } }, readOnly = !puedeEditar)
+                if (!puedeEditar && texto.isBlank()) Text("Sin datos en esta consulta", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else TextAreaField(s.titulo, texto, { cambiar(fecha, it) }, minLines = 10, readOnly = !puedeEditar)
             }
         }
     }
