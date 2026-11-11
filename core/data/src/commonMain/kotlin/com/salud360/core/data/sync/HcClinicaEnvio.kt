@@ -24,12 +24,14 @@ import com.salud360.core.data.hcgeneral.estadoDeVinculo
 import com.salud360.core.data.hcgeneral.estadoPendienteDeLaConsulta
 import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.hcgeneral.planDeEnvio
+import com.salud360.core.data.hcgeneral.registroEnviado
 import com.salud360.core.data.hcgeneral.resumenDeEnvio
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
+import com.salud360.core.data.network.hc.PayloadsClinica
 import com.salud360.core.data.repos.EnvioDeConsultas
 import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.LoEnviadoGuardado
@@ -92,14 +94,15 @@ import kotlinx.datetime.toLocalDateTime
  *   Abrir una consulta no dispara nada; abrir la app, iniciar sesión y volver la conexión sí, pero solo lo propio ([alAbrirOIniciar], [alRecuperarConexion]).
  *
  * **Qué sale y en qué orden** ([enviar], RF-14, RF-56): lo decide `planDeEnvio` y esta clase lo ejecuta de a un paso: **primero la
- * creación** (clave `c:<id local>`), **después el contenido** (los textos y el examen) y **al final el cierre** (o la baja de una
- * anulada), y el cierre solo sale cuando todo lo anterior llegó. El envío **se corta en el primer paso que falla**: lo que ya llegó queda
- * anotado y lo que falló, con su estado, para el próximo intento. Un error se clasifica con `clasificarErrorDeEnvio` (T20) y el estado
- * se guarda por parte (`EstadosDeEnvio`).
+ * creación** (clave `c:<id local>`), **después el contenido** (los textos, el examen, los formularios, los antecedentes y los cinco
+ * estudios) y **al final el cierre** (o la baja de una anulada), y el cierre solo sale cuando todo lo anterior llegó. El envío **se corta
+ * en el primer paso que falla**: lo que ya llegó queda anotado y lo que falló, con su estado, para el próximo intento. Un error se clasifica
+ * con `clasificarErrorDeEnvio` (T20) y el estado se guarda por parte (`EstadosDeEnvio`).
  *
  * **Qué se anota al confirmar un paso** (RF-32, RF-55, RF-61), todo en **una sola transacción** local, así un corte entre «el servidor
  * confirmó» y «anotado» no deja nada a medias (y el reenvío repite la misma clave sin duplicar):
- * - el id de la web (`remoto_id`) al crear, y la fila de la consulta se limpia solo si ya no falta el cierre ni la baja;
+ * - el id de la web (`remoto_id`) al crear, y el de cada estudio que la web confirmó, en la misma transacción que lo limpia; la fila de la consulta se
+ *   limpia solo si ya no falta el cierre ni la baja;
  * - lo que la web confirmó en `guardadas` (nunca lo que no figura ahí: un envío parcial deja el resto pendiente y «No se pudo enviar»);
  * - la limpieza de las filas que viajaron, **solo las que no cambiaron mientras viajaban** (se compara `updated_at`);
  * - `LoEnviado` (lo último que la web tiene: así un texto vaciado a propósito sale vacío y un vacío no tocado no sale nunca);
@@ -460,14 +463,12 @@ open class HcClinicaEnvio(
             is PasoDeEnvio.Examen -> examen(paso)
             is PasoDeEnvio.Formularios -> formularios(paso)
             is PasoDeEnvio.Antecedentes -> antecedentes(paso)
+            is PasoDeEnvio.Registros -> registros(paso)
             is PasoDeEnvio.Cerrar -> cerrar(paso)
             is PasoDeEnvio.Baja -> baja(paso)
-            // Los registros (estudios, exámenes, interconsultas) son de T63-b: todavía no se saben enviar (con `E1`, o con un conjunto de secciones
-            // sin ellos, quedan en reserva y no llegan hasta acá). Si alguien los habilita sin esa tarea, el envío se corta sin mandar nada.
-            else -> {
-                log.w { "el paso ${paso.parte} de la consulta ${consulta.id} todavía no se sabe enviar" }
-                false
-            }
+            // Un paso que esta versión no conoce no se manda: el envío se corta y no se anota nada. Con los pasos de hoy (crear, textos, examen,
+            // formularios, antecedentes, estudios, cierre y baja) no hay ninguno; queda por si una versión futura agrega uno sin enseñarle a la cola.
+            else -> error("el paso ${paso.parte} de la consulta ${consulta.id} todavía no se sabe enviar")
         }
 
         private suspend fun crear(paso: PasoDeEnvio.Crear): Boolean {
@@ -561,6 +562,39 @@ open class HcClinicaEnvio(
             db.transaction {
                 if (llegaron.isNotEmpty()) loEnviados.guardar(consulta.pacienteId, consulta.id, nuevo)
                 paso.cubre.filter { it.clave in ids }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                anotarEstado(paso.parte, faltan)
+            }
+            lo = nuevo
+            return faltan.isEmpty()
+        }
+
+        /**
+         * `PUT consultas/{id}/registros` (T63-b): un solo pedido con los **cinco estudios** que arman el plan (T62-b: solo los que cambian de verdad, con su
+         * fecha y su `detalle`; un vaciado va `detalle ""`) y lo último confirmado (`LoEnviado.registroEnviado`) como «lo ya enviado». La web contesta el id
+         * de cada fila en `ids` (`ref` = `r:<id local>`) y los `ref` escritos en `guardadas`: solo esos se limpian y reciben su `remoto_id` — los dos anotados
+         * en **una sola transacción** con `LoEnviado` y el estado (RF-61), y solo si la fila no cambió mientras viajaba (RF-55). Lo que no figura queda sucio
+         * y la parte «No se pudo enviar» (como los textos, T25 (b)); `desconocidas` tampoco se limpia. Una respuesta perdida no anota nada: el reenvío repite
+         * los mismos `ref` y la web no duplica la fila.
+         */
+        private suspend fun registros(paso: PasoDeEnvio.Registros): Boolean {
+            val id = webId ?: return false
+            val enviados = paso.items.mapNotNull { r -> lo.registroEnviado(r)?.let { r.id to it } }.toMap()
+            val respuesta = intentar(paso) { api.registros(id, paso.items, enviados) } ?: return false
+            val idPorRef = respuesta.idsPorRef()
+            val guardadas = respuesta.guardadas.toSet()
+            // Un ref confirmado sin id no sirve: sin saber el id de la web la fila no se puede anotar y el reenvío duplicaría. Se deja pendiente.
+            val confirmadas = guardadas.filter { it in idPorRef }.toSet()
+            val refDe = paso.items.associate { it.id to PayloadsClinica.claveDeRegistro(it.id) }
+            val llegaron = paso.items.filter { refDe.getValue(it.id) in confirmadas }
+            val faltan = paso.items.filter { it !in llegaron }.map { refDe.getValue(it.id) }.toSet()
+            val idsLocales = llegaron.map { it.id }.toSet()
+            val remotos = llegaron.associate { it.id to idPorRef.getValue(refDe.getValue(it.id)).toString() }
+            val nuevo = lo.conLoConfirmado(PasoDeEnvio.Registros(llegaron, emptyList()), remotos = remotos)
+            db.transaction {
+                // El id de la web y la limpieza de la misma fila ("nunca una fila sin id y limpia", RF-61).
+                remotos.forEach { (local, remoto) -> hq.guardarRemotoIdRegistro(remoto, local) }
+                if (llegaron.isNotEmpty()) loEnviados.guardar(consulta.pacienteId, consulta.id, nuevo)
+                paso.cubre.filter { it.clave in idsLocales }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
                 anotarEstado(paso.parte, faltan)
             }
             lo = nuevo

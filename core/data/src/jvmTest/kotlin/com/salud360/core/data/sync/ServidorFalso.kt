@@ -35,8 +35,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.datetime.LocalDate
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -104,6 +106,23 @@ internal class ServidorFalso : ClinicaEscrituraApi {
 
     /** Las consultas que el paciente ya tenía abiertas, que `crear` informa en `otras_abiertas`. */
     var otrasAbiertas: List<ConsultaAbiertaDto> = emptyList()
+
+    /** Un estudio de la «web» (T63-b), por id: la fecha y los campos (`detalle`) del último pedido que lo escribió. */
+    class RegistroWeb(val id: Long, val consultaWebId: Long, val ref: String, val tipo: String) {
+        var fecha: String? = null
+        val campos = linkedMapOf<String, String>()
+        var activo = true
+    }
+
+    /** Lo que hay en la «web» de los estudios, por id (lo que se compara en los tests de T63-b). */
+    val registros = linkedMapOf<Long, RegistroWeb>()
+
+    /** Cada cuerpo de `registros` que llegó (ya armado con `PayloadsClinica`), en orden. */
+    val cuerposDeRegistros = CopyOnWriteArrayList<JsonObject>()
+
+    /** `"<consulta>|<ref>"` -> id de la fila: la misma `ref` no crea otra fila (RF-15). */
+    private val idsDeRegistros = linkedMapOf<String, Long>()
+    private var proximoRegistroId = 1800L
 
     /** Hace fallar la operación (con ese error) antes de que el servidor la aplique; `null` = anda. */
     @Volatile
@@ -238,9 +257,60 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         }
     }
 
-    // T63-b: el servidor falso de los registros (estudios, exámenes, interconsultas) llega con la mitad de registros.
-    override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto =
-        error("el servidor falso de los registros llega con T63-b")
+    /**
+     * `PUT consultas/{id}/registros` (T61, T63-b). Como la remota real, arma el cuerpo con `PayloadsClinica.registros` (lo que cambió contra [enviados]) y **sin
+     * nada que mandar no hace ningún pedido**. Los estudios son una fila por consulta y tipo: la misma `ref` devuelve el mismo id (el reenvío no duplica) y un
+     * `tipo` de estudio con fila en esa consulta la reutiliza. `guardadas`/`ids` son los `ref` escritos; los que figuran en [noConoce] van en `desconocidas`
+     * sin escribirse. Se aplica `borrado` como baja de la fila, aunque el plan de los estudios no lo manda (Q-E2-2).
+     */
+    override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto {
+        val cuerpo = PayloadsClinica.registros(registros, enviados)
+            ?: return RespuestaRegistrosDto(ids = JsonObject(emptyMap()), guardadas = emptyList(), desconocidas = emptyList())
+        cuerposDeRegistros += cuerpo
+        val items = cuerpo.getValue("items") as JsonArray
+        val refs = items.map { (it as JsonObject).getValue("ref").jsonPrimitive.content }
+        return operar("registros", "$consultaWebId ${refs.sorted().joinToString(",")}") {
+            val c = consulta(consultaWebId)
+            if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+            val ids = linkedMapOf<String, JsonPrimitive>()
+            val guardadas = mutableListOf<String>()
+            val desconocidas = mutableListOf<String>()
+            for (elemento in items) {
+                val item = elemento as JsonObject
+                val ref = item.getValue("ref").jsonPrimitive.content
+                if (ref in noConoce) {
+                    desconocidas += ref
+                    continue
+                }
+                val fila = filaDeRegistro(consultaWebId, ref, item.getValue("tipo").jsonPrimitive.content, item["id"]?.jsonPrimitive?.content?.toLongOrNull())
+                item["borrado"]?.let { fila.activo = false }
+                item["fecha"]?.let { fila.fecha = it.jsonPrimitive.content }
+                (item["campos"] as? JsonObject)?.forEach { (campo, valor) -> fila.campos[campo] = (valor as JsonPrimitive).content }
+                ids[ref] = JsonPrimitive(fila.id)
+                guardadas += ref
+            }
+            RespuestaRegistrosDto(ids = JsonObject(ids), guardadas = guardadas, desconocidas = desconocidas)
+        }
+    }
+
+    /**
+     * La fila de la «web» de [ref] en [consultaWebId], o una nueva: manda el [idDeclarado] del ítem (la app lo conoce), después la `ref` ya registrada y después
+     * la fila del mismo tipo en esa consulta (los estudios no se repiten). Nunca nace una fila nueva para una `ref` ni para un id que ya estaban.
+     */
+    private fun filaDeRegistro(consultaWebId: Long, ref: String, tipo: String, idDeclarado: Long?): RegistroWeb {
+        val clave = "$consultaWebId|$ref"
+        // La app mandó el id de la fila de la web: el servidor actualiza esa fila (no crea otra).
+        if (idDeclarado != null) {
+            val fila = registros.getOrPut(idDeclarado) { RegistroWeb(idDeclarado, consultaWebId, ref, tipo) }
+            idsDeRegistros[clave] = fila.id
+            return fila
+        }
+        val existente = idsDeRegistros[clave]?.let { registros[it] }
+            ?: registros.values.firstOrNull { it.consultaWebId == consultaWebId && it.tipo == tipo }
+        val fila = existente ?: RegistroWeb(proximoRegistroId++, consultaWebId, ref, tipo).also { registros[it.id] = it }
+        idsDeRegistros[clave] = fila.id
+        return fila
+    }
 
     override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto {
         cierres += CerrarRecibido(consultaWebId, clave, dispositivo, fecha, edadMostrar)

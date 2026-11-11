@@ -14,7 +14,9 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
+import kotlinx.datetime.LocalDate
 
 /** Lo que los tests del envío miran de la base del dispositivo. */
 
@@ -38,6 +40,7 @@ internal suspend fun Salud360Db.filasSucias(): List<List<Any>> = listOf(
     historiaClinicaQueries.seccionValoresDirty().lista { it },
     historiaClinicaQueries.examenesFisicosDirty().lista { it },
     historiaClinicaQueries.antecedentesDirty().lista { it },
+    historiaClinicaQueries.registrosDirty().lista { it },
 )
 
 internal suspend fun Salud360Db.estadosDe(consultaId: Id, paciente: Id = PACIENTE): Map<String, EstadoGuardado> =
@@ -70,3 +73,37 @@ internal suspend fun Salud360Db.sembrarFormulario(consultaId: Id, seccion: Strin
 /** `<sección>/<campo>` de los valores sin enviar que **no** son un texto (los formularios). */
 internal suspend fun Salud360Db.formulariosSucios(consultaId: Id): Set<String> =
     historiaClinicaQueries.seccionValoresDirty().lista { it }.filter { it.consulta_id == consultaId && it.campo != "texto" }.map { "${it.seccion}/${it.campo}" }.toSet()
+
+/** Un estudio sin enviar de [consultaId] (T62-b/T63-b): la fila de `registro_clinico` con su fecha y su `detalle`. */
+internal suspend fun Salud360Db.sembrarRegistro(
+    id: Id,
+    consultaId: Id? = "u1",
+    tipo: String = "eco_abdominal",
+    detalle: String = "hígado graso",
+    fecha: LocalDate? = FECHA_DE_PRUEBA,
+    remotoId: String = "",
+    activo: Boolean = true,
+    actualizadaEn: Long = 140,
+) = historiaClinicaQueries.upsertRegistro(
+    RegistroClinico(id, PACIENTE, consultaId, "clinica", tipo, fecha, mapOf("detalle" to detalle), activo, remotoId).toRow(actualizadaEn),
+)
+
+/** El mismo estudio, con otro `detalle` (o `null` para no tocarlo) y otro `updated_at`: como el autoguardado cuando el médico lo cambia. */
+internal suspend fun Salud360Db.escribirRegistro(id: Id, detalle: String? = null, fecha: LocalDate? = null, actualizadaEn: Long = 200) {
+    val fila = historiaClinicaQueries.registroPorId(id).uno { it.toModel() } ?: return
+    historiaClinicaQueries.upsertRegistro(
+        fila.copy(fecha = fecha ?: fila.fecha, campos = if (detalle != null) fila.campos + ("detalle" to detalle) else fila.campos).toRow(actualizadaEn),
+    )
+}
+
+/** La fila del dispositivo, con su `remoto_id` y su `activo`. */
+internal suspend fun Salud360Db.registroLocal(id: Id): RegistroClinico? = historiaClinicaQueries.registroPorId(id).uno { it.toModel() }
+
+internal suspend fun Salud360Db.registroSucio(id: Id): Boolean = historiaClinicaQueries.registrosDirty().lista { it.id }.contains(id)
+
+internal suspend fun Salud360Db.registroActualizadoEn(id: Id): Long? = historiaClinicaQueries.registroPorId(id).uno { it.updated_at }
+
+/** Los ids de los estudios sin enviar de [consultaId]. */
+internal suspend fun Salud360Db.registrosSucios(consultaId: Id): Set<String> =
+    historiaClinicaQueries.registrosDirty().lista { it }.filter { it.consulta_id == consultaId }.map { it.id }.toSet()
+
