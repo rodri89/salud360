@@ -18,8 +18,8 @@ import com.salud360.core.model.hc.Antecedente
 enum class SubentregaDeEscritura { E1, E2, E3, E4 }
 
 /**
- * La última subentrega cuyo envío trae esta versión de la app: de ella sale el valor de [SECCIONES_HABILITADAS], **el candado real**. Para habilitar
- * de a una sección (o una subentrega entera) se cambia ese conjunto; esta constante sigue en E1 mientras no se habilite nada de E2 (RF-4, Q-A).
+ * La subentrega que **siembra** [SECCIONES_HABILITADAS]: ya no es el candado real (lo es el conjunto). Sigue en [SubentregaDeEscritura.E1] porque esta versión
+ * habilita de E1 y solo una parte de E2 (decisión del usuario, T67 reducida): cambiarla encendería todo lo de una subentrega de golpe.
  */
 val SUBENTREGA_HABILITADA = SubentregaDeEscritura.E1
 
@@ -83,12 +83,20 @@ private val SECCIONES_APARTE = setOf("enfermedades")
 fun seccionesDe(subentrega: SubentregaDeEscritura): Set<String> = SUBENTREGA_QUE_HABILITA.filterValues { it <= subentrega }.keys.toSet()
 
 /**
- * **El candado del envío (RF-4): el conjunto de secciones que esta versión de la app envía a la web.** Hoy son las de [SUBENTREGA_HABILITADA] (E1:
- * los ocho textos y el examen físico). **Es lo único que se cambia para habilitar una sección o una subentrega**: se escribe el conjunto a mano (por
- * ejemplo `seccionesDe(SubentregaDeEscritura.E1) + setOf("serologias", "child_pugh")`) y la pantalla, el plan de envío y el contador lo siguen solos.
+ * **El candado del envío (RF-4): el conjunto de secciones que esta versión de la app envía a la web.** **Es lo único que se cambia para habilitar una
+ * sección**: la pantalla, el plan de envío y el contador lo siguen solos.
+ *
+ * Hoy son las nueve de [SUBENTREGA_HABILITADA] (E1: los ocho textos y el examen físico) **más una parte de E2, por decisión del usuario del 2026-11-11
+ * (T67 reducida, autorizada antes del cierre de E1)**: serologías, Child-Pugh, antecedentes familiares y los cinco estudios. Quedan en «todavía no» la
+ * alimentación, los exámenes complementarios y las interconsultas (de E2), el laboratorio y el peso (E3) y los adjuntos (E4); lo que la web no guarda
+ * ([SECCIONES_QUE_LA_WEB_NO_GUARDA]) y lo que tiene su propia API ([SECCIONES_APARTE]) siguen igual. Con todo habilitado se escribe `seccionesDe(E4)`.
+ *
  * Va declarado **después** de [SUBENTREGA_QUE_HABILITA]: los `val` de nivel superior se inicializan en el orden del archivo.
  */
-val SECCIONES_HABILITADAS: Set<String> = seccionesDe(SUBENTREGA_HABILITADA)
+val SECCIONES_HABILITADAS: Set<String> = seccionesDe(SUBENTREGA_HABILITADA) + setOf(
+    "serologias", "child_pugh", SeccionesComunes.ANTECEDENTES_FAMILIARES,
+    "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
+)
 
 /**
  * Qué pasa con [seccion] en una versión que envía las secciones de [habilitadas]. Lo que la web no guarda ([EnvioDeSeccion.NUNCA]) y lo que tiene su

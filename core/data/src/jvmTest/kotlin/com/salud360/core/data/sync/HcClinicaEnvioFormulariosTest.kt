@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  * propia a `PUT consultas/{id}/formularios`, con lo que arma el plan (T62-a) y lo último que la web confirmó (`LoEnviado`). Un solo pedido por paso, después
  * del examen y antes de los antecedentes y del cierre; lo que la web no confirma en `guardadas` no se limpia ni figura como enviado y la parte queda «No se
  * pudo enviar»; una respuesta perdida se repite sin duplicar; lo que cambió mientras viajaba sigue pendiente. Contra el [ServidorFalso] con memoria y con la
- * subentrega E2 habilitada **explícitamente** (el candado de la versión sigue en E1). Los registros son de T63-b.
+ * subentrega E2 habilitada **explícitamente** (el candado de la versión —`SECCIONES_HABILITADAS`— habilita desde T67 reducida solo una parte de E2, así que acá se pasa el conjunto completo). Los registros son de T63-b.
  */
 class HcClinicaEnvioFormulariosTest {
     private val e2 = seccionesDe(SubentregaDeEscritura.E2)
@@ -370,14 +370,15 @@ class HcClinicaEnvioFormulariosTest {
     // ---------- El candado ----------
 
     @Test
-    fun con_el_candado_de_la_version_los_formularios_no_salen_ni_frenan_el_cierre() = conServidor {
+    fun con_el_candado_de_la_version_la_alimentacion_no_sale_ni_frena_el_cierre() = conServidor {
+        // T67 reducida: las serologías y Child-Pugh ya viajan; de los formularios, la alimentación es la que sigue afuera del alcance del usuario.
         creada(estado = EstadoConsulta.CERRADA, dirty = true)
-        db.sembrarFormulario("u1", "serologias", "hiv", "NO")
+        db.sembrarFormulario("u1", "alimentacion", "hiposodica", "1|sin sal")
 
         envio.empujarYa("u1").join()
 
-        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "E1: los formularios esperan y el cierre sale")
-        assertEquals(setOf("serologias/hiv"), db.formulariosSucios("u1"), "siguen sucios, para cuando se habiliten")
+        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "la alimentación espera y el cierre sale")
+        assertEquals(setOf("alimentacion/hiposodica"), db.formulariosSucios("u1"), "sigue sucia, para cuando se habilite")
         assertEquals(0, envio.contarPendientes().total)
     }
 

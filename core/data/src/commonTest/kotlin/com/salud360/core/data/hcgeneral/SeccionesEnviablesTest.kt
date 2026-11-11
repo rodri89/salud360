@@ -125,11 +125,30 @@ class SeccionesEnviablesTest {
     private val todasLasDeLaHcGeneral = textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos
 
     @Test
-    fun el_candado_de_esta_version_es_el_conjunto_de_la_e1_los_ocho_textos_y_el_examen_fisico() {
-        assertEquals(seccionesDe(E1), SECCIONES_HABILITADAS)
-        assertEquals((textos + "examen_fisico").toSet(), SECCIONES_HABILITADAS)
-        assertEquals(9, SECCIONES_HABILITADAS.size, "los ocho textos y el examen físico; enfermedades va aparte y no entra en el conjunto")
-        assertEquals(E1, SUBENTREGA_HABILITADA, "nada de E2 está habilitado: eso es la T67, después del cierre de E1")
+    fun el_candado_habilitado_es_el_de_la_e1_mas_las_ocho_secciones_del_alcance_del_usuario() {
+        // Decisión del usuario (2026-11-11): habilitar antes de cerrar E1 solo estas de E2 —serologías, Child-Pugh, antecedentes familiares y los
+        // cinco estudios—; el resto de E2, E3 y E4 sigue "todavía no".
+        val delAlcanceDeE2 = listOf("serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn")
+        assertEquals((textos + "examen_fisico" + delAlcanceDeE2).toSet(), SECCIONES_HABILITADAS)
+        assertEquals(17, SECCIONES_HABILITADAS.size, "los nueve de E1 (ocho textos y el examen) y las ocho del alcance; enfermedades va aparte y no entra")
+        assertEquals(delAlcanceDeE2.associateWith { SE_ENVIA }, estados(delAlcanceDeE2, SECCIONES_HABILITADAS))
+        (textos + "examen_fisico").forEach { assertEquals(SE_ENVIA, envioDeSeccion(it), it) }
+        assertFalse("enfermedades" in SECCIONES_HABILITADAS, "enfermedades tiene su API y no es una sección de una subentrega")
+        assertEquals(E1, SUBENTREGA_HABILITADA, "la constante no cambia: el candado real es SECCIONES_HABILITADAS")
+    }
+
+    @Test
+    fun lo_que_el_alcance_del_usuario_deja_afuera_sigue_todavia_no() {
+        // Ni la alimentación (E2), ni los exámenes complementarios ni las interconsultas (E2), ni E3, ni los adjuntos (E4).
+        val fueraDelAlcance = listOf(
+            "alimentacion", "examenes_complementarios", "interconsulta",
+            "laboratorio_general", "laboratorio_reducido", "tabla_peso", "pendientes", "documentos",
+        )
+        assertEquals(fueraDelAlcance.associateWith { TODAVIA_NO }, estados(fueraDelAlcance, SECCIONES_HABILITADAS))
+        fueraDelAlcance.forEach {
+            assertFalse(seccionSeOfrece(it), it)
+            assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeSeccion(it), it)
+        }
     }
 
     @Test
@@ -205,7 +224,9 @@ class SeccionesEnviablesTest {
     fun sin_indicar_el_conjunto_rige_el_candado_de_la_version() {
         assertEquals(SE_ENVIA, envioDeSeccion("nota"))
         assertEquals(SE_ENVIA, envioDeSeccion("examen_fisico"))
-        assertEquals(TODAVIA_NO, envioDeSeccion("serologias"), "E2 todavía no está habilitada")
+        assertEquals(SE_ENVIA, envioDeSeccion("serologias"), "las del alcance del usuario viajan por omisión (T67 reducida)")
+        assertEquals(SE_ENVIA, envioDeSeccion("eco_abdominal"))
+        assertEquals(TODAVIA_NO, envioDeSeccion("alimentacion"), "la alimentación quedó fuera del alcance")
         assertEquals(TODAVIA_NO, envioDeSeccion("laboratorio_general"))
         for (id in todasLasDeLaHcGeneral + laWebNoGuarda + "enfermedades") {
             assertEquals(envioDeSeccion(id, SECCIONES_HABILITADAS), envioDeSeccion(id), id)

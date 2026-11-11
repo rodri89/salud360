@@ -200,20 +200,27 @@ class LecturaClinicaCatalogoTest {
     }
 
     @Test
-    fun las_25_secciones_siguen_decididas_y_en_esta_version_se_ofrecen_textos_y_examen_fisico() {
+    fun las_25_secciones_siguen_decididas_y_esta_version_ofrece_las_del_alcance() {
         assertEquals(25, catalogoHcGeneral.ids.size)
         val estados = catalogoHcGeneral.ids.associateWith { envioDeSeccion(it) }
         // Ninguna del catálogo es de las que la web no guarda.
         assertTrue(estados.values.none { it == EnvioDeSeccion.NUNCA })
+        // T67 reducida: los textos, el examen, enfermedades y las ocho secciones del alcance del usuario (las de E2 que pidió y no la alimentación).
         assertEquals(
             setOf(
                 "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia",
-                "examen_fisico", "enfermedades",
+                "examen_fisico", "enfermedades", "serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda",
+                "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
             ),
             catalogoHcGeneral.ids.filter { seccionSeOfrece(it) }.toSet(),
         )
-        // Todo lo demás del catálogo dice «todavía no» y se habilita por subentrega: ninguna queda sin decidir.
-        assertEquals(15, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
+        // Todo lo demás del catálogo dice «todavía no» y se habilita por subentrega: ninguna queda sin decidir. Son la alimentación, los exámenes
+        // complementarios y las interconsultas (E2, fuera del alcance), los tres de laboratorio (E3) y los adjuntos (E4).
+        assertEquals(
+            setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_general", "laboratorio_reducido", "tabla_peso", "documentos"),
+            estados.filterValues { it == EnvioDeSeccion.TODAVIA_NO }.keys,
+        )
+        assertEquals(7, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
         // Con todas las subentregas habilitadas se envían las 24 que viajan en una consulta; `enfermedades` va por su API.
         assertEquals(
             catalogoHcGeneral.ids.toSet() - "enfermedades",
@@ -224,7 +231,7 @@ class LecturaClinicaCatalogoTest {
     @Test
     fun una_seccion_del_perfil_que_todavia_no_se_envia_no_se_ofrece_pero_no_se_pierde() {
         val perfil = listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "enfermedades")
-        assertEquals(listOf("motivo_consulta", "examen_fisico", "enfermedades"), seccionesQueSeOfrecen(perfil))
+        assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "examen_fisico", "enfermedades"), seccionesQueSeOfrecen(perfil))
         assertTrue(perfil.all { catalogoHcGeneral.seccion(it) != null }, "las secciones del perfil siguen en el catálogo, se muestran para leer")
         assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion("laboratorio_general"))
     }

@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  * después de los antecedentes y antes del cierre; el `ids` de la respuesta deja el `remoto_id` de cada fila en la **misma transacción** que la limpia; lo
  * que la web no confirma no se limpia ni figura como enviado y la parte queda «No se pudo enviar»; una respuesta perdida se repite con los mismos `ref`
  * sin duplicar; lo que cambió mientras viajaba sigue pendiente. Contra el [ServidorFalso] con memoria y con la subentrega E2 habilitada
- * **explícitamente** (el candado de la versión sigue en E1). Los exámenes complementarios y las interconsultas quedan fuera de alcance (T52-b) y no llegan.
+ * **explícitamente** (el candado de la versión —`SECCIONES_HABILITADAS`— habilita desde T67 reducida solo una parte de E2, así que acá se pasa el conjunto completo). Los exámenes complementarios y las interconsultas quedan fuera de alcance (T52-b) y no llegan.
  */
 class HcClinicaEnvioRegistrosTest {
     private val e2 = seccionesDe(SubentregaDeEscritura.E2)
@@ -369,13 +369,14 @@ class HcClinicaEnvioRegistrosTest {
     // ---------- El candado ----------
 
     @Test
-    fun con_el_candado_de_la_version_los_estudios_no_salen_ni_frenan_el_cierre() = conServidor {
+    fun con_un_conjunto_que_no_incluye_estudios_no_salen_ni_frenan_el_cierre() = conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E1)) {
+        // Los cinco estudios se habilitaron por decisión del usuario (T67 reducida); el candado por conjunto se sigue probando con el de E1 explícito.
         creada(estado = EstadoConsulta.CERRADA, dirty = true)
         db.sembrarRegistro("r-eco", "u1", "eco_abdominal", detalle = "hígado graso")
 
         envio.empujarYa("u1").join()
 
-        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "E1: los estudios esperan y el cierre sale")
+        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "sin las secciones en el conjunto, los estudios esperan y el cierre sale")
         assertEquals(setOf("r-eco"), db.registrosSucios("u1"), "siguen sucios, para cuando se habiliten")
         assertEquals(0, envio.contarPendientes().total)
     }

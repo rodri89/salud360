@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
  * `PUT pacientes/{ficha}/antecedentes-familiares`, con la consulta de la web, lo que arma el plan (T62-a) y lo último que la web confirmó (`LoEnviado`). Un
  * solo pedido por paso; solo casillas activas y de la consulta propia que cambian de verdad; lo vaciado a propósito viaja `flag 0` y detalle vacío; lo que la
  * web no confirma en `guardadas` no se limpia ni figura como enviado; una respuesta perdida se repite sin duplicar. Contra el [ServidorFalso] con memoria y
- * con la subentrega E2 habilitada **explícitamente** (el candado de la versión sigue en E1). Sin `nota_perfil4` (Q-E2-1).
+ * con la subentrega E2 habilitada **explícitamente** (el candado de la versión —`SECCIONES_HABILITADAS`— habilita desde T67 reducida solo una parte de E2, así que acá se pasa el conjunto completo). Sin `nota_perfil4` (Q-E2-1).
  */
 class HcClinicaEnvioAntecedentesTest {
     private val e2 = seccionesDe(SubentregaDeEscritura.E2)
@@ -346,13 +346,14 @@ class HcClinicaEnvioAntecedentesTest {
     // ---------- El candado ----------
 
     @Test
-    fun con_el_candado_de_la_version_los_antecedentes_no_salen_ni_frenan_el_cierre() = conServidor {
+    fun con_un_conjunto_que_no_incluye_antecedentes_no_salen_ni_frenan_el_cierre() = conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E1)) {
+        // La sección se habilitó por decisión del usuario (T67 reducida); el candado por conjunto se sigue probando con el de E1 explícito.
         creada(estado = EstadoConsulta.CERRADA, dirty = true)
         db.sembrarAntecedente("a1", "u1", clave = "hta")
 
         envio.empujarYa("u1").join()
 
-        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "E1: los antecedentes esperan y el cierre sale")
+        assertEquals(listOf("cerrar 7001 c:u1-cierre"), servidor.pedidos, "sin la sección en el conjunto, los antecedentes esperan y el cierre sale")
         assertTrue(db.antecedenteSucio("a1"))
         assertEquals(0, envio.contarPendientes().total)
     }

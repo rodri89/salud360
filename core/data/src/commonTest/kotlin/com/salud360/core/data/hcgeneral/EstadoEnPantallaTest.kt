@@ -148,12 +148,17 @@ class EstadoEnPantallaTest {
 
     @Test
     fun una_seccion_sin_envio_dice_por_que_solo_si_la_consulta_se_envia() {
-        // En esta versión se envían los textos, el examen y las enfermedades (RF-4); el resto «todavía no».
+        // Esta versión envía los textos, el examen, las enfermedades y las secciones del alcance del usuario (T67 reducida: serologías, Child-Pugh,
+        // antecedentes familiares y los cinco estudios); el resto «todavía no».
         assertNull(avisoDeEnvioDeLaSeccion("nota", seEnvia = true))
         assertNull(avisoDeEnvioDeLaSeccion("examen_fisico", seEnvia = true))
         assertNull(avisoDeEnvioDeLaSeccion("enfermedades", seEnvia = true))
+        for (id in listOf("serologias", "child_pugh", "antecedentes_familiares", "veda", "eco_abdominal", "tc_rmn")) {
+            assertNull(avisoDeEnvioDeLaSeccion(id, seEnvia = true), id)
+        }
+        assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("alimentacion", seEnvia = true))
         assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("laboratorio_general", seEnvia = true))
-        assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("veda", seEnvia = true))
+        assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("interconsulta", seEnvia = true))
         // Lo que la web no guarda nunca (RF-3).
         assertEquals(AVISO_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("diagnostico", seEnvia = true))
         assertEquals(AVISO_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("audio", seEnvia = true))
