@@ -23,6 +23,33 @@ registros de personas): el repo es público.
   `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
   Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
   y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
+- **Spec 005, estado y nuevo alcance al 2026-11-11 (traspaso; no reemplaza lo de arriba).**
+  **Estado.** E1: servidor T8 a T14 y app T15 a T31 y T36 a T37 hechas; pendientes T11 (verificación de RF-17 con el usuario), T38, T39 y T40 a T47;
+  T32 (iOS) diferida; T33 a T35 sin urgencia. E2: T48 a T50, T53, T54 y T61 hechas; el resto está bloqueado por preguntas abiertas.
+  **Decisiones del usuario.** El foco es que la HC de clínica funcione en la WEB (lectura y escritura); iOS, Android y offline vienen después. Se aprobaron
+  E2 a E4, Q-A (arranca E2 sin esperar el cierre de E1) y Q-B (orden E2-a, E3, E2-b, E4, con un candado por sección que todavía NO existe:
+  `SUBENTREGA_HABILITADA` sigue en E1).
+  **NUEVO ALCANCE (2026-11-11): lo que usan hoy los clínicos y debe quedar andando para leer y escribir.** Perfil 2 (hepatología): motivo de consulta,
+  documentos PDF, laboratorio general, ecografía abdominal, serologías de hepatitis, peso (tabla `pesos`), Child-Pugh, videoendoscopia digestiva alta,
+  biopsia hepática, estudios cardiológicos, TC/RMN/colangioRMN y antecedentes familiares. Perfil 3: enfermedades (ya andan, spec 003), motivo de consulta,
+  documentos PDF, laboratorio general y «antecedentes personales patológicos» (solo nota; la web la guarda en `antecedentes_familiares.nota` con las demás
+  columnas en 0 o vacío). Fuera de alcance por ahora: exámenes complementarios, interconsultas, alimentación, laboratorio reducido, pendientes, fotos y perfil 4.
+  **Hallazgos del análisis.** (a) La app no tiene modo «solo nota» ni un id para ese rótulo; no puede llamarse `antecedentes_personales` (es NUNCA por D9).
+  (b) El perfil 3 queda sin perfil en la carga inicial de la app (hay que armarlo en el admin) y el perfil 2 local tiene 5 secciones de las 17.
+  (c) La web usa laboratorio reducido si el usuario de la web tiene id 9: falta saber si aplica. (d) Los PDF no se leen en la app (todo E4).
+  (e) El peso de la lista es la tabla `pesos`.
+  **Preguntas ABIERTAS sin responder.** Q-E2-1 (nota del perfil 4; recomendación: queda afuera), Q-E2-2 (estudio en blanco; recomendación: vaciar y conservar),
+  Q-E2-3 (tope de largo; recomendación: solo donde la columna lo tiene), Q-E3-1, Q-E4-1/2/3, el id nuevo de la sección solo-nota, el candado por sección,
+  el perfil 9 (¿clínica general u hepatología?) y `dependiente_terceros` (hoy viaja como casilla).
+  **Camino propuesto.** Cerrar E1 (T11 y pruebas), candado por sección, servidor y app de E2 reducidos (estudios, antecedentes familiares y sección solo-nota;
+  serologías y Child-Pugh ya tienen servidor), E3 reducido (laboratorio general y peso; migración `10.sqm`, con pregunta antes), E4 reducido (solo PDF),
+  configurar el perfil 3 y prueba general del usuario.
+  **Entorno.** Se agregó el proveedor DeepSeek a la config GLOBAL de OpenCode (`~/.config/opencode/opencode.json`, modelos `deepseek/deepseek-flash` y
+  `deepseek/deepseek-v4-pro`; la clave está en la variable de usuario `DEEPSEEK_API_KEY`, nunca en el repo); falta `opencode service restart` para que la
+  vea. No usar modelos externos en tareas que lean bases locales con datos de pacientes ni `bd_test/`.
+  **Para retomar.** El servidor local (MySQL y Apache de XAMPP) hay que levantarlo a mano tras un reinicio; los datos de prueba P1 a P5 siguen en `hc_clinica`
+  hasta la prueba general.
+  **T60-bis hecha (2026-11-11, `49fbf56`): el candado es un conjunto de secciones (`SECCIONES_HABILITADAS`), sigue en E1.**
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
