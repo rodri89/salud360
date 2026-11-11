@@ -51,6 +51,10 @@ data class LoEnviado(
     val valores: Map<String, String> = emptyMap(),
     /** Nombre del contrato (`peso`, `talla`, `tension_arterial`, `imc`, `nota`) → valor. */
     val examen: Map<String, String> = emptyMap(),
+    /** `<sección>/<campo>` -> el valor del formulario tal como se mandó (`""` = vaciado). */
+    val formularios: Map<String, String> = emptyMap(),
+    /** Clave de la casilla (o `nota`) -> `<0|1>|<detalle>`. */
+    val antecedentes: Map<String, String> = emptyMap(),
 ) {
     /** Lo que queda confirmado después de que la web aceptó [paso]. Un valor en blanco queda como `""` (vaciado). */
     fun conLoConfirmado(paso: PasoDeEnvio): LoEnviado = when (paso) {
@@ -58,6 +62,10 @@ data class LoEnviado(
         is PasoDeEnvio.Examen -> copy(
             examen = examen + paso.campos.mapValues { (campo, valor) -> if (campo in MEDIDAS) medidaNormalizada(valor) else normalizado(valor) },
         )
+        is PasoDeEnvio.Formularios -> copy(
+            formularios = formularios + paso.valores.associate { "${it.seccion}/${it.campo}" to formularioConfirmado(it) },
+        )
+        is PasoDeEnvio.Antecedentes -> copy(antecedentes = antecedentes + paso.items.associate { it.clave to casillaConfirmada(it) })
         else -> this
     }
 
@@ -66,6 +74,26 @@ data class LoEnviado(
 }
 
 private val MEDIDAS = setOf("peso", "talla", "tension_arterial", "imc")
+
+/** Lo que queda anotado de un formulario que la web aceptó: el valor que se mandó, y `""` si quedó vacío (un vaciado confirmado es un dato). */
+private fun formularioConfirmado(v: SeccionValor): String {
+    val canonico = PayloadsClinica.valorDeFormulario(v.seccion, v.campo, v.valor) ?: v.valor
+    return if (PayloadsClinica.esFormularioVacio(v.seccion, canonico)) "" else canonico
+}
+
+/**
+ * Lo que queda anotado de una casilla de antecedentes que la web aceptó: `<0|1>|<detalle>`; una casilla sin marcar y sin detalle, o una nota en
+ * blanco, queda `0|` (vaciada). La `nota` se anota con el flag en 1 si tiene texto: lo que decide es el texto.
+ */
+private fun casillaConfirmada(a: Antecedente): String = when {
+    a.clave == CLAVE_NOTA -> if (esVacio(a.detalle)) "0|" else "1|${a.detalle}"
+    !a.flag && esVacio(a.detalle) -> "0|"
+    else -> "${if (a.flag) 1 else 0}|${a.detalle}"
+}
+
+private fun flagDeLaCasilla(confirmada: String): Boolean = confirmada.substringBefore("|") == "1"
+
+private fun detalleDeLaCasilla(confirmada: String): String = confirmada.substringAfter("|", "")
 
 /** Todo lo que el plan necesita saber de una consulta. */
 data class EntradaDelPlan(
@@ -116,12 +144,12 @@ sealed interface PasoDeEnvio {
         override val parte get() = PARTE_EXAMEN
     }
 
-    /** Formularios (alimentación, serologías, Child-Pugh; E2). El cuerpo lo arma la entrega que los habilita. */
+    /** Los formularios (alimentación, serologías, Child-Pugh) que cambian de verdad: un valor por campo (canónico; `""` = vaciado a propósito) (E2, T62-a). */
     data class Formularios(val valores: List<SeccionValor>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
         override val parte get() = PARTE_FORMULARIOS
     }
 
-    /** Antecedentes familiares asociados a la consulta (E2). */
+    /** Las casillas de antecedentes familiares (y la nota) de esta consulta que cambian de verdad, activas y asociadas a ella (E2, T62-a, RF-9, RF-68). */
     data class Antecedentes(val items: List<Antecedente>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
         override val parte get() = PARTE_ANTECEDENTES
     }
@@ -341,16 +369,47 @@ private class Armado(private val e: EntradaDelPlan) {
                         textos[v.seccion] = v.valor
                         cubreTextos += FilaCubierta(TablaDeLaFila.SECCION_VALOR, ref, f.actualizadaEn)
                     }
-                else -> formularios += f
+                v.seccion in PayloadsClinica.SECCIONES_DE_FORMULARIOS -> formularios += f
+                else -> enReserva += FilaEnReserva(TablaDeLaFila.SECCION_VALOR, ref, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
             }
         }
         val resultado = Pair(
             if (textos.isEmpty()) null else PasoDeEnvio.Secciones(textos, cubreTextos),
-            if (formularios.isEmpty()) null
-            else PasoDeEnvio.Formularios(formularios.map { it.fila }, formularios.map { FilaCubierta(TablaDeLaFila.SECCION_VALOR, clave(it.fila), it.actualizadaEn) }),
+            pasoDeFormularios(formularios),
         )
         seccionesCalculadas = resultado
         return resultado
+    }
+
+    /**
+     * Los formularios que viajan: un valor por campo, solo si es un **cambio real** contra lo último que la web confirmó (RF-34, RF-69). Un valor que la
+     * web no entiende no viaja ni se limpia (queda en reserva); un vacío sobre nada, o un valor igual al de la web, se limpia sin figurar enviado (RF-60).
+     * El valor del paso es el canónico (el que arma `PayloadsClinica.formularios`) y `""` si se vació a propósito.
+     */
+    private fun pasoDeFormularios(filas: List<FilaSucia<SeccionValor>>): PasoDeEnvio.Formularios? {
+        val viajan = mutableListOf<SeccionValor>()
+        val cubre = mutableListOf<FilaCubierta>()
+        for (f in filas) {
+            val v = f.fila
+            val ref = clave(v)
+            val aMandar = PayloadsClinica.valorDeFormulario(v.seccion, v.campo, v.valor)
+            if (aMandar == null) {
+                enReserva += FilaEnReserva(TablaDeLaFila.SECCION_VALOR, ref, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                continue
+            }
+            when (cambioReal(e.loEnviado.formularios[ref], aMandar) { PayloadsClinica.esFormularioVacio(v.seccion, it) }) {
+                CambioReal.NINGUNO -> sinViaje += FilaSinViaje(TablaDeLaFila.SECCION_VALOR, ref, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                CambioReal.ESCRIBIR -> {
+                    viajan += v.copy(valor = aMandar)
+                    cubre += FilaCubierta(TablaDeLaFila.SECCION_VALOR, ref, f.actualizadaEn)
+                }
+                CambioReal.VACIAR -> {
+                    viajan += v.copy(valor = "")
+                    cubre += FilaCubierta(TablaDeLaFila.SECCION_VALOR, ref, f.actualizadaEn)
+                }
+            }
+        }
+        return if (viajan.isEmpty()) null else PasoDeEnvio.Formularios(viajan, cubre)
     }
 
     // ---------- Examen físico ----------
@@ -395,11 +454,23 @@ private class Armado(private val e: EntradaDelPlan) {
                 anulada -> enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
                 !seccionSeOfrece(SeccionesComunes.ANTECEDENTES_FAMILIARES, e.habilitadas) ->
                     enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                !PayloadsClinica.esCasillaDeFamiliares(a) ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                cambioDeLaCasilla(a) == CambioReal.NINGUNO ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ANTECEDENTE, a.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
                 else -> viajan += f
             }
         }
         if (viajan.isEmpty()) return null
         return PasoDeEnvio.Antecedentes(viajan.map { it.fila }, viajan.map { FilaCubierta(TablaDeLaFila.ANTECEDENTE, it.fila.id, it.actualizadaEn) })
+    }
+
+    /** Qué es guardar [a] donde la web tenía lo último confirmado (RF-34, RF-69): la nota se compara por su texto; las casillas por flag y detalle. */
+    private fun cambioDeLaCasilla(a: Antecedente): CambioReal {
+        val confirmada = e.loEnviado.antecedentes[a.clave]
+        if (a.clave == CLAVE_NOTA) return cambioReal(confirmada?.let(::detalleDeLaCasilla), a.detalle)
+        val anterior = confirmada?.let { a.copy(flag = flagDeLaCasilla(it), detalle = detalleDeLaCasilla(it)) }
+        return cambioRealDeAntecedente(anterior, a.flag, a.detalle)
     }
 
     private fun registros(anulada: Boolean): PasoDeEnvio.Registros? {

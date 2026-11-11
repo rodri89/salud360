@@ -345,6 +345,8 @@ class PlanDeEnvioTest {
         val p = plan(
             consulta(remotoId = "7011"),
             antecedentes = listOf(antecedente("hta", flag = false, detalle = "")), registros = listOf(registro("r1", activo = false)),
+            // T62-a: un vaciado es un cambio real solo contra algo que la web tiene: se anota que ya tenía la casilla marcada.
+            loEnviado = LoEnviado(antecedentes = mapOf("hta" to "1|padre")),
             habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
 

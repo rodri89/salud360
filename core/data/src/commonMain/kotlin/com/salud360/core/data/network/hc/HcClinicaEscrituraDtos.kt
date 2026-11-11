@@ -193,6 +193,7 @@ object PayloadsClinica {
     private const val SECCION_CHILD_PUGH = "child_pugh"
 
     /** Las claves de los formularios de E2 que el servidor conoce, con el nombre de la app (`celiaco` y no la columna `seliaco`). */
+    val SECCIONES_DE_FORMULARIOS = setOf(SECCION_ALIMENTACION, SECCION_SEROLOGIAS, SECCION_CHILD_PUGH)
     private val CLAVES_DE_ALIMENTACION = setOf("hiposodica", "diabetes", "celiaco", "otra")
     private val CLAVES_DE_SEROLOGIAS = setOf(
         "igm_hav", "ags_hbv", "ig_anti_hcv", "fan", "anti_lkm", "igg_hav", "ig_anti_core", "ig_anti_s_hbv", "ig_anti_hdv", "asma", "fibrotest", "hiv",
@@ -204,7 +205,7 @@ object PayloadsClinica {
      * Las quince casillas de los antecedentes familiares que la web guarda, con el nombre de la app (`dependiente_terceros`; la columna se llama
      * `dependientes_terceros`). Sin el tabaquismo (RF-3, D9) y sin `nota_perfil4` (Q-E2-1): lo que no figura acá no viaja.
      */
-    private val CASILLAS_DE_FAMILIARES = setOf(
+    val CASILLAS_DE_FAMILIARES = setOf(
         "hta", "dbt_nir", "dbt_ir", "acv", "dsl", "fa", "mp", "analfabeto", "postrado", "af_ca_mama", "ca_mama", "institucionalizado", "psicofarmacos",
         "dependiente_terceros", "otro",
     )
@@ -236,12 +237,7 @@ object PayloadsClinica {
         for ((seccion, campos) in valores) {
             val traducidos = linkedMapOf<String, String>()
             for ((clave, valor) in campos) {
-                val traducido = when (seccion) {
-                    SECCION_ALIMENTACION -> if (clave in CLAVES_DE_ALIMENTACION) alimentacionAMandar(valor) else null
-                    SECCION_SEROLOGIAS -> if (clave in CLAVES_DE_SEROLOGIAS) serologiaAMandar(valor) else null
-                    SECCION_CHILD_PUGH -> if (clave in CLAVES_DE_CHILD_PUGH) puntajeAMandar(valor) else null
-                    else -> null
-                }
+                val traducido = valorDeFormulario(seccion, clave, valor)
                 if (traducido != null) traducidos[clave] = traducido
             }
             if (traducidos.isNotEmpty()) aMandar[seccion] = traducidos
@@ -256,6 +252,31 @@ object PayloadsClinica {
             )
         }
     }
+
+    /**
+     * El valor **canónico** de [clave] de la sección [seccion] de los formularios: lo que `formularios` mandaría (un flag solo se completa con la barra,
+     * en blanco es `""`), o `null` si la web no lo entiende (una clave que no es del contrato, un flag que no es 0 ni 1, un valor que no es SI/NO ni un
+     * puntaje). Es lo que el plan de envío compara contra lo último que la web confirmó.
+     */
+    fun valorDeFormulario(seccion: String, clave: String, valor: String): String? = when (seccion) {
+        SECCION_ALIMENTACION -> if (clave in CLAVES_DE_ALIMENTACION) alimentacionAMandar(valor) else null
+        SECCION_SEROLOGIAS -> if (clave in CLAVES_DE_SEROLOGIAS) serologiaAMandar(valor) else null
+        SECCION_CHILD_PUGH -> if (clave in CLAVES_DE_CHILD_PUGH) puntajeAMandar(valor) else null
+        else -> null
+    }
+
+    /**
+     * [valor] (canónico, [valorDeFormulario]) no tiene nada cargado: en blanco o, en alimentación, la casilla sin marcar y sin detalle (`"0|"`). Un vacío
+     * sobre nada no es un cambio; sobre algo ya enviado es un vaciado a propósito (RF-69).
+     */
+    fun esFormularioVacio(seccion: String, valor: String?): Boolean {
+        if (esVacio(valor)) return true
+        return seccion == SECCION_ALIMENTACION && valor!!.substringBefore("|") == "0" && esVacio(valor.substringAfter("|", ""))
+    }
+
+    /** [a] es una casilla de los antecedentes familiares que el contrato escribe: una de las quince o la `nota`. Nunca el tabaquismo, lo personal ni `nota_perfil4`. */
+    fun esCasillaDeFamiliares(a: Antecedente): Boolean =
+        a.categoria == CATEGORIA_FAMILIARES && (a.clave in CASILLAS_DE_FAMILIARES || a.clave == CLAVE_NOTA)
 
     /** `"<0|1>|<detalle>"`: el detalle va tal cual. Un flag solo se completa con la barra; un flag que no es 0 ni 1 no se manda. En blanco: `""`. */
     private fun alimentacionAMandar(valor: String): String? {

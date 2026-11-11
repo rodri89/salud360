@@ -524,4 +524,47 @@ class PayloadsClinicaE2Test {
         assertTrue(texto.excede("é".repeat(32_768)), "65536 bytes")
         assertEquals(8, texto.largoDe("ñé🙂"), "ñ=2, é=2, 🙂=4 bytes en UTF-8")
     }
+
+    // ---------- Apoyo del plan de envío (T62-a) ----------
+
+    @Test
+    fun el_valor_canonico_de_un_formulario_es_el_que_se_manda_y_null_lo_que_la_web_no_entiende() {
+        assertEquals("1|sin sal", PayloadsClinica.valorDeFormulario("alimentacion", "hiposodica", "1|sin sal"))
+        assertEquals("1|", PayloadsClinica.valorDeFormulario("alimentacion", "celiaco", "1"), "el flag solo se completa con la barra")
+        assertEquals("", PayloadsClinica.valorDeFormulario("alimentacion", "otra", "   "))
+        assertEquals("NO", PayloadsClinica.valorDeFormulario("serologias", "hiv", "NO"))
+        assertEquals("", PayloadsClinica.valorDeFormulario("serologias", "hiv", ""))
+        assertEquals("3", PayloadsClinica.valorDeFormulario("child_pugh", "tp", "3"))
+        assertNull(PayloadsClinica.valorDeFormulario("alimentacion", "hiposodica", "2|x"))
+        assertNull(PayloadsClinica.valorDeFormulario("alimentacion", "desayuno", "1|x"))
+        assertNull(PayloadsClinica.valorDeFormulario("serologias", "hiv", "si"))
+        assertNull(PayloadsClinica.valorDeFormulario("child_pugh", "tp", "4"))
+        assertNull(PayloadsClinica.valorDeFormulario("child_pugh", "total_puntos", "9"))
+        assertNull(PayloadsClinica.valorDeFormulario("laboratorio_general", "hb", "13"))
+    }
+
+    @Test
+    fun un_formulario_vacio_es_en_blanco_o_en_alimentacion_flag_0_sin_detalle() {
+        assertTrue(PayloadsClinica.esFormularioVacio("alimentacion", null))
+        assertTrue(PayloadsClinica.esFormularioVacio("alimentacion", ""))
+        assertTrue(PayloadsClinica.esFormularioVacio("alimentacion", "0|"))
+        assertTrue(PayloadsClinica.esFormularioVacio("alimentacion", "0|   "))
+        assertFalse(PayloadsClinica.esFormularioVacio("alimentacion", "0|detalle"))
+        assertFalse(PayloadsClinica.esFormularioVacio("alimentacion", "1|"))
+        assertTrue(PayloadsClinica.esFormularioVacio("serologias", ""))
+        assertFalse(PayloadsClinica.esFormularioVacio("serologias", "NO"))
+        assertTrue(PayloadsClinica.esFormularioVacio("child_pugh", " "))
+        assertFalse(PayloadsClinica.esFormularioVacio("child_pugh", "2"))
+    }
+
+    @Test
+    fun las_secciones_de_formulario_y_las_casillas_de_familiares_son_las_del_contrato() {
+        assertEquals(setOf("alimentacion", "serologias", "child_pugh"), PayloadsClinica.SECCIONES_DE_FORMULARIOS)
+        assertEquals(15, PayloadsClinica.CASILLAS_DE_FAMILIARES.size)
+        assertTrue("dependiente_terceros" in PayloadsClinica.CASILLAS_DE_FAMILIARES && "tabaquismo" !in PayloadsClinica.CASILLAS_DE_FAMILIARES)
+        for (clave in PayloadsClinica.CASILLAS_DE_FAMILIARES + "nota") assertTrue(PayloadsClinica.esCasillaDeFamiliares(ant(clave)), clave)
+        assertFalse(PayloadsClinica.esCasillaDeFamiliares(ant("tabaquismo")))
+        assertFalse(PayloadsClinica.esCasillaDeFamiliares(ant("nota_perfil4")), "Q-E2-1: la nota del perfil 4 queda afuera")
+        assertFalse(PayloadsClinica.esCasillaDeFamiliares(ant("hta", categoria = "personales")))
+    }
 }

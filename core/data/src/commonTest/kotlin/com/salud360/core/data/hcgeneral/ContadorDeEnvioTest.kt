@@ -131,7 +131,7 @@ class ContadorDeEnvioTest {
                 examen = FilaSucia(ExamenFisico("examen", peso = "70"), dirty = true, actualizadaEn = 10),
                 habilitadas = e,
             ),
-            entrada(propia("formulario"), valores = listOf(sucia(SeccionValor("formulario", "alimentacion", "desayuno", "mate"))), habilitadas = e),
+            entrada(propia("formulario"), valores = listOf(sucia(SeccionValor("formulario", "alimentacion", "hiposodica", "1|mate"))), habilitadas = e),
             entrada(
                 propia("antecedente"),
                 antecedentes = listOf(FilaSucia(Antecedente("a1", "p-antecedente", "clinica", "familiares", "hta", true, "padre", "antecedente"), true, 10)),
@@ -228,7 +228,7 @@ class ContadorDeEnvioTest {
 
     @Test
     fun una_seccion_que_esta_version_todavia_no_envia_no_cuenta_hasta_que_la_habilita() {
-        val formulario = listOf(sucia(SeccionValor("c1", "alimentacion", "desayuno", "mate")))
+        val formulario = listOf(sucia(SeccionValor("c1", "alimentacion", "hiposodica", "1|mate")))
 
         val creada = propia("c1", remotoId = "7001")
         assertEquals(0, resumenDeEnvio(listOf(entrada(creada, valores = formulario, habilitadas = seccionesDe(SubentregaDeEscritura.E1)))).total)
