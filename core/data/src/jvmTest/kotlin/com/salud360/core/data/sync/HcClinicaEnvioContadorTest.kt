@@ -4,6 +4,7 @@ import com.salud360.core.data.hcgeneral.PARTE_CREAR
 import com.salud360.core.data.hcgeneral.PARTE_SECCIONES
 import com.salud360.core.data.hcgeneral.SituacionDeEnvio
 import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.seccionesDe
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.repos.EstadosDeEnvio
@@ -70,7 +71,7 @@ class HcClinicaEnvioContadorTest {
     }
 
     @Test
-    fun el_dato_por_paciente_cuenta_por_la_consulta_a_la_que_esta_asociado_y_solo_si_viaja() = conCola(SubentregaDeEscritura.E2) { db, envio, _ ->
+    fun el_dato_por_paciente_cuenta_por_la_consulta_a_la_que_esta_asociado_y_solo_si_viaja() = conCola(seccionesDe(SubentregaDeEscritura.E2)) { db, envio, _ ->
         // Una propia ya creada, sin nada más sucio que lo que se siembra acá.
         db.historiaClinicaQueries.upsertConsulta(
             Consulta("propia-1", PACIENTE, MEDICO, "clinica", "consulta", FECHA_DE_PRUEBA, EstadoConsulta.ABIERTA, remotoId = "7001", propia = true)
@@ -94,7 +95,7 @@ class HcClinicaEnvioContadorTest {
 
     @Test
     fun laboratorio_y_pendientes_de_la_propia_cuentan_solo_cuando_la_version_los_envia() {
-        fun conLaboratorioYPendiente(habilitada: SubentregaDeEscritura, esperado: Int) = conCola(habilitada) { db, envio, _ ->
+        fun conLaboratorioYPendiente(habilitadas: Set<String>, esperado: Int) = conCola(habilitadas) { db, envio, _ ->
             db.historiaClinicaQueries.upsertConsulta(
                 Consulta("propia-1", PACIENTE, MEDICO, "clinica", "consulta", FECHA_DE_PRUEBA, EstadoConsulta.ABIERTA, remotoId = "7001", propia = true)
                     .toRow(100, dirty = false),
@@ -104,11 +105,11 @@ class HcClinicaEnvioContadorTest {
             )
             db.historiaClinicaQueries.upsertPendiente(Pendiente("pe1", PACIENTE, MEDICO, "pedir estudio", "propia-1").toRow(21))
 
-            assertEquals(esperado, envio.contarPendientes().total, "habilitada=$habilitada")
+            assertEquals(esperado, envio.contarPendientes().total, "habilitadas=$habilitadas")
         }
 
-        conLaboratorioYPendiente(SubentregaDeEscritura.E1, 0)
-        conLaboratorioYPendiente(SubentregaDeEscritura.E3, 1)
+        conLaboratorioYPendiente(seccionesDe(SubentregaDeEscritura.E1), 0)
+        conLaboratorioYPendiente(seccionesDe(SubentregaDeEscritura.E3), 1)
     }
 
     @Test

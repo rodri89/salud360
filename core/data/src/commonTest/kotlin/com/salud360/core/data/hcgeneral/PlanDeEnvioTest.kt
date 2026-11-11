@@ -57,10 +57,10 @@ class PlanDeEnvioTest {
         registros: List<FilaSucia<RegistroClinico>> = emptyList(),
         loEnviado: LoEnviado = LoEnviado(),
         estados: Map<String, EstadoEnvio> = emptyMap(),
-        habilitada: SubentregaDeEscritura = SubentregaDeEscritura.E1,
+        habilitadas: Set<String> = seccionesDe(SubentregaDeEscritura.E1),
         reintentoManual: Boolean = false,
         armadoEn: Long = this.armadoEn,
-    ) = planDeEnvio(EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, registros, loEnviado, estados, habilitada, reintentoManual, armadoEn))
+    ) = planDeEnvio(EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, registros, loEnviado, estados, habilitadas, reintentoManual, armadoEn))
 
     private val PlanDeEnvio.partes get() = pasos.map { it.parte }
     private inline fun <reified T : PasoDeEnvio> PlanDeEnvio.paso(): T = pasos.filterIsInstance<T>().single()
@@ -258,7 +258,7 @@ class PlanDeEnvioTest {
 
     @Test
     fun un_antecedente_desactivado_no_viaja_no_queda_pendiente_y_no_figura_enviado() {
-        val p = plan(consulta(remotoId = "7011"), antecedentes = listOf(antecedente("hta", activo = false)), habilitada = SubentregaDeEscritura.E4)
+        val p = plan(consulta(remotoId = "7011"), antecedentes = listOf(antecedente("hta", activo = false)), habilitadas = seccionesDe(SubentregaDeEscritura.E4))
 
         assertTrue(p.pasos.isEmpty(), "ni con todas las subentregas habilitadas")
         assertEquals(listOf(MotivoSinViaje.DESACTIVADO), p.sinViaje.map { it.motivo })
@@ -272,7 +272,7 @@ class PlanDeEnvioTest {
             consulta(remotoId = "7011"),
             antecedentes = listOf(antecedente("tabaquismo"), antecedente("alergias", categoria = "personales")),
             valores = listOf(valor("audio", valor = "x"), valor("diagnostico", valor = "x"), valor("antecedentes_personales", valor = "x")),
-            habilitada = SubentregaDeEscritura.E4,
+            habilitadas = seccionesDe(SubentregaDeEscritura.E4),
         )
 
         assertTrue(p.pasos.isEmpty())
@@ -306,7 +306,7 @@ class PlanDeEnvioTest {
         val e2 = plan(
             consulta(remotoId = "7011"),
             valores = listOf(valor("alimentacion", "hiposodica", valor = "1|poca sal")), antecedentes = listOf(antecedente("hta")),
-            registros = listOf(registro("r1")), habilitada = SubentregaDeEscritura.E2,
+            registros = listOf(registro("r1")), habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
 
         assertTrue(entrada.pasos.isEmpty())
@@ -332,7 +332,7 @@ class PlanDeEnvioTest {
                 antecedente("hta"), antecedente("dbt_ir", consultaId = "historica-1"), antecedente("acv", consultaId = null), antecedente("dsl", consultaId = "otra-propia"),
             ),
             registros = listOf(registro("r-mia"), registro("r-hist", consultaId = "historica-1"), registro("r-ninguna", consultaId = null)),
-            habilitada = SubentregaDeEscritura.E2,
+            habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
 
         assertEquals(listOf("hta"), p.paso<PasoDeEnvio.Antecedentes>().items.map { it.clave })
@@ -345,7 +345,7 @@ class PlanDeEnvioTest {
         val p = plan(
             consulta(remotoId = "7011"),
             antecedentes = listOf(antecedente("hta", flag = false, detalle = "")), registros = listOf(registro("r1", activo = false)),
-            habilitada = SubentregaDeEscritura.E2,
+            habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
 
         assertEquals(listOf(false), p.paso<PasoDeEnvio.Antecedentes>().items.map { it.flag })
@@ -358,7 +358,7 @@ class PlanDeEnvioTest {
         consulta(estado = estado, remotoId = remotoId), sucia = true,
         valores = listOf(valor("nota", valor = "x"), valor("alimentacion", "hiposodica", valor = "1|x")), examen = examen(peso = "70"),
         antecedentes = listOf(antecedente("hta")), registros = listOf(registro("r1")),
-        habilitada = SubentregaDeEscritura.E2, estados = estados, reintentoManual = reintentoManual,
+        habilitadas = seccionesDe(SubentregaDeEscritura.E2), estados = estados, reintentoManual = reintentoManual,
     )
 
     @Test
@@ -373,11 +373,11 @@ class PlanDeEnvioTest {
     fun el_orden_no_depende_del_orden_de_las_filas_de_entrada() {
         val directo = plan(
             consulta(remotoId = "7011"), valores = listOf(valor("nota", valor = "a"), valor("conductas", valor = "b"), valor("habitos", valor = "c")),
-            antecedentes = listOf(antecedente("hta"), antecedente("acv")), habilitada = SubentregaDeEscritura.E2,
+            antecedentes = listOf(antecedente("hta"), antecedente("acv")), habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
         val alReves = plan(
             consulta(remotoId = "7011"), valores = listOf(valor("habitos", valor = "c"), valor("conductas", valor = "b"), valor("nota", valor = "a")),
-            antecedentes = listOf(antecedente("acv"), antecedente("hta")), habilitada = SubentregaDeEscritura.E2,
+            antecedentes = listOf(antecedente("acv"), antecedente("hta")), habilitadas = seccionesDe(SubentregaDeEscritura.E2),
         )
 
         assertEquals(directo, alReves)
@@ -550,7 +550,7 @@ class PlanDeEnvioTest {
         val otroMomento = plan(
             consulta(estado = EstadoConsulta.CERRADA, remotoId = "7011"), sucia = true,
             valores = listOf(valor("nota", valor = "x"), valor("alimentacion", "hiposodica", valor = "1|x")), examen = examen(peso = "70"),
-            antecedentes = listOf(antecedente("hta")), registros = listOf(registro("r1")), habilitada = SubentregaDeEscritura.E2, armadoEn = 77,
+            antecedentes = listOf(antecedente("hta")), registros = listOf(registro("r1")), habilitadas = seccionesDe(SubentregaDeEscritura.E2), armadoEn = 77,
         )
 
         assertEquals(a, b)

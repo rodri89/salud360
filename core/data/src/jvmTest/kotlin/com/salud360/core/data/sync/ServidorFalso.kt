@@ -1,8 +1,7 @@
 package com.salud360.core.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
-import com.salud360.core.data.hcgeneral.SUBENTREGA_HABILITADA
-import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
@@ -240,7 +239,7 @@ internal class Escena(
     val servidor: ServidorFalso,
     val reloj: RelojFalso,
     val scope: CoroutineScope,
-    private val habilitada: SubentregaDeEscritura,
+    private val habilitadas: Set<String>,
     pacientesApi: PacientesHcApi,
     /** El médico de la sesión, que el test puede cambiar (otro médico entra en el mismo dispositivo) o dejar en `null` (sin sesión). */
     @Volatile var medicoDeLaSesion: Id? = MEDICO,
@@ -257,9 +256,9 @@ internal class Escena(
     fun nuevoEnvio(
         escritura: ClinicaEscrituraApi? = servidor,
         dispositivo: String = DISPOSITIVO,
-        habilitada: SubentregaDeEscritura = this.habilitada,
+        habilitadas: Set<String> = this.habilitadas,
     ) = HcClinicaEnvio(
-        db, scope, reloj::esperar, { base + reloj.ahora }, habilitada,
+        db, scope, reloj::esperar, { base + reloj.ahora }, habilitadas,
         escritura = escritura,
         pacientes = pacientes,
         dispositivo = dispositivo,
@@ -288,7 +287,7 @@ internal class Escena(
  * falso, la cola real y la sesión del médico de prueba.
  */
 internal fun conServidor(
-    habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    habilitadas: Set<String> = SECCIONES_HABILITADAS,
     servidor: ServidorFalso = ServidorFalso(),
     vinculado: Boolean = true,
     pacientesApi: PacientesHcApi = HcClinicaPruebas.PacientesProhibida,
@@ -296,7 +295,7 @@ internal fun conServidor(
 ) = HcClinicaPruebas.conBase(vinculado) { db, driver ->
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     try {
-        Escena(db, driver, servidor, RelojFalso(), scope, habilitada, pacientesApi).bloque()
+        Escena(db, driver, servidor, RelojFalso(), scope, habilitadas, pacientesApi).bloque()
     } finally {
         scope.cancel()
     }

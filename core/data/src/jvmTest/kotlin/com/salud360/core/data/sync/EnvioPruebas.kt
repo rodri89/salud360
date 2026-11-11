@@ -1,7 +1,6 @@
 package com.salud360.core.data.sync
 
-import com.salud360.core.data.hcgeneral.SUBENTREGA_HABILITADA
-import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
@@ -41,10 +40,10 @@ internal class EnvioProbado(
     db: Salud360Db,
     scope: CoroutineScope,
     private val reloj: RelojFalso,
-    habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    habilitadas: Set<String> = SECCIONES_HABILITADAS,
     /** El médico de la sesión; por omisión, el de prueba (la cola solo toma las consultas del médico de la sesión). */
     private val medicoDeLaSesion: Id? = MEDICO,
-) : HcClinicaEnvio(db, scope, reloj::esperar, { reloj.ahora }, habilitada, medicoDeLaSesion = { medicoDeLaSesion }) {
+) : HcClinicaEnvio(db, scope, reloj::esperar, { reloj.ahora }, habilitadas, medicoDeLaSesion = { medicoDeLaSesion }) {
     /** `inicio <consulta>`, `fin <consulta>` (terminó) o `cancelado <consulta>`, en el orden en que pasaron. */
     val eventos = CopyOnWriteArrayList<String>()
 
@@ -159,12 +158,12 @@ internal suspend fun Salud360Db.sembrarTexto(consultaId: Id, seccion: String = "
     historiaClinicaQueries.upsertSeccionValor(SeccionValor(consultaId, seccion, "texto", texto).toRow(120))
 
 /** Corre [bloque] con una base temporal, un reloj falso y la cola de prueba sobre `Dispatchers.Unconfined`. */
-internal fun conCola(habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA, bloque: suspend (Salud360Db, EnvioProbado, RelojFalso) -> Unit) =
+internal fun conCola(habilitadas: Set<String> = SECCIONES_HABILITADAS, bloque: suspend (Salud360Db, EnvioProbado, RelojFalso) -> Unit) =
     HcClinicaPruebas.conBase { db, _ ->
         val reloj = RelojFalso()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            bloque(db, EnvioProbado(db, scope, reloj, habilitada), reloj)
+            bloque(db, EnvioProbado(db, scope, reloj, habilitadas), reloj)
         } finally {
             scope.cancel()
         }

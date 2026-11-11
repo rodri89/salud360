@@ -81,8 +81,8 @@ data class EntradaDelPlan(
     val loEnviado: LoEnviado = LoEnviado(),
     /** El estado guardado de cada parte (T20); lo que no figura es «Falta enviar». */
     val estados: Map<String, EstadoEnvio> = emptyMap(),
-    /** Hasta qué subentrega trae el envío esta versión ([SUBENTREGA_HABILITADA]). */
-    val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    /** Las secciones que envía esta versión ([SECCIONES_HABILITADAS], el candado por sección: RF-4). */
+    val habilitadas: Set<String> = SECCIONES_HABILITADAS,
     /** El médico tocó «Reintentar»: las partes rechazadas vuelven a incluirse (RF-30). */
     val reintentoManual: Boolean = false,
     /** El momento en que se arma el envío; el plan solo lo repite (RF-55). */
@@ -325,7 +325,7 @@ private class Armado(private val e: EntradaDelPlan) {
         for (f in e.valores.filter { it.dirty }.sortedBy { clave(it.fila) }) {
             val v = f.fila
             val ref = clave(v)
-            val envio = envioDeSeccion(v.seccion, e.habilitada)
+            val envio = envioDeSeccion(v.seccion, e.habilitadas)
             when {
                 envio == EnvioDeSeccion.NUNCA -> sinViaje += FilaSinViaje(TablaDeLaFila.SECCION_VALOR, ref, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
                 envio == EnvioDeSeccion.TODAVIA_NO ->
@@ -362,7 +362,7 @@ private class Armado(private val e: EntradaDelPlan) {
         if (examenCalculado) return examenPaso
         examenCalculado = true
         val f = e.examen?.takeIf { it.dirty } ?: return null
-        if (!seccionSeOfrece(SeccionesComunes.EXAMEN_FISICO, e.habilitada)) {
+        if (!seccionSeOfrece(SeccionesComunes.EXAMEN_FISICO, e.habilitadas)) {
             enReserva += FilaEnReserva(TablaDeLaFila.EXAMEN_FISICO, c.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
             return null
         }
@@ -393,7 +393,7 @@ private class Armado(private val e: EntradaDelPlan) {
                 !casillaSeEnvia(a.categoria, a.clave) ->
                     sinViaje += FilaSinViaje(TablaDeLaFila.ANTECEDENTE, a.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
                 anulada -> enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
-                !seccionSeOfrece(SeccionesComunes.ANTECEDENTES_FAMILIARES, e.habilitada) ->
+                !seccionSeOfrece(SeccionesComunes.ANTECEDENTES_FAMILIARES, e.habilitadas) ->
                     enReserva += FilaEnReserva(TablaDeLaFila.ANTECEDENTE, a.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
                 else -> viajan += f
             }
@@ -408,10 +408,10 @@ private class Armado(private val e: EntradaDelPlan) {
             val r = f.fila
             val seccion = seccionDelRegistro(r.tipo)
             when {
-                envioDeSeccion(seccion, e.habilitada) == EnvioDeSeccion.NUNCA ->
+                envioDeSeccion(seccion, e.habilitadas) == EnvioDeSeccion.NUNCA ->
                     sinViaje += FilaSinViaje(TablaDeLaFila.REGISTRO, r.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
                 anulada -> enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
-                !seccionSeOfrece(seccion, e.habilitada) ->
+                !seccionSeOfrece(seccion, e.habilitadas) ->
                     enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
                 else -> viajan += f
             }

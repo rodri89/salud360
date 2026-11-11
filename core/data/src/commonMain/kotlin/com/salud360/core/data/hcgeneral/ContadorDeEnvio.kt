@@ -50,8 +50,8 @@ data class EntradaDelContador(
     val estados: Map<String, EstadoEnvio> = emptyMap(),
     val laboratorios: List<Laboratorio> = emptyList(),
     val pendientes: List<Pendiente> = emptyList(),
-    /** Hasta qué subentrega trae el envío esta versión ([SUBENTREGA_HABILITADA]). */
-    val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    /** Las secciones que envía esta versión ([SECCIONES_HABILITADAS], el candado por sección: RF-4). */
+    val habilitadas: Set<String> = SECCIONES_HABILITADAS,
 )
 
 /**
@@ -81,9 +81,9 @@ fun estadoPendienteDeLaConsulta(e: EntradaDelContador): EstadoEnvio? {
     val plan = e.plan
     if (plan.motivoVacio != null) return null // histórico o de la web: nada sale, nada se cuenta (RF-7, RF-67)
 
-    val laboratorios = e.laboratorios.filter { it.consultaId == plan.consultaId && seccionSeOfrece(it.tipo, e.habilitada) }
+    val laboratorios = e.laboratorios.filter { it.consultaId == plan.consultaId && seccionSeOfrece(it.tipo, e.habilitadas) }
     val pendientes =
-        if (seccionSeOfrece(SeccionesComunes.PENDIENTES, e.habilitada)) e.pendientes.filter { it.consultaId == plan.consultaId } else emptyList()
+        if (seccionSeOfrece(SeccionesComunes.PENDIENTES, e.habilitadas)) e.pendientes.filter { it.consultaId == plan.consultaId } else emptyList()
     val partes = buildSet {
         plan.pasos.mapTo(this) { it.parte }
         plan.retenciones.mapTo(this) { it.parte }

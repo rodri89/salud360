@@ -33,7 +33,7 @@ class ContadorDeEnvioTest {
     private fun sucia(valor: SeccionValor) = FilaSucia(valor, dirty = true, actualizadaEn = 10)
     private fun texto(consulta: Id, seccion: String = SeccionesComunes.NOTA) = sucia(SeccionValor(consulta, seccion, "texto", "texto inventado"))
 
-    /** La entrada del contador de [consulta] con lo que tenga de sucio, para la versión que envía hasta [habilitada]. */
+    /** La entrada del contador de [consulta] con lo que tenga de sucio, para la versión que envía hasta [habilitadas]. */
     private fun entrada(
         consulta: Consulta,
         consultaSucia: Boolean = false,
@@ -44,16 +44,16 @@ class ContadorDeEnvioTest {
         laboratorios: List<Laboratorio> = emptyList(),
         pendientes: List<Pendiente> = emptyList(),
         estados: Map<String, EstadoEnvio> = emptyMap(),
-        habilitada: SubentregaDeEscritura = SubentregaDeEscritura.E1,
+        habilitadas: Set<String> = seccionesDe(SubentregaDeEscritura.E1),
     ) = EntradaDelContador(
         pacienteId = consulta.pacienteId,
         plan = planDeEnvio(
-            EntradaDelPlan(consulta, consultaSucia, valores, examen, antecedentes, registros, estados = estados, habilitada = habilitada, armadoEn = 1_000),
+            EntradaDelPlan(consulta, consultaSucia, valores, examen, antecedentes, registros, estados = estados, habilitadas = habilitadas, armadoEn = 1_000),
         ),
         estados = estados,
         laboratorios = laboratorios,
         pendientes = pendientes,
-        habilitada = habilitada,
+        habilitadas = habilitadas,
     )
 
     private val enEspera = EstadoEnvio.EnEspera(CausaEnEspera.SIN_CONEXION, "Sin conexión con la historia clínica general")
@@ -123,33 +123,33 @@ class ContadorDeEnvioTest {
 
     @Test
     fun cuenta_todo_tipo_de_dato_que_esta_version_envia() {
-        val e = SubentregaDeEscritura.E3
+        val e = seccionesDe(SubentregaDeEscritura.E3)
         val entradas = listOf(
-            entrada(propia("texto"), valores = listOf(texto("texto")), habilitada = e),
+            entrada(propia("texto"), valores = listOf(texto("texto")), habilitadas = e),
             entrada(
                 propia("examen"),
                 examen = FilaSucia(ExamenFisico("examen", peso = "70"), dirty = true, actualizadaEn = 10),
-                habilitada = e,
+                habilitadas = e,
             ),
-            entrada(propia("formulario"), valores = listOf(sucia(SeccionValor("formulario", "alimentacion", "desayuno", "mate"))), habilitada = e),
+            entrada(propia("formulario"), valores = listOf(sucia(SeccionValor("formulario", "alimentacion", "desayuno", "mate"))), habilitadas = e),
             entrada(
                 propia("antecedente"),
                 antecedentes = listOf(FilaSucia(Antecedente("a1", "p-antecedente", "clinica", "familiares", "hta", true, "padre", "antecedente"), true, 10)),
-                habilitada = e,
+                habilitadas = e,
             ),
             entrada(
                 propia("registro"),
                 registros = listOf(
                     FilaSucia(RegistroClinico("r1", "p-registro", "registro", "clinica", SeccionesComunes.INTERCONSULTA, fecha, mapOf("motivo" to "x")), true, 10),
                 ),
-                habilitada = e,
+                habilitadas = e,
             ),
             entrada(
                 propia("laboratorio"),
                 laboratorios = listOf(Laboratorio("l1", "p-laboratorio", "laboratorio", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
-                habilitada = e,
+                habilitadas = e,
             ),
-            entrada(propia("pendiente"), pendientes = listOf(Pendiente("pe1", "p-pendiente", "m1", "pedir estudio", "pendiente")), habilitada = e),
+            entrada(propia("pendiente"), pendientes = listOf(Pendiente("pe1", "p-pendiente", "m1", "pedir estudio", "pendiente")), habilitadas = e),
         )
 
         val r = resumenDeEnvio(entradas)
@@ -163,17 +163,17 @@ class ContadorDeEnvioTest {
         val lab = Laboratorio("l1", "p-c1", "c1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))
         val pend = Pendiente("pe1", "p-c2", "m1", "pedir estudio", "c2")
 
-        fun cuenta(habilitada: SubentregaDeEscritura) = resumenDeEnvio(
+        fun cuenta(habilitadas: Set<String>) = resumenDeEnvio(
             listOf(
-                entrada(propia("c1", remotoId = "7001"), laboratorios = listOf(lab), habilitada = habilitada),
-                entrada(propia("c2", remotoId = "7002"), pendientes = listOf(pend), habilitada = habilitada),
+                entrada(propia("c1", remotoId = "7001"), laboratorios = listOf(lab), habilitadas = habilitadas),
+                entrada(propia("c2", remotoId = "7002"), pendientes = listOf(pend), habilitadas = habilitadas),
             ),
         ).total
 
         // RF-4, RF-60: hasta que la versión los envíe no se cuentan (no van a viajar) ni frenan nada.
-        assertEquals(0, cuenta(SubentregaDeEscritura.E1))
-        assertEquals(0, cuenta(SubentregaDeEscritura.E2))
-        assertEquals(2, cuenta(SubentregaDeEscritura.E3))
+        assertEquals(0, cuenta(seccionesDe(SubentregaDeEscritura.E1)))
+        assertEquals(0, cuenta(seccionesDe(SubentregaDeEscritura.E2)))
+        assertEquals(2, cuenta(seccionesDe(SubentregaDeEscritura.E3)))
     }
 
     // ---- Lo que no cuenta ----
@@ -189,7 +189,7 @@ class ContadorDeEnvioTest {
                     valores = listOf(texto("h1")),
                     examen = FilaSucia(ExamenFisico("h1", peso = "70"), dirty = true, actualizadaEn = 10),
                     laboratorios = listOf(Laboratorio("l1", "p-h1", "h1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
-                    habilitada = SubentregaDeEscritura.E3,
+                    habilitadas = seccionesDe(SubentregaDeEscritura.E3),
                 ),
             ),
         )
@@ -218,7 +218,7 @@ class ContadorDeEnvioTest {
                     c,
                     valores = listOf(diagnostico),
                     antecedentes = listOf(desactivado, tabaquismo, personales).map { FilaSucia(it, true, 10) },
-                    habilitada = SubentregaDeEscritura.E3,
+                    habilitadas = seccionesDe(SubentregaDeEscritura.E3),
                 ),
             ),
         )
@@ -231,8 +231,8 @@ class ContadorDeEnvioTest {
         val formulario = listOf(sucia(SeccionValor("c1", "alimentacion", "desayuno", "mate")))
 
         val creada = propia("c1", remotoId = "7001")
-        assertEquals(0, resumenDeEnvio(listOf(entrada(creada, valores = formulario, habilitada = SubentregaDeEscritura.E1))).total)
-        assertEquals(1, resumenDeEnvio(listOf(entrada(creada, valores = formulario, habilitada = SubentregaDeEscritura.E2))).total)
+        assertEquals(0, resumenDeEnvio(listOf(entrada(creada, valores = formulario, habilitadas = seccionesDe(SubentregaDeEscritura.E1)))).total)
+        assertEquals(1, resumenDeEnvio(listOf(entrada(creada, valores = formulario, habilitadas = seccionesDe(SubentregaDeEscritura.E2)))).total)
     }
 
     @Test

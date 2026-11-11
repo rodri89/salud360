@@ -16,7 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Spec 005 RF-3 y RF-4 (T17, D9): qué secciones de la HC general se ofrecen para cargar y se envían a la web en cada subentrega, y
+ * Spec 005 RF-3 y RF-4 (T17, D9; T60-bis): qué secciones de la HC general se ofrecen para cargar y se envían a la web con cada candado (el conjunto de secciones habilitadas), y
  * qué no se envía nunca porque la web no lo guarda. Puro: ids de sección, casillas y campos del examen; el catálogo real se
  * contrasta en `especialidades/clinica` (`LecturaClinicaCatalogoTest`).
  */
@@ -33,7 +33,7 @@ class SeccionesEnviablesTest {
     private val adjuntos = listOf("documentos")
     private val laWebNoGuarda = listOf("diagnostico", "audio", "antecedentes_personales")
 
-    private fun estados(ids: List<String>, habilitada: SubentregaDeEscritura) = ids.associateWith { envioDeSeccion(it, habilitada) }
+    private fun estados(ids: List<String>, habilitadas: Set<String>) = ids.associateWith { envioDeSeccion(it, habilitadas) }
 
     // ---------- Qué ofrece cada versión ----------
 
@@ -44,17 +44,17 @@ class SeccionesEnviablesTest {
 
     @Test
     fun en_la_e1_se_ofrecen_los_textos_y_el_examen_fisico() {
-        assertEquals((textos + "examen_fisico").associateWith { SE_ENVIA }, estados(textos + "examen_fisico", E1))
-        (textos + "examen_fisico").forEach { assertTrue(seccionSeOfrece(it, E1), it) }
+        assertEquals((textos + "examen_fisico").associateWith { SE_ENVIA }, estados(textos + "examen_fisico", seccionesDe(E1)))
+        (textos + "examen_fisico").forEach { assertTrue(seccionSeOfrece(it, seccionesDe(E1)), it) }
     }
 
     @Test
     fun en_la_e1_el_resto_de_la_hc_general_todavia_no_se_envia() {
         val resto = formularios + antecedentesYListas + laboratorio + adjuntos
-        assertEquals(resto.associateWith { TODAVIA_NO }, estados(resto, E1))
+        assertEquals(resto.associateWith { TODAVIA_NO }, estados(resto, seccionesDe(E1)))
         resto.forEach {
-            assertFalse(seccionSeOfrece(it, E1), it)
-            assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion(it, E1), it)
+            assertFalse(seccionSeOfrece(it, seccionesDe(E1)), it)
+            assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion(it, seccionesDe(E1)), it)
         }
     }
 
@@ -67,18 +67,18 @@ class SeccionesEnviablesTest {
     @Test
     fun cada_subentrega_suma_sus_secciones_y_no_quita_ninguna() {
         // E2: formularios, antecedentes familiares, estudios y listas.
-        assertTrue((formularios + antecedentesYListas).all { envioDeSeccion(it, E2) == SE_ENVIA })
-        assertTrue((laboratorio + adjuntos).all { envioDeSeccion(it, E2) == TODAVIA_NO })
+        assertTrue((formularios + antecedentesYListas).all { envioDeSeccion(it, seccionesDe(E2)) == SE_ENVIA })
+        assertTrue((laboratorio + adjuntos).all { envioDeSeccion(it, seccionesDe(E2)) == TODAVIA_NO })
         // E3: laboratorio, peso y pendientes.
-        assertTrue((formularios + antecedentesYListas + laboratorio).all { envioDeSeccion(it, E3) == SE_ENVIA })
-        assertTrue(adjuntos.all { envioDeSeccion(it, E3) == TODAVIA_NO })
+        assertTrue((formularios + antecedentesYListas + laboratorio).all { envioDeSeccion(it, seccionesDe(E3)) == SE_ENVIA })
+        assertTrue(adjuntos.all { envioDeSeccion(it, seccionesDe(E3)) == TODAVIA_NO })
         // E4: adjuntos.
-        assertTrue((textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos).all { envioDeSeccion(it, E4) == SE_ENVIA })
+        assertTrue((textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos).all { envioDeSeccion(it, seccionesDe(E4)) == SE_ENVIA })
         // Una subentrega posterior ofrece todo lo que ofrece la anterior.
         val subentregas = SubentregaDeEscritura.entries
         val todas = textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos
         subentregas.zipWithNext().forEach { (antes, despues) ->
-            todas.filter { seccionSeOfrece(it, antes) }.forEach { assertTrue(seccionSeOfrece(it, despues), "$it en $despues") }
+            todas.filter { seccionSeOfrece(it, seccionesDe(antes)) }.forEach { assertTrue(seccionSeOfrece(it, seccionesDe(despues)), "$it en $despues") }
         }
     }
 
@@ -86,9 +86,9 @@ class SeccionesEnviablesTest {
     fun lo_que_la_web_no_guarda_no_se_ofrece_en_ninguna_subentrega() {
         SubentregaDeEscritura.entries.forEach { sub ->
             laWebNoGuarda.forEach {
-                assertEquals(NUNCA, envioDeSeccion(it, sub), "$it en $sub")
-                assertFalse(seccionSeOfrece(it, sub), "$it en $sub")
-                assertEquals("No se envía a la web", avisoDeSeccion(it, sub), "$it en $sub")
+                assertEquals(NUNCA, envioDeSeccion(it, seccionesDe(sub)), "$it en $sub")
+                assertFalse(seccionSeOfrece(it, seccionesDe(sub)), "$it en $sub")
+                assertEquals("No se envía a la web", avisoDeSeccion(it, seccionesDe(sub)), "$it en $sub")
             }
         }
         assertEquals(laWebNoGuarda.toSet(), SECCIONES_QUE_LA_WEB_NO_GUARDA)
@@ -97,27 +97,128 @@ class SeccionesEnviablesTest {
     @Test
     fun enfermedades_tiene_su_propia_api_y_se_ofrece_siempre() {
         SubentregaDeEscritura.entries.forEach { sub ->
-            assertEquals(APARTE, envioDeSeccion("enfermedades", sub))
-            assertTrue(seccionSeOfrece("enfermedades", sub))
-            assertEquals(null, avisoDeSeccion("enfermedades", sub), "no lleva aviso: no depende del envío de la consulta")
+            assertEquals(APARTE, envioDeSeccion("enfermedades", seccionesDe(sub)))
+            assertTrue(seccionSeOfrece("enfermedades", seccionesDe(sub)))
+            assertEquals(null, avisoDeSeccion("enfermedades", seccionesDe(sub)), "no lleva aviso: no depende del envío de la consulta")
         }
     }
 
     @Test
     fun una_seccion_que_no_se_conoce_no_se_ofrece() {
-        assertEquals(TODAVIA_NO, envioDeSeccion("seccion_inventada", E4))
-        assertFalse(seccionSeOfrece("seccion_inventada", E4))
-        assertEquals(TODAVIA_NO, envioDeSeccion("fotos", E4), "la historia digitalizada no está en ninguna subentrega de la 005")
+        assertEquals(TODAVIA_NO, envioDeSeccion("seccion_inventada", seccionesDe(E4)))
+        assertFalse(seccionSeOfrece("seccion_inventada", seccionesDe(E4)))
+        assertEquals(TODAVIA_NO, envioDeSeccion("fotos", seccionesDe(E4)), "la historia digitalizada no está en ninguna subentrega de la 005")
     }
 
     @Test
     fun la_oferta_de_una_lista_de_secciones_conserva_el_orden_y_el_candado_de_la_version() {
         val perfil = listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "conductas", "diagnostico", "enfermedades")
-        assertEquals(listOf("motivo_consulta", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, E1))
-        assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, E2))
-        assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, E3))
-        // Sin indicar la subentrega rige la de la versión instalada.
-        assertEquals(seccionesQueSeOfrecen(perfil, SUBENTREGA_HABILITADA), seccionesQueSeOfrecen(perfil))
+        assertEquals(listOf("motivo_consulta", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, seccionesDe(E1)))
+        assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, seccionesDe(E2)))
+        assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "conductas", "enfermedades"), seccionesQueSeOfrecen(perfil, seccionesDe(E3)))
+        // Sin indicar el conjunto rige el de la versión instalada.
+        assertEquals(seccionesQueSeOfrecen(perfil, SECCIONES_HABILITADAS), seccionesQueSeOfrecen(perfil))
+    }
+
+    // ---------- El candado por sección (T60-bis, RF-4) ----------
+
+    private val todasLasDeLaHcGeneral = textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos
+
+    @Test
+    fun el_candado_de_esta_version_es_el_conjunto_de_la_e1_los_ocho_textos_y_el_examen_fisico() {
+        assertEquals(seccionesDe(E1), SECCIONES_HABILITADAS)
+        assertEquals((textos + "examen_fisico").toSet(), SECCIONES_HABILITADAS)
+        assertEquals(9, SECCIONES_HABILITADAS.size, "los ocho textos y el examen físico; enfermedades va aparte y no entra en el conjunto")
+        assertEquals(E1, SUBENTREGA_HABILITADA, "nada de E2 está habilitado: eso es la T67, después del cierre de E1")
+    }
+
+    @Test
+    fun seccionesDe_suma_las_de_las_subentregas_anteriores_y_deja_afuera_lo_nunca_y_lo_aparte() {
+        val e1 = seccionesDe(E1)
+        val e2 = seccionesDe(E2)
+        val e3 = seccionesDe(E3)
+        val e4 = seccionesDe(E4)
+        assertTrue(e2.containsAll(e1) && e3.containsAll(e2) && e4.containsAll(e3), "cada subentrega contiene a la anterior")
+        assertTrue(e1 != e2 && e2 != e3 && e3 != e4, "y suma algo")
+        assertEquals((formularios + antecedentesYListas).toSet(), e2 - e1)
+        assertEquals(laboratorio.toSet(), e3 - e2)
+        assertEquals(adjuntos.toSet(), e4 - e3)
+        assertEquals(todasLasDeLaHcGeneral.toSet(), e4)
+        for (conjunto in listOf(e1, e2, e3, e4)) {
+            assertTrue((laWebNoGuarda + "enfermedades").none { it in conjunto }, "lo que la web no guarda y lo que tiene su API no son secciones de una subentrega")
+        }
+    }
+
+    @Test
+    fun un_conjunto_propio_enciende_solo_esos_ids_y_el_resto_queda_todavia_no() {
+        val solo = setOf("serologias")
+        assertEquals(SE_ENVIA, envioDeSeccion("serologias", solo))
+        assertTrue(seccionSeOfrece("serologias", solo))
+        assertEquals(null, avisoDeSeccion("serologias", solo))
+        (todasLasDeLaHcGeneral - "serologias").forEach {
+            assertEquals(TODAVIA_NO, envioDeSeccion(it, solo), it)
+            assertFalse(seccionSeOfrece(it, solo), it)
+            assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeSeccion(it, solo), it)
+        }
+    }
+
+    @Test
+    fun se_puede_encender_de_a_una_sin_tocar_lo_de_la_e1_y_sin_encender_lo_que_no_se_pidio() {
+        val habilitadas = seccionesDe(E1) + setOf("serologias", "child_pugh", "antecedentes_familiares")
+        val encendidas = setOf("serologias", "child_pugh", "antecedentes_familiares")
+        (textos + "examen_fisico").forEach { assertEquals(SE_ENVIA, envioDeSeccion(it, habilitadas), it) }
+        encendidas.forEach { assertEquals(SE_ENVIA, envioDeSeccion(it, habilitadas), it) }
+        // Lo que el alcance nuevo deja afuera sigue apagado aunque sea de la misma subentrega.
+        listOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_reducido", "pendientes", "eco_abdominal", "documentos")
+            .forEach { assertEquals(TODAVIA_NO, envioDeSeccion(it, habilitadas), it) }
+    }
+
+    @Test
+    fun un_conjunto_vacio_no_ofrece_ninguna_seccion_de_la_consulta_pero_enfermedades_sigue_y_lo_nunca_sigue_nunca() {
+        todasLasDeLaHcGeneral.forEach { assertEquals(TODAVIA_NO, envioDeSeccion(it, emptySet()), it) }
+        assertEquals(APARTE, envioDeSeccion("enfermedades", emptySet()))
+        laWebNoGuarda.forEach { assertEquals(NUNCA, envioDeSeccion(it, emptySet()), it) }
+    }
+
+    @Test
+    fun nunca_y_aparte_mandan_sobre_el_conjunto_aunque_alguien_los_ponga_adentro() {
+        val conTodo = todasLasDeLaHcGeneral.toSet() + laWebNoGuarda + "enfermedades"
+        laWebNoGuarda.forEach {
+            assertEquals(NUNCA, envioDeSeccion(it, conTodo), it)
+            assertFalse(seccionSeOfrece(it, conTodo), it)
+            assertEquals(AVISO_NO_SE_ENVIA, avisoDeSeccion(it, conTodo), it)
+        }
+        assertEquals(APARTE, envioDeSeccion("enfermedades", conTodo))
+        assertTrue(seccionSeOfrece("enfermedades", conTodo))
+    }
+
+    @Test
+    fun un_id_desconocido_sigue_todavia_no_aunque_este_en_el_conjunto() {
+        val conjunto = setOf("seccion_inventada", "fotos", "serologias")
+        assertEquals(TODAVIA_NO, envioDeSeccion("seccion_inventada", conjunto))
+        assertEquals(TODAVIA_NO, envioDeSeccion("fotos", conjunto), "la historia digitalizada no está en ninguna subentrega de la 005")
+        assertFalse(seccionSeOfrece("seccion_inventada", conjunto))
+        assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeSeccion("seccion_inventada", conjunto))
+    }
+
+    @Test
+    fun sin_indicar_el_conjunto_rige_el_candado_de_la_version() {
+        assertEquals(SE_ENVIA, envioDeSeccion("nota"))
+        assertEquals(SE_ENVIA, envioDeSeccion("examen_fisico"))
+        assertEquals(TODAVIA_NO, envioDeSeccion("serologias"), "E2 todavía no está habilitada")
+        assertEquals(TODAVIA_NO, envioDeSeccion("laboratorio_general"))
+        for (id in todasLasDeLaHcGeneral + laWebNoGuarda + "enfermedades") {
+            assertEquals(envioDeSeccion(id, SECCIONES_HABILITADAS), envioDeSeccion(id), id)
+            assertEquals(seccionSeOfrece(id, SECCIONES_HABILITADAS), seccionSeOfrece(id), id)
+            assertEquals(avisoDeSeccion(id, SECCIONES_HABILITADAS), avisoDeSeccion(id), id)
+        }
+    }
+
+    @Test
+    fun la_oferta_de_una_lista_con_un_conjunto_propio_conserva_el_orden() {
+        val perfil = listOf("antecedentes_familiares", "serologias", "motivo_consulta", "alimentacion", "child_pugh", "diagnostico", "enfermedades")
+        val habilitadas = seccionesDe(E1) + setOf("serologias", "child_pugh", "antecedentes_familiares")
+        assertEquals(listOf("antecedentes_familiares", "serologias", "motivo_consulta", "child_pugh", "enfermedades"), seccionesQueSeOfrecen(perfil, habilitadas))
     }
 
     // ---------- Dentro de una sección ----------

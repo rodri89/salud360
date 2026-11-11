@@ -23,6 +23,7 @@ import com.salud360.core.data.hcgeneral.modoCampoExamen
 import com.salud360.core.data.hcgeneral.motivosDeLaWeb
 import com.salud360.core.data.hcgeneral.registrosDeLaWeb
 import com.salud360.core.data.hcgeneral.seccionSeOfrece
+import com.salud360.core.data.hcgeneral.seccionesDe
 import com.salud360.core.data.hcgeneral.seccionesQueSeOfrecen
 import com.salud360.core.data.hcgeneral.valoresDeLaWeb
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
@@ -191,8 +192,8 @@ class LecturaClinicaCatalogoTest {
         SECCIONES_QUE_LA_WEB_NO_GUARDA.forEach { id ->
             assertTrue(id !in catalogoHcGeneral.ids, "$id no se ofrece en perfiles")
             assertTrue(catalogoHcGeneral.legada(id) != null, "$id sigue en las legadas para leer lo ya cargado")
-            assertEquals(EnvioDeSeccion.NUNCA, envioDeSeccion(id, SubentregaDeEscritura.E4), id)
-            assertEquals(AVISO_NO_SE_ENVIA, avisoDeSeccion(id, SubentregaDeEscritura.E4), id)
+            assertEquals(EnvioDeSeccion.NUNCA, envioDeSeccion(id, seccionesDe(SubentregaDeEscritura.E4)), id)
+            assertEquals(AVISO_NO_SE_ENVIA, avisoDeSeccion(id, seccionesDe(SubentregaDeEscritura.E4)), id)
         }
         // La nota que algún perfil rotula «antecedentes personales» es la de los antecedentes familiares: esa sí viaja.
         assertTrue(casillaSeEnvia("familiares", CLAVE_NOTA))
@@ -216,7 +217,7 @@ class LecturaClinicaCatalogoTest {
         // Con todas las subentregas habilitadas se envían las 24 que viajan en una consulta; `enfermedades` va por su API.
         assertEquals(
             catalogoHcGeneral.ids.toSet() - "enfermedades",
-            catalogoHcGeneral.ids.filter { envioDeSeccion(it, SubentregaDeEscritura.E4) == EnvioDeSeccion.SE_ENVIA }.toSet(),
+            catalogoHcGeneral.ids.filter { envioDeSeccion(it, seccionesDe(SubentregaDeEscritura.E4)) == EnvioDeSeccion.SE_ENVIA }.toSet(),
         )
     }
 

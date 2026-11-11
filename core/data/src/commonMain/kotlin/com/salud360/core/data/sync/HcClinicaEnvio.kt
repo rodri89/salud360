@@ -14,8 +14,7 @@ import com.salud360.core.data.hcgeneral.PlanDeEnvio
 import com.salud360.core.data.hcgeneral.PasoDeEnvio
 import com.salud360.core.data.hcgeneral.ResumenDeEnvio
 import com.salud360.core.data.hcgeneral.ResultadoVinculo
-import com.salud360.core.data.hcgeneral.SUBENTREGA_HABILITADA
-import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
 import com.salud360.core.data.hcgeneral.esperaDeReintento
@@ -139,7 +138,7 @@ open class HcClinicaEnvio(
     /** El momento en que se arma un plan (el plan solo lo repite, RF-55) y el día de un estado. */
     private val ahora: () -> Long = ::ahoraMillis,
     /** Hasta qué subentrega trae el envío esta versión; decide qué viaja y qué cuenta como pendiente. */
-    private val habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA,
+    private val habilitadas: Set<String> = SECCIONES_HABILITADAS,
     /** La API de escritura de la HC general; sin ella (la HC general no tiene URL en este entorno) no se envía nada. */
     private val escritura: ClinicaEscrituraApi? = null,
     /** De dónde sale la ficha de la web del paciente (`vinculo`). Sin él no se puede crear ninguna consulta. */
@@ -703,7 +702,7 @@ open class HcClinicaEnvio(
         registros = sucio.registros.filter { it.fila.consultaId == consulta.id },
         loEnviado = lo,
         estados = estados,
-        habilitada = habilitada,
+        habilitadas = habilitadas,
         reintentoManual = reintentoManual,
         armadoEn = ahora(),
     )
@@ -732,7 +731,7 @@ open class HcClinicaEnvio(
             estados = estados,
             laboratorios = sucio.laboratorios.filter { it.consultaId == consulta.id },
             pendientes = sucio.pendientes.filter { it.consultaId == consulta.id },
-            habilitada = habilitada,
+            habilitadas = habilitadas,
         )
     }
 

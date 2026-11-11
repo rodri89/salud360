@@ -3,6 +3,7 @@ package com.salud360.core.data.sync
 import com.salud360.core.data.hcgeneral.PARTE_CIERRE
 import com.salud360.core.data.hcgeneral.PARTE_SECCIONES
 import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.seccionesDe
 import com.salud360.core.data.lista
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.uno
@@ -361,7 +362,7 @@ class HcRepositoryCierreTest {
     }
 
     @Test
-    fun los_datos_por_paciente_pendientes_de_una_anulada_quedan_en_reserva_ni_se_envian_ni_se_tiran() = conServidor(habilitada = SubentregaDeEscritura.E2) {
+    fun los_datos_por_paciente_pendientes_de_una_anulada_quedan_en_reserva_ni_se_envian_ni_se_tiran() = conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E2)) {
         sembrarCreada()
         db.sembrarAntecedente("a1", "u1")
 

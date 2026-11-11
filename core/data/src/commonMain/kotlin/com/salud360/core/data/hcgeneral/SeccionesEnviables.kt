@@ -12,14 +12,14 @@ import com.salud360.core.model.hc.Antecedente
 // Dos razones distintas para no enviar algo, con textos distintos (spec, tabla de textos):
 // - [EnvioDeSeccion.NUNCA]: la web no lo guarda (D9). «No se envía a la web».
 // - [EnvioDeSeccion.TODAVIA_NO]: la web lo guarda pero esta versión de la app aún no lo envía (RF-4). «Esta sección todavía no
-//   se envía a la web». Cada subentrega (E2 a E4) suma sus secciones en [SUBENTREGA_QUE_HABILITA]; nada más cambia.
+//   se envía a la web». Cada subentrega (E2 a E4) tiene sus secciones en [SUBENTREGA_QUE_HABILITA]; cuáles envía esta versión lo dice [SECCIONES_HABILITADAS].
 
 /** Las subentregas de la escritura que habilitan secciones, en orden (la E0 no envía nada y la E5 es la licencia). */
 enum class SubentregaDeEscritura { E1, E2, E3, E4 }
 
 /**
- * La última subentrega cuyo envío trae esta versión de la app. **Es lo único que se cambia al cerrar cada subentrega** (E2-8, E3-9 y
- * la de adjuntos): sube a la siguiente y las secciones de [SUBENTREGA_QUE_HABILITA] se ofrecen solas.
+ * La última subentrega cuyo envío trae esta versión de la app: de ella sale el valor de [SECCIONES_HABILITADAS], **el candado real**. Para habilitar
+ * de a una sección (o una subentrega entera) se cambia ese conjunto; esta constante sigue en E1 mientras no se habilite nada de E2 (RF-4, Q-A).
  */
 val SUBENTREGA_HABILITADA = SubentregaDeEscritura.E1
 
@@ -77,31 +77,45 @@ private val SUBENTREGA_QUE_HABILITA: Map<String, SubentregaDeEscritura> = buildM
 private val SECCIONES_APARTE = setOf("enfermedades")
 
 /**
- * Qué pasa con [seccion] en una versión que trae el envío hasta [habilitada]. Una sección que no se conoce (o que ninguna
- * subentrega de la 005 habilita, como la historia digitalizada) cuenta como [EnvioDeSeccion.TODAVIA_NO]: ante la duda no se ofrece.
+ * Todas las secciones que habilita [subentrega] **y las de las anteriores** (el mismo espíritu acumulativo de siempre: E2 ofrece lo de E1 y lo suyo).
+ * Solo las que la 005 envía: no incluye lo que la web no guarda ([SECCIONES_QUE_LA_WEB_NO_GUARDA]) ni lo que tiene su propia API ([SECCIONES_APARTE]).
  */
-fun envioDeSeccion(seccion: String, habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA): EnvioDeSeccion = when {
+fun seccionesDe(subentrega: SubentregaDeEscritura): Set<String> = SUBENTREGA_QUE_HABILITA.filterValues { it <= subentrega }.keys.toSet()
+
+/**
+ * **El candado del envío (RF-4): el conjunto de secciones que esta versión de la app envía a la web.** Hoy son las de [SUBENTREGA_HABILITADA] (E1:
+ * los ocho textos y el examen físico). **Es lo único que se cambia para habilitar una sección o una subentrega**: se escribe el conjunto a mano (por
+ * ejemplo `seccionesDe(SubentregaDeEscritura.E1) + setOf("serologias", "child_pugh")`) y la pantalla, el plan de envío y el contador lo siguen solos.
+ * Va declarado **después** de [SUBENTREGA_QUE_HABILITA]: los `val` de nivel superior se inicializan en el orden del archivo.
+ */
+val SECCIONES_HABILITADAS: Set<String> = seccionesDe(SUBENTREGA_HABILITADA)
+
+/**
+ * Qué pasa con [seccion] en una versión que envía las secciones de [habilitadas]. Lo que la web no guarda ([EnvioDeSeccion.NUNCA]) y lo que tiene su
+ * propia API ([EnvioDeSeccion.APARTE]) mandan sobre el conjunto. Una sección que no se conoce (o que ninguna subentrega de la 005 habilita, como la
+ * historia digitalizada) cuenta como [EnvioDeSeccion.TODAVIA_NO]: ante la duda no se ofrece, aunque alguien la ponga en [habilitadas].
+ */
+fun envioDeSeccion(seccion: String, habilitadas: Set<String> = SECCIONES_HABILITADAS): EnvioDeSeccion = when {
     seccion in SECCIONES_QUE_LA_WEB_NO_GUARDA -> EnvioDeSeccion.NUNCA
     seccion in SECCIONES_APARTE -> EnvioDeSeccion.APARTE
-    else -> SUBENTREGA_QUE_HABILITA[seccion]?.takeIf { it <= habilitada }?.let { EnvioDeSeccion.SE_ENVIA } ?: EnvioDeSeccion.TODAVIA_NO
+    else -> if (seccion in habilitadas && seccion in SUBENTREGA_QUE_HABILITA) EnvioDeSeccion.SE_ENVIA else EnvioDeSeccion.TODAVIA_NO
 }
 
 /** RF-3 y RF-4: la sección se ofrece para cargar en una consulta nueva de la HC general. */
-fun seccionSeOfrece(seccion: String, habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA): Boolean =
-    envioDeSeccion(seccion, habilitada).let { it == EnvioDeSeccion.SE_ENVIA || it == EnvioDeSeccion.APARTE }
+fun seccionSeOfrece(seccion: String, habilitadas: Set<String> = SECCIONES_HABILITADAS): Boolean =
+    envioDeSeccion(seccion, habilitadas).let { it == EnvioDeSeccion.SE_ENVIA || it == EnvioDeSeccion.APARTE }
 
 /** El aviso de [seccion] cuando no se ofrece, o `null` si se ofrece. Lo ya cargado se conserva y se lee con este aviso. */
-fun avisoDeSeccion(seccion: String, habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA): String? =
-    when (envioDeSeccion(seccion, habilitada)) {
+fun avisoDeSeccion(seccion: String, habilitadas: Set<String> = SECCIONES_HABILITADAS): String? =
+    when (envioDeSeccion(seccion, habilitadas)) {
         EnvioDeSeccion.NUNCA -> AVISO_NO_SE_ENVIA
         EnvioDeSeccion.TODAVIA_NO -> AVISO_TODAVIA_NO_SE_ENVIA
         EnvioDeSeccion.SE_ENVIA, EnvioDeSeccion.APARTE -> null
     }
 
 /** De [ids] (por ejemplo, las secciones de un perfil), las que se ofrecen en esta versión, en el mismo orden. */
-fun seccionesQueSeOfrecen(ids: List<String>, habilitada: SubentregaDeEscritura = SUBENTREGA_HABILITADA): List<String> =
-    ids.filter { seccionSeOfrece(it, habilitada) }
-
+fun seccionesQueSeOfrecen(ids: List<String>, habilitadas: Set<String> = SECCIONES_HABILITADAS): List<String> =
+    ids.filter { seccionSeOfrece(it, habilitadas) }
 /**
  * La casilla [clave] de los antecedentes de [categoria] puede viajar a la web: todo `personales` (la sección legada de antecedentes
  * personales) y el tabaquismo, no. El resto de los antecedentes familiares y la nota que los acompaña, sí (RF-3, RF-36). Que la
