@@ -51,6 +51,7 @@ registros de personas): el repo es público.
   hasta la prueba general.
   **T60-bis hecha (2026-11-11, `49fbf56`): el candado es un conjunto de secciones (`SECCIONES_HABILITADAS`), sigue en E1.**
   **T62-a hecha (2026-11-11, `87d6195`): el plan de envío arma formularios y antecedentes con cambio real contra `LoEnviado` (aún sin cablear a `HcClinicaEnvio`: T63); T62-b (registros) bloqueada por Q-E2-2/4/5.**
+  **T63-a hecha (2026-11-11, `f6f2c92`): la cola (`HcClinicaEnvio`) envía formularios y antecedentes (un pedido por paso; parcial y limpieza como los textos); T63-b (registros) bloqueada por Q-E2-2/4/5. El candado sigue en E1: nada de esto sale todavía en la app.**
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
