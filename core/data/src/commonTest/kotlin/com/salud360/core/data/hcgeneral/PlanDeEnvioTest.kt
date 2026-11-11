@@ -45,8 +45,10 @@ class PlanDeEnvioTest {
         consultaId: String? = id, dirty: Boolean = true, en: Long = 2_500,
     ) = FilaSucia(Antecedente("a-$categoria-$clave", "p1", "clinica", categoria, clave, flag, detalle, consultaId, activo), dirty, en)
 
-    private fun registro(rid: String, tipo: String = "examen_complementario", consultaId: String? = id, activo: Boolean = true, dirty: Boolean = true, en: Long = 2_600) =
-        FilaSucia(RegistroClinico(rid, "p1", consultaId, "clinica", tipo, fecha, mapOf("evaluacion" to "pedido $rid"), activo), dirty, en)
+    // T62-b: un estudio de los cinco, con fecha y detalle (lo único que el servidor escribe). Los exámenes complementarios y las interconsultas
+    // quedan fuera de alcance y esperan en reserva, así que no sirven para probar «esto viaja».
+    private fun registro(rid: String, tipo: String = "eco_abdominal", consultaId: String? = id, activo: Boolean = true, dirty: Boolean = true, en: Long = 2_600) =
+        FilaSucia(RegistroClinico(rid, "p1", consultaId, "clinica", tipo, fecha, mapOf("detalle" to "estudio $rid"), activo), dirty, en)
 
     private fun plan(
         consulta: Consulta = consulta(),
@@ -341,7 +343,7 @@ class PlanDeEnvioTest {
     }
 
     @Test
-    fun el_vaciado_a_proposito_de_un_antecedente_y_la_baja_de_un_registro_viajan() {
+    fun el_vaciado_a_proposito_de_un_antecedente_viaja_y_un_estudio_no_se_da_de_baja() {
         val p = plan(
             consulta(remotoId = "7011"),
             antecedentes = listOf(antecedente("hta", flag = false, detalle = "")), registros = listOf(registro("r1", activo = false)),
@@ -351,7 +353,12 @@ class PlanDeEnvioTest {
         )
 
         assertEquals(listOf(false), p.paso<PasoDeEnvio.Antecedentes>().items.map { it.flag })
-        assertEquals(listOf(false), p.paso<PasoDeEnvio.Registros>().items.map { it.activo })
+        assertTrue(p.pasos.none { it is PasoDeEnvio.Registros }, "T62-b: la baja de un estudio no existe (Q-E2-2) y nada más viaja")
+        assertEquals(
+            listOf(FilaEnReserva(TablaDeLaFila.REGISTRO, "r1", MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, 2_600)),
+            p.enReserva,
+            "el estudio desactivado no se manda ni se limpia: sigue en el dispositivo",
+        )
     }
 
     // ---------- Orden (RF-56) ----------

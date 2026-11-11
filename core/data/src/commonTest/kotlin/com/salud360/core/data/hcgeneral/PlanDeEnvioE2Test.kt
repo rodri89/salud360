@@ -10,6 +10,7 @@ import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
 import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.Json
@@ -22,11 +23,11 @@ import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
- * Spec 005 RF-9, RF-34, RF-56, RF-60, RF-68, RF-69 (T62-a): el plan de envío de los **formularios** (alimentación, serologías, Child-Pugh) y de los
- * **antecedentes familiares** de una consulta propia, con `habilitadas = seccionesDe(E2)`. Puro. Cada campo o casilla viaja solo si es un **cambio
- * real** contra lo último que la web confirmó (`LoEnviado`); vaciar a propósito viaja vacío (`""`; la casilla `flag 0`, `detalle ""`); un vacío que el
- * médico no tocó no viaja nunca. Los registros (estudios, exámenes, interconsultas) son de T62-b y no se prueban acá. Quedan afuera, a la espera del
- * usuario: la nota del perfil 4 (Q-E2-1).
+ * Spec 005 RF-9, RF-34, RF-56, RF-60, RF-68, RF-69 (T62-a) y RF-70 (T62-b): el plan de envío de los **formularios** (alimentación, serologías,
+ * Child-Pugh), de los **antecedentes familiares** y de los **cinco estudios** de una consulta propia, con `habilitadas = seccionesDe(E2)`. Puro. Cada
+ * campo, casilla o estudio viaja solo si es un **cambio real** contra lo último que la web confirmó (`LoEnviado`); vaciar a propósito viaja vacío (`""`;
+ * la casilla `flag 0`, `detalle ""`; el estudio con `detalle ""`). Los exámenes complementarios y las interconsultas quedan fuera de alcance (T52-b) y
+ * esperan en reserva. Quedan afuera, a la espera del usuario: la nota del perfil 4 (Q-E2-1) y completar de otra consulta (Q-E2-4).
  */
 class PlanDeEnvioE2Test {
     private val id = "3f2c9d1e-0a6b-4c11-9a77-5c1d2e3f4a5b"
@@ -44,17 +45,27 @@ class PlanDeEnvioE2Test {
         consultaId: String? = id, dirty: Boolean = true, en: Long = 2_500,
     ) = FilaSucia(Antecedente("a-$categoria-$clave", "p1", "clinica", categoria, clave, flag, detalle, consultaId, activo), dirty, en)
 
+    /** Un estudio de los cinco (T62-b): la fila con `fecha` y `campos["detalle"]`, que es lo único que el servidor escribe. */
+    private fun estudio(
+        rid: String, tipo: String = "eco_abdominal", detalle: String = "hígado de aspecto normal", fecha: LocalDate? = this.fecha,
+        campos: Map<String, String> = mapOf("detalle" to detalle), remotoId: String = "", consultaId: String? = id, activo: Boolean = true,
+        dirty: Boolean = true, en: Long = 3_100,
+    ) = FilaSucia(RegistroClinico(rid, "p1", consultaId, "clinica", tipo, fecha, campos, activo, remotoId), dirty, en)
+
     private fun plan(
         consulta: Consulta = consulta(),
         sucia: Boolean = false,
         valores: List<FilaSucia<SeccionValor>> = emptyList(),
         examen: FilaSucia<ExamenFisico>? = null,
         antecedentes: List<FilaSucia<Antecedente>> = emptyList(),
+        registros: List<FilaSucia<RegistroClinico>> = emptyList(),
         loEnviado: LoEnviado = LoEnviado(),
         estados: Map<String, EstadoEnvio> = emptyMap(),
         habilitadas: Set<String> = e2,
         reintentoManual: Boolean = false,
-    ) = planDeEnvio(EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, emptyList(), loEnviado, estados, habilitadas, reintentoManual, armadoEn = 5_000))
+    ) = planDeEnvio(
+        EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, registros, loEnviado, estados, habilitadas, reintentoManual, armadoEn = 5_000),
+    )
 
     private fun json(texto: String) = Json.parseToJsonElement(texto) as JsonObject
 
@@ -386,6 +397,206 @@ class PlanDeEnvioE2Test {
         assertEquals(listOf(PARTE_ANTECEDENTES), con.partes)
     }
 
+    // ---------- Registros: los cinco estudios (T62-b) ----------
+
+    @Test
+    fun un_estudio_nuevo_con_fecha_y_detalle_viaja_en_su_paso_con_su_fila_cubierta() {
+        val p = plan(registros = listOf(estudio("r-eco", "eco_abdominal", "hígado graso", en = 3_100), estudio("r-veda", "veda", "várices I", en = 3_200)))
+
+        assertEquals(listOf(PARTE_REGISTROS), p.partes)
+        val paso = p.paso<PasoDeEnvio.Registros>()
+        assertEquals(listOf("r-eco", "r-veda"), paso.items.map { it.id }, "ordenados por id, como las demás filas")
+        assertEquals(
+            listOf(FilaCubierta(TablaDeLaFila.REGISTRO, "r-eco", 3_100), FilaCubierta(TablaDeLaFila.REGISTRO, "r-veda", 3_200)),
+            paso.cubre,
+            "una fila por estudio con su updated_at (RF-55)",
+        )
+        assertTrue(p.sinViaje.isEmpty() && p.enReserva.isEmpty())
+        // El cuerpo de la API (T61) manda la fecha y el detalle que decidió el plan: el servidor exige la fecha.
+        assertEquals(
+            json(
+                """{"items":[{"ref":"r:r-eco","tipo":"eco_abdominal","fecha":"2026-11-02","campos":{"detalle":"hígado graso"}},
+                    {"ref":"r:r-veda","tipo":"veda","fecha":"2026-11-02","campos":{"detalle":"várices I"}}]}""",
+            ),
+            PayloadsClinica.registros(paso.items),
+        )
+    }
+
+    @Test
+    fun la_edicion_de_la_fecha_y_del_detalle_de_un_estudio_viaja_y_lo_que_la_web_ya_tiene_no() {
+        val confirmado = mapOf("7015" to mapOf("fecha" to "2026-10-01", "detalle" to "hígado graso"))
+
+        val igual = plan(registros = listOf(estudio("r-eco", remotoId = "7015", fecha = LocalDate(2026, 10, 1), detalle = "hígado graso")), loEnviado = LoEnviado(registros = confirmado))
+        assertTrue(igual.pasos.isEmpty(), "mismo estudio, misma fecha y mismo detalle que la web: nada que mandar")
+        assertEquals(listOf(FilaSinViaje(TablaDeLaFila.REGISTRO, "r-eco", MotivoSinViaje.SIN_CAMBIO_REAL, 3_100)), igual.sinViaje)
+
+        val otraFecha = plan(registros = listOf(estudio("r-eco", remotoId = "7015", fecha = LocalDate(2026, 11, 2), detalle = "hígado graso")), loEnviado = LoEnviado(registros = confirmado))
+        assertEquals(listOf("r-eco"), otraFecha.paso<PasoDeEnvio.Registros>().items.map { it.id }, "cambiar la fecha es un cambio real")
+
+        val otroDetalle = plan(registros = listOf(estudio("r-eco", remotoId = "7015", fecha = LocalDate(2026, 10, 1), detalle = "hígado con esteatosis")), loEnviado = LoEnviado(registros = confirmado))
+        assertEquals(listOf("r-eco"), otroDetalle.paso<PasoDeEnvio.Registros>().items.map { it.id }, "cambiar el detalle es un cambio real")
+        assertEquals(
+            json("""{"items":[{"ref":"r:r-eco","tipo":"eco_abdominal","id":"7015","fecha":"2026-10-01","campos":{"detalle":"hígado con esteatosis"}}]}"""),
+            PayloadsClinica.registros(otroDetalle.paso<PasoDeEnvio.Registros>().items),
+        )
+    }
+
+    @Test
+    fun un_estudio_en_blanco_se_vacia_y_la_fila_se_conserva_sin_baja() {
+        val confirmado = LoEnviado(registros = mapOf("7015" to mapOf("fecha" to fecha.toString(), "detalle" to "hígado graso")))
+        val fila = estudio("r-eco", remotoId = "7015", detalle = "")
+        val p = plan(registros = listOf(fila), loEnviado = confirmado)
+
+        val paso = p.paso<PasoDeEnvio.Registros>()
+        assertEquals(listOf(fila.fila), paso.items, "la fila se conserva: vaciar un estudio no lo da de baja (Q-E2-2)")
+        val cuerpo = PayloadsClinica.registros(paso.items, mapOf("r-eco" to confirmado.registroEnviado(fila.fila)!!))
+        assertEquals(
+            json("""{"items":[{"ref":"r:r-eco","tipo":"eco_abdominal","id":"7015","fecha":"2026-11-02","campos":{"detalle":""}}]}"""),
+            cuerpo,
+            "detalle vaciado a propósito; nunca `borrado`",
+        )
+        assertFalse(cuerpo.toString().contains("borrado"), "nunca `borrado` en un estudio")
+    }
+
+    @Test
+    fun un_estudio_en_blanco_que_la_web_nunca_tuvo_no_viaja() {
+        val p = plan(registros = listOf(estudio("r-eco", detalle = "")))
+
+        assertTrue(p.pasos.isEmpty())
+        assertEquals(listOf(FilaSinViaje(TablaDeLaFila.REGISTRO, "r-eco", MotivoSinViaje.SIN_CAMBIO_REAL, 3_100)), p.sinViaje)
+        assertTrue(p.enReserva.isEmpty())
+    }
+
+    @Test
+    fun un_estudio_sin_fecha_queda_en_reserva_sin_perder_el_dato() {
+        val p = plan(registros = listOf(estudio("r-eco", fecha = null, detalle = "hígado graso")))
+
+        assertTrue(p.pasos.isEmpty(), "el servidor exige la fecha (RF-39): no se puede mandar")
+        assertEquals(listOf(FilaEnReserva(TablaDeLaFila.REGISTRO, "r-eco", MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, 3_100)), p.enReserva)
+        assertTrue(p.sinViaje.isEmpty(), "sigue sucio: no se pierde lo que el médico cargó")
+        assertFalse(p.hayAlgoPorEnviar)
+    }
+
+    @Test
+    fun un_estudio_desactivado_no_se_manda_ni_se_da_de_baja() {
+        val p = plan(registros = listOf(estudio("r-eco", remotoId = "7015", activo = false)))
+
+        assertTrue(p.pasos.isEmpty(), "no hay baja de estudio (Q-E2-2)")
+        assertEquals(listOf(FilaEnReserva(TablaDeLaFila.REGISTRO, "r-eco", MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, 3_100)), p.enReserva)
+        assertTrue(p.sinViaje.isEmpty())
+    }
+
+    @Test
+    fun solo_viajan_los_estudios_sucios_de_esta_consulta() {
+        val p = plan(
+            registros = listOf(
+                estudio("r-eco"), estudio("r-otra", consultaId = "otra-propia"), estudio("r-hist", consultaId = "historica-1"),
+                estudio("r-nada", consultaId = null), estudio("r-limpia", dirty = false),
+            ),
+        )
+
+        assertEquals(listOf("r-eco"), p.paso<PasoDeEnvio.Registros>().items.map { it.id })
+        assertTrue(p.sinViaje.isEmpty() && p.enReserva.isEmpty(), "las de otra consulta ni se envían ni se limpian ni se cuentan (RF-68)")
+    }
+
+    @Test
+    fun con_e1_los_estudios_siguen_en_reserva_y_con_un_conjunto_propio_sale_solo_lo_encendido() {
+        val e1 = plan(registros = listOf(estudio("r-eco")), habilitadas = seccionesDe(E1))
+        assertTrue(e1.pasos.isEmpty())
+        assertEquals(listOf(MotivoEnReserva.TODAVIA_NO_SE_ENVIA), e1.enReserva.map { it.motivo })
+        assertTrue(e1.sinViaje.isEmpty(), "no se limpian: salen cuando la versión los habilite (RF-4)")
+
+        val propio = plan(registros = listOf(estudio("r-eco"), estudio("r-veda", "veda")), habilitadas = seccionesDe(E1) + setOf("veda"))
+        assertEquals(listOf("r-veda"), propio.paso<PasoDeEnvio.Registros>().items.map { it.id })
+        assertEquals(listOf(FilaEnReserva(TablaDeLaFila.REGISTRO, "r-eco", MotivoEnReserva.TODAVIA_NO_SE_ENVIA, 3_100)), propio.enReserva)
+    }
+
+    @Test
+    fun los_examenes_complementarios_y_las_interconsultas_quedan_fuera_de_alcance_y_esperan_en_reserva() {
+        val p = plan(
+            registros = listOf(
+                estudio("x1", "examen_complementario", campos = mapOf("solicito" to "Eco", "respuesta" to "")),
+                estudio("i1", "interconsulta", campos = mapOf("especialista" to "Cardio")),
+                estudio("r-eco"),
+            ),
+        )
+
+        assertEquals(listOf("r-eco"), p.paso<PasoDeEnvio.Registros>().items.map { it.id }, "solo los cinco estudios (T52-b fuera de alcance)")
+        assertEquals(setOf("x1", "i1"), p.enReserva.map { it.clave }.toSet())
+        assertTrue(p.enReserva.all { it.motivo == MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO && it.tabla == TablaDeLaFila.REGISTRO })
+        assertTrue(p.sinViaje.isEmpty(), "siguen sucios: no se tira lo que el médico cargó")
+    }
+
+    @Test
+    fun los_estudios_de_una_consulta_anulada_se_descartan_o_esperan_como_los_demas_datos_por_paciente() {
+        val nunca = plan(consulta(estado = EstadoConsulta.ANULADA, remotoId = ""), sucia = true, registros = listOf(estudio("r-eco")))
+        assertTrue(nunca.pasos.isEmpty(), "anulada antes de crearse: queda solo en el dispositivo")
+        assertEquals(listOf(FilaEnReserva(TablaDeLaFila.REGISTRO, "r-eco", MotivoEnReserva.CONSULTA_ANULADA, 3_100)), nunca.enReserva, "no se tira")
+
+        val creada = plan(consulta(estado = EstadoConsulta.ANULADA), sucia = true, registros = listOf(estudio("r-eco")))
+        assertEquals(listOf(PARTE_BAJA), creada.partes, "ya creada: solo sale la baja")
+        assertEquals(listOf(MotivoEnReserva.CONSULTA_ANULADA), creada.enReserva.map { it.motivo })
+    }
+
+    @Test
+    fun lo_confirmado_de_los_estudios_se_anota_por_estudio_remoto_y_decide_el_cambio_siguiente() {
+        val conRemoto = estudio("r-eco", remotoId = "7015", detalle = "hígado graso", en = 3_100)
+        val nuevo = estudio("r-veda", "veda", "várices I", en = 3_200)
+        val p = plan(registros = listOf(conRemoto, nuevo))
+
+        val enviado = p.pasos.fold(LoEnviado(valores = mapOf("nota/texto" to "n"))) { lo, paso -> lo.conLoConfirmado(paso) }
+        assertEquals(
+            mapOf("7015" to mapOf("fecha" to fecha.toString(), "detalle" to "hígado graso")),
+            enviado.registros,
+            "el estudio nuevo todavía no tiene id de la web: se anota cuando el envío lo recibe (T63-b)",
+        )
+        assertEquals(mapOf("nota/texto" to "n"), enviado.valores, "lo anterior se conserva")
+
+        // Con el id que asignó la web, el mismo estudio nuevo queda anotado y no se vuelve a mandar.
+        val conIds = enviado.conLoConfirmado(p.paso<PasoDeEnvio.Registros>(), remotos = mapOf("r-veda" to "7020"))
+        assertEquals(
+            mapOf(
+                "7015" to mapOf("fecha" to fecha.toString(), "detalle" to "hígado graso"),
+                "7020" to mapOf("fecha" to fecha.toString(), "detalle" to "várices I"),
+            ),
+            conIds.registros,
+        )
+
+        assertTrue(plan(registros = listOf(conRemoto), loEnviado = enviado).pasos.isEmpty(), "lo mismo que la web: nada que mandar")
+
+        val vaciado = plan(registros = listOf(conRemoto.copy(fila = conRemoto.fila.copy(campos = mapOf("detalle" to "")))), loEnviado = enviado)
+        val despues = vaciado.pasos.fold(enviado) { lo, paso -> lo.conLoConfirmado(paso) }
+        assertEquals("", despues.registros["7015"]?.get("detalle"), "el vaciado confirmado queda como vacío")
+        assertEquals(1, despues.registros.size)
+        assertTrue(plan(registros = listOf(conRemoto.copy(fila = conRemoto.fila.copy(campos = mapOf("detalle" to "")))), loEnviado = despues).pasos.isEmpty())
+    }
+
+    @Test
+    fun lo_que_el_confirmado_de_los_estudios_guarda_alcanza_para_armar_el_cuerpo() {
+        val fila = estudio("r-eco", remotoId = "7015", detalle = "hígado graso")
+        val confirmado = LoEnviado(registros = mapOf("7015" to mapOf("fecha" to "2026-10-01", "detalle" to "otro texto")))
+
+        val anterior = confirmado.registroEnviado(fila.fila)
+
+        assertEquals(LocalDate(2026, 10, 1), anterior?.fecha)
+        assertEquals("otro texto", anterior?.campos?.get("detalle"))
+        assertNull(confirmado.registroEnviado(fila.fila.copy(remotoId = "")), "sin id de la web no hay nada confirmado")
+    }
+
+    @Test
+    fun confirmar_estudios_no_toca_lo_de_los_textos_ni_del_examen() {
+        val base = LoEnviado(valores = mapOf("nota/texto" to "a"), examen = mapOf("peso" to "70"), formularios = mapOf("serologias/hiv" to "NO"), antecedentes = mapOf("hta" to "1|padre"))
+        val p = plan(registros = listOf(estudio("r-eco")))
+
+        val despues = p.pasos.fold(base) { lo, paso -> lo.conLoConfirmado(paso) }
+
+        assertEquals(base.valores, despues.valores)
+        assertEquals(base.examen, despues.examen)
+        assertEquals(base.formularios, despues.formularios)
+        assertEquals(base.antecedentes, despues.antecedentes)
+        assertTrue(despues.registros.isEmpty(), "sin id de la web todavía no hay nada que anotar (T63-b)")
+    }
+
     // ---------- Orden y partes rechazadas ----------
 
     private fun todoJunto(estados: Map<String, EstadoEnvio> = emptyMap(), reintentoManual: Boolean = false, remotoId: String = "") = plan(
@@ -394,20 +605,21 @@ class PlanDeEnvioE2Test {
             valor("nota", "texto", "x"), valor("serologias", "hiv", "NO"), valor("alimentacion", "hiposodica", "1|x"),
         ),
         examen = FilaSucia(ExamenFisico(id, peso = "70"), true, 3_000),
-        antecedentes = listOf(antecedente("hta")), estados = estados, reintentoManual = reintentoManual,
+        antecedentes = listOf(antecedente("hta")), registros = listOf(estudio("r-eco")),
+        estados = estados, reintentoManual = reintentoManual,
     )
 
     @Test
-    fun el_orden_es_crear_secciones_examen_formularios_antecedentes_y_cierre() {
+    fun el_orden_es_crear_secciones_examen_formularios_antecedentes_registros_y_cierre() {
         assertEquals(
-            listOf(PARTE_CREAR, PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_CIERRE),
+            listOf(PARTE_CREAR, PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS, PARTE_CIERRE),
             todoJunto().partes,
         )
-        assertTrue(PARTE_REGISTROS !in todoJunto().partes, "los registros son de T62-b")
+        assertTrue(plan(registros = listOf(estudio("x1", "examen_complementario"))).pasos.isEmpty(), "los exámenes complementarios no se arman (T52-b)")
     }
 
     @Test
-    fun el_cierre_solo_sale_con_los_formularios_y_los_antecedentes_confirmados() {
+    fun el_cierre_solo_sale_con_los_formularios_los_antecedentes_y_los_estudios_confirmados() {
         val p = todoJunto(remotoId = "7011")
         var confirmadas = setOf<String>()
 
@@ -421,11 +633,15 @@ class PlanDeEnvioE2Test {
     }
 
     @Test
-    fun una_parte_rechazada_de_formularios_o_de_antecedentes_frena_el_cierre_y_las_demas_siguen() {
-        for (parte in listOf(PARTE_FORMULARIOS, PARTE_ANTECEDENTES)) {
+    fun una_parte_rechazada_de_formularios_de_antecedentes_o_de_estudios_frena_el_cierre_y_las_demas_siguen() {
+        for (parte in listOf(PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS)) {
             val p = todoJunto(estados = mapOf(parte to rechazo), remotoId = "7011")
 
-            assertEquals(listOf(PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES).filter { it != parte }, p.partes, parte)
+            assertEquals(
+                listOf(PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS).filter { it != parte },
+                p.partes,
+                parte,
+            )
             assertEquals(
                 listOf(Retencion(parte, MotivoRetencion.RECHAZADA), Retencion(PARTE_CIERRE, MotivoRetencion.FRENADO_POR_UNA_PARTE_RECHAZADA)),
                 p.retenciones,
@@ -450,10 +666,12 @@ class PlanDeEnvioE2Test {
         val a = plan(
             valores = listOf(valor("serologias", "hiv", "NO"), valor("child_pugh", "tp", "2"), valor("alimentacion", "otra", "1|x")),
             antecedentes = listOf(antecedente("hta"), antecedente("acv"), antecedente("nota", true, "n")),
+            registros = listOf(estudio("r-eco", en = 3_100), estudio("r-tc", "tc_rmn", "sin particularidades", en = 3_200)),
         )
         val b = plan(
             valores = listOf(valor("alimentacion", "otra", "1|x"), valor("child_pugh", "tp", "2"), valor("serologias", "hiv", "NO")),
             antecedentes = listOf(antecedente("nota", true, "n"), antecedente("acv"), antecedente("hta")),
+            registros = listOf(estudio("r-tc", "tc_rmn", "sin particularidades", en = 3_200), estudio("r-eco", en = 3_100)),
         )
 
         assertEquals(a, b)

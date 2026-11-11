@@ -12,11 +12,12 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
 
-// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-55, RF-56, RF-60, RF-68, RF-69). **Puro**: las
+// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-55, RF-56, RF-60, RF-68, RF-69, RF-70). **Puro**: las
 // filas, lo último que la web confirmó, los estados y el momento del armado entran como parámetros; no hay red, base ni reloj, y el
 // mismo ingreso da siempre el mismo plan. **Solo ordena**: no ejecuta ningún pedido ni escribe nada (un envío por consulta a la vez,
 // RF-54, es de quien envía, `HcClinicaEnvio`). Responde tres preguntas:
-// - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
+// - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido (textos, examen, formularios y antecedentes de T62-a, y los cinco
+//   estudios de T62-b) → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
 //   es un cambio real (T18): un vacío que el médico no tocó no se envía nunca; vaciar algo que la web tiene sí (RF-69).
 // - **Qué no viaja y se limpia** ([PlanDeEnvio.sinViaje]): lo que nunca va a viajar (lo que la web no guarda, antecedentes desactivados, lo
 //   que ya está igual en la web). Quien envía lo deja con `dirty = 0` **sin** figurar como enviado ni como pendiente (RF-60).
@@ -55,9 +56,11 @@ data class LoEnviado(
     val formularios: Map<String, String> = emptyMap(),
     /** Clave de la casilla (o `nota`) -> `<0|1>|<detalle>`. */
     val antecedentes: Map<String, String> = emptyMap(),
+    /** Id de la fila en la web -> campo confirmado (`fecha`, `detalle`) de cada estudio (T62-b). */
+    val registros: Map<String, Map<String, String>> = emptyMap(),
 ) {
     /** Lo que queda confirmado después de que la web aceptó [paso]. Un valor en blanco queda como `""` (vaciado). */
-    fun conLoConfirmado(paso: PasoDeEnvio): LoEnviado = when (paso) {
+    fun conLoConfirmado(paso: PasoDeEnvio, remotos: Map<Id, String> = emptyMap()): LoEnviado = when (paso) {
         is PasoDeEnvio.Secciones -> copy(valores = valores + paso.textos.mapKeys { "${it.key}/$CAMPO_TEXTO" }.mapValues { normalizado(it.value) })
         is PasoDeEnvio.Examen -> copy(
             examen = examen + paso.campos.mapValues { (campo, valor) -> if (campo in MEDIDAS) medidaNormalizada(valor) else normalizado(valor) },
@@ -66,6 +69,7 @@ data class LoEnviado(
             formularios = formularios + paso.valores.associate { "${it.seccion}/${it.campo}" to formularioConfirmado(it) },
         )
         is PasoDeEnvio.Antecedentes -> copy(antecedentes = antecedentes + paso.items.associate { it.clave to casillaConfirmada(it) })
+        is PasoDeEnvio.Registros -> copy(registros = registros + registrosConfirmados(paso.items, remotos))
         else -> this
     }
 
@@ -98,6 +102,34 @@ private fun casillaConfirmada(a: Antecedente): String = when {
  */
 fun LoEnviado.antecedenteEnviado(a: Antecedente): Antecedente? =
     antecedentes[a.clave]?.let { a.copy(flag = flagDeLaCasilla(it), detalle = detalleDeLaCasilla(it)) }
+
+/**
+ * La fila de la web que corresponde a [r] según lo último confirmado (la fecha y el detalle de [LoEnviado.registros] sobre la fila), o `null` si la web
+ * todavía no tiene nada de ese estudio. Es lo que el cuerpo de la API (`PayloadsClinica.registros`) necesita como «lo ya enviado», para que el plan y el
+ * cuerpo decidan el cambio real con la misma información (como [antecedenteEnviado]).
+ */
+fun LoEnviado.registroEnviado(r: RegistroClinico): RegistroClinico? {
+    val confirmado = registros[r.remotoId].takeIf { r.remotoId.isNotBlank() } ?: return null
+    val fecha = confirmado[CAMPO_FECHA_DEL_REGISTRO]?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: r.fecha
+    return r.copy(fecha = fecha, campos = r.campos + (CAMPO_DETALLE_DEL_REGISTRO to confirmado[CAMPO_DETALLE_DEL_REGISTRO].orEmpty()))
+}
+
+/**
+ * Lo que queda anotado de cada estudio que la web aceptó: el id de la fila en la web (el de la respuesta, [remotos], o el que ya tenía la fila) y los campos
+ * que se mandaron (`fecha`, `detalle`; `""` es un detalle vaciado). Un estudio que todavía no tiene id no se puede anotar: se anota en el envío siguiente,
+ * cuando la web lo devuelve (T63-b).
+ */
+private fun registrosConfirmados(items: List<RegistroClinico>, remotos: Map<Id, String>): Map<String, Map<String, String>> = items.mapNotNull { r ->
+    val remoto = remotos[r.id] ?: r.remotoId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+    val campos = buildMap {
+        r.fecha?.let { put(CAMPO_FECHA_DEL_REGISTRO, it.toString()) }
+        put(CAMPO_DETALLE_DEL_REGISTRO, if (esVacio(r.campos[CAMPO_DETALLE_DEL_REGISTRO])) "" else r.campos.getValue(CAMPO_DETALLE_DEL_REGISTRO))
+    }
+    remoto to campos
+}.toMap()
+
+private const val CAMPO_FECHA_DEL_REGISTRO = "fecha"
+private const val CAMPO_DETALLE_DEL_REGISTRO = "detalle"
 
 private fun flagDeLaCasilla(confirmada: String): Boolean = confirmada.substringBefore("|") == "1"
 
@@ -162,7 +194,11 @@ sealed interface PasoDeEnvio {
         override val parte get() = PARTE_ANTECEDENTES
     }
 
-    /** Filas de registro asociadas a la consulta (estudios, exámenes, interconsultas; E2), con las bajas. */
+    /**
+     * Los cinco estudios de esta consulta que cambian de verdad (E2, T62-b, RF-39, RF-40): un estudio viaja con su fecha y su `campos.detalle` (el servidor
+     * exige la fecha) y vaciarlo es `detalle ""`; no hay baja de estudio (Q-E2-2). Los exámenes complementarios y las interconsultas quedan fuera de alcance
+     * (T52-b) y no se arman.
+     */
     data class Registros(val items: List<RegistroClinico>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
         override val parte get() = PARTE_REGISTROS
     }
@@ -480,6 +516,14 @@ private class Armado(private val e: EntradaDelPlan) {
         return cambioRealDeAntecedente(anterior, a.flag, a.detalle)
     }
 
+    /**
+     * Los **cinco estudios** que viajan (T62-b, RF-39, RF-40, RF-70): solo filas sucias de esta consulta y solo si son un **cambio real** contra lo que la
+     * web confirmó (fecha o detalle; `LoEnviado.registros`). Un estudio nuevo viaja con su fecha y su detalle (alta); uno que la web ya tiene, solo si
+     * cambió (edición). Un estudio en blanco que la web tenía viaja con `detalle ""` (Q-E2-2: vaciar **no** es dar de baja la fila). No viajan, y no se
+     * limpian, los estudios sin fecha (el servidor la exige: quedan en reserva, sin perder el dato) ni un estudio desactivado (no hay baja de estudio:
+     * fuera de alcance), y los exámenes complementarios y las interconsultas quedan fuera de alcance (T52-b) hasta que se implementen. Lo que es igual a lo
+     * confirmado se limpia sin figurar enviado (RF-60).
+     */
     private fun registros(anulada: Boolean): PasoDeEnvio.Registros? {
         val viajan = mutableListOf<FilaSucia<RegistroClinico>>()
         for (f in e.registros.filter { it.dirty && it.fila.consultaId == c.id }.sortedBy { it.fila.id }) {
@@ -491,11 +535,28 @@ private class Armado(private val e: EntradaDelPlan) {
                 anulada -> enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
                 !seccionSeOfrece(seccion, e.habilitadas) ->
                     enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                r.tipo !in TIPOS_ESTUDIO_WEB ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                !r.activo -> enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                r.fecha == null -> enReserva += FilaEnReserva(TablaDeLaFila.REGISTRO, r.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                !cambioDelEstudio(r) -> sinViaje += FilaSinViaje(TablaDeLaFila.REGISTRO, r.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
                 else -> viajan += f
             }
         }
         if (viajan.isEmpty()) return null
         return PasoDeEnvio.Registros(viajan.map { it.fila }, viajan.map { FilaCubierta(TablaDeLaFila.REGISTRO, it.fila.id, it.actualizadaEn) })
+    }
+
+    /**
+     * Qué es guardar el estudio [r] donde la web tenía lo confirmado: cambia si cambió la fecha o el detalle. Un estudio del que no se confirmó nada es un
+     * alta, y como el servidor no crea un estudio sin detalle (lo mismo que decide `PayloadsClinica.registros`), un estudio vacío sobre nada no es un cambio.
+     */
+    private fun cambioDelEstudio(r: RegistroClinico): Boolean {
+        val confirmado = e.loEnviado.registros[r.remotoId].takeIf { r.remotoId.isNotBlank() }
+        val detalle = r.campos[CAMPO_DETALLE_DEL_REGISTRO].orEmpty()
+        val texto = cambioReal(confirmado?.get(CAMPO_DETALLE_DEL_REGISTRO), detalle)
+        val fecha = confirmado != null && confirmado[CAMPO_FECHA_DEL_REGISTRO] != r.fecha?.toString()
+        return texto != CambioReal.NINGUNO || fecha
     }
 }
 

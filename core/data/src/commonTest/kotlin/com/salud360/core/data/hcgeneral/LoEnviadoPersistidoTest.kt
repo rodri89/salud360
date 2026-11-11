@@ -1,7 +1,9 @@
 package com.salud360.core.data.hcgeneral
 
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
+import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -150,6 +152,88 @@ class LoEnviadoPersistidoTest {
 
         assertEquals(mapOf("serologias/hiv" to "", "child_pugh/tp" to "3"), releido.formularios, "el vaciado confirmado queda como vacío")
         assertEquals(mapOf("hta" to "0|", "acv" to "1|madre"), releido.antecedentes)
+        assertEquals(mapOf("nota/texto" to "vieja"), releido.valores)
+    }
+
+    // ---------- T62-b: los cinco estudios ----------
+
+    @Test
+    fun ida_y_vuelta_conserva_los_estudios_confirmados_por_estudio_remoto() {
+        val lo = LoEnviado(
+            valores = mapOf("nota/texto" to "n"),
+            registros = mapOf(
+                "7015" to mapOf("fecha" to "2026-11-02", "detalle" to "hígado graso, «sin nódulos»\nsegunda línea"),
+                "7020" to mapOf("fecha" to "2026-11-03", "detalle" to ""),
+            ),
+        )
+
+        assertEquals(lo, loEnviadoDeTexto(loEnviadoComoTexto(lo)))
+    }
+
+    @Test
+    fun solo_estudios_tambien_se_guardan() {
+        val solo = LoEnviado(registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "")))
+
+        assertNotNull(loEnviadoComoTexto(solo), "un detalle vaciado confirmado es un dato: no se pierde")
+        assertEquals(solo, loEnviadoDeTexto(loEnviadoComoTexto(solo)))
+        assertNull(loEnviadoComoTexto(LoEnviado(registros = emptyMap())))
+    }
+
+    @Test
+    fun lo_guardado_antes_de_t62b_se_sigue_leyendo_sin_estudios() {
+        val viejo = """{"v":{"nota/texto":"ok"},"e":{"peso":"70"},"f":{"serologias/hiv":"NO"},"a":{"hta":"1|padre"}}"""
+
+        val leido = loEnviadoDeTexto(viejo)
+
+        assertEquals(emptyMap(), leido.registros)
+        assertEquals(
+            LoEnviado(
+                valores = mapOf("nota/texto" to "ok"), examen = mapOf("peso" to "70"),
+                formularios = mapOf("serologias/hiv" to "NO"), antecedentes = mapOf("hta" to "1|padre"),
+            ),
+            leido,
+        )
+    }
+
+    @Test
+    fun sin_estudios_el_texto_es_el_de_antes_para_que_una_version_vieja_lo_lea() {
+        val lo = LoEnviado(valores = mapOf("nota/texto" to "ok"), formularios = mapOf("serologias/hiv" to "NO"), antecedentes = mapOf("hta" to "1|padre"))
+
+        assertEquals("""{"v":{"nota/texto":"ok"},"e":{},"f":{"serologias/hiv":"NO"},"a":{"hta":"1|padre"}}""", loEnviadoComoTexto(lo))
+    }
+
+    @Test
+    fun lo_que_no_es_un_texto_dentro_de_los_estudios_se_ignora_sin_romper_el_resto() {
+        val leido = loEnviadoDeTexto(
+            """{"r": {"7015": {"fecha": "2026-11-02", "detalle": "ok", "raro": 5}, "malo": "no es un objeto", "otro": null},
+                "v": {"nota/texto": "n"}}""",
+        )
+
+        assertEquals(LoEnviado(valores = mapOf("nota/texto" to "n"), registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "ok"))), leido)
+        assertEquals(LoEnviado(), loEnviadoDeTexto("""{"r": "no es un objeto"}"""))
+    }
+
+    @Test
+    fun el_mismo_contenido_de_estudios_da_siempre_el_mismo_texto() {
+        val a = LoEnviado(registros = mapOf("7020" to mapOf("fecha" to "2026-11-03", "detalle" to "b"), "7015" to mapOf("detalle" to "a", "fecha" to "2026-11-02")))
+        val b = LoEnviado(registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "a"), "7020" to mapOf("detalle" to "b", "fecha" to "2026-11-03")))
+
+        assertEquals(loEnviadoComoTexto(a), loEnviadoComoTexto(b))
+    }
+
+    @Test
+    fun confirmar_estudios_y_guardarlo_suma_a_lo_que_ya_estaba() {
+        val antes = LoEnviado(valores = mapOf("nota/texto" to "vieja"), registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "viejo")))
+        val despues = antes.conLoConfirmado(
+            PasoDeEnvio.Registros(
+                listOf(RegistroClinico("r-eco", "p", "c", "clinica", "eco_abdominal", LocalDate(2026, 11, 2), mapOf("detalle" to ""), remotoId = "7015")),
+                emptyList(),
+            ),
+        )
+
+        val releido = loEnviadoDeTexto(loEnviadoComoTexto(despues))
+
+        assertEquals(mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "")), releido.registros, "el vaciado confirmado queda como vacío")
         assertEquals(mapOf("nota/texto" to "vieja"), releido.valores)
     }
 }

@@ -138,9 +138,10 @@ class ContadorDeEnvioTest {
                 habilitadas = e,
             ),
             entrada(
-                propia("registro"),
+                propia("registro", remotoId = "7001"),
                 registros = listOf(
-                    FilaSucia(RegistroClinico("r1", "p-registro", "registro", "clinica", SeccionesComunes.INTERCONSULTA, fecha, mapOf("motivo" to "x")), true, 10),
+                    // T62-b: un estudio de los cinco con fecha y detalle. La consulta ya está creada, así que solo cuenta si el estudio viaja.
+                    FilaSucia(RegistroClinico("r1", "p-registro", "registro", "clinica", "eco_abdominal", fecha, mapOf("detalle" to "estudio")), true, 10),
                 ),
                 habilitadas = e,
             ),
