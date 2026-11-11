@@ -9,6 +9,7 @@ import com.salud360.core.data.hcgeneral.LecturaWeb
 import com.salud360.core.data.hcgeneral.LoEnviado
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
+import com.salud360.core.data.hcgeneral.camposConfirmadosDelEstudio
 import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
 import com.salud360.core.data.hcgeneral.esDeLaWeb
@@ -340,11 +341,17 @@ class HcClinicaBackend internal constructor(
         val registrosPropios = hq.registrosDePacienteTodos(pacienteId, especialidad).lista { it.toModel() }
             .filter { !it.id.startsWith(PREFIJO_ID_WEB) && it.remotoId.isNotBlank() }
             .associateBy { it.tipo to it.remotoId }
+        // T65-a: lo que la web tiene de cada estudio propio, por la consulta local a la que pertenece, para dejarlo anotado en `LoEnviado`.
+        val propiasLocales = vinculadas.values.toSet()
+        val estudiosDeLaWeb = mutableMapOf<Id, Map<String, Map<String, String>>>()
         registrosDeLaWeb(pacienteId, h, consultas, vinculadas).forEach { web ->
             val propio = registrosPropios[web.tipo to web.remotoId]
             if (propio != null) {
                 if (propio.id !in registrosSucios) {
                     fusionarRegistro(web.copy(id = propio.id, activo = propio.activo), propio)?.let { hq.upsertRegistro(it.filaDeLaWeb(sello)) }
+                }
+                propio.consultaId?.takeIf { it in propiasLocales }?.let { consultaLocalId ->
+                    estudiosDeLaWeb[consultaLocalId] = estudiosDeLaWeb[consultaLocalId].orEmpty() + (web.remotoId to camposConfirmadosDelEstudio(web))
                 }
                 return@forEach
             }
@@ -352,6 +359,13 @@ class HcClinicaBackend internal constructor(
             val local = hq.registroPorId(web.id).uno { it.toModel() }
             if (local != null && local.pacienteId != pacienteId) return@forEach
             fusionarRegistro(web, local)?.let { hq.upsertRegistro(it.filaDeLaWeb(sello)) }
+        }
+        // Lo que la web tiene de los estudios propios queda en `LoEnviado` (también si la fila local estaba sucia: lo sucio es del dispositivo y
+        // lo anotado es de la web, que es contra lo que el plan compara el cambio siguiente).
+        estudiosDeLaWeb.forEach { (consultaLocalId, confirmados) ->
+            val previo = loEnviados.deLaConsulta(pacienteId, consultaLocalId)
+            val nuevo = previo.copy(registros = previo.registros + confirmados)
+            if (nuevo != previo) loEnviados.guardar(pacienteId, consultaLocalId, nuevo, sello)
         }
 
         val valoresSucios = hq.seccionValoresDirty().lista { Triple(it.consulta_id, it.seccion, it.campo) }.toSet()

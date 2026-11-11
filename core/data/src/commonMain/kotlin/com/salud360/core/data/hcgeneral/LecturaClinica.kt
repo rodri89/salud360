@@ -259,11 +259,12 @@ fun fusionarExamenFisico(consultaLocalId: Id, e: ExamenFisicoDto, local: ExamenF
 }
 
 /**
- * Qué escribir de lo que trae la web en el contenido de una consulta **propia** ya enviada (spec 005, RF-33, RF-34, T27 decisión 5).
+ * Qué escribir de lo que trae la web en el contenido de una consulta **propia** ya enviada (spec 005, RF-33, RF-34, T27 decisión 5, T65-a).
  * Un texto de los que esta app envía ([PayloadsClinica.SECCIONES_DE_TEXTO]) se actualiza solo si el dispositivo **no** lo tiene pendiente
  * y si lo que hay acá es lo mismo que la web tenía la última vez ([loEnviado]) o está vacío: un texto distinto de lo último que la web tuvo
- * y sin pendiente es algo que el médico **descartó** y se conserva solo en el dispositivo. Los formularios (E2) siguen la regla de
- * siempre: se actualizan si no están pendientes. Un valor vacío no viene en [web] (nunca pisa).
+ * y sin pendiente es algo que el médico **descartó** y se conserva solo en el dispositivo. Los formularios (E2) siguen la misma regla:
+ * se actualizan si no están pendientes, si acá no había nada y si lo que hay es lo mismo que la web tenía ([LoEnviado.formularios], con el
+ * valor canónico); un valor distinto y sin pendiente también se conserva. Un valor vacío no viene en [web] (nunca pisa).
  */
 fun valoresDeLaWebParaLaPropia(
     web: List<SeccionValor>,
@@ -276,9 +277,19 @@ fun valoresDeLaWebParaLaPropia(
     when {
         clave in pendientes -> false
         local?.valor == w.valor -> false
-        w.seccion !in PayloadsClinica.SECCIONES_DE_TEXTO -> true
-        else -> local == null || local.valor.isBlank() || local.valor == loEnviado.valores["${w.seccion}/${w.campo}"]
+        w.seccion in PayloadsClinica.SECCIONES_DE_TEXTO -> local == null || local.valor.isBlank() || local.valor == loEnviado.valores["${w.seccion}/${w.campo}"]
+        else -> local == null || esLoQueLaWebTeniaDelFormulario(w, local.valor, loEnviado)
     }
+}
+
+/**
+ * [local] es lo que la web tenía de ese campo de formulario (`LoEnviado.formularios`, valor canónico) o acá no había nada: en los dos casos
+ * lo que trae la web se escribe. Un valor distinto y sin pendiente es algo que el médico descartó y se conserva (RF-64).
+ */
+private fun esLoQueLaWebTeniaDelFormulario(w: SeccionValor, local: String, loEnviado: LoEnviado): Boolean {
+    if (local.isBlank()) return true
+    val enviado = loEnviado.formularios["${w.seccion}/${w.campo}"] ?: return false
+    return local == enviado || PayloadsClinica.valorDeFormulario(w.seccion, w.campo, local) == enviado
 }
 
 /**
@@ -306,14 +317,32 @@ fun fusionarExamenDeLaPropia(consultaLocalId: Id, e: ExamenFisicoDto, local: Exa
 /**
  * Lo que la web tiene de la consulta después de esta lectura ([previo] + lo que trajo con dato): así lo que el médico cambie después se
  * compara contra eso, también un vaciado a propósito (RF-69). Un valor vacío de la web **no** cambia lo anotado (puede ser un campo que
- * nunca se cargó o que se vació allá; el envío siguiente decide por lo que escribió el médico).
+ * nunca se cargó o que se vació allá; el envío siguiente decide por lo que escribió el médico). Incluye los **formularios** (T65-a,
+ * alimentación, serologías y Child-Pugh) con el valor canónico que manda la API, así el plan de envío compara contra el mismo texto.
  */
 fun loEnviadoTrasLaLectura(previo: LoEnviado, s: SeccionesConsultaDto, e: ExamenFisicoDto): LoEnviado {
     val textos = s.textos().filterValues { it.isNotBlank() }.mapKeys { "${it.key}/$CAMPO_TEXTO" }
     val examen = listOf(
         "peso" to e.peso, "talla" to e.talla, "tension_arterial" to e.tensionArterial, "imc" to e.imc, "nota" to e.nota,
     ).filter { !it.second.isNullOrBlank() }.associate { it.first to it.second!! }
-    return previo.copy(valores = previo.valores + textos, examen = previo.examen + examen)
+    return previo.copy(
+        valores = previo.valores + textos,
+        examen = previo.examen + examen,
+        formularios = previo.formularios + formulariosDeLaWeb(s),
+    )
+}
+
+/**
+ * Los formularios que la web tiene con dato, como los guarda `LoEnviado` (`<sección>/<campo>` -> valor canónico, T62-a): las mismas
+ * claves y los mismos filtros que [valoresDeLaWeb] (alimentación con dato, serología `SI`/`NO`, Child-Pugh `1` a `3`). Lo que la web no
+ * manda no cambia lo anotado.
+ */
+private fun formulariosDeLaWeb(s: SeccionesConsultaDto): Map<String, String> = buildMap {
+    s.alimentacion.forEach { (campo, valor) ->
+        if (tieneDato(valor)) put("$SECCION_ALIMENTACION/$campo", PayloadsClinica.valorDeFormulario(SECCION_ALIMENTACION, campo, valor) ?: valor)
+    }
+    s.serologias.forEach { (campo, valor) -> if (valor == "SI" || valor == "NO") put("$SECCION_SEROLOGIAS/$campo", valor) }
+    s.childPugh.forEach { (campo, valor) -> if (valor in PUNTOS_CHILD_PUGH) put("$SECCION_CHILD_PUGH/$campo", valor) }
 }
 private fun camposDelExamen(peso: String?, talla: String?, tension: String?, imc: String?, nota: String?): List<String> = listOf(
     "peso" to peso, "talla" to talla, "tension_arterial" to tension, "imc" to imc, "nota" to nota,
@@ -463,6 +492,15 @@ fun fusionarRegistro(web: RegistroClinico, local: RegistroClinico?): RegistroCli
         consultaId = web.consultaId ?: local.consultaId, fecha = web.fecha ?: local.fecha, campos = local.campos + web.campos,
     )
     return nuevo.takeIf { it != local }
+}
+
+/**
+ * Los campos de un estudio tal como los guarda `LoEnviado.registros` (spec 005, T62-b y T65-a): la `fecha` y el `detalle` (`""` si está vacío).
+ * Es lo que el plan de envío compara para decidir si el estudio cambió y lo que el servidor escribe (la fecha y el detalle juntos).
+ */
+fun camposConfirmadosDelEstudio(r: RegistroClinico): Map<String, String> = buildMap {
+    r.fecha?.let { put(CAMPO_FECHA_DEL_REGISTRO, it.toString()) }
+    put(CAMPO_DETALLE_DEL_REGISTRO, if (esVacio(r.campos[CAMPO_DETALLE_DEL_REGISTRO])) "" else r.campos.getValue(CAMPO_DETALLE_DEL_REGISTRO))
 }
 
 // ---------- Motivos y pendientes ----------

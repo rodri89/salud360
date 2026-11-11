@@ -121,15 +121,11 @@ fun LoEnviado.registroEnviado(r: RegistroClinico): RegistroClinico? {
  */
 private fun registrosConfirmados(items: List<RegistroClinico>, remotos: Map<Id, String>): Map<String, Map<String, String>> = items.mapNotNull { r ->
     val remoto = remotos[r.id] ?: r.remotoId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-    val campos = buildMap {
-        r.fecha?.let { put(CAMPO_FECHA_DEL_REGISTRO, it.toString()) }
-        put(CAMPO_DETALLE_DEL_REGISTRO, if (esVacio(r.campos[CAMPO_DETALLE_DEL_REGISTRO])) "" else r.campos.getValue(CAMPO_DETALLE_DEL_REGISTRO))
-    }
-    remoto to campos
+    remoto to camposConfirmadosDelEstudio(r)
 }.toMap()
 
-private const val CAMPO_FECHA_DEL_REGISTRO = "fecha"
-private const val CAMPO_DETALLE_DEL_REGISTRO = "detalle"
+internal const val CAMPO_FECHA_DEL_REGISTRO = "fecha"
+internal const val CAMPO_DETALLE_DEL_REGISTRO = "detalle"
 
 private fun flagDeLaCasilla(confirmada: String): Boolean = confirmada.substringBefore("|") == "1"
 
