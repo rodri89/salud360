@@ -1761,11 +1761,53 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     el usuario lo pida.
 
 ## App de E3: interfaz y candado
-- [ ] **T87. Pantallas de E3.** RF-41 a RF-43, RF-4 — M — Toca API Laravel: no — **BLOQUEADA por Q-E3-1**
-  - `features/hc`: laboratorio general y reducido, peso y pendientes dejan de decir «Esta sección todavía no se envía a la web»; «Resuelto» **no se ofrece** en
-    los pendientes de una consulta propia de clínica (D19(b)); los pendientes de la web siguen solo lectura; las cargas propias ya enviadas conservan su tacho (baja)
-    y las de la web no (`puedeBorrarCarga`); la carga abierta se completa con el autoguardado (Q-E3-1); aviso de «sin fecha: se usa la de la consulta».
-  - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T92.
+- [x] **T87-a. Pantallas de laboratorio general y peso.** RF-41, RF-42, RF-4 — S — Toca API Laravel: no
+  - Es la mitad de la T87 original, que se partió el 2026-11-12 para implementar solo el laboratorio general y el peso: el
+    **laboratorio reducido y los pendientes quedan en T87-b**, fuera de alcance por ahora (sin renumerar). Desbloqueada por
+    Q-E3-1 (sin cambio de pantalla: «editar» es seguir completando la columna abierta y el autoguardado la manda; una carga
+    cerrada se borra y se recarga).
+  - Lo que ya salía solo (verificado por archivo y línea, como en T66-a): `avisoDeEnvioDeLaSeccion` (`ConsultaScreen.kt:398`)
+    decide el aviso «Esta sección todavía no se envía a la web» y el solo lectura de las dos secciones, así que dejan de decirlo
+    solas al habilitarse E3; `puedeBorrarCarga` y `columnasLaboratorio` (`CargasLaboratorio.kt:17,39`) ya dejan el tacho en las
+    cargas propias —también las ya enviadas, que conservan su id local— y lo quitan a las de la web (`hcc-l…`), y
+    `ConsultaViewModel.eliminarLaboratorio` las rechaza igual.
+  - Lo que hubo que cambiar, en la rama `cargasMultiples` de `LaboratorioSeccion.kt` (HC general; la usan el laboratorio
+    general, el peso y el reducido):
+    (a) la columna abierta lleva **un id desde que se abre** (`newId()`) y el autoguardado (600 ms, como los textos y los
+    estudios) la guarda con ese id: el primero de los guardados la crea y los demás **actualizan la misma carga** (RF-41,
+    Q-E3-1), sin modo «editar» nuevo; al cerrarla queda cerrada (se borra y se recarga). Antes cada guardado creaba una carga
+    nueva, así que una carga ya enviada no se podía completar nunca.
+    (b) la carga de la columna abierta se esconde de las columnas guardadas mientras está abierta, si no se dibujaba dos veces
+    apenas el autoguardado la creaba.
+    (c) la fecha de la columna se puede dejar **sin elegir** (el «Borrar» del calendario): se guarda con la de la consulta y se
+    avisa «Sin fecha: se usa la de la consulta» (`SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA`, `fechaDeLaCargaAbierta` y
+    `avisoDeCargaSinFecha`, en `core/data/hcgeneral/CargasLaboratorio.kt`), nunca un marcador de «sin fecha» ni la de hoy (RF-41).
+    (d) se quitó «Cancelar» de la columna abierta: con el autoguardado no puede descartar nada y «Guardar laboratorio» cierra la
+    columna (sin nada escrito no queda ninguna carga, RF-57).
+  - **Resultado (2026-11-12): HECHA — solo laboratorio general y peso; el reducido y los pendientes quedan en T87-b.** Sin
+    migración, sin Laravel, sin dependencias nuevas, sin pedidos reales y **sin tocar `SECCIONES_HABILITADAS`** (E3 se enciende
+    en T88): hoy no se ve todavía. **Rojo:** con los dos tests nuevos fallaba por compilación (`fechaDeLaCargaAbierta` y
+    `SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA` no existían). **Verde:** 2/2. Totales: `core:data` **2137** (2135 + 2),
+    `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos. Compilan `:features:hc:compileKotlinJvm` y
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, ambos en 0.
+  - **Decisiones a revisar.** (a) **El autoguardado manda a la web una carga que el médico todavía está completando** (es lo que
+    Q-E3-1 eligió: se ven apenas llegan, sin cerrar): el primer guardado ya no espera al botón. (b) La columna abierta solo se
+    cierra con «Guardar laboratorio», y una vez cerrada no se reabre (RF-41: se borra y se recarga). (c) El aviso de «sin fecha»
+    es una explicación —qué fecha se guarda—, no un aviso de envío: se ve en cualquier consulta editable del dispositivo en que
+    se esté cargando, sin depender de `seEnviaALaWeb`. (d) El laboratorio **reducido** usa la misma rama, así que hereda todo
+    esto; como la API no lo escribe, sigue sin ofrecerse hasta T88/T87-b (y en reserva en el plan, T84-a).
+  - **Revisión visual pendiente (T92):** el paso 4 («seguir completando una carga abierta») y el aviso de «sin fecha» de una
+    columna a la que se le borra la fecha.
+- [ ] **T87-b. Pantallas de laboratorio reducido y pendientes.** RF-43, RF-4 — S — Toca API Laravel: no — **fuera de alcance por ahora**
+  - Es la otra mitad de la T87 original, que se partió el 2026-11-12 para implementar solo el laboratorio general y el peso
+    (T87-a) por pedido del usuario. No se renumera.
+  - Lo que falta, del texto original: en los **pendientes** de una consulta propia de clínica, «Resuelto» **no se ofrece**
+    (D19(b); hoy `ConsultaScreen.kt:200` lo ofrece si `puedeResolverse()`), los pendientes de la web siguen solo lectura y el
+    texto único de la consulta con su huella esperan a T82-b/T83-b. Del **laboratorio reducido** queda su envío (T83-b, T84-b y
+    T85-b lo dejan fuera: la API de E3 no escribe `laboratorio_general2s`), así que la pantalla ya está lista con T87-a y falta
+    el contrato del servidor. El aviso de la sección sale solo de `avisoDeEnvioDeLaSeccion`, como en T87-a.
+  - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual
+    queda para T92. No se empieza sin que el usuario lo pida.
 - [ ] **T88. Habilitar E3 (levantar el candado) y el histórico con esas secciones.** RF-4, RF-67 — S — Toca API Laravel: no — **Solo con E2 cerrada y la migración aplicada**
   - `SUBENTREGA_HABILITADA = E3`: la HC general ofrece 24 de las 25 secciones (suma `laboratorio_general`, `laboratorio_reducido` y `tabla_peso`; los pendientes viajan con la
     consulta); queda «todavía no» solo `documentos`. RF-67: una consulta del histórico con laboratorio, peso o pendientes pasa a poder enviarse (el botón es T33, que sigue sin

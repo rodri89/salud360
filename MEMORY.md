@@ -129,6 +129,16 @@ registros de personas): el repo es público.
   `remoto_id` no se pierde. Rojo 6 de 6 y después verde; `core:data` **2135** (2129 + 6); cambió un solo test existente
   (`LecturaClinicaTest.cada_carga_en_su_tipo_con_los_valores_de_la_app`, ahora espera `remotoId`). Sin migración, sin Laravel, sin pedidos reales;
   `SECCIONES_HABILITADAS` sigue igual. **T86-a hecha; sigue T87** (pantallas de E3, bloqueada por Q-E3-1).
+  **T87-a hecha (2026-11-12): las pantallas del laboratorio general y del peso quedan listas para enviarse (el reducido y los
+  pendientes son T87-b, fuera de alcance).** El aviso y el solo lectura ya salían de `avisoDeEnvioDeLaSeccion` (T37) y el tacho de
+  `puedeBorrarCarga` (las propias, también enviadas, lo conservan; las `hcc-l…` de la web no). En `LaboratorioSeccion.kt` (rama
+  `cargasMultiples`) la columna abierta lleva un **id desde que se abre** y el **autoguardado** (600 ms) la guarda con ese id: el
+  primer guardado la crea y los demás actualizan la misma carga (Q-E3-1, sin modo «editar»); se esconde su columna guardada mientras
+  está abierta; la fecha se puede borrar y entonces se usa la de la consulta, con el aviso «Sin fecha: se usa la de la consulta»
+  (`SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA`/`fechaDeLaCargaAbierta`/`avisoDeCargaSinFecha` en `core/data/hcgeneral/CargasLaboratorio.kt`);
+  se quitó «Cancelar». `core:data` **2137** (2135 + 2, rojo por compilación y después verde), `especialidades:clinica` 38,
+  `core:ui` 17 y `core:crecimiento` 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. `SECCIONES_HABILITADAS`
+  sigue igual (E3 se enciende en T88) y la revisión visual es T92. **T87-a hecha; sigue T88.**
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
