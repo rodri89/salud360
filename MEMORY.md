@@ -115,6 +115,13 @@ registros de personas): el repo es público.
   `HcClinicaEnvio.limpiarSiNoCambio` gana la rama `LABORATORIO` (solo para compilar el `when` del enum: no envía nada y hoy es inalcanzable). Rojo 27
   de 55 y después verde; `core:data` **2113** (2080 + 33). `PlanDeEnvioTest` y `PlanDeEnvioE2Test` solo pasan a argumentos nombrados; siguen verdes.
   Sin migración, sin Laravel, sin cablear la cola ni la UI; `SECCIONES_HABILITADAS` sigue igual. **Sigue T85** (`HcClinicaEnvio` ejecuta cargas).
+  **T85-a hecha (2026-11-12): la cola manda las cargas de laboratorio general y peso (los pendientes son T85-b, fuera de alcance por ahora).**
+  `EnvioEnCurso.cargas`: una carga por pedido con la fecha que resolvió el plan y `LoEnviado.cargaEnviada` como «lo ya enviado»; el `id` de la web entra
+  en `laboratorio.remoto_id` en la **misma transacción** que limpia y anota `LoEnviado` (RF-61), solo si la fila no cambió en vuelo y solo lo confirmado
+  (sin `id` o con `desconocidas` queda sucio y «No se pudo enviar»); la baja sale como `bajaDeCarga`. `Sucio.laboratorios` pasa a `FilaSucia` y
+  `entradaDelPlan` ya pasa `cargas`; `contarPendientes` cuenta laboratorio y peso con `seccionesDe(E3)` (mapa compartido `seccionDeLaCarga`: el tipo
+  `peso` es la sección `tabla_peso`). `ServidorFalso` aplica las cargas con memoria por `l:<id local>`. Rojo 15 de 25 y después verde; `core:data`
+  **2129** (2113 + 16). Sin migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` sigue igual. **Sigue T86** (la lectura empareja por `remoto_id`).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

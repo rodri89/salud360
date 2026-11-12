@@ -1663,14 +1663,56 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     propia, de T83-b) y `LoEnviado.pendientes` como huella (T82-b): un texto igual a la huella enviada es `sinViaje(SIN_CAMBIO_REAL)`, borrar todos los pendientes a
     propósito viaja `""` y los pendientes del histórico o sin consulta propia no viajan. Va después de las cargas y antes del cierre, con el mismo `cubre` y la misma
     retención. No se empieza sin que el usuario lo pida.
-- [ ] **T85. `HcClinicaEnvio` ejecuta cargas y pendientes.** RF-15, RF-32, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
-  - Tests primero: jvm `HcClinicaEnvioCargasTest` y `HcClinicaEnvioPendientesTest` con el `ServidorFalso`: el `id` de la web → `laboratorio.remoto_id` en la misma
-    transacción que limpia (RF-61); parcial; cambio en vuelo no se da por enviado (RF-55); respuesta perdida → mismo `l:` y una sola carga (`…RepetibleTest` ampliado);
-    corte entre confirmar y anotar (`…AtomicoTest` ampliado); la huella del último texto enviado se guarda en `paciente_extra` (`hce_pend_<consulta>`, `dirty = 0`)
-    y el `remoto_id` en la fila portadora; `422` → «No se pudo enviar» sin reintento solo; `409` consulta cerrada; sesión de otro médico no envía.
-  - Código: `HcClinicaEnvio.EnvioEnCurso.cargas/pendientes`, `limpiarSiNoCambio` para `LABORATORIO` y `PENDIENTE`, `contarPendientes` (con `habilitada = E3` cuenta
-    laboratorio y pendientes, T24).
-  - Hecho cuando: tests en verde (antes, en rojo); los tests de la cola de E1 y E2 siguen verdes sin cambios.
+- [x] **T85-a. `HcClinicaEnvio` ejecuta cargas (laboratorio general y peso).** RF-15, RF-32, RF-41, RF-42, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
+  - Es la mitad de la T85 original, que se partió el 2026-11-12 para implementar solo las cargas: los **pendientes** quedan en **T85-b**, fuera de alcance por
+    ahora (sin renumerar). Depende de T84-a (el paso `Cargas` del plan) y de T81 (la API de escritura).
+  - Tests primero: jvm `HcClinicaEnvioCargasTest` (nuevo) con el `ServidorFalso` y `seccionesDe(E3)` habilitadas **explícitamente**: orden
+    (creación → textos → examen → formularios → antecedentes → estudios → cargas → cierre); alta de laboratorio y de peso (cada una su ruta y su cuerpo);
+    actualización con **solo lo cambiado** y el vaciado a propósito; baja de una con `remoto_id`; parcial (`noConoce` → sucia y «No se pudo enviar»);
+    `422` → «No se pudo enviar» sin reintento solo; `409` consulta cerrada; sin conexión → «En espera» y sale sola; sesión de otro médico no envía;
+    cambio en vuelo no se da por enviado (RF-55); `dirty = 0` de lo confirmado con `updated_at` estable; `contarPendientes` cuenta laboratorio y peso con
+    `seccionesDe(E3)`; el candado (sin E3 no salen ni frenan el cierre). Además el `id` de la web → `laboratorio.remoto_id` en la misma transacción
+    (`HcClinicaEnvioAtomicoE2Test` ampliado) y respuesta perdida → mismo `l:` y una sola carga (`HcClinicaEnvioRepetibleTest` ampliado).
+  - Código: `HcClinicaEnvio.EnvioEnCurso.cargas`/`enviarCarga`/`confirmarCarga`, `Sucio.laboratorios` como `FilaSucia`, `entradaDelPlan` con `cargas`,
+    `sucio`/`entradaDelContador` con la nueva forma y `ContadorDeEnvio` usando el mapa compartido `seccionDeLaCarga` (PlanDeEnvio); `ServidorFalso` aplica
+    cargas (alta, edición y baja) con memoria por `l:<id local>`.
+  - Hecho cuando: tests en verde (antes, en rojo); los tests de la cola de E1/E2/T63-a/T63-b siguen verdes sin cambios; `:core:data:jvmTest` completo,
+    `:especialidades:clinica:jvmTest`, `:core:ui:jvmTest` y `:core:crecimiento:jvmTest` en verde; compilan las tres wasm y `:server:compileKotlin`.
+  - **Resultado (2026-11-12): HECHA — solo cargas; los pendientes quedan en T85-b.** Sin migración, sin Laravel, sin dependencias nuevas, sin pedidos reales
+    (solo el `ServidorFalso` con memoria) y sin tocar la UI ni `SECCIONES_HABILITADAS` (E3 sigue apagada).
+    **Rojo:** con el `ServidorFalso` ya con memoria (infraestructura de prueba) y la cola sin la rama, fallaban por aserción **15 de 25** tests: 13 de los 14
+    de `HcClinicaEnvioCargasTest` (el que pasó es la guarda del candado de E2), el corte atómico y la respuesta perdida. **Verde:** 25/25.
+  - **Qué hace la cola.** `EnvioEnCurso.cargas`: **una carga por pedido** (P23), con la fecha que ya resolvió el plan (`CargaQueViaja.Guardar(fecha)`) y
+    `LoEnviado.cargaEnviada` como «lo ya enviado» (lo mismo con lo que decidió el plan): `laboratorio` para `laboratorio_general` y `peso` para `peso`, con
+    `idWeb` si la carga ya tiene `remoto_id` y el `id` del dispositivo. Cada carga confirmada se anota en **una sola transacción** (RF-61):
+    `guardarRemotoIdLaboratorio` + `LoEnviado` + `limpiarSiNoCambio` (por id y solo si su `updated_at` no cambió, RF-55); al final del paso se quita o se
+    pone el estado de la parte. Una **baja** (`Baja`) llama a `bajaDeCarga` con `l:<id local>-baja` y solo limpia la fila (la web conserva los valores y su
+    cierre la reactiva; T84-a: una baja no anota `LoEnviado`). Un rechazo (`422`/`409`/`403`) corta el paso como los demás (lo ya confirmado queda anotado y
+    el resto sucio) y no se reintenta solo; una causa ajena al dato deja «En espera» a lo que sigue, incluido el cierre; la sesión se mira antes de cada paso.
+  - **Parcial y limpieza.** Solo se confirma la carga cuyo `id` vuelve **no vacío** y sin `desconocidas`; si la web no guardó algún valor (o no devolvió el
+    `id`), la carga queda **sucia, sin `remoto_id` y sin figurar en `LoEnviado`** y la parte «No se pudo enviar» nombra su clave (`l:<id local>`), igual que un
+    estudio sin `ref` (T63-b). El reenvío de esa carga vuelve a ser un alta con la misma clave, así que la web no duplica. El `dirty = 0` solo se escribe si el
+    `updated_at` sigue siendo el del plan: lo que cambió en vuelo sigue pendiente y su próximo envío es una **actualización** con el `id` de la web.
+  - **Contador.** `Sucio.laboratorios` pasa a `FilaSucia` (la cola necesita el `updated_at` para RF-55) y `entradaDelPlan` ya pasa `cargas`. El contador
+    contaba el laboratorio con el id de la sección igual al `tipo` de la base: el **peso** (`tipo "peso"`, sección `tabla_peso`) no se contaba nunca. Ahora los
+    dos usan `seccionDeLaCarga` (el mapa que el plan ya tenía), así que con `seccionesDe(E3)` cuenta laboratorio **y** peso; un tipo sin envío (el reducido)
+    sigue sin contar. La cola no contaba el peso en `contarPendientes` y el test nuevo lo fija.
+  - **Tests existentes que cambian.** Ninguno de comportamiento. (1) `HcClinicaEnvioAtomicoE2Test` y `HcClinicaEnvioRepetibleTest` suman un test de las
+    cargas y ajustan su KDoc (el título de la clase sigue igual). (2) El `when` de `EnvioEnCurso.ejecutar` pierde la `else` que lanzaba: con la rama de cargas
+    ya cubre los nueve pasos y el `sealed interface` hace que un paso nuevo no compile hasta que la cola sepa enviarlo (era el único motivo de la `else`; el
+    compilador la marcaba redundante). `PlanDeEnvioTest`, `PlanDeEnvioE2Test`, `PlanDeEnvioE3Test`, `ContadorDeEnvioTest`, `HcClinicaEnvioRegistrosTest` y el
+    resto de la cola siguen verdes sin cambios.
+  - **Totales.** `core:data` **2129** en verde (2113 + 16: 14 + 1 + 1), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos.
+    Compilan `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y
+    `:server:compileKotlin`, todos en 0.
+- [ ] **T85-b. `HcClinicaEnvio` ejecuta pendientes.** RF-15, RF-32, RF-55, RF-56, RF-61 — M — Toca API Laravel: no — **fuera de alcance por ahora**
+  - Es la otra mitad de la T85 original, que se partió el 2026-11-12 para implementar solo las cargas (T85-a) por pedido del usuario. No se renumera. Depende
+    de T83-b y T84-b (los pendientes en el repositorio y en el plan), que tampoco están hechas.
+  - Lo que falta, del texto original: `EnvioEnCurso.pendientes` con el `ServidorFalso` (jvm `HcClinicaEnvioPendientesTest`); la huella del último texto
+    enviado se guarda en `paciente_extra` (`hce_pend_<consulta>`, `dirty = 0`) y el `remoto_id` en la fila portadora, en la misma transacción; parcial; cambio
+    en vuelo; respuesta perdida; corte entre confirmar y anotar; `422`/`409`; sesión de otro médico; `limpiarSiNoCambio` para `TablaDeLaFila.PENDIENTE` y
+    `contarPendientes` con pendientes cuando E3 está habilitada.
+  - Hecho cuando: tests en verde (antes, en rojo); los tests de la cola de E1, E2 y T85-a siguen verdes sin cambios. No se empieza sin que el usuario lo pida.
 - [ ] **T86. La lectura empareja cargas y pendiente por `remoto_id` (sin duplicar).** RF-33, RF-41, RF-43 — M — Toca API Laravel: no
   - Esto cierra T29 (c): hasta acá las cargas y el pendiente se emparejaban por id (`laboratorioPorId`, `pendientePorId`) y una fila enviada por la app habría
     reaparecido como `hcc-l…`/`hcc-p…`.
