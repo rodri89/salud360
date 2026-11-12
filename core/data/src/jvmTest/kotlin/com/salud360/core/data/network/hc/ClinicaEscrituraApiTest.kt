@@ -2,6 +2,7 @@ package com.salud360.core.data.network.hc
 
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
@@ -371,6 +372,178 @@ class ClinicaEscrituraApiTest {
         }
     }
 
+    // ---------- E3: laboratorio general y peso (T81) ----------
+
+    private val fechaDeCarga = LocalDate(2026, 11, 6)
+    private val idCarga = "3f2c9d1e-0a6b-4c11-9a77-5c1d2e3f4a5b"
+
+    private fun carga(
+        id: String = idCarga,
+        valores: Map<String, String> = mapOf("hb" to "13.5", "otro" to "control en 3 meses"),
+        tipo: String = "laboratorio_general",
+        fecha: LocalDate = fechaDeCarga,
+    ) = Laboratorio(id = id, pacienteId = "p1", consultaId = "c1", especialidad = "clinica", tipo = tipo, fecha = fecha, valores = valores)
+
+    @Test
+    fun laboratorio_es_un_put_a_la_ficha_con_la_clave_la_consulta_la_fecha_y_los_valores() = conServidor(
+        200, """{"ok":true,"id":"731","guardadas":["hb","otro"],"desconocidas":["inventado"]}""",
+    ) {
+        val r = api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga())
+
+        val p = pedidos.single()
+        assertEquals("PUT", p.metodo)
+        assertEquals("/api/salud360/pacientes/5001/laboratorios", p.ruta)
+        assertNull(p.query)
+        assertEquals(
+            json(
+                """{"clave":"l:$idCarga","dispositivo":"$dispositivo","consulta_id":"7011","tipo":"laboratorio_general",
+                    "fecha":"2026-11-06","valores":{"hb":"13.5","otro":"control en 3 meses"}}""",
+            ),
+            p.cuerpoJson(),
+        )
+        p.assertEnviadoConElToken()
+        assertEquals("731", r.id, "el id de la fila de la web viene como texto")
+        assertEquals(listOf("hb", "otro"), r.guardadas)
+        assertEquals(listOf("inventado"), r.desconocidas)
+    }
+
+    @Test
+    fun el_peso_es_un_put_a_pesos_con_la_clave_peso_y_sin_tipo() = conServidor(200, """{"ok":true,"id":"890","guardadas":["peso"],"desconocidas":[]}""") {
+        val r = api.peso(5001, 7011, dispositivo, fechaDeCarga, carga(valores = mapOf("peso" to "72.5"), tipo = "peso"))
+
+        val p = pedidos.single()
+        assertEquals("PUT", p.metodo)
+        assertEquals("/api/salud360/pacientes/5001/pesos", p.ruta)
+        assertEquals(
+            json("""{"clave":"l:$idCarga","dispositivo":"$dispositivo","consulta_id":"7011","fecha":"2026-11-06","valores":{"peso":"72.5"}}"""),
+            p.cuerpoJson(),
+            "el peso viaja como `peso`, no como `valor`",
+        )
+        p.assertEnviadoConElToken()
+        assertEquals("890", r.id)
+        assertEquals(listOf("peso"), r.guardadas)
+    }
+
+    @Test
+    fun la_actualizacion_de_una_carga_lleva_el_id_y_solo_lo_tocado() = conServidor(200, """{"ok":true,"id":"731","guardadas":["hb"],"desconocidas":[]}""") {
+        val antes = carga(valores = mapOf("hb" to "13.5", "otro" to "control en 3 meses"))
+
+        api.laboratorio(5001, 7011, dispositivo, LocalDate(2026, 11, 7), antes.copy(fecha = LocalDate(2026, 11, 7), valores = mapOf("hb" to "14", "otro" to "control en 3 meses")), idWeb = 731, confirmada = antes)
+
+        assertEquals(
+            json("""{"clave":"l:$idCarga","dispositivo":"$dispositivo","consulta_id":"7011","tipo":"laboratorio_general","id":"731","fecha":"2026-11-07","valores":{"hb":"14"}}"""),
+            pedidos.single().cuerpoJson(),
+        )
+    }
+
+    @Test
+    fun la_baja_de_una_carga_es_un_delete_con_cuerpo_json_a_la_ruta_del_tipo() = conServidor(200, """{"ok":true,"baja":true,"id":"731"}""") {
+        val r = api.bajaDeCarga(5001, 731, 7011, "l:$idCarga-baja", dispositivo)
+
+        val p = pedidos.single()
+        assertEquals("DELETE", p.metodo)
+        assertEquals("/api/salud360/pacientes/5001/laboratorios/731", p.ruta)
+        assertNull(p.query)
+        assertEquals(json("""{"clave":"l:$idCarga-baja","dispositivo":"$dispositivo","consulta_id":"7011"}"""), p.cuerpoJson(), "el DELETE lleva cuerpo JSON")
+        p.assertEnviadoConElToken()
+        assertTrue(r.baja)
+        assertEquals("731", r.id)
+    }
+
+    @Test
+    fun la_baja_de_un_peso_va_a_pesos_y_el_422_de_la_carga_trae_el_campo_y_el_motivo() {
+        conServidor(200, """{"ok":true,"baja":true,"id":"890"}""") {
+            api.bajaDeCarga(5001, 890, 7011, "l:$idCarga-baja", dispositivo, tipo = "peso")
+
+            assertEquals("/api/salud360/pacientes/5001/pesos/890", pedidos.single().ruta)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato «fecha» tiene que ser una fecha AAAA-MM-DD válida.","codigo":"datos_invalidos","campo":"fecha","motivo":"fecha_invalida"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.peso(5001, 7011, dispositivo, fechaDeCarga, carga(valores = mapOf("peso" to "72"), tipo = "peso")) }
+
+            assertEquals(422, e.status)
+            assertEquals("datos_invalidos", e.codigo)
+            assertEquals("fecha", e.cuerpo?.get("campo")?.jsonPrimitive?.content)
+            assertEquals("fecha_invalida", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+            assertEquals(1, pedidos.size)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato «valores» no trae ningún valor con contenido.","codigo":"datos_invalidos","campo":"valores","motivo":"carga_vacia"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals("valores", e.cuerpo?.get("campo")?.jsonPrimitive?.content)
+            assertEquals("carga_vacia", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato «valores.hb» tiene que tener menos caracteres.","codigo":"datos_invalidos","campo":"valores.hb","motivo":"texto_demasiado_largo"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals("valores.hb", e.cuerpo?.get("campo")?.jsonPrimitive?.content)
+            assertEquals("texto_demasiado_largo", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+        }
+        conServidor(
+            422, """{"ok":false,"mensaje":"El dato «clave» ya se usó para otra operación u otra consulta.","codigo":"datos_invalidos","campo":"clave","motivo":"clave_en_uso"}""",
+        ) {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals("clave_en_uso", e.cuerpo?.get("motivo")?.jsonPrimitive?.content)
+        }
+    }
+
+    @Test
+    fun los_errores_de_una_carga_ajena_llegan_con_su_status_y_su_codigo() {
+        conServidor(403, """{"ok":false,"mensaje":"Esa carga no es tuya.","codigo":"carga_no_propia"}""") {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals(403, e.status)
+            assertEquals("carga_no_propia", e.codigo)
+            assertEquals(1, pedidos.size, "el cliente no reintenta")
+        }
+        conServidor(404, """{"ok":false,"mensaje":"La carga no existe para ese paciente.","codigo":"carga_no_encontrada"}""") {
+            val e = assertFailsWith<TobbException> { api.bajaDeCarga(5001, 731, 7011, "l:$idCarga-baja", dispositivo) }
+
+            assertEquals(404, e.status)
+            assertEquals("carga_no_encontrada", e.codigo)
+            assertEquals(1, pedidos.size)
+        }
+    }
+
+    @Test
+    fun sin_nada_que_mandar_las_cargas_no_hacen_ningun_pedido() = conServidor {
+        val a = api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga(valores = mapOf("hb" to "", "otro" to "   ")))
+        val b = api.peso(5001, 7011, dispositivo, fechaDeCarga, carga(valores = emptyMap(), tipo = "peso"))
+        val c = api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga(), idWeb = 731, confirmada = carga())
+
+        assertEquals(0, pedidos.size, "un cuerpo vacío no se manda")
+        for (r in listOf(a, b, c)) {
+            assertEquals("", r.id, "no hubo pedido: no hay id de la web")
+            assertEquals(emptyList(), r.guardadas)
+            assertEquals(emptyList(), r.desconocidas)
+        }
+    }
+
+    @Test
+    fun una_respuesta_200_de_una_carga_sin_id_o_sin_guardadas_no_es_un_exito() {
+        conServidor(200, """{"ok":true,"guardadas":[],"desconocidas":[]}""") {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals("respuesta", e.codigo, "sin `id` no se sabe qué fila de la web quedó")
+        }
+        conServidor(200, """{"ok":true,"id":"731","desconocidas":[]}""") {
+            val e = assertFailsWith<TobbException> { api.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) }
+
+            assertEquals("respuesta", e.codigo, "sin `guardadas` no se sabe qué se escribió")
+        }
+        conServidor(200, """{"ok":true,"id":"731"}""") {
+            val e = assertFailsWith<TobbException> { api.bajaDeCarga(5001, 731, 7011, "l:$idCarga-baja", dispositivo) }
+
+            assertEquals("respuesta", e.codigo, "la baja sin `baja` no es un éxito")
+        }
+    }
+
     // ---------- Errores ----------
 
     private class Operacion(val nombre: String, val llamar: suspend (ClinicaEscrituraApi) -> Unit)
@@ -385,6 +558,9 @@ class ClinicaEscrituraApiTest {
         Operacion("formularios") { it.formularios(7011, mapOf("serologias" to mapOf("hiv" to "NO"))) },
         Operacion("antecedentes") { it.antecedentes(5001, 7011, listOf(ant("hta", true, "padre"))) },
         Operacion("registros") { it.registros(7011, listOf(reg("e1", "eco_abdominal", mapOf("detalle" to "Normal"), LocalDate(2026, 10, 1)))) },
+        Operacion("laboratorio") { it.laboratorio(5001, 7011, dispositivo, fechaDeCarga, carga()) },
+        Operacion("peso") { it.peso(5001, 7011, dispositivo, fechaDeCarga, carga(valores = mapOf("peso" to "72.5"), tipo = "peso")) },
+        Operacion("bajaDeCarga") { it.bajaDeCarga(5001, 731, 7011, "l:$idCarga-baja", dispositivo) },
     )
 
     private val errores = listOf(
@@ -517,10 +693,13 @@ class ClinicaEscrituraApiTest {
     // ---------- Por construcción ----------
 
     @Test
-    fun la_remota_recibe_el_cliente_completo_y_la_interfaz_tiene_las_ocho_operaciones() {
+    fun la_remota_recibe_el_cliente_completo_y_la_interfaz_tiene_las_once_operaciones() {
         assertEquals(listOf(HcApiClient::class.java), ClinicaEscrituraApiRemota::class.java.constructors.single().parameterTypes.toList())
         val operacionesDeLaInterfaz = ClinicaEscrituraApi::class.java.declaredMethods.map { it.name }.filter { '$' !in it }.toSet()
-        // T61 suma las tres de E2; ninguna es de laboratorio, peso, pendientes ni adjuntos (E3 y E4).
-        assertEquals(setOf("crear", "secciones", "examen", "cerrar", "baja", "formularios", "antecedentes", "registros"), operacionesDeLaInterfaz)
+        // T61 sumó las tres de E2 y T81 las tres de E3 (laboratorio general y peso; nada de pendientes ni adjuntos: E4).
+        assertEquals(
+            setOf("crear", "secciones", "examen", "cerrar", "baja", "formularios", "antecedentes", "registros", "laboratorio", "peso", "bajaDeCarga"),
+            operacionesDeLaInterfaz,
+        )
     }
 }

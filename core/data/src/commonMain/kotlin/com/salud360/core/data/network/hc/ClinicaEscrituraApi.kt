@@ -1,14 +1,17 @@
 package com.salud360.core.data.network.hc
 
+import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
+import com.salud360.core.data.hcgeneral.TIPO_PESO
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.JsonObject
 
 /**
- * La escritura de consultas de la HC general (spec 005, E1: crear, textos, examen físico, cerrar y baja; E2: formularios, antecedentes familiares y registros). Los ids son los de la web
+ * La escritura de consultas de la HC general (spec 005, E1: crear, textos, examen físico, cerrar y baja; E2: formularios, antecedentes familiares y registros; E3: cargas de laboratorio general y peso). Los ids son los de la web
  * (el de la ficha que informa `pacientes/resolver`, el de la consulta que contestó `crear`). Cada operación es **un pedido**: si
  * falla lanza [TobbException] con su `status` y su `codigo` (`sin_token`, `token`, `sin_permiso`, `fuera_de_cartera`,
  * `consulta_no_propia`, `hc_no_habilitada`, `medico_no_vinculado`, `licencia_vencida`, `paciente_no_encontrado`,
@@ -16,8 +19,8 @@ import kotlinx.serialization.json.JsonObject
  * código) y el cuerpo completo en [TobbException.cuerpo] (el `campo` y el `motivo` de un `422`). **No reintenta**: eso es del
  * envío diferido (RF-6, RF-29), que repite con la misma clave sin duplicar (RF-15). Es una interfaz para probar sin red.
  *
- * Esta capa no decide qué se manda ni cuándo: recibe lo ya decidido (las tres de E2 reciben además lo último que la web confirmó y arman solo lo que cambió,
- * [PayloadsClinica]). Nada la llama todavía desde el autoguardado ni desde la cola de envío.
+ * Esta capa no decide qué se manda ni cuándo: recibe lo ya decidido (las de E2 y las cargas de E3 reciben además lo último que la web confirmó y
+ * arman solo lo que cambió, [PayloadsClinica]). Nada la llama todavía desde el autoguardado ni desde la cola de envío.
  */
 interface ClinicaEscrituraApi {
     /** `POST consultas` (RF-12 a RF-15): crea la consulta abierta, o devuelve la ya creada con esa [clave] (`creada = false`). */
@@ -76,6 +79,48 @@ interface ClinicaEscrituraApi {
         registros: List<RegistroClinico>,
         enviados: Map<Id, RegistroClinico> = emptyMap(),
     ): RespuestaRegistrosDto
+
+    /**
+     * `PUT pacientes/{id}/laboratorios` (E3, RF-41, RF-42, RF-69): una carga de laboratorio general de la consulta [consultaWebId], con
+     * la [fecha] clínica (nunca vacía ni el marcador de «sin fecha») y, contra [confirmada] (lo último que la web confirmó de esa carga),
+     * solo los valores que cambian —al alta ([idWeb] nulo), todos los que tienen contenido—; un valor que se vacía sale `""` (RF-69). La
+     * clave es `l:<id local>` de la carga ([PayloadsClinica.claveDeCarga]), estable entre reintentos. Sin nada que mandar no sale ningún
+     * pedido. [idWeb] presente = actualización de esa fila de la web (va como `id`).
+     */
+    suspend fun laboratorio(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long? = null,
+        confirmada: Laboratorio? = null,
+    ): RespuestaCargaDto
+
+    /** `PUT pacientes/{id}/pesos` (E3): igual que [laboratorio], con `valores: {peso}` y sin `tipo`. Sin nada que mandar no sale ningún pedido. */
+    suspend fun peso(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long? = null,
+        confirmada: Laboratorio? = null,
+    ): RespuestaCargaDto
+
+    /**
+     * `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}` con cuerpo JSON (E3, RF-41, RF-42): baja lógica de una carga
+     * propia de [consultaWebId] (`activo = 0`, nunca se borra); repetir la baja es `ok`. La clave es `l:<id local>-baja` y [tipo] elige la
+     * ruta (`laboratorio_general` o `peso`).
+     */
+    suspend fun bajaDeCarga(
+        pacienteWebId: Long,
+        cargaWebId: Long,
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+        tipo: String = TIPO_LABORATORIO_GENERAL,
+    ): RespuestaBajaDeCargaDto
 }
 
 /** [ClinicaEscrituraApi] contra hclinica, sobre el [HcApiClient] completo (el de solo lectura no puede escribir). */
@@ -134,12 +179,71 @@ class ClinicaEscrituraApiRemota(private val cliente: HcApiClient) : ClinicaEscri
         val cuerpo = PayloadsClinica.registros(registros, enviados) ?: return REGISTROS_SIN_NADA
         return cliente.leerTodo(RespuestaRegistrosDto.serializer(), cliente.put("$RUTA/$consultaWebId/registros", cuerpo.toString()))
     }
+
+    // ---------- E3 (spec 005, T81): cargas de laboratorio general y peso ----------
+
+    override suspend fun laboratorio(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto {
+        val cuerpo = PayloadsClinica.carga(
+            PayloadsClinica.claveDeCarga(carga.id), dispositivo, consultaWebId, fecha, carga, idWeb, confirmada, TIPO_LABORATORIO_GENERAL,
+        ) ?: return CARGA_SIN_NADA
+        return cliente.leerTodo(RespuestaCargaDto.serializer(), cliente.put("$RUTA_PACIENTES/$pacienteWebId/laboratorios", cuerpo.toString()))
+    }
+
+    override suspend fun peso(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto {
+        val cuerpo = PayloadsClinica.carga(
+            PayloadsClinica.claveDeCarga(carga.id), dispositivo, consultaWebId, fecha, carga, idWeb, confirmada, TIPO_PESO,
+        ) ?: return CARGA_SIN_NADA
+        return cliente.leerTodo(RespuestaCargaDto.serializer(), cliente.put("$RUTA_PACIENTES/$pacienteWebId/pesos", cuerpo.toString()))
+    }
+
+    override suspend fun bajaDeCarga(
+        pacienteWebId: Long,
+        cargaWebId: Long,
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+        tipo: String,
+    ): RespuestaBajaDeCargaDto = cliente.leerTodo(
+        RespuestaBajaDeCargaDto.serializer(),
+        cliente.delete(
+            "$RUTA_PACIENTES/$pacienteWebId/${rutaDeCarga(tipo)}/$cargaWebId",
+            PayloadsClinica.bajaDeCarga(clave, dispositivo, consultaWebId).toString(),
+        ),
+    )
+
+    /** La ruta de la tabla de la carga: solo se escriben el laboratorio general y el peso (el reducido quedó fuera de alcance). */
+    private fun rutaDeCarga(tipo: String): String = when (tipo) {
+        TIPO_LABORATORIO_GENERAL -> RUTA_LABORATORIOS
+        TIPO_PESO -> RUTA_PESOS
+        else -> throw IllegalArgumentException("La API de E3 solo escribe laboratorio general y peso, no '$tipo'")
+    }
+
     private companion object {
         const val RUTA = "consultas"
+        const val RUTA_PACIENTES = "pacientes"
+        const val RUTA_LABORATORIOS = "laboratorios"
+        const val RUTA_PESOS = "pesos"
 
         /** Lo que contesta una escritura sin nada que escribir: no hubo pedido, no se guardó ni se ignoró nada. */
         val NADA_QUE_ESCRIBIR = RespuestaEscrituraDto(guardadas = emptyList(), desconocidas = emptyList())
         val ANTECEDENTES_SIN_NADA = RespuestaAntecedentesDto(id = null, guardadas = emptyList(), desconocidas = emptyList())
         val REGISTROS_SIN_NADA = RespuestaRegistrosDto(ids = JsonObject(emptyMap()), guardadas = emptyList(), desconocidas = emptyList())
+        val CARGA_SIN_NADA = RespuestaCargaDto(id = "", guardadas = emptyList(), desconocidas = emptyList())
     }
 }

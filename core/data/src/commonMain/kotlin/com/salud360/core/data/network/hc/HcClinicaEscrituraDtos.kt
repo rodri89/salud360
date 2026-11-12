@@ -6,6 +6,8 @@ import com.salud360.core.data.hcgeneral.CambioReal
 import com.salud360.core.data.hcgeneral.TIPOS_ESTUDIO_WEB
 import com.salud360.core.data.hcgeneral.TIPO_EXAMEN_COMPLEMENTARIO
 import com.salud360.core.data.hcgeneral.TIPO_INTERCONSULTA
+import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
+import com.salud360.core.data.hcgeneral.TIPO_PESO
 import com.salud360.core.data.hcgeneral.casillaSeEnvia
 import com.salud360.core.data.hcgeneral.cambioReal
 import com.salud360.core.data.hcgeneral.cambioRealDeAntecedente
@@ -14,6 +16,7 @@ import com.salud360.core.data.hcgeneral.esVacio
 import com.salud360.core.data.hcgeneral.esVacioDeMedida
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
@@ -99,6 +102,26 @@ data class RespuestaRegistrosDto(
     fun idsPorRef(): Map<String, Long> =
         (ids as? JsonObject)?.mapNotNull { (ref, id) -> (id as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.let { ref to it } }?.toMap().orEmpty()
 }
+
+/**
+ * `PUT pacientes/{id}/laboratorios` y `/pesos` (E3, T81): [id] es el id de la fila de la web (el servidor lo manda como texto),
+ * [guardadas] los ids de la app escritos (también los vaciados) y [desconocidas] los que el servidor no tradujo. [id] y
+ * [guardadas] son obligatorios: una respuesta `200` sin ellos no es un éxito (no se sabe qué fila ni qué se escribió). El id
+ * vacío es el de una respuesta que no hizo pedido (no había nada que mandar).
+ */
+@Serializable
+data class RespuestaCargaDto(
+    val id: String,
+    val guardadas: List<String>,
+    val desconocidas: List<String> = emptyList(),
+)
+
+/** `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}` (E3): la baja lógica y el id de la carga (texto). */
+@Serializable
+data class RespuestaBajaDeCargaDto(
+    val baja: Boolean,
+    val id: String,
+)
 
 /**
  * Los cuerpos de los pedidos. Puros: sin red ni reloj. Reglas (spec 005):
@@ -407,6 +430,95 @@ object PayloadsClinica {
             if (idWeb != null) put("id", idWeb)
             put("campos", buildJsonObject { campos.forEach { (campo, valor) -> put(campo, valor) } })
         }
+    }
+
+    // ---------- E3 (spec 005, T81): cargas de laboratorio general y peso ----------
+    // Solo `laboratorio_general` y `peso`: el reducido (`laboratorio_reducido`) y los pendientes quedaron fuera de alcance
+    // (decisión del usuario, T73). Las claves de `valores` son los ids de la app, tal como los devuelve la lectura (el servidor
+    // traduce las columnas de la web con `MapaClinica`): acá no se re-mapea nada y lo que el servidor no conozca va en
+    // `desconocidas`, sin escribirse.
+
+    /** Los dos tipos de carga que la API de E3 escribe; cualquier otro (el reducido) no se manda. */
+    val TIPOS_DE_CARGA = setOf(TIPO_LABORATORIO_GENERAL, TIPO_PESO)
+
+    /**
+     * Las fechas con las que la web dice «sin fecha» y con las que una carga nunca sale (el servidor contesta `422 fecha_invalida`).
+     * `0000-00-00` no es una fecha y no puede llegar acá; la app resuelve la fecha de la consulta antes de enviar (T82).
+     */
+    val FECHAS_SIN_DATO = setOf(LocalDate(2000, 1, 1), LocalDate(1000, 1, 1))
+
+    /**
+     * La clave de repetibilidad de una carga (RF-15): `l:<id local>`, hasta 191 caracteres, solo letras, números, `.`, `_` y `-` después
+     * del prefijo. Estable entre reintentos: sale del id local de la carga. Un id que el servidor rechazaría no se arma.
+     */
+    fun claveDeCarga(idLocal: String): String = claveDeCargaConSufijo(idLocal, sufijo = "")
+
+    /** La clave de la baja de una carga: `l:<id local>-baja` (el servidor la registra con tipo `baja_carga`). */
+    fun claveDeBajaDeCarga(idLocal: String): String = claveDeCargaConSufijo(idLocal, sufijo = "-baja")
+
+    private fun claveDeCargaConSufijo(idLocal: String, sufijo: String): String {
+        val clave = "l:$idLocal$sufijo"
+        require(ID_LOCAL_VALIDO.matches(idLocal) && clave.length <= CLAVE_MAXIMA) { "El id local '$idLocal' no sirve para una clave de carga" }
+        return clave
+    }
+
+    /**
+     * `PUT pacientes/{id}/laboratorios` ([tipo] `laboratorio_general`) y `PUT pacientes/{id}/pesos` ([tipo] `peso`): una carga de la
+     * consulta [consultaWebId] con la [fecha] clínica (siempre presente y nunca el marcador de «sin fecha») y sus valores contra
+     * [confirmada] (lo último que la web confirmó de esa carga):
+     * - **alta** ([idWeb] nulo): todos los valores con contenido; un vacío sobre nada no viaja y un alta sin ninguno no se arma;
+     * - **actualización** ([idWeb] presente, va como `id`): solo los valores tocados (RF-34), y una columna que ya no está es un
+     *   vaciado; si no cambia ningún valor y la fecha es la misma, no hay nada que mandar;
+     * - el vaciado a propósito sale `""` (RF-69); el texto va tal cual, sin recortar (un valor con contenido no se toca). «En blanco» es
+     *   vacío para la app (`esVacio`), así que el servidor recibe `""`, como en E1 y E2.
+     * `null` si no queda nada que mandar, si la carga viene de la web (`hcc-`) o si su tipo no es el del pedido. El peso viaja como
+     * `valores: {peso}` (el id de la app, no la columna `valor` de la web) y sin `tipo`.
+     */
+    fun carga(
+        clave: String,
+        dispositivo: String,
+        consultaWebId: Long,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long? = null,
+        confirmada: Laboratorio? = null,
+        tipo: String = TIPO_LABORATORIO_GENERAL,
+    ): JsonObject? {
+        if (tipo !in TIPOS_DE_CARGA || carga.tipo != tipo || esIdDeLaWeb(carga.id)) return null
+        require(fecha !in FECHAS_SIN_DATO) { "La carga no se manda con una fecha de «sin fecha» ($fecha): la app resuelve la de la consulta" }
+        val valores = valoresDeLaCarga(carga.valores, confirmada?.valores.orEmpty())
+        if (valores.isEmpty() && (idWeb == null || confirmada?.fecha == fecha)) return null
+        return buildJsonObject {
+            put("clave", clave)
+            put("dispositivo", dispositivo)
+            put("consulta_id", consultaWebId.toString())
+            if (tipo == TIPO_LABORATORIO_GENERAL) put("tipo", tipo)
+            if (idWeb != null) put("id", idWeb.toString())
+            put("fecha", fecha.toString())
+            if (valores.isNotEmpty()) put("valores", buildJsonObject { valores.forEach { (claveValor, valor) -> put(claveValor, valor) } })
+        }
+    }
+
+    /** Los valores que viajan: los primeros del orden de la carga y después los que solo tenía lo confirmado (vaciados a `""`). */
+    private fun valoresDeLaCarga(valores: Map<String, String>, confirmados: Map<String, String>): Map<String, String> {
+        val salida = linkedMapOf<String, String>()
+        for (clave in valores.keys + (confirmados.keys - valores.keys)) {
+            val anterior = confirmados[clave]
+            val nuevo = valores[clave].orEmpty()
+            when (cambioReal(anterior, nuevo)) {
+                CambioReal.NINGUNO -> Unit
+                CambioReal.ESCRIBIR -> salida[clave] = nuevo
+                CambioReal.VACIAR -> salida[clave] = ""
+            }
+        }
+        return salida
+    }
+
+    /** `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}`: la clave de la baja, el dispositivo y la consulta. */
+    fun bajaDeCarga(clave: String, dispositivo: String, consultaWebId: Long): JsonObject = buildJsonObject {
+        put("clave", clave)
+        put("dispositivo", dispositivo)
+        put("consulta_id", consultaWebId.toString())
     }
 
     private fun textoAMandar(texto: String): String = if (esVacio(texto)) "" else texto

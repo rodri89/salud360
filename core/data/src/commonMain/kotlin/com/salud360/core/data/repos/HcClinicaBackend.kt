@@ -47,7 +47,9 @@ import com.salud360.core.data.network.hc.ConsultasClinicaApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiSoloLectura
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
+import com.salud360.core.data.network.hc.RespuestaBajaDeCargaDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
+import com.salud360.core.data.network.hc.RespuestaCargaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
@@ -63,6 +65,7 @@ import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.pacientes.PacienteExtra
 import kotlinx.coroutines.CancellationException
@@ -583,4 +586,30 @@ private object SinEscritura : ClinicaEscrituraApi {
     override suspend fun registros(consultaWebId: Long, registros: List<RegistroClinico>, enviados: Map<Id, RegistroClinico>): RespuestaRegistrosDto = sinApi()
     override suspend fun cerrar(consultaWebId: Long, clave: String, dispositivo: String, fecha: LocalDate, edadMostrar: String?): RespuestaCerrarDto = sinApi()
     override suspend fun baja(consultaWebId: Long, clave: String, dispositivo: String): RespuestaBajaDto = sinApi()
+    override suspend fun laboratorio(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto = sinApi()
+    override suspend fun peso(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto = sinApi()
+    override suspend fun bajaDeCarga(
+        pacienteWebId: Long,
+        cargaWebId: Long,
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+        tipo: String,
+    ): RespuestaBajaDeCargaDto = sinApi()
 }

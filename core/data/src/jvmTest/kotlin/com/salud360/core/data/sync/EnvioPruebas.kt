@@ -4,7 +4,9 @@ import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
+import com.salud360.core.data.network.hc.RespuestaBajaDeCargaDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
+import com.salud360.core.data.network.hc.RespuestaCargaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
@@ -17,6 +19,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.coroutines.CompletableDeferred
@@ -125,6 +128,21 @@ internal class EscrituraContada : ClinicaEscrituraApi {
 
     override suspend fun baja(consultaWebId: Long, clave: String, dispositivo: String): RespuestaBajaDto {
         llamadas += "baja"
+        error("no se usa en T24")
+    }
+
+    override suspend fun laboratorio(pacienteWebId: Long, consultaWebId: Long, dispositivo: String, fecha: LocalDate, carga: Laboratorio, idWeb: Long?, confirmada: Laboratorio?): RespuestaCargaDto {
+        llamadas += "laboratorio"
+        error("no se usa en T24")
+    }
+
+    override suspend fun peso(pacienteWebId: Long, consultaWebId: Long, dispositivo: String, fecha: LocalDate, carga: Laboratorio, idWeb: Long?, confirmada: Laboratorio?): RespuestaCargaDto {
+        llamadas += "peso"
+        error("no se usa en T24")
+    }
+
+    override suspend fun bajaDeCarga(pacienteWebId: Long, cargaWebId: Long, consultaWebId: Long, clave: String, dispositivo: String, tipo: String): RespuestaBajaDeCargaDto {
+        llamadas += "bajaDeCarga"
         error("no se usa en T24")
     }
 }

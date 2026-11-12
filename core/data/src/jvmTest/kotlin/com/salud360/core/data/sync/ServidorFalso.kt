@@ -14,7 +14,9 @@ import com.salud360.core.data.network.hc.PaginaCartera
 import com.salud360.core.data.network.hc.PacientesHcApi
 import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
+import com.salud360.core.data.network.hc.RespuestaBajaDeCargaDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
+import com.salud360.core.data.network.hc.RespuestaCargaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
@@ -29,6 +31,7 @@ import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.especialidad.CodigosHc
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -334,6 +337,36 @@ internal class ServidorFalso : ClinicaEscrituraApi {
             c.claveDeBaja = clave
             RespuestaBajaDto(baja = true, consultaId = consultaWebId)
         }
+
+    // Esqueleto de T81: las cargas de laboratorio general y peso (E3) se aplican en T84, cuando la cola las envíe.
+    override suspend fun laboratorio(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto = error("las cargas se aplican en T84: nada las envía todavía")
+
+    override suspend fun peso(
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto = error("las cargas se aplican en T84: nada las envía todavía")
+
+    override suspend fun bajaDeCarga(
+        pacienteWebId: Long,
+        cargaWebId: Long,
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+        tipo: String,
+    ): RespuestaBajaDeCargaDto = error("las bajas de carga se aplican en T84: nada las envía todavía")
 }
 
 /**

@@ -7,7 +7,9 @@ import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.EjemplosConsultasClinica
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
+import com.salud360.core.data.network.hc.RespuestaBajaDeCargaDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
+import com.salud360.core.data.network.hc.RespuestaCargaDto
 import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
@@ -19,6 +21,7 @@ import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.sync.HcApiSync
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +88,21 @@ class HcClinicaBackendEscrituraTest {
 
         override suspend fun baja(consultaWebId: Long, clave: String, dispositivo: String): RespuestaBajaDto {
             llamadas += "baja"
+            error("no se usa en T23")
+        }
+
+        override suspend fun laboratorio(pacienteWebId: Long, consultaWebId: Long, dispositivo: String, fecha: LocalDate, carga: Laboratorio, idWeb: Long?, confirmada: Laboratorio?): RespuestaCargaDto {
+            llamadas += "laboratorio"
+            error("no se usa en T23")
+        }
+
+        override suspend fun peso(pacienteWebId: Long, consultaWebId: Long, dispositivo: String, fecha: LocalDate, carga: Laboratorio, idWeb: Long?, confirmada: Laboratorio?): RespuestaCargaDto {
+            llamadas += "peso"
+            error("no se usa en T23")
+        }
+
+        override suspend fun bajaDeCarga(pacienteWebId: Long, cargaWebId: Long, consultaWebId: Long, clave: String, dispositivo: String, tipo: String): RespuestaBajaDeCargaDto {
+            llamadas += "bajaDeCarga"
             error("no se usa en T23")
         }
     }
