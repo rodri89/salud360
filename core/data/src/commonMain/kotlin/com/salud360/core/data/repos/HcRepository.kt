@@ -13,6 +13,7 @@ import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.esIdDeLaWeb
 import com.salud360.core.data.hcgeneral.cambioReal
 import com.salud360.core.data.hcgeneral.cambioRealDeAntecedente
+import com.salud360.core.data.hcgeneral.cambioRealDeCarga
 import com.salud360.core.data.hcgeneral.cambioRealDeRegistro
 import com.salud360.core.data.hcgeneral.cambioRealDelExamen
 import com.salud360.core.data.hcgeneral.OrigenDeConsulta
@@ -565,18 +566,55 @@ class HcRepository(
     fun observarLaboratorios(pacienteId: Id, especialidad: String, tipo: String): Flow<List<Laboratorio>> =
         q.laboratoriosDePaciente(pacienteId, especialidad, tipo).flujoLista { it.toModel() }
 
-    /** `false` si la carga es de la web (`hcc-l…`) o cuelga de una consulta de la web: la web es su dueña (RF-62). */
-    suspend fun guardarLaboratorio(lab: Laboratorio): Boolean {
+    /** Una carga por su id local, para conservar lo que no se está editando (la consulta de origen), como [registro]. */
+    suspend fun laboratorio(id: Id): Laboratorio? = q.laboratorioPorId(id).uno { it.toModel() }
+
+    /**
+     * `false` si la carga es de la web (`hcc-l…`) o cuelga de una consulta de la web: la web es su dueña (RF-62).
+     *
+     * [enConsulta] es la consulta donde se está editando. En la HC general, si esa consulta es propia y la carga que ya existía es del
+     * histórico (apunta a una consulta que no es propia) o no tiene consulta, se reasigna a [enConsulta] y se marca sucia: viaja solo
+     * esa carga (spec 005, RF-68). Una carga que ya es de otra propia se queda donde está. Solo un **cambio real** escribe
+     * ([cambioRealDeCarga]): guardar lo mismo no reasigna ni marca nada y devuelve `true`; vaciar a propósito se escribe —la web la
+     * recibe vacía (RF-69)—. Sin [enConsulta], y en las demás historias clínicas, la carga conserva la consulta que trae y se escribe
+     * siempre, como antes. La segunda barrera de escritura de T36 rechaza la carga nueva y la edición si su consulta, o la consulta
+     * donde se edita, ya tiene el cierre enviado o viajando. El `remoto_id` de la fila se conserva aunque el que llama arme la carga
+     * de cero (la pantalla no lo conoce): perderlo daría de alta en la web una carga que ya está.
+     */
+    suspend fun guardarLaboratorio(lab: Laboratorio, enConsulta: Id? = null): Boolean {
         if (lab.esDeLaWeb() || lab.consultaId?.let(::esIdDeLaWeb) == true) return false
-        q.upsertLaboratorio(lab.toRow(ahoraMillis()))
+        if (lab.consultaId != null && cierreEnviadoOViajando(lab.consultaId!!)) return false
+        if (enConsulta != null && cierreEnviadoOViajando(enConsulta)) return false
+        val anterior = q.laboratorioPorId(lab.id).uno { it.toModel() }
+        var aGuardar = lab.copy(remotoId = lab.remotoId.ifBlank { anterior?.remotoId.orEmpty() })
+        if (lab.especialidad == CodigosHc.GENERAL) {
+            if (!cambioRealDeCarga(anterior, aGuardar)) return true
+            if (anterior != null && enConsulta != null && !esPropia(aGuardar.consultaId) && esPropia(enConsulta)) {
+                aGuardar = aGuardar.copy(consultaId = enConsulta)
+            }
+        }
+        q.upsertLaboratorio(aGuardar.toRow(ahoraMillis()))
         return true
     }
 
-    /** `false` si no existe o es de la web (`hcc-l…`): el cambio no llegaría y la carga quedaría `dirty` para siempre (RF-62). */
+    /**
+     * `false` si no existe, es de la web (`hcc-l…`) o cuelga de una consulta de la web (RF-62), o si su consulta ya tiene el cierre
+     * enviado o viajando (T36). En la HC general, una carga que la web ya tiene ([Laboratorio.remotoId]) se da de baja con
+     * `activo = 0` y queda sucia para que la baja viaje (RF-41); una que nunca se envió se retira del dispositivo sin dejar nada
+     * pendiente de envío, porque en la web no hay nada que dar de baja. Las demás historias clínicas siguen como antes.
+     */
     suspend fun eliminarLaboratorio(id: Id): Boolean {
         if (esIdDeLaWeb(id)) return false
         val l = q.laboratorioPorId(id).uno { it.toModel() } ?: return false
-        q.upsertLaboratorio(l.copy(activo = false).toRow(ahoraMillis()))
+        if (l.consultaId?.let(::esIdDeLaWeb) == true) return false
+        if (l.consultaId != null && cierreEnviadoOViajando(l.consultaId!!)) return false
+        val retirada = l.copy(activo = false)
+        val ahora = ahoraMillis()
+        if (l.especialidad == CodigosHc.GENERAL && l.remotoId.isBlank()) {
+            q.upsertLaboratorio(retirada.toRow(ahora, deleted = true, dirty = false))
+        } else {
+            q.upsertLaboratorio(retirada.toRow(ahora))
+        }
         return true
     }
 

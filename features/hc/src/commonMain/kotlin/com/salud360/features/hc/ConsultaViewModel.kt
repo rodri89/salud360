@@ -446,13 +446,19 @@ class ConsultaViewModel(
     fun guardarLaboratorio(tipo: String, id: Id?, fecha: LocalDate, valores: Map<String, String>) = viewModelScope.launch {
         if (noSeEscribe) return@launch
         val c = ui.value.consulta ?: return@launch
-        hc.guardarLaboratorio(Laboratorio(id ?: newId(), c.pacienteId, c.id, c.especialidad, tipo, fecha, valores.filterValues { it.isNotBlank() }))
+        // Al editar se conserva la consulta de origen: una carga del histórico que se completa desde esta consulta propia la reasigna
+        // el repositorio, y solo si hay un cambio real (RF-68). Guardar lo mismo no marca nada.
+        val consultaOriginal = id?.let { hc.laboratorio(it)?.consultaId }
+        // Una carga que vino de la web no se crea ni se edita desde acá (RF-62): el repositorio la rechaza y nada queda por enviar.
+        if (!hc.guardarLaboratorio(Laboratorio(id ?: newId(), c.pacienteId, consultaOriginal ?: c.id, c.especialidad, tipo, fecha, valores.filterValues { it.isNotBlank() }), enConsulta = consultaId)) return@launch
+        marcarSucia()
     }
 
     /** Una carga que vino de la web no se borra (RF-62): sale sin hacer nada, y el repositorio la rechaza igual. */
     fun eliminarLaboratorio(id: Id) = viewModelScope.launch {
         if (noSeEscribe || esIdDeLaWeb(id)) return@launch
-        hc.eliminarLaboratorio(id)
+        if (!hc.eliminarLaboratorio(id)) return@launch
+        marcarSucia()
     }
 
     // ---- archivos ----

@@ -2,6 +2,7 @@ package com.salud360.core.data.hcgeneral
 
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 
 // «Cambio real» al guardar (spec 005, RF-68, RF-69, D27). Puro. El autoguardado corre cada 600 ms y guarda todo lo que hay en
@@ -84,6 +85,17 @@ fun cambioRealDeRegistro(anterior: RegistroClinico?, nuevo: RegistroClinico): Bo
     if (anterior == null) return true
     return anterior.fecha != nuevo.fecha || anterior.activo != nuevo.activo || anterior.consultaId != nuevo.consultaId ||
         conContenido(anterior.campos) != conContenido(nuevo.campos)
+}
+
+/**
+ * Guardar la carga ([nuevo]) donde estaba [anterior]. Una carga nueva (`anterior == null`) siempre se escribe: agregar es una acción
+ * del médico. Si ya estaba, cuenta un cambio de fecha, de baja o de cualquier valor; un valor vacío es lo mismo que un valor que no
+ * está, y vaciar uno que tenía contenido sí es un cambio (RF-69). Los datos de una carga son datos: `0` y `0.00` no son vacíos.
+ */
+fun cambioRealDeCarga(anterior: Laboratorio?, nuevo: Laboratorio): Boolean {
+    if (anterior == null) return true
+    return anterior.fecha != nuevo.fecha || anterior.activo != nuevo.activo || anterior.consultaId != nuevo.consultaId ||
+        conContenido(anterior.valores) != conContenido(nuevo.valores)
 }
 
 private fun conContenido(campos: Map<String, String>): Map<String, String> = campos.filterValues { !esVacio(it) }
