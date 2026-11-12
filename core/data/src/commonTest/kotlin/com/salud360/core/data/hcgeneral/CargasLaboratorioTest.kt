@@ -5,6 +5,7 @@ import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Columnas y acciones de las cargas de un laboratorio de la HC general (RF-55, RF-57, RF-60 a RF-64). */
@@ -126,5 +127,22 @@ class CargasLaboratorioTest {
     fun varias_cargas_solo_en_la_hc_general() {
         assertTrue(cargasMultiples("clinica"))
         assertFalse(cargasMultiples("pediatria"))
+    }
+
+    // ---- La columna abierta (spec 005, T87-a; RF-41, Q-E3-1) ----
+
+    @Test
+    fun la_carga_abierta_sin_fecha_usa_la_de_la_consulta() {
+        // «Si la carga no tiene fecha, usa la fecha de la consulta»: nunca la de hoy ni un marcador de «sin fecha».
+        val deLaConsulta = LocalDate(2026, 11, 4)
+        assertEquals(deLaConsulta, fechaDeLaCargaAbierta(null, deLaConsulta))
+        assertEquals(LocalDate(2026, 10, 2), fechaDeLaCargaAbierta(LocalDate(2026, 10, 2), deLaConsulta), "la elegida manda")
+    }
+
+    @Test
+    fun el_aviso_de_sin_fecha_va_solo_mientras_no_haya_fecha() {
+        assertEquals("Sin fecha: se usa la de la consulta", SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA)
+        assertEquals(SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA, avisoDeCargaSinFecha(null))
+        assertNull(avisoDeCargaSinFecha(LocalDate(2026, 10, 2)), "con fecha elegida no hay nada que avisar")
     }
 }

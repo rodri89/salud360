@@ -3,6 +3,7 @@ package com.salud360.core.data.hcgeneral
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Laboratorio
+import kotlinx.datetime.LocalDate
 
 // Varias cargas de un laboratorio por consulta (RF-55 a RF-64): cada "Nueva carga" es una fila nueva de `laboratorio`;
 // las guardadas no se editan, se borran y se recargan, como la web.
@@ -44,3 +45,16 @@ fun mostrarNuevaCarga(editable: Boolean, abierta: Boolean): Boolean = editable &
 
 /** Una carga sin ningún valor escrito no se guarda (RF-57). */
 fun cargaNuevaValida(valores: Map<String, String>): Boolean = valores.values.any { it.isNotBlank() }
+
+// La columna abierta de la HC general (spec 005, T87-a; RF-41, Q-E3-1): se completa con el autoguardado y, si el médico no le elige
+// fecha, la que se guarda y viaja es la de la consulta («si la carga no tiene fecha, usa la fecha de la consulta», 002 RF-20/RF-21).
+// Nunca la de hoy ni un marcador de «sin fecha»: esa fecha no llega a verla ni la lectura ni la API.
+
+/** El aviso de una columna abierta a la que no se le eligió fecha: «Sin fecha: se usa la de la consulta» (RF-41). */
+const val SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA = "Sin fecha: se usa la de la consulta"
+
+/** La fecha con la que se guarda la columna abierta: la elegida o, si no hay, la de la consulta (la de [fechaAEnviar], T82-a). */
+fun fechaDeLaCargaAbierta(elegida: LocalDate?, fechaDeLaConsulta: LocalDate): LocalDate = elegida ?: fechaDeLaConsulta
+
+/** [SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA] mientras la columna abierta no tenga fecha; `null` si ya tiene una. */
+fun avisoDeCargaSinFecha(fecha: LocalDate?): String? = SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA.takeIf { fecha == null }
