@@ -122,6 +122,13 @@ registros de personas): el repo es público.
   `entradaDelPlan` ya pasa `cargas`; `contarPendientes` cuenta laboratorio y peso con `seccionesDe(E3)` (mapa compartido `seccionDeLaCarga`: el tipo
   `peso` es la sección `tabla_peso`). `ServidorFalso` aplica las cargas con memoria por `l:<id local>`. Rojo 15 de 25 y después verde; `core:data`
   **2129** (2113 + 16). Sin migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` sigue igual. **Sigue T86** (la lectura empareja por `remoto_id`).
+  **T86-a hecha (2026-11-12): la lectura empareja las cargas de laboratorio general y peso por `remoto_id` (lo pendiente es T86-b, fuera de alcance).**
+  `laboratoriosDeLaWeb` pone `remotoId` y `HcClinicaBackend.aplicarHistoria` busca las cargas propias ya enviadas por `tipo` + `remoto_id`
+  (`cargaDeLaWebParaLaPropia` les devuelve id local, consulta y `activo`): una carga enviada y la de `historia` son una sola, sin `hcc-l…`
+  duplicada. Lo sucio manda (una baja de T83-a no reaparece ni se reactiva) y lo limpio se refresca (RF-34); un vacío de la web no pisa y el
+  `remoto_id` no se pierde. Rojo 6 de 6 y después verde; `core:data` **2135** (2129 + 6); cambió un solo test existente
+  (`LecturaClinicaTest.cada_carga_en_su_tipo_con_los_valores_de_la_app`, ahora espera `remotoId`). Sin migración, sin Laravel, sin pedidos reales;
+  `SECCIONES_HABILITADAS` sigue igual. **T86-a hecha; sigue T87** (pantallas de E3, bloqueada por Q-E3-1).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

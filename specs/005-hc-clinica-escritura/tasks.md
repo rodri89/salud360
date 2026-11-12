@@ -1713,16 +1713,52 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     en vuelo; respuesta perdida; corte entre confirmar y anotar; `422`/`409`; sesión de otro médico; `limpiarSiNoCambio` para `TablaDeLaFila.PENDIENTE` y
     `contarPendientes` con pendientes cuando E3 está habilitada.
   - Hecho cuando: tests en verde (antes, en rojo); los tests de la cola de E1, E2 y T85-a siguen verdes sin cambios. No se empieza sin que el usuario lo pida.
-- [ ] **T86. La lectura empareja cargas y pendiente por `remoto_id` (sin duplicar).** RF-33, RF-41, RF-43 — M — Toca API Laravel: no
-  - Esto cierra T29 (c): hasta acá las cargas y el pendiente se emparejaban por id (`laboratorioPorId`, `pendientePorId`) y una fila enviada por la app habría
-    reaparecido como `hcc-l…`/`hcc-p…`.
-  - Tests primero: jvm `HcClinicaBackendPropiasE3Test`: una carga enviada (con `remoto_id`) y la que trae `historia` (`hcc-l<tipo>-<id>`) son **una sola**
-    (`laboratoriosDeLaWeb` y `fusionarLaboratorio` empareja por `remoto_id` y respeta lo sucio); una baja propia no reaparece; una carga editada en la web
-    mientras el dispositivo no tiene pendiente se refresca (RF-34: lo pendiente manda); **pendientes**: si el texto de la web es el que la app envió
-    (huella) no nace ningún `hcc-p…`; si cambió y el dispositivo no tiene cambios sin enviar → un solo pendiente «de la web» solo lectura y los propios quedan «Ya no figura
-    en la web»; con cambios sin enviar manda el dispositivo; el pendiente de otra HC o de otro paciente no se mezcla.
-  - Código: `HcClinicaBackend.aplicarHistoria`, `LecturaClinica.kt` (`laboratoriosDeLaWeb`, `fusionarLaboratorio`, `pendienteDeLaWeb`), `AusenciasEnLaWeb`.
+- [x] **T86-a. La lectura empareja cargas de laboratorio y peso por `remoto_id`.** RF-33, RF-34, RF-41 — M — Toca API Laravel: no
+  - Es la mitad de la T86 original, que se partió el 2026-11-12 para implementar solo las cargas: los **pendientes** quedan en **T86-b**,
+    fuera de alcance por ahora (sin renumerar). Esto cierra T29 (c) para las cargas: hasta acá se emparejaban por id (`laboratorioPorId`) y una
+    fila enviada por la app habría reaparecido como `hcc-l…`. Depende de T80 (`laboratorio.remoto_id`), T83-a, T84-a y T85-a (el id de la web
+    se guarda en `remoto_id` al confirmarse el envío).
+  - Tests primero: jvm `HcClinicaBackendPropiasE3Test` (nuevo): una carga enviada (con `remoto_id`) y la que trae `historia` (`hcc-l<tipo>-<id>`)
+    son **una sola** (`laboratoriosDeLaWeb` la trae con su `remoto_id` y `fusionarLaboratorio` la refresca sin duplicar), también el peso; lo
+    sucio manda; una baja propia no reaparece (ni se reactiva ni se limpia sola); una carga editada en la web se refresca si el dispositivo no
+    tiene pendiente (RF-34) y un vacío de la web no pisa; la carga de la web de otra consulta no se mezcla con la propia.
+  - Código: `LecturaClinica.kt` (`laboratoriosDeLaWeb` con `remotoId`, `fusionarLaboratorio` sin perder consulta ni `remoto_id`,
+    `cargaDeLaWebParaLaPropia`) y `HcClinicaBackend.aplicarHistoria`.
   - Hecho cuando: tests en verde (antes, en rojo); todos los `HcClinicaBackend*Test` y `HcClinicaLecturaYEnvioTest` siguen verdes.
+  - **Resultado (2026-11-12): HECHA — solo cargas; los pendientes quedan en T86-b.** Sin migración (usa `laboratorio.remoto_id` de T80), sin
+    Laravel, sin dependencias nuevas y sin pedidos reales (solo `ApiFalsa` y la base SQLite temporal de los tests). No se tocó la UI ni
+    `SECCIONES_HABILITADAS` (E3 sigue apagada), ni `AusenciasEnLaWeb`, ni el pendiente. **Rojo**: con el código anterior fallaban por aserción
+    **6 de 6** tests del archivo nuevo (los 6, incluido el peso: nacía la fila `hcc-l…` aparte en todos). **Verde**: 6/6 y `core:data` **2135**
+    (2129 + 6) en dos corridas; `especialidades:clinica` 38, `core:ui` 17, `core:crecimiento` 6, sin fallos. Compilan
+    `:composeApp:compileKotlinWasmJs` y `:features:auth:compileKotlinWasmJs` (`-Pentorno=dev`), `:core:data:compileKotlinWasmJs` y
+    `:server:compileKotlin`, todos en 0.
+    **Qué se empareja.** `laboratoriosDeLaWeb` ahora pone `remotoId = <id de la web>` en cada carga (antes lo dejaba vacío y solo se distinguía por
+    el id local `hcc-l…`). En `aplicarHistoria`, las cargas **propias** ya enviadas (id que no empieza con `hcc-` y `remoto_id` no vacío) se
+    buscan por `tipo` + `remoto_id`: lo que la web trae de esa misma carga se escribe sobre la fila del dispositivo (`cargaDeLaWebParaLaPropia`
+    le devuelve su id local, su consulta y su `activo`), así no nace una `hcc-l<tipo>-<id>` duplicada y no se la mueve de consulta si la web
+    la informa con otra. El peso usa el mismo camino (su `tipo` es `peso`).
+    **Qué se refresca y qué manda.** Si la fila está **sucia** no se escribe nada: lo pendiente manda (también una **baja** de T83-a, que deja
+    `activo = 0, dirty = 1`, así que no reaparece ni se reactiva ni se limpia sola: la baja la confirma el envío). Si está limpia, los valores que
+    vienen pisan, los que no vienen se conservan y un valor vacío de la web no pisa (RF-34, misma regla que el resto de la lectura). Una carga
+    propia nunca se marca «Ya no figura en la web»: la ausencia se identifica por `hcc-l…`, que una fila propia no tiene como id (igual que los
+    estudios, T65-a).
+    **Tests existentes que cambian.** Uno: `LecturaClinicaTest.cada_carga_en_su_tipo_con_los_valores_de_la_app` (common) ahora espera
+    `remotoId` en el `Laboratorio` de la web y lo comprueba en las tres cargas; es un dato nuevo del modelo desde T80 que la conversión no ponía.
+    Ningún `HcClinicaBackend*Test` ni `HcClinicaLecturaYEnvioTest` cambió.
+    **Decisiones a revisar.** (a) **La consulta de una carga propia no se mueve**: si la web informara esa carga con otra `consulta_id` (no
+    pasa: la actualización de E3 no la cambia), la fila del dispositivo se queda donde está; es lo mismo que hace `fusionarConsultaPropia` con
+    el id de la consulta. (b) **El `remoto_id` no puede perderse** (`fusionarLaboratorio` lo conserva si la web viniera sin él), así una lectura
+    no deja la fila otra vez sin su id de la web. (c) La carga de la web de otra consulta se guarda como siempre (`hcc-l…`, sin consulta si esa
+    consulta no está en el dispositivo): no se mezcla con la propia, que es lo que pedía el test.
+- [ ] **T86-b. La lectura empareja el pendiente por huella.** RF-33, RF-41, RF-43 — M — Toca API Laravel: no — **fuera de alcance por ahora**
+  - Es la otra mitad de la T86 original, que se partió el 2026-11-12 para implementar solo las cargas (T86-a) por pedido del usuario. No se
+    renumera. Depende de T82-b (la huella) y T83-b/T84-b/T85-b (los pendientes en el repositorio, el plan y la cola), que tampoco están hechas.
+  - Lo que falta, del texto original: si el texto de la web es el que la app envió (huella) no nace ningún `hcc-p…`; si cambió y el dispositivo
+    no tiene cambios sin enviar → un solo pendiente «de la web» solo lectura y los propios quedan «Ya no figura en la web»; con cambios sin
+    enviar manda el dispositivo; el pendiente de otra HC o de otro paciente no se mezcla. `LecturaClinica.pendienteDeLaWeb` y
+    `HcClinicaBackend.aplicarHistoria`.
+  - Hecho cuando: tests en verde (antes, en rojo); los tests de `HcClinicaBackendPropiasE3Test` siguen verdes sin cambios. No se empieza sin que
+    el usuario lo pida.
 
 ## App de E3: interfaz y candado
 - [ ] **T87. Pantallas de E3.** RF-41 a RF-43, RF-4 — M — Toca API Laravel: no — **BLOQUEADA por Q-E3-1**
