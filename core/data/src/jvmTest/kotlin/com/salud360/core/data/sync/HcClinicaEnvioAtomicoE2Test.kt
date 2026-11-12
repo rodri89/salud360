@@ -9,10 +9,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Spec 005, T63-a (RF-61): lo mismo que `HcClinicaEnvioAtomicoTest` para los formularios y los antecedentes, y T63-b para los estudios. Un corte entre «la web
- * confirmó» y «el dispositivo lo anotó» no deja nada a medias: lo que la web confirmó, el `remoto_id` de cada fila, la limpieza de lo enviado y el estado se
- * anotan en **una sola transacción**. El corte se simula con un `TRIGGER` que aborta al guardar `hce_enviado_.`. Como no quedó anotado, el reenvío repite el
- * mismo pedido (los mismos `ref`) y la web, que escribe por campo y por fila, queda igual (sin duplicar).
+ * Spec 005, T63-a (RF-61): lo mismo que `HcClinicaEnvioAtomicoTest` para los formularios y los antecedentes, T63-b para los estudios y T85-a para las cargas de
+ * laboratorio general y de peso. Un corte entre «la web confirmó» y «el dispositivo lo anotó» no deja nada a medias: lo que la web confirmó, el `remoto_id` de
+ * cada fila, la limpieza de lo enviado y el estado se anotan en **una sola transacción**. El corte se simula con un `TRIGGER` que aborta al guardar
+ * `hce_enviado_`. Como no quedó anotado, el reenvío repite el mismo pedido (los mismos `ref` o la misma `clave`) y la web, que escribe por campo, por fila y
+ * por clave, queda igual (sin duplicar).
  */
 class HcClinicaEnvioAtomicoE2Test {
     private val e2 = seccionesDe(SubentregaDeEscritura.E2)
@@ -105,6 +106,36 @@ class HcClinicaEnvioAtomicoE2Test {
         assertEquals(
             mapOf("fecha" to "2026-11-06", "detalle" to "hígado graso"),
             db.loEnviadoDe("u1").registros.getValue(servidor.registros.values.single().id.toString()),
+            "y ahora sí queda anotado",
+        )
+    }
+
+    @Test
+    fun un_corte_al_anotar_las_cargas_las_deja_pendientes_sin_id_y_el_reenvio_no_duplica() = conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E3)) {
+        creada()
+        db.sembrarCarga("l1", "u1", valores = mapOf("hb" to "13"))
+        cortarAlGuardarLoConfirmado()
+
+        envio.empujarYa("u1").join()
+
+        val enLaWeb = servidor.cargas.values.single()
+        assertEquals("13", enLaWeb.valores["hb"], "la web ya lo tiene")
+        assertEquals("", db.cargaLocal("l1")!!.remotoId, "el id de la web no quedó a medias")
+        assertTrue(db.cargaSucia("l1"))
+        assertEquals(emptyMap(), db.loEnviadoDe("u1").cargas, "ni anotado lo que la web confirmó")
+        assertEquals(emptyMap(), db.estadosDe("u1"), "y un corte local no se toma por un error de la web")
+
+        repararElCorte()
+        envio.empujarYa("u1").join()
+
+        assertEquals(List(2) { "laboratorio 7001 l:l1" }, servidor.pedidos, "el reenvío repite la misma clave")
+        assertEquals(servidor.cuerposDeCargas[0], servidor.cuerposDeCargas[1], "byte a byte: el mismo cuerpo")
+        assertEquals(1, servidor.cargas.size, "sin duplicar la carga")
+        assertFalse(db.cargaSucia("l1"))
+        assertEquals(enLaWeb.id.toString(), db.cargaLocal("l1")!!.remotoId, "ahora sí queda el id de siempre")
+        assertEquals(
+            mapOf("hb" to "13"),
+            db.loEnviadoDe("u1").cargas.getValue(enLaWeb.id.toString()),
             "y ahora sí queda anotado",
         )
     }

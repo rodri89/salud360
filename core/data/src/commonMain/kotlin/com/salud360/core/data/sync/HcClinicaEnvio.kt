@@ -2,6 +2,7 @@ package com.salud360.core.data.sync
 
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.CargaQueViaja
 import com.salud360.core.data.hcgeneral.EntradaDelContador
 import com.salud360.core.data.hcgeneral.EntradaDelPlan
 import com.salud360.core.data.hcgeneral.EstadoDeLaConsulta
@@ -15,8 +16,10 @@ import com.salud360.core.data.hcgeneral.PasoDeEnvio
 import com.salud360.core.data.hcgeneral.ResumenDeEnvio
 import com.salud360.core.data.hcgeneral.ResultadoVinculo
 import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
+import com.salud360.core.data.hcgeneral.TIPO_PESO
 import com.salud360.core.data.hcgeneral.TablaDeLaFila
 import com.salud360.core.data.hcgeneral.antecedenteEnviado
+import com.salud360.core.data.hcgeneral.cargaEnviada
 import com.salud360.core.data.hcgeneral.clasificarErrorDeEnvio
 import com.salud360.core.data.hcgeneral.esperaDeReintento
 import com.salud360.core.data.hcgeneral.estadoDeLaConsulta
@@ -94,10 +97,11 @@ import kotlinx.datetime.toLocalDateTime
  *   Abrir una consulta no dispara nada; abrir la app, iniciar sesión y volver la conexión sí, pero solo lo propio ([alAbrirOIniciar], [alRecuperarConexion]).
  *
  * **Qué sale y en qué orden** ([enviar], RF-14, RF-56): lo decide `planDeEnvio` y esta clase lo ejecuta de a un paso: **primero la
- * creación** (clave `c:<id local>`), **después el contenido** (los textos, el examen, los formularios, los antecedentes y los cinco
- * estudios) y **al final el cierre** (o la baja de una anulada), y el cierre solo sale cuando todo lo anterior llegó. El envío **se corta
- * en el primer paso que falla**: lo que ya llegó queda anotado y lo que falló, con su estado, para el próximo intento. Un error se clasifica
- * con `clasificarErrorDeEnvio` (T20) y el estado se guarda por parte (`EstadosDeEnvio`).
+ * creación** (clave `c:<id local>`), **después el contenido** (los textos, el examen, los formularios, los antecedentes, los cinco
+ * estudios y las cargas de laboratorio general y de peso, T85-a) y **al final el cierre** (o la baja de una anulada), y el cierre
+ * solo sale cuando todo lo anterior llegó. El envío **se corta en el primer paso que falla**: lo que ya llegó queda anotado y lo que
+ * falló, con su estado, para el próximo intento. Un error se clasifica con `clasificarErrorDeEnvio` (T20) y el estado se guarda por
+ * parte (`EstadosDeEnvio`).
  *
  * **Qué se anota al confirmar un paso** (RF-32, RF-55, RF-61), todo en **una sola transacción** local, así un corte entre «el servidor
  * confirmó» y «anotado» no deja nada a medias (y el reenvío repite la misma clave sin duplicar):
@@ -464,11 +468,11 @@ open class HcClinicaEnvio(
             is PasoDeEnvio.Formularios -> formularios(paso)
             is PasoDeEnvio.Antecedentes -> antecedentes(paso)
             is PasoDeEnvio.Registros -> registros(paso)
+            is PasoDeEnvio.Cargas -> cargas(paso)
             is PasoDeEnvio.Cerrar -> cerrar(paso)
             is PasoDeEnvio.Baja -> baja(paso)
-            // Un paso que esta versión no conoce no se manda: el envío se corta y no se anota nada. Con los pasos de hoy (crear, textos, examen,
-            // formularios, antecedentes, estudios, cierre y baja) no hay ninguno; queda por si una versión futura agrega uno sin enseñarle a la cola.
-            else -> error("el paso ${paso.parte} de la consulta ${consulta.id} todavía no se sabe enviar")
+            // El `when` es exhaustivo sobre el `sealed interface`: un paso que una versión futura agregue no compila hasta que la cola sepa enviarlo
+            // (antes había una `else` que lanzaba; con las cargas de T85-a ya hay rama para los nueve pasos y no hace falta).
         }
 
         private suspend fun crear(paso: PasoDeEnvio.Crear): Boolean {
@@ -599,6 +603,77 @@ open class HcClinicaEnvio(
             }
             lo = nuevo
             return faltan.isEmpty()
+        }
+
+        /**
+         * Las cargas de laboratorio general y de peso (E3, T85-a): **una carga por pedido** (P23) con lo que armó el plan —su fecha ya resuelta y, si la web
+         * ya la tenía, solo lo tocado contra lo último confirmado— y `LoEnviado.cargaEnviada` como «lo ya enviado», que es lo mismo con lo que decidió el
+         * plan. Cada carga se confirma con el `id` que contesta la web: en **una sola transacción** se anota en `laboratorio.remoto_id`, se limpia la fila si
+         * no cambió mientras viajaba (RF-55), se suma a `LoEnviado` (RF-61, nunca una fila sin id y limpia) y, al final del paso, se quita el estado. Lo que
+         * la web no confirma —una carga con valores que no conoce, o sin `id`— queda sucio, sin id y sin anotar, y la parte «No se pudo enviar» con la clave
+         * que faltó. Una carga dada de baja sale como `DELETE` de la fila de la web (sin fecha ni valores, que la web conserva). Un rechazo corta el paso como
+         * los demás pasos: lo ya confirmado queda anotado y el resto sigue pendiente. Una respuesta perdida no anota nada: el reenvío repite la misma clave
+         * (`l:<id local>`) y la web no duplica la carga.
+         */
+        private suspend fun cargas(paso: PasoDeEnvio.Cargas): Boolean {
+            val id = webId ?: return false
+            val ficha = fichaDelPaciente(paso) ?: return false
+            val sinConfirmar = mutableSetOf<String>()
+            for (viaja in paso.cargas) {
+                when (enviarCarga(paso, ficha, id, viaja)) {
+                    ResultadoDeCarga.CONFIRMADA -> Unit
+                    ResultadoDeCarga.SIN_CONFIRMAR -> sinConfirmar += PayloadsClinica.claveDeCarga(viaja.carga.id)
+                    ResultadoDeCarga.CORTE -> return false
+                }
+            }
+            db.transaction { anotarEstado(paso.parte, sinConfirmar) }
+            return sinConfirmar.isEmpty()
+        }
+
+        /** Manda una carga del paso y, si la web la confirma, anota su id y la limpia. */
+        private suspend fun enviarCarga(paso: PasoDeEnvio.Cargas, ficha: Long, consultaWebId: Long, viaja: CargaQueViaja): ResultadoDeCarga {
+            val carga = viaja.carga
+            return when (viaja) {
+                is CargaQueViaja.Guardar -> {
+                    if (carga.tipo !in PayloadsClinica.TIPOS_DE_CARGA) error("la carga ${carga.id} es del tipo ${carga.tipo}: no hay envío para ese tipo")
+                    val idWeb = carga.remotoId.toLongOrNull()
+                    val confirmada = lo.cargaEnviada(carga)
+                    val respuesta = when (carga.tipo) {
+                        TIPO_PESO -> intentar(paso) { api.peso(ficha, consultaWebId, dispositivo, viaja.fecha, carga, idWeb, confirmada) }
+                        else -> intentar(paso) { api.laboratorio(ficha, consultaWebId, dispositivo, viaja.fecha, carga, idWeb, confirmada) }
+                    } ?: return ResultadoDeCarga.CORTE
+                    // Sin el id de la web la fila no se puede anotar y el reenvío no la reconocería: se deja pendiente (como un estudio sin `ref`), y un
+                    // valor que la web no guardó tampoco se da por enviado.
+                    val remoto = respuesta.id.takeIf { it.isNotBlank() } ?: return ResultadoDeCarga.SIN_CONFIRMAR
+                    if (respuesta.desconocidas.isNotEmpty()) return ResultadoDeCarga.SIN_CONFIRMAR
+                    confirmarCarga(paso, viaja, remoto)
+                    ResultadoDeCarga.CONFIRMADA
+                }
+                is CargaQueViaja.Baja -> {
+                    val cargaWebId = carga.remotoId.toLongOrNull() ?: return ResultadoDeCarga.SIN_CONFIRMAR
+                    val respuesta = intentar(paso) {
+                        api.bajaDeCarga(ficha, cargaWebId, consultaWebId, PayloadsClinica.claveDeBajaDeCarga(carga.id), dispositivo, carga.tipo)
+                    } ?: return ResultadoDeCarga.CORTE
+                    if (!respuesta.baja) return ResultadoDeCarga.SIN_CONFIRMAR
+                    // La baja no anota `LoEnviado` (la web conserva los valores y su cierre reactiva la fila): solo se limpia la fila que viajó.
+                    db.transaction {
+                        paso.cubre.filter { it.clave == carga.id }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                    }
+                    ResultadoDeCarga.CONFIRMADA
+                }
+            }
+        }
+
+        /** Anota el `remoto_id`, lo confirmado y la limpieza de una carga en **una sola transacción** (RF-61). */
+        private suspend fun confirmarCarga(paso: PasoDeEnvio.Cargas, viaja: CargaQueViaja.Guardar, remoto: String) {
+            val carga = viaja.carga
+            val nuevo = lo.conLoConfirmado(PasoDeEnvio.Cargas(listOf(viaja), emptyList()), remotos = mapOf(carga.id to remoto))
+            db.transaction {
+                hq.guardarRemotoIdLaboratorio(remoto, carga.id)
+                loEnviados.guardar(consulta.pacienteId, consulta.id, nuevo)
+                paso.cubre.filter { it.clave == carga.id }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+            }
+            lo = nuevo
         }
 
         private suspend fun cerrar(paso: PasoDeEnvio.Cerrar): Boolean {
@@ -752,7 +827,7 @@ open class HcClinicaEnvio(
         val examenes: List<FilaSucia<ExamenFisico>>,
         val antecedentes: List<FilaSucia<Antecedente>>,
         val registros: List<FilaSucia<RegistroClinico>>,
-        val laboratorios: List<Laboratorio>,
+        val laboratorios: List<FilaSucia<Laboratorio>>,
         val pendientes: List<Pendiente>,
     )
 
@@ -763,7 +838,7 @@ open class HcClinicaEnvio(
         sucio.examenes.mapTo(this) { it.fila.consultaId }
         sucio.antecedentes.mapNotNullTo(this) { it.fila.consultaId }
         sucio.registros.mapNotNullTo(this) { it.fila.consultaId }
-        sucio.laboratorios.mapNotNullTo(this) { it.consultaId }
+        sucio.laboratorios.mapNotNullTo(this) { it.fila.consultaId }
         sucio.pendientes.mapNotNullTo(this) { it.consultaId }
     }
     private suspend fun cargarSucio() = Sucio(
@@ -772,7 +847,7 @@ open class HcClinicaEnvio(
         examenes = hq.examenesFisicosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         antecedentes = hq.antecedentesDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         registros = hq.registrosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
-        laboratorios = hq.laboratoriosDirty().lista { it.toModel() },
+        laboratorios = hq.laboratoriosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         pendientes = hq.pendientesDirty().lista { it.toModel() },
     )
 
@@ -789,6 +864,7 @@ open class HcClinicaEnvio(
         examen = sucio.examenes.firstOrNull { it.fila.consultaId == consulta.id },
         antecedentes = sucio.antecedentes.filter { it.fila.consultaId == consulta.id },
         registros = sucio.registros.filter { it.fila.consultaId == consulta.id },
+        cargas = sucio.laboratorios.filter { it.fila.consultaId == consulta.id },
         loEnviado = lo,
         estados = estados,
         habilitadas = habilitadas,
@@ -818,7 +894,7 @@ open class HcClinicaEnvio(
             pacienteId = consulta.pacienteId,
             plan = planDeEnvio(entradaDelPlan(consulta, sucio, loEnviados.deLaConsulta(consulta.pacienteId, consulta.id), estados)),
             estados = estados,
-            laboratorios = sucio.laboratorios.filter { it.consultaId == consulta.id },
+            laboratorios = sucio.laboratorios.filter { it.fila.consultaId == consulta.id }.map { it.fila },
             pendientes = sucio.pendientes.filter { it.consultaId == consulta.id },
             habilitadas = habilitadas,
         )
@@ -872,3 +948,6 @@ open class HcClinicaEnvio(
  * cualquier médico (con el nombre de quien la abrió, si la web lo pudo resolver). Solo informa: la consulta se creó igual.
  */
 data class ConsultaCreadaEnLaWeb(val consultaId: Id, val consultaWebId: Long, val otrasAbiertas: List<ConsultaAbiertaDto>)
+
+/** Cómo terminó una carga del paso de cargas de E3 (T85-a): la web la confirmó, no la guardó, o la llamada falló y el envío se corta. */
+private enum class ResultadoDeCarga { CONFIRMADA, SIN_CONFIRMAR, CORTE }

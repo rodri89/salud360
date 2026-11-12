@@ -670,3 +670,9 @@ private fun seccionDelRegistro(tipo: String): String = when (tipo) {
  * (T73, T84-a): el reducido no figura y por eso espera en reserva.
  */
 private val SECCION_DE_LA_CARGA = mapOf(TIPO_LABORATORIO_GENERAL to "laboratorio_general", TIPO_PESO to "tabla_peso")
+
+/**
+ * La sección del catálogo de un tipo de carga de E3 (`laboratorio_general`, `tabla_peso`), o `null` si ese tipo no se envía (el reducido, T73). La usan el
+ * plan y el contador (`core:data`, T85-a), para que los dos decidan con el mismo mapa: el `tipo` de la base (`peso`) no es el id de la sección (`tabla_peso`).
+ */
+internal fun seccionDeLaCarga(tipo: String): String? = SECCION_DE_LA_CARGA[tipo]

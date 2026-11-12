@@ -2,6 +2,8 @@ package com.salud360.core.data.sync
 
 import com.salud360.core.data.hcgeneral.PARTE_CIERRE
 import com.salud360.core.data.hcgeneral.PARTE_CREAR
+import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.seccionesDe
 import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
@@ -14,7 +16,8 @@ import kotlin.test.assertTrue
 /**
  * Spec 005, T25 (RF-15): un envío que se repite **no duplica nada** en la web. Si se pierde la respuesta de la creación (corte, sin
  * señal), el dispositivo no sabe que la consulta ya existe: el reenvío repite **la misma clave** (`c:<id local>`) y el servidor
- * contesta la misma consulta, sin una fila nueva. Lo mismo vale para el cierre y la baja (sus claves propias) y al reabrir la app.
+ * contesta la misma consulta, sin una fila nueva. Lo mismo vale para el cierre y la baja (sus claves propias), para las cargas de E3 (la clave `l:<id local>`
+ * devuelve la misma carga) y al reabrir la app.
  * Contra un servidor falso con memoria que, como el real, devuelve lo mismo para la misma clave.
  */
 class HcClinicaEnvioRepetibleTest {
@@ -110,6 +113,32 @@ class HcClinicaEnvioRepetibleTest {
         assertFalse(db.consultaSucia("u1"))
         assertEquals(emptyMap(), db.estadosDe("u1"))
     }
+
+    @Test
+    fun si_se_pierde_la_respuesta_de_una_carga_el_reenvio_repite_la_misma_clave_y_queda_una_sola() =
+        conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E3)) {
+            db.sembrarPropia("u1", remotoId = "7001", dirty = false)
+            servidor.consultas[7001] = ServidorFalso.ConsultaWeb(7001, "c:u1", 5001, "control")
+            db.sembrarCarga("l1", "u1", valores = mapOf("hb" to "13"))
+            servidor.respuestasPerdidas += "laboratorio"
+
+            envio.empujarYa("u1").join()
+
+            // El servidor la escribió, pero el dispositivo no se enteró: la fila sigue sucia, sin id y sin anotar.
+            assertEquals(1, servidor.cargas.size, "el servidor ya la tiene")
+            assertTrue(db.cargaSucia("l1"))
+            assertEquals("", db.cargaLocal("l1")!!.remotoId)
+            assertEquals(emptyMap(), db.loEnviadoDe("u1").cargas)
+
+            servidor.respuestasPerdidas.clear()
+            envio.empujarYa("u1").join()
+
+            assertEquals(listOf("laboratorio 7001 l:l1", "laboratorio 7001 l:l1"), servidor.pedidos, "se repite la misma clave")
+            assertEquals(1, servidor.cargas.size, "y sigue habiendo una sola carga")
+            assertEquals(servidor.cargas.values.single().id.toString(), db.cargaLocal("l1")!!.remotoId, "el id de siempre")
+            assertFalse(db.cargaSucia("l1"))
+            assertEquals(emptyMap(), db.estadosDe("u1"))
+        }
 
     @Test
     fun las_claves_de_crear_cerrar_y_dar_de_baja_son_distintas_entre_si() = conServidor {

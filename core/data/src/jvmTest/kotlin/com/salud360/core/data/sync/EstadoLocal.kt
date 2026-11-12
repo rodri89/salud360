@@ -2,6 +2,7 @@ package com.salud360.core.data.sync
 
 import com.salud360.core.data.hcgeneral.EstadoGuardado
 import com.salud360.core.data.hcgeneral.LoEnviado
+import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
@@ -14,6 +15,7 @@ import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
@@ -107,3 +109,31 @@ internal suspend fun Salud360Db.registroActualizadoEn(id: Id): Long? = historiaC
 internal suspend fun Salud360Db.registrosSucios(consultaId: Id): Set<String> =
     historiaClinicaQueries.registrosDirty().lista { it }.filter { it.consulta_id == consultaId }.map { it.id }.toSet()
 
+/** Una carga sin enviar de [consultaId] (T84-a/T85-a: laboratorio general o peso), con su fecha y sus valores. */
+internal suspend fun Salud360Db.sembrarCarga(
+    id: Id,
+    consultaId: Id? = "u1",
+    tipo: String = TIPO_LABORATORIO_GENERAL,
+    fecha: LocalDate = FECHA_DE_PRUEBA,
+    valores: Map<String, String> = mapOf("hb" to "13"),
+    remotoId: String = "",
+    activo: Boolean = true,
+    actualizadaEn: Long = 150,
+) = historiaClinicaQueries.upsertLaboratorio(Laboratorio(id, PACIENTE, consultaId, "clinica", tipo, fecha, valores, activo, remotoId).toRow(actualizadaEn))
+
+/** La misma carga con otros valores y otro `updated_at`: como el autoguardado cuando el médico la edita. */
+internal suspend fun Salud360Db.escribirCarga(id: Id, valores: Map<String, String>, actualizadaEn: Long = 200) {
+    val fila = historiaClinicaQueries.laboratorioPorId(id).uno { it.toModel() } ?: return
+    historiaClinicaQueries.upsertLaboratorio(fila.copy(valores = valores).toRow(actualizadaEn))
+}
+
+/** La fila del dispositivo de una carga, con su `remoto_id`, su `activo` y sus valores. */
+internal suspend fun Salud360Db.cargaLocal(id: Id): Laboratorio? = historiaClinicaQueries.laboratorioPorId(id).uno { it.toModel() }
+
+internal suspend fun Salud360Db.cargaSucia(id: Id): Boolean = historiaClinicaQueries.laboratoriosDirty().lista { it.id }.contains(id)
+
+internal suspend fun Salud360Db.cargaActualizadaEn(id: Id): Long? = historiaClinicaQueries.laboratorioPorId(id).uno { it.updated_at }
+
+/** Los ids de las cargas sin enviar de [consultaId]. */
+internal suspend fun Salud360Db.cargasSucias(consultaId: Id): Set<String> =
+    historiaClinicaQueries.laboratoriosDirty().lista { it }.filter { it.consulta_id == consultaId }.map { it.id }.toSet()

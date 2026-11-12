@@ -2,6 +2,8 @@ package com.salud360.core.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
 import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
+import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
+import com.salud360.core.data.hcgeneral.TIPO_PESO
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
@@ -126,6 +128,23 @@ internal class ServidorFalso : ClinicaEscrituraApi {
     /** `"<consulta>|<ref>"` -> id de la fila: la misma `ref` no crea otra fila (RF-15). */
     private val idsDeRegistros = linkedMapOf<String, Long>()
     private var proximoRegistroId = 1800L
+
+    /** Una carga de la «web» (T85-a), por id: la fecha y los valores que tiene, y si está de baja (la baja es lógica). */
+    class CargaWeb(val id: Long, val pacienteWebId: Long, val consultaWebId: Long, val tipo: String, val clave: String) {
+        var fecha: String? = null
+        val valores = linkedMapOf<String, String>()
+        var activo = true
+    }
+
+    /** Lo que hay en la «web» de las cargas de laboratorio general y de peso, por id (lo que comparan los tests de T85-a). */
+    val cargas = linkedMapOf<Long, CargaWeb>()
+
+    /** Cada cuerpo de `laboratorio`/`peso` que llegó (ya armado con `PayloadsClinica`), en orden. */
+    val cuerposDeCargas = CopyOnWriteArrayList<JsonObject>()
+
+    /** `"<consulta>|<clave>"` -> id de la carga: la misma clave (`l:<id local>`) devuelve la misma fila y no duplica (RF-15). */
+    private val idsDeCargas = linkedMapOf<String, Long>()
+    private var proximaCargaId = 1900L
 
     /** Hace fallar la operación (con ese error) antes de que el servidor la aplique; `null` = anda. */
     @Volatile
@@ -338,7 +357,13 @@ internal class ServidorFalso : ClinicaEscrituraApi {
             RespuestaBajaDto(baja = true, consultaId = consultaWebId)
         }
 
-    // Esqueleto de T81: las cargas de laboratorio general y peso (E3) se aplican en T84, cuando la cola las envíe.
+    // ---------- E3 (T85-a): cargas de laboratorio general y peso ----------
+
+    /**
+     * `PUT pacientes/{id}/laboratorios` (T81, T85-a). Como la remota real, arma el cuerpo con `PayloadsClinica.carga` (lo que cambió contra
+     * [confirmada]) y **sin nada que mandar no hace ningún pedido**. La fila se busca por la `clave` (`l:<id local>`): la misma carga no se duplica en un
+     * reintento, y el `id` del cuerpo actualiza esa fila de la web. Los valores que figuran en [noConoce] van en `desconocidas` sin escribirse.
+     */
     override suspend fun laboratorio(
         pacienteWebId: Long,
         consultaWebId: Long,
@@ -347,8 +372,9 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         carga: Laboratorio,
         idWeb: Long?,
         confirmada: Laboratorio?,
-    ): RespuestaCargaDto = error("las cargas se aplican en T84: nada las envía todavía")
+    ): RespuestaCargaDto = guardarCarga(TIPO_LABORATORIO_GENERAL, "laboratorio", pacienteWebId, consultaWebId, dispositivo, fecha, carga, idWeb, confirmada)
 
+    /** `PUT pacientes/{id}/pesos` (T81, T85-a): igual que [laboratorio], con `valores: {peso}` y sin `tipo` en el cuerpo. */
     override suspend fun peso(
         pacienteWebId: Long,
         consultaWebId: Long,
@@ -357,8 +383,62 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         carga: Laboratorio,
         idWeb: Long?,
         confirmada: Laboratorio?,
-    ): RespuestaCargaDto = error("las cargas se aplican en T84: nada las envía todavía")
+    ): RespuestaCargaDto = guardarCarga(TIPO_PESO, "peso", pacienteWebId, consultaWebId, dispositivo, fecha, carga, idWeb, confirmada)
 
+    private suspend fun guardarCarga(
+        tipo: String,
+        operacion: String,
+        pacienteWebId: Long,
+        consultaWebId: Long,
+        dispositivo: String,
+        fecha: LocalDate,
+        carga: Laboratorio,
+        idWeb: Long?,
+        confirmada: Laboratorio?,
+    ): RespuestaCargaDto {
+        val cuerpo = PayloadsClinica.carga(
+            PayloadsClinica.claveDeCarga(carga.id), dispositivo, consultaWebId, fecha, carga, idWeb, confirmada, tipo,
+        ) ?: return RespuestaCargaDto(id = "", guardadas = emptyList())
+        cuerposDeCargas += cuerpo
+        val clave = cuerpo.getValue("clave").jsonPrimitive.content
+        val valores = (cuerpo["valores"] as? JsonObject)?.mapValues { (_, valor) -> (valor as JsonPrimitive).content }.orEmpty()
+        return operar(operacion, "$consultaWebId $clave") {
+            val c = consulta(consultaWebId)
+            if (c.pacienteWebId != pacienteWebId) throw TobbException(422, "datos_invalidos", "La consulta no es de ese paciente.")
+            if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+            val fila = filaDeCarga(consultaWebId, clave, tipo, pacienteWebId, (cuerpo["id"] as? JsonPrimitive)?.content?.toLongOrNull())
+            fila.fecha = cuerpo.getValue("fecha").jsonPrimitive.content
+            fila.valores += valores.filterKeys { it !in noConoce }
+            RespuestaCargaDto(
+                id = fila.id.toString(),
+                guardadas = valores.keys.filter { it !in noConoce },
+                desconocidas = valores.keys.filter { it in noConoce },
+            )
+        }
+    }
+
+    /**
+     * La fila de la «web» de la carga, o una nueva: manda el `id` del cuerpo (la app ya la conoce), después la `clave` ya registrada. Una clave reusada para
+     * **otro tipo** es `422 clave_en_uso`, como en el servidor real; una carga nueva con una clave nueva nace con su propio id (dos cargas conviven).
+     */
+    private fun filaDeCarga(consultaWebId: Long, clave: String, tipo: String, pacienteWebId: Long, idDeclarado: Long?): CargaWeb {
+        val registro = "$consultaWebId|$clave"
+        val deLaClave = idsDeCargas[registro]?.let { cargas[it] }
+        if (deLaClave != null && deLaClave.tipo != tipo) throw TobbException(422, "clave_en_uso", "La clave ya se usó para otra carga.")
+        if (idDeclarado != null) {
+            val fila = cargas.getOrPut(idDeclarado) { CargaWeb(idDeclarado, pacienteWebId, consultaWebId, tipo, clave) }
+            idsDeCargas[registro] = fila.id
+            return fila
+        }
+        val fila = deLaClave ?: CargaWeb(proximaCargaId++, pacienteWebId, consultaWebId, tipo, clave).also { cargas[it.id] = it }
+        idsDeCargas[registro] = fila.id
+        return fila
+    }
+
+    /**
+     * `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}` (T77, T85-a): baja lógica de una carga de esa consulta. La consulta tiene que
+     * ser de esa ficha (`422`) y estar abierta (`409`), que gana al registro; una carga que no existe para ese paciente es `404`; repetir la baja es `ok`.
+     */
     override suspend fun bajaDeCarga(
         pacienteWebId: Long,
         cargaWebId: Long,
@@ -366,7 +446,17 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         clave: String,
         dispositivo: String,
         tipo: String,
-    ): RespuestaBajaDeCargaDto = error("las bajas de carga se aplican en T84: nada las envía todavía")
+    ): RespuestaBajaDeCargaDto = operar("bajaDeCarga", "$consultaWebId $clave") {
+        val c = consulta(consultaWebId)
+        if (c.pacienteWebId != pacienteWebId) throw TobbException(422, "datos_invalidos", "La consulta no es de ese paciente.")
+        if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+        val fila = cargas[cargaWebId]
+        if (fila == null || fila.consultaWebId != consultaWebId || fila.tipo != tipo) {
+            throw TobbException(404, "carga_no_encontrada", "No existe la carga para ese paciente.")
+        }
+        fila.activo = false
+        RespuestaBajaDeCargaDto(baja = true, id = fila.id.toString())
+    }
 }
 
 /**

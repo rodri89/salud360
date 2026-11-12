@@ -81,7 +81,9 @@ fun estadoPendienteDeLaConsulta(e: EntradaDelContador): EstadoEnvio? {
     val plan = e.plan
     if (plan.motivoVacio != null) return null // histórico o de la web: nada sale, nada se cuenta (RF-7, RF-67)
 
-    val laboratorios = e.laboratorios.filter { it.consultaId == plan.consultaId && seccionSeOfrece(it.tipo, e.habilitadas) }
+    val laboratorios = e.laboratorios.filter {
+        it.consultaId == plan.consultaId && seccionDeLaCarga(it.tipo)?.let { seccion -> seccionSeOfrece(seccion, e.habilitadas) } == true
+    }
     val pendientes =
         if (seccionSeOfrece(SeccionesComunes.PENDIENTES, e.habilitadas)) e.pendientes.filter { it.consultaId == plan.consultaId } else emptyList()
     val partes = buildSet {
