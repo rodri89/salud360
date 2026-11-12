@@ -5,13 +5,20 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
-- **Spec 005, servidor de E3 al 2026-11-12: T73, T74, T76 y T77 hechas** (hclinica rama `salud360-api`, sin push; **solo laboratorio
-  general y peso**, el reducido y los pendientes quedaron fuera por decisión del usuario). T77 (`371da69`): baja lógica de una carga
+- **Spec 005, servidor de E3 al 2026-11-12: T73, T74, T76, T77 y T79 hechas → el servidor de E3 está completo** (hclinica rama `salud360-api`,
+  sin push; **solo laboratorio general y peso**, el reducido y los pendientes quedaron fuera por decisión del usuario). T77 (`371da69`): baja lógica de una carga
   (`DELETE pacientes/{id}/laboratorios|pesos/{cargaId}`, cuerpo `{clave l:<id>-baja, dispositivo, consulta_id}` → `{ok, baja, id}`),
   `activo = 0` y nunca `DELETE` físico, mismo permiso que la actualización, repetir = ok (misma clave: lo registrado; otra clave: ok sin
   escribir), sin cascada y sin tocar `medico_infos`; el cierre de la API no la reactiva (D20) y la autorización de la consulta gana al
-  registro (repetir tras cerrar = `409`). `tests/Unit` 1281 en verde; base descartable 68 controles por modo, HTTP 57, 5 mutaciones. Sigue
-  T75 y T78 (fuera del alcance de E3 reducido) y T79 (punta a punta y docs del servidor de E3).
+  registro (repetir tras cerrar = `409`). `tests/Unit` 1281 en verde; base descartable 68 controles por modo, HTTP 57, 5 mutaciones.
+  **T79 hecha (`9d5716c`, solo pruebas y documentación, sin código):** un solo recorrido por HTTP contra la copia local (crear consulta → alta de
+  laboratorio general → lectura inmediata → actualización → peso → lectura → repetir altas → baja → repetir baja → `422`/`403`/`409`/`401` → cierre
+  posterior) con **66 controles OK** y `medico_infos` con el **mismo CHECKSUM (213039496)** de punta a punta; base descartable `hc_clinica_t10`
+  con T76 (85) + T77 (68) **por modo**: 306 controles; `hc_clinica` igual a la foto de antes después de limpiar por id y por clave (solo se vació
+  `salud360_token_cache`); Apache solo con `GET/POST/PUT/DELETE/OPTIONS`. La sección «Escritura (E3)» del `.md` queda completa (incluye por qué no
+  se replica `es_nueva_consulta`: `medico_infos` es la pantalla del médico en la web) y deja escrito que el reducido y los pendientes (T75 y T78)
+  quedaron fuera de alcance. **Servidor de E3 hecho; sigue T80 (migración local `10.sqm`: `remoto_id` en `laboratorio` y `pendiente`), que NO se
+  empieza sin la aprobación del usuario** (D8; reservar el número mirando todas las ramas justo antes).
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
