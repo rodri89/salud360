@@ -14,6 +14,7 @@ import com.salud360.core.data.hcgeneral.cambioRealDeAntecedente
 import com.salud360.core.data.hcgeneral.esIdDeLaWeb
 import com.salud360.core.data.hcgeneral.esVacio
 import com.salud360.core.data.hcgeneral.esVacioDeMedida
+import com.salud360.core.data.hcgeneral.valoresAEnviar
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
 import com.salud360.core.model.hc.Laboratorio
@@ -443,9 +444,10 @@ object PayloadsClinica {
 
     /**
      * Las fechas con las que la web dice «sin fecha» y con las que una carga nunca sale (el servidor contesta `422 fecha_invalida`).
-     * `0000-00-00` no es una fecha y no puede llegar acá; la app resuelve la fecha de la consulta antes de enviar (T82).
+     * `0000-00-00` no es una fecha y no puede llegar acá; la app resuelve la fecha de la consulta antes de enviar (T82). Es la misma
+     * regla que usa el plan de envío: la constante vive en `hcgeneral/FECHAS_SIN_DATO` (T82-a) y acá queda el alias de T81.
      */
-    val FECHAS_SIN_DATO = setOf(LocalDate(2000, 1, 1), LocalDate(1000, 1, 1))
+    val FECHAS_SIN_DATO = com.salud360.core.data.hcgeneral.FECHAS_SIN_DATO
 
     /**
      * La clave de repetibilidad de una carga (RF-15): `l:<id local>`, hasta 191 caracteres, solo letras, números, `.`, `_` y `-` después
@@ -486,7 +488,7 @@ object PayloadsClinica {
     ): JsonObject? {
         if (tipo !in TIPOS_DE_CARGA || carga.tipo != tipo || esIdDeLaWeb(carga.id)) return null
         require(fecha !in FECHAS_SIN_DATO) { "La carga no se manda con una fecha de «sin fecha» ($fecha): la app resuelve la de la consulta" }
-        val valores = valoresDeLaCarga(carga.valores, confirmada?.valores.orEmpty())
+        val valores = valoresAEnviar(carga.valores, confirmada?.valores)
         if (valores.isEmpty() && (idWeb == null || confirmada?.fecha == fecha)) return null
         return buildJsonObject {
             put("clave", clave)
@@ -497,21 +499,6 @@ object PayloadsClinica {
             put("fecha", fecha.toString())
             if (valores.isNotEmpty()) put("valores", buildJsonObject { valores.forEach { (claveValor, valor) -> put(claveValor, valor) } })
         }
-    }
-
-    /** Los valores que viajan: los primeros del orden de la carga y después los que solo tenía lo confirmado (vaciados a `""`). */
-    private fun valoresDeLaCarga(valores: Map<String, String>, confirmados: Map<String, String>): Map<String, String> {
-        val salida = linkedMapOf<String, String>()
-        for (clave in valores.keys + (confirmados.keys - valores.keys)) {
-            val anterior = confirmados[clave]
-            val nuevo = valores[clave].orEmpty()
-            when (cambioReal(anterior, nuevo)) {
-                CambioReal.NINGUNO -> Unit
-                CambioReal.ESCRIBIR -> salida[clave] = nuevo
-                CambioReal.VACIAR -> salida[clave] = ""
-            }
-        }
-        return salida
     }
 
     /** `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}`: la clave de la baja, el dispositivo y la consulta. */
