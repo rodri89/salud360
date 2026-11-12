@@ -62,7 +62,13 @@ class PlanDeEnvioTest {
         habilitadas: Set<String> = seccionesDe(SubentregaDeEscritura.E1),
         reintentoManual: Boolean = false,
         armadoEn: Long = this.armadoEn,
-    ) = planDeEnvio(EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, registros, loEnviado, estados, habilitadas, reintentoManual, armadoEn))
+    ) = planDeEnvio(
+        EntradaDelPlan(
+            consulta = consulta, consultaSucia = sucia, valores = valores, examen = examen, antecedentes = antecedentes,
+            registros = registros, loEnviado = loEnviado, estados = estados, habilitadas = habilitadas,
+            reintentoManual = reintentoManual, armadoEn = armadoEn,
+        ),
+    )
 
     private val PlanDeEnvio.partes get() = pasos.map { it.parte }
     private inline fun <reified T : PasoDeEnvio> PlanDeEnvio.paso(): T = pasos.filterIsInstance<T>().single()

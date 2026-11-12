@@ -9,8 +9,8 @@ import kotlinx.serialization.json.put
 
 // Cómo se guarda `LoEnviado` (lo último que la web confirmó de una consulta propia, spec 005, T21 decisión a y T25) para que sobreviva a
 // cerrar la app **sin migración**: en `paciente_extra` del paciente, especialidad `clinica`, una fila `hce_enviado_<consulta>` con un
-// JSON `{"v": {"<sección>/<campo>": texto}, "e": {"<campo del examen>": valor}, "f": {"<sección>/<campo>": valor del formulario}, "a": {"<clave>": "<0|1>|<detalle>"}, "r": {"<id de la web>": {"fecha": fecha, "detalle": detalle}}}`
-// (`f` y `a`, de T62-a; `r`, de T62-b; cada uno solo si hay algo: un texto guardado antes se sigue leyendo y uno sin ellos se escribe igual que antes), siempre `dirty = 0` (es un dato local: nunca se
+// JSON `{"v": {"<sección>/<campo>": texto}, "e": {"<campo del examen>": valor}, "f": {"<sección>/<campo>": valor del formulario}, "a": {"<clave>": "<0|1>|<detalle>"}, "r": {"<id de la web>": {"fecha": fecha, "detalle": detalle}}, "c": {"<id de la web>": {"<id del analito>": valor}}}`
+// (`f` y `a`, de T62-a; `r`, de T62-b; `c`, de T84-a; cada uno solo si hay algo: un texto guardado antes se sigue leyendo y uno sin ellos se escribe igual que antes), siempre `dirty = 0` (es un dato local: nunca se
 // manda a turnos ni cuenta como pendiente). Sin él, el plan no distinguiría un texto vaciado a propósito de un vacío que el médico no
 // tocó (RF-69, D27). Puro: de `LoEnviado` a texto y de texto a `LoEnviado`; quien lo lee y lo escribe es `LoEnviadoGuardado`.
 
@@ -22,7 +22,12 @@ fun claveDeLoEnviado(consultaId: Id): String = "$PREFIJO_LO_ENVIADO$consultaId"
 
 /** Lo que se guarda de [lo], o `null` si no hay nada confirmado (no se guarda una fila vacía). El orden de las claves es fijo. */
 fun loEnviadoComoTexto(lo: LoEnviado): String? {
-    if (lo.valores.isEmpty() && lo.examen.isEmpty() && lo.formularios.isEmpty() && lo.antecedentes.isEmpty() && lo.registros.isEmpty()) return null
+    if (
+        lo.valores.isEmpty() && lo.examen.isEmpty() && lo.formularios.isEmpty() && lo.antecedentes.isEmpty() && lo.registros.isEmpty() &&
+        lo.cargas.isEmpty()
+    ) {
+        return null
+    }
     return buildJsonObject {
         put("v", textos(lo.valores))
         put("e", textos(lo.examen))
@@ -30,7 +35,9 @@ fun loEnviadoComoTexto(lo: LoEnviado): String? {
         if (lo.formularios.isNotEmpty()) put("f", textos(lo.formularios))
         if (lo.antecedentes.isNotEmpty()) put("a", textos(lo.antecedentes))
         // T62-b: los estudios, por id de la web y con sus campos; también solo si hay algo.
-        if (lo.registros.isNotEmpty()) put("r", registros(lo.registros))
+        if (lo.registros.isNotEmpty()) put("r", camposPorClave(lo.registros))
+        // T84-a: las cargas, por id de la web y con los valores que la web tiene de cada una; igual.
+        if (lo.cargas.isNotEmpty()) put("c", camposPorClave(lo.cargas))
     }.toString()
 }
 
@@ -46,7 +53,8 @@ fun loEnviadoDeTexto(texto: String?): LoEnviado {
         examen = raiz.textos("e"),
         formularios = raiz.textos("f"),
         antecedentes = raiz.textos("a"),
-        registros = raiz.registros("r"),
+        registros = raiz.camposPorClave("r"),
+        cargas = raiz.camposPorClave("c"),
     )
 }
 
@@ -54,8 +62,8 @@ private fun textos(mapa: Map<String, String>): JsonObject = buildJsonObject {
     mapa.toList().sortedBy { it.first }.forEach { (clave, valor) -> put(clave, valor) }
 }
 
-/** Los estudios confirmados: `{<id de la web>: {<campo>: valor}}`, con el orden de las claves fijo. */
-private fun registros(mapa: Map<String, Map<String, String>>): JsonObject = buildJsonObject {
+/** Los mapas de dos niveles (los estudios confirmados y las cargas): `{<id de la web>: {<campo>: valor}}`, con el orden de las claves fijo. */
+private fun camposPorClave(mapa: Map<String, Map<String, String>>): JsonObject = buildJsonObject {
     mapa.toList().sortedBy { it.first }.forEach { (remoto, campos) -> put(remoto, textos(campos)) }
 }
 
@@ -64,11 +72,11 @@ private fun JsonObject.textos(clave: String): Map<String, String> {
     return objeto.entries.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.let { k to it.content } }.toMap()
 }
 
-/** Los estudios guardados: `{<id de la web>: {<campo>: valor}}`; lo que no es un objeto se ignora sin romper el resto (como [textos]). */
-private fun JsonObject.registros(clave: String): Map<String, Map<String, String>> {
+/** Los mapas de dos niveles guardados: `{<id de la web>: {<campo>: valor}}`; lo que no es un objeto se ignora sin romper el resto (como [textos]). */
+private fun JsonObject.camposPorClave(clave: String): Map<String, Map<String, String>> {
     val objeto = this[clave] as? JsonObject ?: return emptyMap()
-    return objeto.mapNotNull { (remoto, v) -> (v as? JsonObject)?.let { remoto to it.camposDeEstudio() } }.toMap()
+    return objeto.mapNotNull { (remoto, v) -> (v as? JsonObject)?.let { remoto to it.camposDelMapa() } }.toMap()
 }
 
-private fun JsonObject.camposDeEstudio(): Map<String, String> =
+private fun JsonObject.camposDelMapa(): Map<String, String> =
     entries.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.let { k to it.content } }.toMap()

@@ -732,6 +732,10 @@ open class HcClinicaEnvio(
                 val fila = hq.registrosDirty().lista { it }.firstOrNull { it.id == clave }
                 if (fila != null && fila.updated_at == actualizadaEn) hq.limpiarRegistro(clave)
             }
+            TablaDeLaFila.LABORATORIO -> {
+                val fila = hq.laboratoriosDirty().lista { it }.firstOrNull { it.id == clave }
+                if (fila != null && fila.updated_at == actualizadaEn) hq.limpiarLaboratorio(clave)
+            }
         }
     }
 

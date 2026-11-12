@@ -8,16 +8,17 @@ import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
 import com.salud360.core.model.hc.ExamenFisico
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
 
-// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-55, RF-56, RF-60, RF-68, RF-69, RF-70). **Puro**: las
+// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-41, RF-42, RF-55, RF-56, RF-60, RF-68, RF-69, RF-70). **Puro**: las
 // filas, lo último que la web confirmó, los estados y el momento del armado entran como parámetros; no hay red, base ni reloj, y el
 // mismo ingreso da siempre el mismo plan. **Solo ordena**: no ejecuta ningún pedido ni escribe nada (un envío por consulta a la vez,
 // RF-54, es de quien envía, `HcClinicaEnvio`). Responde tres preguntas:
-// - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido (textos, examen, formularios y antecedentes de T62-a, y los cinco
-//   estudios de T62-b) → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
+// - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido (textos, examen, formularios y antecedentes de T62-a, los cinco
+//   estudios de T62-b y las cargas de laboratorio general y peso de T84-a) → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
 //   es un cambio real (T18): un vacío que el médico no tocó no se envía nunca; vaciar algo que la web tiene sí (RF-69).
 // - **Qué no viaja y se limpia** ([PlanDeEnvio.sinViaje]): lo que nunca va a viajar (lo que la web no guarda, antecedentes desactivados, lo
 //   que ya está igual en la web). Quien envía lo deja con `dirty = 0` **sin** figurar como enviado ni como pendiente (RF-60).
@@ -32,10 +33,13 @@ const val PARTE_EXAMEN = "examen"
 const val PARTE_FORMULARIOS = "formularios"
 const val PARTE_ANTECEDENTES = "antecedentes"
 const val PARTE_REGISTROS = "registros"
+const val PARTE_CARGAS = "cargas"
 const val PARTE_CIERRE = "cierre"
 const val PARTE_BAJA = "baja"
 
-private val PARTES_DE_CONTENIDO = listOf(PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS)
+private val PARTES_DE_CONTENIDO = listOf(
+    PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS, PARTE_CARGAS,
+)
 private val ORDEN_DE_PARTES = listOf(PARTE_CREAR) + PARTES_DE_CONTENIDO + listOf(PARTE_CIERRE, PARTE_BAJA)
 
 /** Una fila con su marca de «tocado» y el momento (`updated_at`) en que se modificó por última vez. */
@@ -58,6 +62,8 @@ data class LoEnviado(
     val antecedentes: Map<String, String> = emptyMap(),
     /** Id de la fila en la web -> campo confirmado (`fecha`, `detalle`) de cada estudio (T62-b). */
     val registros: Map<String, Map<String, String>> = emptyMap(),
+    /** Id de la carga en la web -> valores que la web tiene de esa carga (T84-a). */
+    val cargas: Map<String, Map<String, String>> = emptyMap(),
 ) {
     /** Lo que queda confirmado después de que la web aceptó [paso]. Un valor en blanco queda como `""` (vaciado). */
     fun conLoConfirmado(paso: PasoDeEnvio, remotos: Map<Id, String> = emptyMap()): LoEnviado = when (paso) {
@@ -70,6 +76,7 @@ data class LoEnviado(
         )
         is PasoDeEnvio.Antecedentes -> copy(antecedentes = antecedentes + paso.items.associate { it.clave to casillaConfirmada(it) })
         is PasoDeEnvio.Registros -> copy(registros = registros + registrosConfirmados(paso.items, remotos))
+        is PasoDeEnvio.Cargas -> copy(cargas = cargas + cargasConfirmadas(paso.cargas, remotos, cargas))
         else -> this
     }
 
@@ -115,6 +122,14 @@ fun LoEnviado.registroEnviado(r: RegistroClinico): RegistroClinico? {
 }
 
 /**
+ * Lo que la web tiene de la carga [c] según lo último confirmado ([LoEnviado.cargas]), o `null` si esa carga nunca se confirmó (un alta). Es lo que
+ * el cuerpo de la API (`PayloadsClinica.carga`) necesita como «lo ya enviado», para que el plan y el cuerpo decidan el cambio real con la misma
+ * información (como [antecedenteEnviado] y [registroEnviado]).
+ */
+fun LoEnviado.cargaEnviada(c: Laboratorio): Laboratorio? =
+    cargas[c.remotoId].takeIf { c.remotoId.isNotBlank() }?.let { c.copy(valores = it) }
+
+/**
  * Lo que queda anotado de cada estudio que la web aceptó: el id de la fila en la web (el de la respuesta, [remotos], o el que ya tenía la fila) y los campos
  * que se mandaron (`fecha`, `detalle`; `""` es un detalle vaciado). Un estudio que todavía no tiene id no se puede anotar: se anota en el envío siguiente,
  * cuando la web lo devuelve (T63-b).
@@ -126,6 +141,23 @@ private fun registrosConfirmados(items: List<RegistroClinico>, remotos: Map<Id, 
 
 internal const val CAMPO_FECHA_DEL_REGISTRO = "fecha"
 internal const val CAMPO_DETALLE_DEL_REGISTRO = "detalle"
+
+/**
+ * Lo que queda anotado de cada carga que la web aceptó: el id de la fila de la web (el de la respuesta, [remotos], o el que ya tenía la carga) y los
+ * valores que la web tiene de ella. No son solo los que viajaron en este pedido: se suman a los que ya estaban confirmados, porque la actualización
+ * manda lo tocado y la web conserva el resto. Una baja no anota nada: la web deja la fila con sus valores (su cierre la reactiva). Una carga que todavía
+ * no tiene id no se puede anotar: se anota en el envío siguiente, cuando la web lo devuelve (T85).
+ */
+private fun cargasConfirmadas(
+    items: List<CargaQueViaja>,
+    remotos: Map<Id, String>,
+    confirmadas: Map<String, Map<String, String>>,
+): Map<String, Map<String, String>> = items.filterIsInstance<CargaQueViaja.Guardar>().mapNotNull { viaja ->
+    val carga = viaja.carga
+    val remoto = remotos[carga.id] ?: carga.remotoId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+    val anterior = confirmadas[remoto].orEmpty()
+    remoto to (anterior + valoresAEnviar(carga.valores, anterior))
+}.toMap()
 
 private fun flagDeLaCasilla(confirmada: String): Boolean = confirmada.substringBefore("|") == "1"
 
@@ -142,6 +174,8 @@ data class EntradaDelPlan(
     val antecedentes: List<FilaSucia<Antecedente>> = emptyList(),
     /** Las filas de registro del paciente; solo cuentan las asociadas a esta consulta (RF-68). */
     val registros: List<FilaSucia<RegistroClinico>> = emptyList(),
+    /** Las cargas de laboratorio y de peso del paciente; solo cuentan las asociadas a esta consulta (RF-68). */
+    val cargas: List<FilaSucia<Laboratorio>> = emptyList(),
     val loEnviado: LoEnviado = LoEnviado(),
     /** El estado guardado de cada parte (T20); lo que no figura es «Falta enviar». */
     val estados: Map<String, EstadoEnvio> = emptyMap(),
@@ -153,13 +187,27 @@ data class EntradaDelPlan(
     val armadoEn: Long,
 )
 
-enum class TablaDeLaFila { CONSULTA, SECCION_VALOR, EXAMEN_FISICO, ANTECEDENTE, REGISTRO }
+enum class TablaDeLaFila { CONSULTA, SECCION_VALOR, EXAMEN_FISICO, ANTECEDENTE, REGISTRO, LABORATORIO }
 
 /**
  * Una fila que viaja en un paso, con su `updated_at` al armar el plan: al confirmarse el paso, solo se limpia la que sigue igual (RF-55).
  * [clave] es `<sección>/<campo>` en los valores, el id de la consulta en el examen y la consulta, y el id de la fila en lo demás.
  */
 data class FilaCubierta(val tabla: TablaDeLaFila, val clave: String, val actualizadaEn: Long)
+
+/**
+ * Una carga de laboratorio general o de peso que viaja en [PasoDeEnvio.Cargas] (E3, T84-a). Cada una es un pedido propio (P23): un alta o la
+ * actualización de una carga de la web, con la fecha que resolvió el plan ([fechaAEnviar]), o la baja de la carga que la web ya tiene.
+ */
+sealed interface CargaQueViaja {
+    val carga: Laboratorio
+
+    /** Alta (sin `remotoId`) o actualización de esa carga de la web ([fecha] ya resuelta: nunca un marcador de «sin fecha»). */
+    data class Guardar(override val carga: Laboratorio, val fecha: LocalDate) : CargaQueViaja
+
+    /** La baja de una carga que la web tiene (`DELETE`): sin fecha ni valores. */
+    data class Baja(override val carga: Laboratorio) : CargaQueViaja
+}
 
 sealed interface PasoDeEnvio {
     val parte: String
@@ -197,6 +245,11 @@ sealed interface PasoDeEnvio {
      */
     data class Registros(val items: List<RegistroClinico>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
         override val parte get() = PARTE_REGISTROS
+    }
+
+    /** Las cargas de laboratorio general y peso de esta consulta (E3, T84-a): cada una es un pedido, con su fecha o como baja de la que la web tiene. */
+    data class Cargas(val cargas: List<CargaQueViaja>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_CARGAS
     }
 
     /** `POST consultas/{id}/cerrar`: con la clave de este cierre y la fecha y la edad de la consulta. Siempre el último. */
@@ -321,6 +374,7 @@ private class Armado(private val e: EntradaDelPlan) {
         e.examen?.takeIf { it.dirty }?.let { sinViaje += FilaSinViaje(TablaDeLaFila.EXAMEN_FISICO, c.id, motivo, it.actualizadaEn) }
         antecedentes(anulada = true)
         registros(anulada = true)
+        cargas(anulada = true)
         if (!yaCreada || !e.consultaSucia) return emptyList()
         if (rechazada(PARTE_BAJA)) {
             retenciones += Retencion(PARTE_BAJA, MotivoRetencion.RECHAZADA)
@@ -337,12 +391,14 @@ private class Armado(private val e: EntradaDelPlan) {
         val examen = examen()
         val antecedentes = antecedentes(anulada = false)
         val registros = registros(anulada = false)
+        val cargas = cargas(anulada = false)
         val contenido = buildList {
             secciones?.let { add(it) }
             examen?.let { add(it) }
             formularios?.let { add(it) }
             antecedentes?.let { add(it) }
             registros?.let { add(it) }
+            cargas?.let { add(it) }
         }.sortedBy { ORDEN_DE_PARTES.indexOf(it.parte) }
 
         val quiereCrear = !yaCreada
@@ -554,6 +610,53 @@ private class Armado(private val e: EntradaDelPlan) {
         val fecha = confirmado != null && confirmado[CAMPO_FECHA_DEL_REGISTRO] != r.fecha?.toString()
         return texto != CambioReal.NINGUNO || fecha
     }
+
+    // ---------- Cargas de laboratorio general y de peso (E3, T84-a) ----------
+
+    /**
+     * Las **cargas de laboratorio general y de peso** que viajan (T84-a, RF-41, RF-42, RF-68, RF-69): solo filas sucias de esta consulta, solo los dos
+     * tipos que tiene API (el reducido quedó fuera de alcance, T73, y espera en reserva) y solo si la sección está habilitada (el candado, RF-4). Una
+     * carga nueva (sin `remotoId`) viaja con su fecha ([fechaAEnviar]) y todos los valores con contenido; una que la web ya tiene, con la fecha y **solo
+     * lo tocado** contra `LoEnviado.cargas`. Una dada de baja viaja como baja si la web la tenía, y una que nunca se envió y se retiró del dispositivo no
+     * viaja ni queda pendiente (el repositorio la deja limpia, T83-a). Sin fecha útil (ni la de la carga ni la de la consulta) queda en reserva, sin
+     * perder el dato, y lo que es igual a lo confirmado se limpia sin figurar enviado (RF-60). La carga de la web es suya: la app no la manda.
+     */
+    private fun cargas(anulada: Boolean): PasoDeEnvio.Cargas? {
+        val viajan = mutableListOf<CargaQueViaja>()
+        val cubre = mutableListOf<FilaCubierta>()
+        for (f in e.cargas.filter { it.dirty && it.fila.consultaId == c.id }.sortedBy { it.fila.id }) {
+            val carga = f.fila
+            val seccion = SECCION_DE_LA_CARGA[carga.tipo]
+            when {
+                carga.esDeLaWeb() ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.LABORATORIO, carga.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                anulada -> enReserva += FilaEnReserva(TablaDeLaFila.LABORATORIO, carga.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
+                seccion == null || !seccionSeOfrece(seccion, e.habilitadas) -> enReserva += FilaEnReserva(
+                    TablaDeLaFila.LABORATORIO, carga.id,
+                    if (seccion == null) MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO else MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn,
+                )
+                !carga.activo && carga.remotoId.isBlank() ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.LABORATORIO, carga.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                !carga.activo -> {
+                    viajan += CargaQueViaja.Baja(carga)
+                    cubre += FilaCubierta(TablaDeLaFila.LABORATORIO, carga.id, f.actualizadaEn)
+                }
+                else -> when (val fecha = fechaAEnviar(carga, c)) {
+                    is FechaAEnviar.Valida ->
+                        if (valoresAEnviar(carga.valores, e.loEnviado.cargas[carga.remotoId].takeIf { carga.remotoId.isNotBlank() }).isEmpty()) {
+                            sinViaje += FilaSinViaje(TablaDeLaFila.LABORATORIO, carga.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                        } else {
+                            viajan += CargaQueViaja.Guardar(carga, fecha.fecha)
+                            cubre += FilaCubierta(TablaDeLaFila.LABORATORIO, carga.id, f.actualizadaEn)
+                        }
+                    FechaAEnviar.SinFecha ->
+                        enReserva += FilaEnReserva(TablaDeLaFila.LABORATORIO, carga.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                }
+            }
+        }
+        if (viajan.isEmpty()) return null
+        return PasoDeEnvio.Cargas(viajan, cubre)
+    }
 }
 
 /** La sección del catálogo a la que pertenece un tipo de registro (casi siempre el mismo id). */
@@ -561,3 +664,9 @@ private fun seccionDelRegistro(tipo: String): String = when (tipo) {
     "examen_complementario" -> SeccionesComunes.EXAMENES_COMPLEMENTARIOS
     else -> tipo
 }
+
+/**
+ * La sección del catálogo (el candado por sección, RF-4) a la que pertenece un tipo de carga. Solo el laboratorio general y el peso tienen envío
+ * (T73, T84-a): el reducido no figura y por eso espera en reserva.
+ */
+private val SECCION_DE_LA_CARGA = mapOf(TIPO_LABORATORIO_GENERAL to "laboratorio_general", TIPO_PESO to "tabla_peso")

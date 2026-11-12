@@ -1,6 +1,7 @@
 package com.salud360.core.data.hcgeneral
 
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
@@ -235,5 +236,92 @@ class LoEnviadoPersistidoTest {
 
         assertEquals(mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "")), releido.registros, "el vaciado confirmado queda como vacío")
         assertEquals(mapOf("nota/texto" to "vieja"), releido.valores)
+    }
+
+    // ---------- T84-a: las cargas de laboratorio general y peso ----------
+
+    @Test
+    fun ida_y_vuelta_conserva_las_cargas_confirmadas_por_carga_remota() {
+        val lo = LoEnviado(
+            valores = mapOf("nota/texto" to "n"),
+            registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "d")),
+            cargas = mapOf(
+                "731" to mapOf("hb" to "13.5", "glucemia" to "", "otro" to "control «en 3 meses»\nsegunda línea"),
+                "740" to mapOf("peso" to "72.5"),
+            ),
+        )
+
+        assertEquals(lo, loEnviadoDeTexto(loEnviadoComoTexto(lo)))
+    }
+
+    @Test
+    fun solo_cargas_tambien_se_guardan() {
+        val solo = LoEnviado(cargas = mapOf("731" to mapOf("glucemia" to "")))
+
+        assertNotNull(loEnviadoComoTexto(solo), "un vaciado confirmado es un dato: no se pierde")
+        assertEquals(solo, loEnviadoDeTexto(loEnviadoComoTexto(solo)))
+        assertNull(loEnviadoComoTexto(LoEnviado(cargas = emptyMap())))
+    }
+
+    @Test
+    fun lo_guardado_antes_de_t84_se_sigue_leyendo_sin_cargas() {
+        val viejo = """{"v":{"nota/texto":"ok"},"e":{"peso":"70"},"f":{"serologias/hiv":"NO"},"a":{"hta":"1|padre"},"r":{"7015":{"fecha":"2026-11-02","detalle":"d"}}}"""
+
+        val leido = loEnviadoDeTexto(viejo)
+
+        assertEquals(emptyMap(), leido.cargas)
+        assertEquals(
+            LoEnviado(
+                valores = mapOf("nota/texto" to "ok"), examen = mapOf("peso" to "70"), formularios = mapOf("serologias/hiv" to "NO"),
+                antecedentes = mapOf("hta" to "1|padre"), registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "d")),
+            ),
+            leido,
+        )
+    }
+
+    @Test
+    fun sin_cargas_el_texto_es_el_de_antes_para_que_una_version_vieja_lo_lea() {
+        val lo = LoEnviado(valores = mapOf("nota/texto" to "ok"), cargas = emptyMap())
+
+        assertEquals("""{"v":{"nota/texto":"ok"},"e":{}}""", loEnviadoComoTexto(lo))
+    }
+
+    @Test
+    fun lo_que_no_es_un_texto_dentro_de_las_cargas_se_ignora_sin_romper_el_resto() {
+        val leido = loEnviadoDeTexto(
+            """{"c": {"731": {"hb": "13.5", "glucemia": "", "raro": 5}, "malo": "no es un objeto", "otro": null},
+                "v": {"nota/texto": "n"}}""",
+        )
+
+        assertEquals(LoEnviado(valores = mapOf("nota/texto" to "n"), cargas = mapOf("731" to mapOf("hb" to "13.5", "glucemia" to ""))), leido)
+        assertEquals(LoEnviado(), loEnviadoDeTexto("""{"c": "no es un objeto"}"""))
+    }
+
+    @Test
+    fun el_mismo_contenido_de_cargas_da_siempre_el_mismo_texto() {
+        val a = LoEnviado(cargas = mapOf("740" to mapOf("peso" to "72.5"), "731" to mapOf("glucemia" to "", "hb" to "13.5")))
+        val b = LoEnviado(cargas = mapOf("731" to mapOf("hb" to "13.5", "glucemia" to ""), "740" to mapOf("peso" to "72.5")))
+
+        assertEquals(loEnviadoComoTexto(a), loEnviadoComoTexto(b))
+    }
+
+    @Test
+    fun confirmar_cargas_y_guardarlo_suma_a_lo_que_ya_estaba() {
+        val antes = LoEnviado(
+            valores = mapOf("nota/texto" to "vieja"), registros = mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "d")),
+            cargas = mapOf("731" to mapOf("hb" to "13.5", "glucemia" to "0.95")),
+        )
+        val carga = Laboratorio("l1", "p", "c", "clinica", "laboratorio_general", LocalDate(2026, 11, 6), mapOf("hb" to "14", "glucemia" to ""), remotoId = "731")
+        val despues = antes.conLoConfirmado(PasoDeEnvio.Cargas(listOf(CargaQueViaja.Guardar(carga, LocalDate(2026, 11, 6))), emptyList()))
+
+        val releido = loEnviadoDeTexto(loEnviadoComoTexto(despues))
+
+        assertEquals(
+            mapOf("731" to mapOf("hb" to "14", "glucemia" to "")),
+            releido.cargas,
+            "lo que queda en la web después de la actualización: lo mandado se suma a lo que ya había",
+        )
+        assertEquals(mapOf("nota/texto" to "vieja"), releido.valores)
+        assertEquals(mapOf("7015" to mapOf("fecha" to "2026-11-02", "detalle" to "d")), releido.registros)
     }
 }

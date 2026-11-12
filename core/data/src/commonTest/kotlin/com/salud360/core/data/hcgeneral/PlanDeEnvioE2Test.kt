@@ -64,7 +64,11 @@ class PlanDeEnvioE2Test {
         habilitadas: Set<String> = e2,
         reintentoManual: Boolean = false,
     ) = planDeEnvio(
-        EntradaDelPlan(consulta, sucia, valores, examen, antecedentes, registros, loEnviado, estados, habilitadas, reintentoManual, armadoEn = 5_000),
+        EntradaDelPlan(
+            consulta = consulta, consultaSucia = sucia, valores = valores, examen = examen, antecedentes = antecedentes,
+            registros = registros, loEnviado = loEnviado, estados = estados, habilitadas = habilitadas,
+            reintentoManual = reintentoManual, armadoEn = 5_000,
+        ),
     )
 
     private fun json(texto: String) = Json.parseToJsonElement(texto) as JsonObject
