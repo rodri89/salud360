@@ -139,6 +139,12 @@ registros de personas): el repo es público.
   se quitó «Cancelar». `core:data` **2137** (2135 + 2, rojo por compilación y después verde), `especialidades:clinica` 38,
   `core:ui` 17 y `core:crecimiento` 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. `SECCIONES_HABILITADAS`
   sigue igual (E3 se enciende en T88) y la revisión visual es T92. **T87-a hecha; sigue T88.**
+  **T88 reducida hecha (2026-11-12, decisión del usuario de habilitar antes de cerrar E1/E2): laboratorio general y peso habilitados (`laboratorio_general` y
+  `tabla_peso` en `SECCIONES_HABILITADAS`, 19 ids: los 9 de E1 + las 8 de E2 + estos 2); `SUBENTREGA_HABILITADA` sigue en E1. El laboratorio reducido, los
+  pendientes y los documentos siguen en `TODAVIA_NO` (los dos primeros, fuera del alcance de E3; documentos es E4), igual que la alimentación, los exámenes
+  complementarios y las interconsultas. `core:data` 2139 en verde (2137 + 2 tests nuevos: el conjunto exacto de 19 y lo que queda afuera), `especialidades:clinica`
+  38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin migración, sin Laravel,
+  sin pedidos reales. Con esto la HC general ya manda laboratorio general y peso; sigue el cierre de E1 (T11) y la revisión visual (T92).**
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

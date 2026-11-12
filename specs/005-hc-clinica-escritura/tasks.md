@@ -1808,13 +1808,36 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     el contrato del servidor. El aviso de la sección sale solo de `avisoDeEnvioDeLaSeccion`, como en T87-a.
   - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual
     queda para T92. No se empieza sin que el usuario lo pida.
-- [ ] **T88. Habilitar E3 (levantar el candado) y el histórico con esas secciones.** RF-4, RF-67 — S — Toca API Laravel: no — **Solo con E2 cerrada y la migración aplicada**
+- [x] **T88. Habilitar E3 (levantar el candado) y el histórico con esas secciones.** RF-4, RF-67 — S — Toca API Laravel: no — **Solo con E2 cerrada y la migración aplicada**
   - `SUBENTREGA_HABILITADA = E3`: la HC general ofrece 24 de las 25 secciones (suma `laboratorio_general`, `laboratorio_reducido` y `tabla_peso`; los pendientes viajan con la
     consulta); queda «todavía no» solo `documentos`. RF-67: una consulta del histórico con laboratorio, peso o pendientes pasa a poder enviarse (el botón es T33, que sigue sin
     urgencia).
   - Tests que cambian: `SeccionesEnviablesTest`, `LecturaClinicaCatalogoTest` (cuenta de secciones que se ofrecen), `EstadoEnPantallaTest` y los que usan la constante por omisión; cada
     cambio con su porqué.
   - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; el wasm compila.
+  - **Resultado (2026-11-12): HECHA — T88 REDUCIDA**: solo se habilita la E3 que la API de la web ya escribe (laboratorio general y peso), por
+    **decisión del usuario del 2026-11-11/12 de habilitar antes de cerrar E1/E2** (lo mismo que autorizó T67 reducida). **No se sube
+    `SUBENTREGA_HABILITADA`** (sigue en E1 y solo siembra): se suman a mano a `SECCIONES_HABILITADAS` **`laboratorio_general`** y **`tabla_peso`**, y el
+    conjunto queda en **19** (los 9 de E1 + las 8 de E2 del alcance del usuario + estos 2). **Quedan en `TODAVIA_NO`, a propósito:**
+    `laboratorio_reducido` y `pendientes` (fuera del alcance de E3: la API de E3 solo escribe `laboratorio_generals` y `pesos`; su pantalla es T87-b y su
+    servidor no existe) y `documentos` (E4). Tampoco se encienden la alimentación, los exámenes complementarios ni las interconsultas (E2, fuera del
+    alcance). **Rojo:** `core:data` 4 fallas de 40 en `SeccionesEnviablesTest` (3) y `EstadoEnPantallaTest` (1), y `especialidades:clinica` 1 falla de 38 en
+    `LecturaClinicaCatalogoTest`, antes del código. **Verde:** `:core:data:jvmTest` **2139 tests, 2139 pasan, 0 fallan, 0 salteados** (2137 + los 2 tests
+    nuevos), `:especialidades:clinica:jvmTest` 38, `:core:ui:jvmTest` 17 y `:core:crecimiento:jvmTest` 6, sin fallos. Compilan
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y
+    `:server:compileKotlin`, todos en 0. Sin dependencias nuevas, sin migración, sin Laravel, sin pedidos reales y sin tocar el proyecto `hclinica`.
+  - **Tests que cambiaron y por qué.** (1) `SeccionesEnviablesTest`: el candado pasa de 17 a 19 y su test suma los dos de la E3 reducida; se **agrega**
+    `el_conjunto_exacto_de_la_version_es_el_de_los_19_ids` (fija los 19 ids literales, para que encender o apagar una sección no pase inadvertido) y
+    `la_e3_reducida_deja_el_laboratorio_reducido_los_pendientes_y_los_documentos_todavia_no` (los tres siguen `TODAVIA_NO` y con su aviso); el test de lo
+    que queda afuera deja de listar `laboratorio_general` y `tabla_peso`; el del candado por omisión pasa el laboratorio general y el peso a `SE_ENVIA` y
+    fija el reducido y los pendientes en `TODAVIA_NO`. (2) `LecturaClinicaCatalogoTest`: la cuenta de secciones ofrecidas suma las dos nuevas y las «todavía
+    no» bajan de 7 a 5 (queda `laboratorio_reducido` y sale `laboratorio_general`/`tabla_peso`); el ejemplo de una sección del perfil que no se ofrece pasa
+    del laboratorio general al reducido, porque el general ya se ofrece. (3) `EstadoEnPantallaTest`: `laboratorio_general` y `tabla_peso` pasan a no llevar
+    aviso y el ejemplo de «todavía no» pasa a `laboratorio_reducido` y `pendientes`. Los demás tests que usan la constante por omisión siguen verdes sin
+    cambios: los de la cola y el plan de E3 (`HcClinicaEnvioCargasTest` y compañía) ya pasaban su conjunto explícito, y los que la usan por omisión no
+    siembran cargas.
+  - **RF-67 (histórico):** una consulta del histórico con laboratorio o peso **ya arma el envío** como cualquier propia (el plan y la cola deciden por
+    `SECCIONES_HABILITADAS`), pero el botón para mandarla sigue siendo T33, que no se hizo: nada del histórico sale solo.
 
 ## Pruebas y cierre de E3
 - [ ] **T89. E2E de E3 contra la copia local.** RF-15, RF-16, RF-22, RF-33, RF-41 a RF-43, RF-69 — M — Toca API Laravel: no
