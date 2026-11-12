@@ -101,6 +101,12 @@ registros de personas): el repo es público.
   `core:data` wasm y `:server:compileKotlin`. Los cinco tests que simulan una base vieja suman `DROP COLUMN remoto_id` en `laboratorio` y `pendiente`
   (regla de T15) y sus aserciones de versión pasan a 11. **Ojo:** una base v11 en el navegador no vuelve atrás (una app v10 la descarta) y el `devWeb`
   de :8080 queda en v11. Sigue **T83** (o T82-b, fuera de alcance por ahora).
+  **T83-a hecha (2026-11-12): cargas de laboratorio general y peso en `HcRepository` con cambio real, reasignación, baja y aviso a la cola.**
+  `guardarLaboratorio(lab, enConsulta)` usa `cambioRealDeCarga` (lo mismo no marca ni reasigna; vaciar a propósito sí y el `remoto_id` se conserva),
+  reasigna a la propia cuando la carga es del histórico y respeta la barrera de T36; `eliminarLaboratorio` deja `activo = 0, dirty = 1` si la web la
+  tiene y **retira** (`deleted = 1, dirty = 0`) la que nunca se envió; `ConsultaViewModel` avisa a la cola desde las dos. Tests nuevos
+  `HcRepositoryCargasTest` (rojo 5 de 10 y después 10/10), `core:data` **2080** en verde. T83 se partió: **T83-b (pendientes) queda fuera de alcance
+  por ahora**. Sin migración, sin Laravel, sin pedidos reales; el plan todavía no manda cargas (T84/T85) y el candado de E3 sigue en E1. Sigue **T84**.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
