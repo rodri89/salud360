@@ -1553,7 +1553,7 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     `PayloadsClinica`.
   - Hecho cuando: tests en verde (antes, en rojo); sin Compose, ni red, ni base; el reloj entra como parámetro si hace falta (estas dos
     funciones no lo miran: la fecha sale de los datos).
-  - **Resultado (2026-11-12): HECHA — solo la mitad de cargas; los pendientes quedan en T82-b, fuera de alcance por ahora.** Sin Compose, sin
+  - **Resultado (2026-11-12): HECHA — la mitad de cargas de T82; los pendientes quedan en T82-b, fuera de alcance por ahora.** Sin Compose, sin
     red, sin base, sin reloj (no hace falta), sin dependencias nuevas, sin migración, sin Laravel y sin ningún pedido real.
     **Rojo:** con el esqueleto de firmas (`fechaAEnviar` siempre `SinFecha` y `valoresAEnviar` vacío) fallaban por aserción **14 de los 18**
     tests de `CargasAEnviarTest`; los 4 que pasaban eran guardas que ya valían. **Verde:** 18/18. `core:data` **2061** en verde (2043 + 18),
@@ -1563,7 +1563,7 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     `FechaAEnviar.SinFecha` (el plan deja la carga en reserva, T84: no se inventa la fecha de hoy ni un marcador). `0000-00-00` no puede
     llegar acá como `LocalDate` (la lectura lo descarta, `LecturaClinica.fechaDeLaWeb`); si alguna vez se guardara, la regla es la misma.
     `valoresAEnviar`: al alta (`confirmada` nulo o vacío) todos los que tienen contenido —un blanco no viaja—; al actualizar solo los cambios
-    reales ([cambioReal]), el vaciado a propósito sale `""` y una columna que lo confirmado tenía y la carga ya no está es un vaciado (la web
+    reales (`cambioReal`), el vaciado a propósito sale `""` y una columna que lo confirmado tenía y la carga ya no está es un vaciado (la web
     solo se puede vaciar); `0` y `0.00` son datos (en una carga no hay medidas del examen: no se usa `esVacioDeMedida`); el texto va tal cual,
     sin recortar; el orden es el de la carga y después los vaciados que solo estaban en lo confirmado.
     **Decisiones.** (a) `PayloadsClinica.carga` ya no tiene su copia privada de la regla: delega en `valoresAEnviar` (el test lo fija), así el
