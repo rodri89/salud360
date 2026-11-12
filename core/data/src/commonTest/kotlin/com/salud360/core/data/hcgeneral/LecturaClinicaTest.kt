@@ -529,11 +529,14 @@ class LecturaClinicaTest {
             Laboratorio(
                 "hcc-llaboratorio_general-703", paciente, "hcc-c7003", "clinica", "laboratorio_general", LocalDate(2026, 3, 10),
                 mapOf("hto" to "41", "hb" to "13.9", "alb_mina" to "4.1", "f_sforo" to "3.5", "otro" to "Prueba Salud360 otro lab 2"),
+                remotoId = "703",
             ),
             l.getValue("hcc-llaboratorio_general-703"),
         )
         assertEquals("laboratorio_reducido", l.getValue("hcc-llaboratorio_reducido-19").tipo)
         assertEquals(mapOf("peso" to "70.5"), l.getValue("hcc-lpeso-25").valores)
+        // Spec 005, T86-a: cada carga de la web lleva el id de su fila para emparejarla con la que la app ya envió.
+        assertEquals(listOf("703", "19", "25"), l.values.map { it.remotoId })
     }
 
     @Test

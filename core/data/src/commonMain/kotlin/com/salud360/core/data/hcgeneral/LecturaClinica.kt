@@ -411,8 +411,10 @@ private fun cargaValida(c: CargaLaboratorioDto) =
     c.id.valido() && fechaDeLaWeb(c.fecha) != null && c.valores.any { it.value.isNotBlank() }
 
 /**
- * Las cargas por paciente y fecha. La consulta de origen es la local `hcc-c<id>` si está en [consultasLocales] y, si no,
- * `null`: la carga se guarda igual, sin consulta. Los valores vacíos se descartan.
+ * Las cargas por paciente y fecha, con `remoto_id` = el id de la carga en la web (spec 005, T86-a): es con lo que la lectura empareja
+ * una carga que esta app ya envió (su id local) con la misma que trae `historia`, y así no nace una `hcc-l<tipo>-<id>` duplicada. La
+ * consulta de origen es la local `hcc-c<id>` si está en [consultasLocales] y, si no, `null`: la carga se guarda igual, sin consulta. Los
+ * valores vacíos se descartan.
  */
 fun laboratoriosDeLaWeb(pacienteLocalId: Id, l: LaboratoriosDto, consultasLocales: Set<Id>, vinculadas: Map<Long, Id> = emptyMap()): List<Laboratorio> =
     cargasPorTipo(l).flatMap { (tipo, cargas) ->
@@ -421,19 +423,34 @@ fun laboratoriosDeLaWeb(pacienteLocalId: Id, l: LaboratoriosDto, consultasLocale
             Laboratorio(
                 id = idCargaWeb(tipo, c.id), pacienteId = pacienteLocalId, consultaId = consultaLocalDe(c.consultaId, consultasLocales, vinculadas),
                 especialidad = CodigosHc.GENERAL, tipo = tipo, fecha = fecha, valores = c.valores.filterValues { it.isNotBlank() },
+                remotoId = c.id.toString(),
             )
         }
     }
 
 /**
- * Qué escribir de la carga [web] sobre la [local] del mismo id: los valores que vienen pisan, los que no vienen se
- * conservan, y la consulta que ya tenía no vuelve a `null`. `null` si no cambia nada.
+ * Qué escribir de la carga [web] sobre la [local] de la misma carga: los valores que vienen pisan, los que no vienen se conservan, y la
+ * consulta y el `remoto_id` que ya tenía no se pierden. El llamador la usa para una carga de la web (`hcc-l…`) y también para una carga
+ * **propia** ya enviada, a la que le pasa [web] con su id local, su consulta y su `activo` (spec 005, RF-33, T86-a): por eso una carga
+ * dada de baja en el dispositivo no se reactiva aunque la web todavía la devuelva. `null` si no cambia nada.
  */
 fun fusionarLaboratorio(web: Laboratorio, local: Laboratorio?): Laboratorio? {
     if (local == null) return web
-    val nueva = web.copy(consultaId = web.consultaId ?: local.consultaId, valores = local.valores + web.valores)
+    val nueva = web.copy(
+        consultaId = web.consultaId ?: local.consultaId,
+        valores = local.valores + web.valores,
+        remotoId = web.remotoId.ifBlank { local.remotoId },
+    )
     return nueva.takeIf { it != local }
 }
+
+/**
+ * La carga que trae la web como carga **propia** ya enviada [propia] (spec 005, RF-33, T86-a): se le devuelve su id local, su consulta, su
+ * `activo` y su `remoto_id` —la web la trae como `hcc-l<tipo>-<id>`, pero es la misma fila del dispositivo— y así [fusionarLaboratorio] la
+ * refresca sin duplicarla ni moverla de consulta.
+ */
+fun cargaDeLaWebParaLaPropia(web: Laboratorio, propia: Laboratorio): Laboratorio =
+    web.copy(id = propia.id, consultaId = propia.consultaId ?: web.consultaId, activo = propia.activo, remotoId = propia.remotoId.ifBlank { web.remotoId })
 
 // ---------- Estudios, exámenes complementarios e interconsultas ----------
 

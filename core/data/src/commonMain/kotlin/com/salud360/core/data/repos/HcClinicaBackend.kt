@@ -10,6 +10,7 @@ import com.salud360.core.data.hcgeneral.LoEnviado
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
 import com.salud360.core.data.hcgeneral.camposConfirmadosDelEstudio
+import com.salud360.core.data.hcgeneral.cargaDeLaWebParaLaPropia
 import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
 import com.salud360.core.data.hcgeneral.esDeLaWeb
@@ -318,6 +319,9 @@ class HcClinicaBackend internal constructor(
      * consultas que ya están en el dispositivo y el pendiente. Lo sucio del dispositivo no se toca, lo traído antes que
      * ya no viene se queda (Q15) y lo que se escribe lleva `dirty = 0`. Va en una transacción: o entra todo o nada, también
      * las marcas «Ya no figura en la web» de lo que esta respuesta dejó de traer (E6.4b), que se escriben primero.
+     *
+     * Las cargas de laboratorio y peso que esta app ya envió se emparejan por tipo + `remoto_id` (RF-33, T86-a): lo que la web guarda de
+     * ellas se refresca sin nacer una `hcc-l…` aparte, y una dada de baja en el dispositivo no se reactiva.
      */
     private suspend fun aplicarHistoria(pacienteId: Id, medicoId: Id, ficha: Long, h: RespuestaHistoriaDto) {
         val sello = ahora()
@@ -333,7 +337,21 @@ class HcClinicaBackend internal constructor(
         }
 
         val cargasSucias = hq.laboratoriosDirty().lista { it.id }.toSet()
-        laboratoriosDeLaWeb(pacienteId, h.laboratorios, consultas, vinculadas).filter { it.id !in cargasSucias }.forEach { web ->
+        // Las cargas que esta app ya envió tienen su id local y el de la web (`remoto_id`): se emparejan por tipo + `remoto_id` (RF-33, T86-a)
+        // y no se duplican como `hcc-l…`.
+        val cargasPropias = hq.laboratoriosDePacienteTodos(pacienteId, especialidad).lista { it.toModel() }
+            .filter { !it.id.startsWith(PREFIJO_ID_WEB) && it.remotoId.isNotBlank() }
+            .associateBy { it.tipo to it.remotoId }
+        laboratoriosDeLaWeb(pacienteId, h.laboratorios, consultas, vinculadas).forEach { web ->
+            val propia = cargasPropias[web.tipo to web.remotoId]
+            if (propia != null) {
+                // Lo sucio manda (una baja propia esperando viajar no se reactiva): lo limpio se refresca si la web lo cambió (RF-34).
+                if (propia.id !in cargasSucias) {
+                    fusionarLaboratorio(cargaDeLaWebParaLaPropia(web, propia), propia)?.let { hq.upsertLaboratorio(it.filaDeLaWeb(sello)) }
+                }
+                return@forEach
+            }
+            if (web.id in cargasSucias) return@forEach
             val local = hq.laboratorioPorId(web.id).uno { it.toModel() }
             if (local != null && local.pacienteId != pacienteId) return@forEach
             fusionarLaboratorio(web, local)?.let { hq.upsertLaboratorio(it.filaDeLaWeb(sello)) }
