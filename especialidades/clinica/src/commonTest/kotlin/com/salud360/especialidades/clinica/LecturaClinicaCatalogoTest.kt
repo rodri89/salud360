@@ -205,22 +205,23 @@ class LecturaClinicaCatalogoTest {
         val estados = catalogoHcGeneral.ids.associateWith { envioDeSeccion(it) }
         // Ninguna del catálogo es de las que la web no guarda.
         assertTrue(estados.values.none { it == EnvioDeSeccion.NUNCA })
-        // T67 reducida: los textos, el examen, enfermedades y las ocho secciones del alcance del usuario (las de E2 que pidió y no la alimentación).
+        // T67 reducida más T88 reducida: los textos, el examen, enfermedades, las ocho secciones del alcance del usuario (las de E2 que pidió y no
+        // la alimentación) y el laboratorio general y el peso (E3; decisión del usuario del 2026-11-12).
         assertEquals(
             setOf(
                 "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia",
                 "examen_fisico", "enfermedades", "serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda",
-                "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
+                "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn", "laboratorio_general", "tabla_peso",
             ),
             catalogoHcGeneral.ids.filter { seccionSeOfrece(it) }.toSet(),
         )
         // Todo lo demás del catálogo dice «todavía no» y se habilita por subentrega: ninguna queda sin decidir. Son la alimentación, los exámenes
-        // complementarios y las interconsultas (E2, fuera del alcance), los tres de laboratorio (E3) y los adjuntos (E4).
+        // complementarios y las interconsultas (E2, fuera del alcance), el laboratorio reducido (E3, fuera de la E3 reducida) y los adjuntos (E4).
         assertEquals(
-            setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_general", "laboratorio_reducido", "tabla_peso", "documentos"),
+            setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_reducido", "documentos"),
             estados.filterValues { it == EnvioDeSeccion.TODAVIA_NO }.keys,
         )
-        assertEquals(7, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
+        assertEquals(5, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
         // Con todas las subentregas habilitadas se envían las 24 que viajan en una consulta; `enfermedades` va por su API.
         assertEquals(
             catalogoHcGeneral.ids.toSet() - "enfermedades",
@@ -230,10 +231,11 @@ class LecturaClinicaCatalogoTest {
 
     @Test
     fun una_seccion_del_perfil_que_todavia_no_se_envia_no_se_ofrece_pero_no_se_pierde() {
-        val perfil = listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_general", "examen_fisico", "enfermedades")
+        // El laboratorio general ya se ofrece (T88 reducida); el que sigue en «todavía no» es el reducido (fuera del alcance de E3).
+        val perfil = listOf("antecedentes_familiares", "motivo_consulta", "laboratorio_reducido", "examen_fisico", "enfermedades")
         assertEquals(listOf("antecedentes_familiares", "motivo_consulta", "examen_fisico", "enfermedades"), seccionesQueSeOfrecen(perfil))
         assertTrue(perfil.all { catalogoHcGeneral.seccion(it) != null }, "las secciones del perfil siguen en el catálogo, se muestran para leer")
-        assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion("laboratorio_general"))
+        assertEquals("Esta sección todavía no se envía a la web", avisoDeSeccion("laboratorio_reducido"))
     }
 
     @Test

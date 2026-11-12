@@ -87,8 +87,10 @@ fun seccionesDe(subentrega: SubentregaDeEscritura): Set<String> = SUBENTREGA_QUE
  * sección**: la pantalla, el plan de envío y el contador lo siguen solos.
  *
  * Hoy son las nueve de [SUBENTREGA_HABILITADA] (E1: los ocho textos y el examen físico) **más una parte de E2, por decisión del usuario del 2026-11-11
- * (T67 reducida, autorizada antes del cierre de E1)**: serologías, Child-Pugh, antecedentes familiares y los cinco estudios. Quedan en «todavía no» la
- * alimentación, los exámenes complementarios y las interconsultas (de E2), el laboratorio y el peso (E3) y los adjuntos (E4); lo que la web no guarda
+ * (T67 reducida, autorizada antes del cierre de E1)**: serologías, Child-Pugh, antecedentes familiares y los cinco estudios; **más la E3 reducida, por
+ * decisión del usuario del 2026-11-12 (T88 reducida, también antes del cierre de E1)**: el laboratorio general (`laboratorio_general`) y el peso
+ * (`tabla_peso`). Quedan en «todavía no» la alimentación, los exámenes complementarios y las interconsultas (de E2), el laboratorio reducido y los
+ * pendientes (de E3, fuera de alcance: la API de E3 solo escribe `laboratorio_generals` y `pesos`) y los adjuntos (E4); lo que la web no guarda
  * ([SECCIONES_QUE_LA_WEB_NO_GUARDA]) y lo que tiene su propia API ([SECCIONES_APARTE]) siguen igual. Con todo habilitado se escribe `seccionesDe(E4)`.
  *
  * Va declarado **después** de [SUBENTREGA_QUE_HABILITA]: los `val` de nivel superior se inicializan en el orden del archivo.
@@ -96,6 +98,8 @@ fun seccionesDe(subentrega: SubentregaDeEscritura): Set<String> = SUBENTREGA_QUE
 val SECCIONES_HABILITADAS: Set<String> = seccionesDe(SUBENTREGA_HABILITADA) + setOf(
     "serologias", "child_pugh", SeccionesComunes.ANTECEDENTES_FAMILIARES,
     "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
+    // T88 reducida: la E3 que la API de la web ya escribe (laboratorio general y peso); el reducido y los pendientes siguen en «todavía no».
+    "laboratorio_general", "tabla_peso",
 )
 
 /**
