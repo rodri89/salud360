@@ -107,6 +107,14 @@ registros de personas): el repo es público.
   tiene y **retira** (`deleted = 1, dirty = 0`) la que nunca se envió; `ConsultaViewModel` avisa a la cola desde las dos. Tests nuevos
   `HcRepositoryCargasTest` (rojo 5 de 10 y después 10/10), `core:data` **2080** en verde. T83 se partió: **T83-b (pendientes) queda fuera de alcance
   por ahora**. Sin migración, sin Laravel, sin pedidos reales; el plan todavía no manda cargas (T84/T85) y el candado de E3 sigue en E1. Sigue **T84**.
+  **T84-a hecha (2026-11-12): el plan de envío arma las cargas de laboratorio general y peso (los pendientes son T84-b, fuera de alcance por ahora).**
+  `PlanDeEnvio` suma el paso `Cargas` (después de los estudios y antes del cierre): una carga por pedido, altas con la fecha de `fechaAEnviar` y todos
+  los valores con contenido, actualizaciones con **solo lo tocado** contra `LoEnviado.cargas`, bajas (`activo = 0, dirty = 1` con `remoto_id`) sin fecha
+  ni valores, y la que nunca se envió y se retiró no viaja; el reducido y las de la web quedan en reserva, y sin fecha útil también (no se inventa la de
+  hoy). `LoEnviado`/su JSON suman `cargas` (clave `"c"`, compatible con lo guardado antes) y `cargaEnviada` alimenta `PayloadsClinica.carga`.
+  `HcClinicaEnvio.limpiarSiNoCambio` gana la rama `LABORATORIO` (solo para compilar el `when` del enum: no envía nada y hoy es inalcanzable). Rojo 27
+  de 55 y después verde; `core:data` **2113** (2080 + 33). `PlanDeEnvioTest` y `PlanDeEnvioE2Test` solo pasan a argumentos nombrados; siguen verdes.
+  Sin migración, sin Laravel, sin cablear la cola ni la UI; `SECCIONES_HABILITADAS` sigue igual. **Sigue T85** (`HcClinicaEnvio` ejecuta cargas).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

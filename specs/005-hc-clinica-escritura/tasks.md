@@ -1620,15 +1620,49 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
   - Es la otra mitad de la T83 original, que se partió para implementar solo las cargas (T83-a) por pedido del usuario. No se renumera.
   - Lo que falta, del texto original: `guardarPendiente` con cambio real; conservar el `remoto_id` de la portadora y, al borrarla, pasar el identificador a la siguiente **en la misma transacción**; la regla de la portadora en `hcgeneral/PendientesTexto.kt`; en una consulta propia de clínica `cerrarConPendientes` no resuelve pendientes ni los marca resueltos (D19(b)); los pendientes del histórico o sin consulta propia no viajan; la barrera de T36 sobre los pendientes; `EnvioDeConsultas.avisarCambio` desde `resolverPendiente` y `cerrarConPendientes`.
   - Tests primero: jvm `HcRepositoryPendientesTest` con esos casos. Hecho cuando: tests en verde (antes, en rojo); `DatosPorPacienteTest` y `HcRepositoryGuardasDeLaWebTest` siguen verdes.
-- [ ] **T84. `PlanDeEnvio` y `LoEnviado` con cargas y pendientes.** RF-41 a RF-43, RF-56, RF-60, RF-68, RF-69 — M — Toca API Laravel: no
-  - Tests primero: common `PlanDeEnvioE3Test` y `LoEnviadoPersistidoTest` ampliado, con `habilitada = E3` (con `E2` siguen en `enReserva`): nuevos pasos
-    `Cargas` (altas, actualizaciones solo de lo tocado, bajas con `remoto_id`) y `Pendientes` (el texto único de la consulta propia); orden crear → secciones
-    → examen → formularios → antecedentes → registros → **cargas → pendientes** → cierre; una carga nunca enviada y borrada no viaja; un texto de pendientes
-    igual a la huella enviada es `sinViaje(SIN_CAMBIO_REAL)`; borrar todos los pendientes a propósito viaja `""`; cargas de una consulta anulada, del
-    histórico o sin consulta no viajan; cada paso con su `cubre`; el cierre no sale con algo anterior sin confirmar.
-  - Código: `PlanDeEnvio.kt` (`PARTE_CARGAS`, `PARTE_PENDIENTES`, `PasoDeEnvio.Cargas/Pendientes`, `TablaDeLaFila.LABORATORIO/PENDIENTE`, `EntradaDelPlan.cargas/pendientes`),
-    `LoEnviado.cargas: Map<remotoId, valores>` y `pendientes: huella`, `LoEnviadoPersistido.kt` (JSON compatible).
-  - Hecho cuando: tests nuevos en verde (antes, en rojo); `PlanDeEnvioTest` y `PlanDeEnvioE2Test` siguen verdes (si uno cambia, se dice cuál y por qué); compila el wasm.
+- [x] **T84-a. `PlanDeEnvio` y `LoEnviado` con cargas (laboratorio general y peso).** RF-41, RF-42, RF-56, RF-60, RF-68, RF-69 — M — Toca API Laravel: no
+  - Es la mitad de la T84 original, que se partió por pedido del usuario para implementar solo las cargas: los **pendientes** quedan en **T84-b**, fuera de alcance por ahora (sin renumerar).
+  - Tests primero: common `PlanDeEnvioE3Test` (nuevo) y `LoEnviadoPersistidoTest` ampliado, con `habilitadas = seccionesDe(E3)` (con `E2` siguen en `enReserva`):
+    paso **`Cargas`** con altas (sin `remoto_id`), actualizaciones (con `remoto_id`, solo lo tocado contra `LoEnviado.cargas`) y bajas (las que el repositorio
+    dejó `activo = 0, dirty = 1` con `remoto_id`); una carga nunca enviada y borrada **no viaja**; las de una consulta anulada, del histórico o sin consulta propia
+    **no viajan**; orden crear → secciones → examen → formularios → antecedentes → registros → **cargas** → cierre, cada paso con su `cubre` y el cierre sin salir
+    con algo anterior sin confirmar; la fecha es la de `fechaAEnviar` (nunca vacía, ni un marcador, ni la de hoy).
+  - Código: `PlanDeEnvio.kt` (`PARTE_CARGAS`, `PasoDeEnvio.Cargas`, `CargaQueViaja`, `TablaDeLaFila.LABORATORIO`, `EntradaDelPlan.cargas`), `LoEnviado.cargas` y
+    `conLoConfirmado` (+`cargaEnviada`), `LoEnviadoPersistido.kt` (clave `"c"`, compatible con el JSON actual y solo si hay algo).
+  - Hecho cuando: tests nuevos en verde (antes, en rojo); `PlanDeEnvioTest` y `PlanDeEnvioE2Test` siguen verdes (si uno cambia, se dice cuál y por qué); `:core:data:jvmTest`
+    completo, `:especialidades:clinica:jvmTest`, `:core:ui:jvmTest` y `:core:crecimiento:jvmTest` en verde; compilan las tres wasm y `:server:compileKotlin`.
+  - **Resultado (2026-11-12): HECHA — solo cargas; los pendientes quedan en T84-b.** Sin migración, sin Laravel, sin dependencias nuevas, sin ningún pedido real y sin cablear
+    la cola (`HcClinicaEnvio` no recibe cargas) ni la UI: `SECCIONES_HABILITADAS` sigue igual (E3 todavía no se habilita).
+    **Rojo:** con las firmas nuevas y el plan de antes fallaban **27 de 55** tests (23 de los 26 de `PlanDeEnvioE3Test` y 4 de los 7 nuevos de `LoEnviadoPersistidoTest`);
+    los otros ya valían (contenido de lo confirmado, el plan independiente del orden, la persistencia sin cargas igual que antes). **Verde:** 26/26 y 29/29.
+    **Qué arma el plan.** Paso `Cargas` después de los estudios y antes del cierre: **una carga por pedido** (P23), solo filas sucias de esta consulta (RF-68) y solo si la
+    sección está habilitada (el candado, RF-4). Una **nueva** (sin `remotoId`) viaja con la fecha de `fechaAEnviar` (la suya o la de la consulta; nunca un marcador ni la de
+    hoy) y todos los valores con contenido; una que **la web ya tiene** viaja con lo tocado contra `LoEnviado.cargas` (un vaciado sale `""` y una columna que ya no está es un
+    vaciado, RF-69); una **baja** (la que el repositorio dejó `activo = 0, dirty = 1` con `remoto_id`, T83-a) viaja como `DELETE` sin fecha ni valores; una **nunca enviada y
+    retirada** no viaja ni queda pendiente; sin fecha útil queda en reserva sin perder el dato; lo igual a lo confirmado se limpia sin figurar enviado (RF-60). No viajan las de
+    otra consulta, del histórico o sin consulta (RF-68), las de una anulada (quedan en reserva, Q-E3-2), ni la carga de la web (`hcc-l…`, es suya). El **laboratorio reducido**
+    espera en reserva (`NO_HAY_ENVIO_PARA_ESTE_DATO`: quedó fuera de alcance en T73) y los pendientes no se arman (T84-b).
+    **Código y decisiones a revisar.** (a) `CargaQueViaja` es un `sealed interface` con `Guardar(carga, fecha)` y `Baja(carga)`: T85 necesita la fecha ya resuelta y una baja sin
+    fecha, y así no hay que volver a decidirla al enviar. (b) `LoEnviado.cargas[remotoId]` guarda **todos** los valores que la web tiene de esa carga (lo mandado sumado a lo
+    que ya estaba confirmado), no solo los del último pedido: es lo que la actualización necesita como «lo ya enviado». Una **baja no anota nada** (la web conserva los valores y
+    su cierre reactiva la fila). (c) `cargaEnviada(carga)` da ese `confirmada` a `PayloadsClinica.carga`, para que el plan y el cuerpo decidan el cambio real con la misma
+    información (como `antecedenteEnviado`/`registroEnviado`). (d) La fecha de una carga ya enviada **no viaja sola**: `LoEnviado.cargas` no guarda la fecha, así que una carga con
+    solo la fecha cambiada no se manda; es coherente con el cuerpo (que compara la fecha contra `confirmada`, la de la fila) y con Q-E3-1 (la fecha de una carga cerrada no se
+    edita: se borra y se recarga). (e) `PARTE_CARGAS` entra en `PARTES_DE_CONTENIDO`: una parte de cargas rechazada saca el paso y **frena el cierre** como las demás. (f)
+    `HcClinicaEnvio.limpiarSiNoCambio` gana la rama `TablaDeLaFila.LABORATORIO` con `limpiarLaboratorio` (obligatorio para compilar: el `when` sobre el enum es exhaustivo);
+    **no envía nada** y hoy es inalcanzable, porque el plan de la cola todavía no recibe cargas (T85).
+    **Tests existentes que cambian:** `PlanDeEnvioTest` y `PlanDeEnvioE2Test` solo pasan a **argumentos nombrados** al armar `EntradaDelPlan` (el parámetro `cargas` va antes de
+    `loEnviado`, así no se puede confundir con él); sus aserciones no cambian y siguen verdes.
+    **JSON:** `LoEnviadoPersistido` suma la clave `"c"` (`{<id de la web>: {<id del analito>: valor}}`), solo si hay cargas; un texto guardado antes se sigue leyendo sin cargas y
+    uno sin cargas se escribe igual que antes.
+    **Totales.** `core:data` **2113** en verde (2080 + 33: 26 + 7), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos. Compilan
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`, todos en 0.
+- [ ] **T84-b. `PlanDeEnvio` y `LoEnviado` con pendientes.** RF-43, RF-56, RF-60 — M — Toca API Laravel: no — **fuera de alcance por ahora**
+  - Es la otra mitad de la T84 original, que se partió para implementar solo las cargas (T84-a) por pedido del usuario. No se renumera.
+  - Lo que falta, del texto original: `PARTE_PENDIENTES`, `PasoDeEnvio.Pendientes`, `TablaDeLaFila.PENDIENTE` y `EntradaDelPlan.pendientes` (el texto único de la consulta
+    propia, de T83-b) y `LoEnviado.pendientes` como huella (T82-b): un texto igual a la huella enviada es `sinViaje(SIN_CAMBIO_REAL)`, borrar todos los pendientes a
+    propósito viaja `""` y los pendientes del histórico o sin consulta propia no viajan. Va después de las cargas y antes del cierre, con el mismo `cubre` y la misma
+    retención. No se empieza sin que el usuario lo pida.
 - [ ] **T85. `HcClinicaEnvio` ejecuta cargas y pendientes.** RF-15, RF-32, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
   - Tests primero: jvm `HcClinicaEnvioCargasTest` y `HcClinicaEnvioPendientesTest` con el `ServidorFalso`: el `id` de la web → `laboratorio.remoto_id` en la misma
     transacción que limpia (RF-61); parcial; cambio en vuelo no se da por enviado (RF-55); respuesta perdida → mismo `l:` y una sola carga (`…RepetibleTest` ampliado);
