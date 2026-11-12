@@ -5,6 +5,13 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 registros de personas): el repo es público.
 
 ## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
+- **Spec 005, servidor de E3 al 2026-11-12: T73, T74, T76 y T77 hechas** (hclinica rama `salud360-api`, sin push; **solo laboratorio
+  general y peso**, el reducido y los pendientes quedaron fuera por decisión del usuario). T77 (`371da69`): baja lógica de una carga
+  (`DELETE pacientes/{id}/laboratorios|pesos/{cargaId}`, cuerpo `{clave l:<id>-baja, dispositivo, consulta_id}` → `{ok, baja, id}`),
+  `activo = 0` y nunca `DELETE` físico, mismo permiso que la actualización, repetir = ok (misma clave: lo registrado; otra clave: ok sin
+  escribir), sin cascada y sin tocar `medico_infos`; el cierre de la API no la reactiva (D20) y la autorización de la consulta gana al
+  registro (repetir tras cerrar = `409`). `tests/Unit` 1281 en verde; base descartable 68 controles por modo, HTTP 57, 5 mutaciones. Sigue
+  T75 y T78 (fuera del alcance de E3 reducido) y T79 (punta a punta y docs del servidor de E3).
 - **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
   E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
 - **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
