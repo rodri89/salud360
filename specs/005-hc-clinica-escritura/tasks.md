@@ -1506,7 +1506,7 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     **Decisiones a revisar.** (a) T79 se escribió para «T76 a T78»; con el alcance de T73 se probó T76 + T77 y **no** se probó ni documentó la ruta de pendientes (T78) ni el reducido (T75): si se retoman, la pasada de punta a punta se repite con ellos. (b) Para el `403 carga_no_propia` la pasada siembra por SQL una carga **de la web** dentro de una consulta **propia** de la app (la web no registra su clave en `salud360_envios`): es el caso real de una consulta que el médico abrió en los dos lados. (c) La comprobación de «el cierre no cambia ninguna carga» usa una huella por consulta (conteo + CRC de todas las columnas de las dos tablas) y no `CHECKSUM TABLE` de la tabla entera, porque la base tiene cargas de otros. (d) El script de la pasada no se versiona (queda en `%TEMP%\opencode\t79`), igual que los de T4 y T73; si se quiere repetir, hay que sembrar los pacientes primero con `sembrar-http.sql`.
 
 ## App de E3: migración, datos
-- [ ] **T80. Migración local `10.sqm`: identificador de la web en `laboratorio` y `pendiente`.** RF-41, RF-43 (D8) — M — Toca API Laravel: no — **Migración: pregunta
+- [x] **T80. Migración local `10.sqm`: identificador de la web en `laboratorio` y `pendiente`.** RF-41, RF-43 (D8) — M — Toca API Laravel: no — **Migración: pregunta
   antes: ya aprobada en D8; reservar el número mirando TODAS las ramas justo antes de crearla; si otra rama lo tomó, volver a preguntar**
   - **Reserva del número (antes de escribir nada):** `git fetch`; `git ls-tree` de la carpeta `core/database/.../migrations/` en `origin/main`, en
     `hc-general` y en **todas** las ramas (`git branch -a`: `hc-*`, `docs/sdd-y-guia-por-hc`, `pediatria-licencia-servidor`, `origin/hc_odontologia`…). Hoy
@@ -1529,6 +1529,30 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
     `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `MEMORY.md` anota el número reservado y que **no hay vuelta atrás**. **Aviso para el
     usuario antes de levantar `devWeb` con esta tarea:** el `devWeb` usa siempre el puerto 8080 (T37 (g)); la base web de ese origen sube a v11 y una compilación
     anterior (la rama principal, v6) la descartaría; 001 y 002 se publican juntas, así que no es un problema de producción, pero sí de las pruebas locales.
+  - **Resultado (2026-11-12): HECHA — número reservado `10.sqm` (esquema v11)**, con la aprobación expresa del usuario del mismo día. Ramas revisadas con
+    `git fetch` + `git ls-tree` de `core/database/.../migrations/` en **todas** las ramas: `hc-general` (1 a 9), `main`, `origin/main`,
+    `docs/sdd-y-guia-por-hc` y su remota, `hc-pediatria-fase-2` y su remota, `pediatria-licencia-servidor`, `origin/hc_odontologia` y las dos
+    `origin/feature/*` (todas 1 a 5). Ninguna tenía `10.sqm`: no hubo que renumerar ni parar. También se miraron los tres worktrees
+    (`salud360`, `salud360-docs`, `salud360-pediatria`), que no aportan migraciones nuevas.
+    **Rojo:** 26 de 88 tests de las cinco clases que simulan una base vieja fallaban (`no such column: remoto_id` al quitar la columna:
+    `MigracionMarcaTest` 9/9, `HcApiSyncBaseMigradaTest` 11/11, `ConfigHcRepositoryTest` 2/14, `CopiaEnfermedadesTest` 2/19 y
+    `MigracionHepatologiaTest` 2/35) y `MigracionLaboratorioTest` no compilaba (`remotoId` y las cuatro consultas no existían). **Verde:**
+    `MigracionLaboratorioTest` 9/9; `core:data` **2070** (2061 + 9), 0 fallos y 0 salteados; `especialidades:clinica` 38, `core:ui` 17 y
+    `core:crecimiento` 6, sin fallos. Compilan `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`,
+    `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`, todos en 0.
+    **Código.** `migrations/10.sqm` con una sentencia por columna (`ALTER TABLE laboratorio ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';` y lo
+    mismo en `pendiente`); `remoto_id` **al final** de los dos `CREATE TABLE` de `HistoriaClinica.sq` y sin comentarios entre las últimas columnas
+    (regla de T15); consultas `guardarRemotoIdLaboratorio`, `guardarRemotoIdPendiente` (solo el id: no tocan `dirty` ni `updated_at`),
+    `laboratorioPorRemotoId` y `pendientePorRemotoId` (`SELECT * … WHERE remoto_id = ? AND deleted = 0`, como `laboratorioPorId`/`pendientePorId`);
+    `Laboratorio.remotoId` y `Pendiente.remotoId` **últimos** en `core/model/hc/Consulta.kt` (con valor por omisión `""`) y en `toRow`/`toModel`
+    de `Mappers.kt`. **Nada cableado**: `HcRepository`, `HcClinicaBackend`, `HcClinicaEnvio`, la lectura y la UI no usan todavía el id (T83 a T85).
+    **Tests que cambian (solo las guardas, no lo que prueban).** Los cinco que simulan una base vieja quitan también las dos columnas nuevas con
+    `ALTER TABLE … DROP COLUMN remoto_id` antes de poner el `user_version` viejo (`MigracionMarcaTest`, `MigracionHepatologiaTest`,
+    `HcApiSyncBaseMigradaTest`, `ConfigHcRepositoryTest` y `CopiaEnfermedadesTest`), y las cinco aserciones de versión pasan de 10 a 11
+    (`Schema.version` en `MigracionMarcaTest`, `MigracionHepatologiaTest`, `ConfigHcRepositoryTest` y `CopiaEnfermedadesTest`; `user_version` en
+    `MigracionHepatologiaTest`, `HcApiSyncBaseMigradaTest`, `ConfigHcRepositoryTest` y `CopiaEnfermedadesTest`). Ningún test cambió de sentido.
+    **Sin vuelta atrás:** una app v10 sobre una base v11 descarta los datos del navegador (web); para probar, servir esta rama en otro puerto que
+    el `devWeb` de :8080.
 - [x] **T81. API de escritura de E3 (DTOs, remota y `PayloadsClinica`) con servidor falso.** RF-41 a RF-43, RF-69 — M — Toca API Laravel: no
   - Tests primero: jvm `ClinicaEscrituraApiTest` ampliado: `carga` (`PUT pacientes/{id}/laboratorios` y `/pesos`), `bajaDeCarga` (`DELETE …/{cargaId}` con cuerpo
     JSON) y `pendientes` (`PUT consultas/{id}/pendientes`): método, ruta, cuerpo; errores con `status` y `codigo`; un pedido por error. common

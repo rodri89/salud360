@@ -91,6 +91,16 @@ registros de personas): el repo es público.
   `PayloadsClinica`. `core:data` **2061** en verde (2043 + 18), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las
   dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. **T82-b (texto de pendientes y huella) queda fuera de alcance por
   ahora**; nada cableado, sin migración y sin pedidos reales. Sigue **T80** (migración, pendiente de aprobación) **o T83**.
+  **T80 hecha (2026-11-12): `10.sqm` (v11) reservada y aplicada; no hay vuelta atrás.** Con la aprobación del usuario del mismo día y el número
+  reservado mirando todas las ramas con `git ls-tree` justo antes (`hc-general` llegaba a `9.sqm`; `main`, `origin/main`, `docs/sdd-y-guia-por-hc`,
+  `hc-pediatria-fase-2`, `pediatria-licencia-servidor`, `origin/hc_odontologia` y las dos `origin/feature/*` están en 5, y ninguna tenía `10.sqm`).
+  `laboratorio.remoto_id` y `pendiente.remoto_id` (`TEXT NOT NULL DEFAULT ''`, al final de cada tabla y una sentencia por columna), consultas
+  `guardarRemotoIdLaboratorio/Pendiente` y `laboratorioPorRemotoId/pendientePorRemotoId`, `Laboratorio.remotoId` y `Pendiente.remotoId` en
+  `core/model` y `Mappers.kt`. Nada cableado todavía (no lo usan el repositorio, el envío, la lectura ni la UI). `core:data` **2070** en verde
+  (2061 + 9 de `MigracionLaboratorioTest`), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`),
+  `core:data` wasm y `:server:compileKotlin`. Los cinco tests que simulan una base vieja suman `DROP COLUMN remoto_id` en `laboratorio` y `pendiente`
+  (regla de T15) y sus aserciones de versión pasan a 11. **Ojo:** una base v11 en el navegador no vuelve atrás (una app v10 la descarta) y el `devWeb`
+  de :8080 queda en v11. Sigue **T83** (o T82-b, fuera de alcance por ahora).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
