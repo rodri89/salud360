@@ -23,8 +23,8 @@ import kotlin.test.assertTrue
  * de la app). Todo lo que el dispositivo ya tenía queda como histórico y nada más cambia: ni `dirty` ni `updated_at` ni las
  * demás tablas. Sobre una base SQLite de verdad en un archivo temporal, sembrada con datos inventados.
  *
- * Una base de la v9 se arma con el esquema actual quitándole la columna nueva (y poniéndole `user_version = 9`), igual que en
- * `MigracionHepatologiaTest`; las filas se siembran **después** de quitarla, para que no vengan con la marca ya puesta.
+ * Una base de la v9 se arma con el esquema actual quitándole las columnas nuevas (y poniéndole `user_version = 9`), igual que en
+ * `MigracionHepatologiaTest`; las filas se siembran **después** de quitarlas, para que no vengan con la marca ya puesta.
  */
 class MigracionMarcaTest {
 
@@ -75,6 +75,9 @@ class MigracionMarcaTest {
     private suspend fun crearV9(archivo: File): SqlDriver {
         val driver = DriverFactory(archivo.absolutePath).createDriver()
         ejecutar(driver, "ALTER TABLE consulta DROP COLUMN propia")
+        // Sin las columnas de la `10.sqm` (T80), que el driver agrega al migrar (si no, `ADD COLUMN` chocaría con la existente).
+        ejecutar(driver, "ALTER TABLE laboratorio DROP COLUMN remoto_id")
+        ejecutar(driver, "ALTER TABLE pendiente DROP COLUMN remoto_id")
         ejecutar(driver, "PRAGMA user_version = 9")
 
         // De clínica, sucias (abierta con cambios sin enviar) y limpias.
@@ -271,7 +274,7 @@ class MigracionMarcaTest {
     }
 
     @Test
-    fun la_version_del_esquema_es_la_10() {
-        assertEquals(10L, Salud360Db.Schema.version)
+    fun la_version_del_esquema_es_la_11() {
+        assertEquals(11L, Salud360Db.Schema.version)
     }
 }

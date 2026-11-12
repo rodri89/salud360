@@ -182,7 +182,8 @@ CREATE TABLE laboratorio (
     activo INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX laboratorio_paciente ON laboratorio(paciente_id, especialidad, tipo, fecha);
 
@@ -194,6 +195,9 @@ laboratoriosDePacienteTodos: SELECT * FROM laboratorio WHERE paciente_id = ? AND
 upsertLaboratorio: INSERT OR REPLACE INTO laboratorio VALUES ?;
 laboratoriosDirty: SELECT * FROM laboratorio WHERE dirty = 1;
 limpiarLaboratorio: UPDATE laboratorio SET dirty = 0 WHERE id = ?;
+-- Id de la carga en la web (spec 005, RF-41, D8; migración 10.sqm). Vacío mientras no se envió.
+laboratorioPorRemotoId: SELECT * FROM laboratorio WHERE remoto_id = ? AND deleted = 0;
+guardarRemotoIdLaboratorio: UPDATE laboratorio SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE archivo (
     id TEXT NOT NULL PRIMARY KEY,
@@ -249,7 +253,8 @@ CREATE TABLE pendiente (
     resuelto INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 
 pendientesDePaciente: SELECT * FROM pendiente WHERE paciente_id = ? AND medico_id = ? AND resuelto = 0 AND deleted = 0 ORDER BY updated_at DESC;
@@ -262,6 +267,9 @@ contarPendientesDeMedico: SELECT COUNT(*) FROM pendiente WHERE medico_id = ? AND
 upsertPendiente: INSERT OR REPLACE INTO pendiente VALUES ?;
 pendientesDirty: SELECT * FROM pendiente WHERE dirty = 1;
 limpiarPendiente: UPDATE pendiente SET dirty = 0 WHERE id = ?;
+-- Id del texto único de la consulta en la web (spec 005, RF-43, D8; migración 10.sqm): lo lleva la fila portadora.
+pendientePorRemotoId: SELECT * FROM pendiente WHERE remoto_id = ? AND deleted = 0;
+guardarRemotoIdPendiente: UPDATE pendiente SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE diagnostico (
     id TEXT NOT NULL PRIMARY KEY,

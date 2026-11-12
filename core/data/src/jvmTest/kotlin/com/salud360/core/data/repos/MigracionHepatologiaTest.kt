@@ -249,12 +249,15 @@ class MigracionHepatologiaTest {
                     ejecutar(this, "INSERT INTO sync_estado(tabla, ultima_version, ultima_sync) VALUES ('paciente', 3, 0)")
                     // Sin la columna de la `9.sqm`, que el driver agrega al migrar (si no, `ADD COLUMN` chocaría con la existente).
                     ejecutar(this, "ALTER TABLE consulta DROP COLUMN propia")
+                    // Ídem las de la `10.sqm` (T80).
+                    ejecutar(this, "ALTER TABLE laboratorio DROP COLUMN remoto_id")
+                    ejecutar(this, "ALTER TABLE pendiente DROP COLUMN remoto_id")
                     ejecutar(this, "PRAGMA user_version = 8")
                     close()
                 }
                 val driver = DriverFactory(archivo.absolutePath).createDriver()
                 try {
-                    assertEquals(10L, numero(driver, "PRAGMA user_version"))
+                    assertEquals(11L, numero(driver, "PRAGMA user_version"))
                     for (tabla in listOf("consulta", "registro_clinico", "laboratorio", "antecedente")) {
                         assertEquals(0L, numero(driver, "SELECT COUNT(*) FROM $tabla WHERE especialidad = 'hepatologia'"), "tabla $tabla")
                     }
@@ -273,9 +276,9 @@ class MigracionHepatologiaTest {
     }
 
     @Test
-    fun la_version_del_esquema_es_la_10() {
-        // La `9.sqm` (marca de consulta propia, spec 005) la subió de 9 a 10; acá se prueba la `8.sqm`.
-        assertEquals(10L, Salud360Db.Schema.version)
+    fun la_version_del_esquema_es_la_11() {
+        // La `9.sqm` (marca de consulta propia, spec 005) la subió de 9 a 10 y la `10.sqm` (T80) de 10 a 11; acá se prueba la `8.sqm`.
+        assertEquals(11L, Salud360Db.Schema.version)
     }
 
     // ---------------------------------------------------------------------------------------------------------------

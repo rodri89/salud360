@@ -1,0 +1,9 @@
+-- v10 -> v11: identificador de la web en las cargas de laboratorio y en los pendientes (spec 005, RF-41 y RF-43, D8).
+-- `laboratorio.remoto_id` = el id de esa carga en la web (vacío mientras no se envió); permite actualizarla o darla de baja
+-- por su id en vez de crearla de nuevo. `pendiente.remoto_id` = el id del texto único de la consulta y lo lleva la fila
+-- portadora de los pendientes de esa consulta. Las dos columnas son de texto y van con el valor por omisión vacío: todo lo
+-- que ya había en el dispositivo (lo del médico, lo de pediatría y lo que trajo la lectura) queda sin id y nada más cambia.
+-- Van últimas porque los `upsertX` son posicionales (ver migraciones 3.sqm y 6.sqm). Una sentencia por columna.
+-- Sin vuelta atrás en un dispositivo migrado.
+ALTER TABLE laboratorio ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pendiente ADD COLUMN remoto_id TEXT NOT NULL DEFAULT '';

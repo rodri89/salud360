@@ -190,17 +190,19 @@ fun RegistroRow.toModel() = RegistroClinico(id, paciente_id, consulta_id, especi
 fun RegistroClinico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     RegistroRow(id, pacienteId, consultaId, especialidad, tipo, fecha?.toString(), campos.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
-fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especialidad, tipo, LocalDate.parse(fecha), valores_json.toStringMap(), activo.b())
+fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especialidad, tipo, LocalDate.parse(fecha), valores_json.toStringMap(), activo.b(), remoto_id)
+// Posicional: `remoto_id` va último porque es la última columna de la tabla (ver HistoriaClinica.sq y la migración 10.sqm).
 fun Laboratorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    LaboratorioRow(id, pacienteId, consultaId, especialidad, tipo, fecha.toString(), valores.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l())
+    LaboratorioRow(id, pacienteId, consultaId, especialidad, tipo, fecha.toString(), valores.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun ArchivoRow.toModel() = Archivo(id, paciente_id, consulta_id, registro_id, seccion, nombre, mime, tamanio_bytes, duracion_ms, ruta_local, url_remota, subido.b(), activo.b(), remoto_id)
 fun Archivo.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     ArchivoRow(id, pacienteId, consultaId, registroId, seccion, nombre, mime, tamanioBytes, duracionMs, rutaLocal, urlRemota, subido.l(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
-fun PendienteRow.toModel() = Pendiente(id, paciente_id, medico_id, texto, consulta_id, resuelto.b())
+fun PendienteRow.toModel() = Pendiente(id, paciente_id, medico_id, texto, consulta_id, resuelto.b(), remoto_id)
+// Posicional: `remoto_id` va último porque es la última columna de la tabla (ver HistoriaClinica.sq y la migración 10.sqm).
 fun Pendiente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    PendienteRow(id, pacienteId, medicoId, texto, consultaId, resuelto.l(), updatedAt, deleted.l(), dirty.l())
+    PendienteRow(id, pacienteId, medicoId, texto, consultaId, resuelto.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun DiagnosticoRow.toModel() = Diagnostico(id, medico_id, nombre, activo.b())
 fun Diagnostico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
