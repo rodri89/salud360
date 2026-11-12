@@ -56,7 +56,7 @@ Archivo: `hclinica/app/Http/Controllers/MedicoController.php`.
   reutilizaba la abierta (`nuevaConsulta`, `:282-320`, y `consultaGet`, `:252-275`) está marcado DEPRECATED.
 - **También `guardarLaboratorioGeneral`, `guardarLaboratorioGeneral2` y `guardarPeso` escriben `medico_infos.es_nueva_consulta = 8`**
   (`:6531`, `:6651`, `:6727`), y otras acciones de la web lo ponen en 0, 1, 3 o 4 (`:909-944`, `:2503-2505`, `:3036-3072`, `:3136`).
-  **[Corregido el 2026-11-07, ver §12]** en el clon el de `guardarPeso` (`:6722-6728`) está **comentado**: lo escriben el laboratorio general
+  **[Corregido el 2026-11-07, ver §12; reverificado en T73 el 2026-11-12 contra el clon]** el de `guardarPeso` (`:6722-6728`) está **comentado** (`/* ... */`, línea por línea igual a los otros dos): lo escriben el laboratorio general
   (`:6526-6532`) y el reducido (`:6646-6652`) y las fotos de exámenes (`:2497-2506`). La puerta RF-16 no cambia (la API no escribe `medico_infos`).
   Importa para la **puerta bloqueante de RF-16**: la API **no replica** esas escrituras (cargar laboratorio o peso por la API no
   cambia ese estado), y la comparación antes/después de la prueba debe incluir esa tabla **después de cargar laboratorio y peso**.
@@ -387,7 +387,7 @@ desde otra consulta pasa de verdad). `numero` de 1 a 4; `numero_consulta` hasta 
 - **Laboratorio general** `guardarLaboratorioGeneral` `:6195-6535`, **reducido** `guardarLaboratorioGeneral2` `:6537-6655` y **peso** `guardarPeso` `:6697-6731`: siempre un `INSERT` (la web no actualiza una
   carga ya guardada); cada columna que no viene queda `''`; la fecha llega `d/m/Y` y, **si falta, se guarda `2000-01-01`** (`:6515-6521`, `:6635-6641`, `:6711-6717`; la lectura lo trata como «sin fecha»,
   `ConsultasReglas::fechaDeCarga` `:456-460`); **`activo = 1` desde el alta** (`:6523`, `:6643`, `:6719`): visibles al instante (D20).
-- **`medico_infos`:** el laboratorio general (`:6526-6532`) y el reducido (`:6646-6652`) ponen `es_nueva_consulta = 8`; el de `guardarPeso` está **comentado** en el clon (`:6722-6728`) — corrige §2.
+- **`medico_infos`:** el laboratorio general (`:6526-6532`) y el reducido (`:6646-6652`) ponen `es_nueva_consulta = 8`; el de `guardarPeso` está **comentado** en el clon (`:6722-6728`) - corrige §2 (reverificado en T73, ver §12.1). **La puerta RF-16 no cambia: la API no escribe `medico_infos` en ningún caso** (ni el 8 del laboratorio, ni el 3 o 4 de las fotos).
 - **Baja** `eliminarLaboratorioGeneral` `:3682-3698`, `…General2` `:3700-3716`, `eliminarPeso` `:3718-3734`: `activo = 0` solo si estaba en 1 y el paciente coincide. Es la única forma de «editar» en la web:
   borrar y volver a cargar.
 - **Pendientes** `guardarPendientes` `:4808-4842` (y `guardarPendientesCancelar` `:4773-4806`, que escribe `""`): una fila por (paciente, consulta) con `activo = 1` en `aux_pendientes`, texto completo en
@@ -395,6 +395,48 @@ desde otra consulta pasa de verdad). `numero` de 1 a 4; `numero_consulta` hasta 
 - Pasos de la app que dependen de esto: `laboratorio` y `pendiente` no tienen `remoto_id` hoy (`HistoriaClinica.sq`), los emparejaba por id la lectura (T29 (c)); `CargasLaboratorio.kt` dice «las guardadas no se
   editan, se borran y se recargan» (Q-E3-1).
 
+### 12.1 T73 - El esquema real de E3 (verificado el 2026-11-12, solo lectura)
+**Alcance (decisión del usuario, 2026-11-12):** el contrato y las tareas siguientes son solo para **laboratorio general (`laboratorio_generals`) y peso (`pesos`)**. El laboratorio reducido
+(`laboratorio_general2s`) y los pendientes (`aux_pendientes`) se verifican igual porque los scripts de `e0` y la lectura los usan, pero **no se implementan**. La tabla `pendiente` NO es de la
+base de la web (no existe en `hc_clinica`): es la tabla local de la app (SQLDelight, `HistoriaClinica.sq`).
+Se leyó `information_schema` de `hc_clinica` (solo `SELECT`; `hc_clinica_respaldo` tiene exactamente las mismas columnas, tipos y `NOT NULL`). Las cuatro tablas son InnoDB `utf8mb4_unicode_ci`, sin
+triggers, con `id` autoincremental, dos claves foráneas (`consulta_id` → `consultas`, `paciente_id` → `pacientes`) y **sin ningún `UNIQUE`**: una consulta puede tener muchas cargas y dos
+con la misma fecha conviven. Las migraciones del clon dicen lo mismo (`2024_08_25_001654_create_laboratorio_generals_table`, `2025_12_09_130726_create_laboratorio_general2s_table`, `2026_04_30_120000_add_campos_laboratorio_generals_table`).
+
+| Tabla (filas hoy en `hc_clinica`) | Columnas, en orden | Tipo | NULL | Defecto | `ColumnasLegacy::vacias` rellena |
+|---|---|---|---|---|---|
+| `laboratorio_generals` (686) | `id` | `bigint(20) unsigned` | NO | autoincremental | - |
+| | `consulta_id`, `paciente_id` | `int(10) unsigned` | NO | - | los pone la API |
+| | `fecha` | `date` | **NO** | **ninguno** | **la fecha de hoy** (`Carbon::now()`): la API tiene que mandarla siempre |
+| | 40 analitos: `hto, hb, blancos, plaquetas, glucemia, urea, creatinina, na, k, cl, ca, mg, albumina, fosforo, tgo, tgp, fal, bt, bd, bi, ggt, tp, rin, concentracion, kptt, ldh, pcr, vsg, ct, ldl, tgc, hdl, ferritina, sat_de_transf, meld, proteinograma, tsh_t4l_antitpo, hba1c, vitamina_d3, acido_urico` | `varchar(255)` | NO | ninguno | `''` |
+| | 11 analitos (agregados por la migración de 2026-04-30): `b12_homocisteina_folico, psat, ags_igg_anticore_antis_hbv, igg_hav, igg_hcv, hiv, vdrl, fan, asma_ama_antilkm, somf, peso` | `varchar(255)` | NO | **`''`** | nada (los cubre la base) |
+| | `otro` | `varchar(500)` | NO | ninguno | `''` |
+| | `activo` | `int(11)` | NO | ninguno | lo pone la API (`1`) |
+| | `created_at`, `updated_at` | `timestamp` | SÍ | ninguno | los pone la API |
+| `laboratorio_general2s` (9) | `id`, `consulta_id`, `paciente_id`, `fecha` (`date`, NO, ninguno), `activo`, `created_at`, `updated_at` | como arriba | | | `fecha` = hoy |
+| | 15 analitos: `hemograma, ferritina, hepatograma, glucemia, hba1c, colesterol_total, ldl, tg, urea, creatinina, rac, cortisol_matutino, testosterona_total, cpk, otro` | `varchar(191)` | NO | ninguno | `''` |
+| `pesos` (6) | `id`, `consulta_id`, `paciente_id`, `fecha` (`date`, NO, ninguno), `activo`, `created_at`, `updated_at` | como arriba | | | `fecha` = hoy |
+| | `valor` (la columna del peso; el id de la app es `peso`) | `varchar(255)` | NO | ninguno | `''` |
+| `aux_pendientes` (1742) | `id` (`int(10) unsigned`, no `bigint`), `consulta_id`, `paciente_id`, `activo`, `created_at`, `updated_at` | | | | |
+| | `pendientes` | `text` | NO | ninguno | `''` |
+
+Qué cambia para la escritura:
+- **Largos reales** (la conexión de Laravel es estricta: pasarse da error de base, no corta): analitos del laboratorio general `varchar(255)` **caracteres** y `otro` `varchar(500)`; el reducido `varchar(191)`; el peso `valor` `varchar(255)`;
+  `pendientes` `text` (65535 bytes). Hoy el máximo en uso es 26 caracteres en `otro`, 5 en el peso y 299 bytes en los pendientes.
+- **Los nombres de las columnas son sin acento ni guion bajo** (`albumina`, `fosforo`, `concentracion`, `acido_urico`, `b12_homocisteina_folico`): lo confirman `information_schema` (bytes ASCII), la migración y la web (`MedicoController.php:6275-6284`).
+  `MapaClinica::LABORATORIO_GENERAL` está escrito **columna de la web => id de la app** (como `ANTECEDENTES_FAMILIARES`), y los **cinco ids de la app** que no coinciden con la columna son `alb_mina`, `f_sforo`, `concentraci_n`, `_cido_rico` y
+  `b12_homociste_na_f_lico` (salen de etiquetas con tilde); en el reducido la columna `otro` es el id `otros`; en el peso la columna `valor` es el id `peso`. No es un error del mapa. (`laboratorio_generals.peso` es **un analito más**, distinto de la tabla `pesos`.)
+- **`ColumnasLegacy::vacias` pone la fecha de HOY** en estas tablas porque `fecha` es `NOT NULL` sin defecto: **la API nunca puede apoyarse en el relleno para la fecha**; la manda siempre (la web, si falta, guarda `2000-01-01`, que la lectura trata como «sin fecha»).
+- **Filas `activo = 2`:** hoy hay una por tabla (todas de la consulta 1983, el fixture S de E1: laboratorio 720, reducido 28, peso 42, pendientes 1756). La web las crea siempre con `activo = 1` (`:6523`, `:6643`, `:6719`); **la lectura (`activo = 1`) no las muestra**.
+  Quien las pasa a 1 es el **cierre desde la web** (`establecerActivo` `:3442-3461` → `setActivoLaboratorioGeneral`, `...General2`, `...Peso`, `...ExamenesComplementarios`, `...Interconsulta`, `:2225-2267`): pone `activo = 1` a **todas** las filas de la consulta,
+  **incluidas las dadas de baja (`activo = 0`)**. La API no hace eso (D20: su cierre confirma solo exámenes e interconsultas), pero una consulta creada por la app que alguien cerrara desde la web reactivaría sus cargas dadas de baja.
+- Marcador de «sin fecha» (`2000-01-01`): hoy **0 filas** lo tienen en `hc_clinica` en las tres tablas de carga.
+- Reparto de `activo` hoy: laboratorio general 683 con 1, 2 con 0 y 1 con 2; reducido 8 con 1 y 1 con 2; peso 5 con 1 y 1 con 2; pendientes 1741 con 1 y 1 con 2. La baja de la web deja `activo = 0` (`:3694`, `:3712`, `:3730`).
+- Cómo escribe la web (verificado el 2026-11-12 contra el clon, mismos números de línea que arriba): `guardarLaboratorioGeneral` `:6195-6535` (un `INSERT` con todas las columnas, `''` las no enviadas; fecha `d/m/Y` → `Y-m-d`, falta → `2000-01-01` `:6515-6521`; `activo = 1` `:6523`; **`medico_infos.es_nueva_consulta = 8`** `:6526-6532`),
+  `guardarLaboratorioGeneral2` `:6537-6655` (igual; `:6635-6641`, `:6643`, **`:6646-6652`**), `guardarPeso` `:6697-6731` (igual, `valor` ← `peso`; `:6711-6717`, `:6719`; el bloque de `medico_infos` **`:6722-6728` está comentado**), bajas `eliminarLaboratorioGeneral` `:3682-3698`, `...General2` `:3700-3716`, `eliminarPeso` `:3718-3734`
+  (`activo = 0` solo si estaba en 1 y el paciente coincide), pendientes `guardarPendientes` `:4808-4842` y `guardarPendientesCancelar` `:4773-4806` (una fila por (paciente, consulta) con `activo = 1`, se **actualiza**; la lectura toma la última del paciente).
+- Lo que lee la lectura de estas tablas (`ConsultasService::historia` + `ConsultasReglas::cargas`): solo `activo = 1` de consultas `activo` 1 o 2; una carga **sin ningún valor** o **sin fecha útil** (`2000-01-01`, `1000-01-01`, `0000-00-00`) **no se manda** (se cuenta en `omitidas.laboratorio_sin_fecha`); devuelve `{id, consulta_id, fecha, valores:{<id de la app>: texto}}` en
+  `historia.laboratorios.laboratorio_general`, `.laboratorio_reducido` y `.peso`. Por eso una carga de la API **sin valores** o **sin fecha** nunca se vería: el contrato las rechaza (`carga_vacia`, `fecha_invalida`).
 ## 13. E4 — adjuntos
 - **PDF** `subirConsultaPdf` `:3592-3655`: hasta 15 MB (`:3624`), solo extensión `.pdf` (`:3619-3622`), carpeta `public_path('img/<usuario>/consulta_pdf')` con `mkdir` si falta (`:3628-3633`; en el hosting de
   pediatría `mkdir` no estaba permitido), nombre `time()_azar.pdf` (`:3635`), fila `consulta_pdfs` (`consulta_id` o 0, `paciente_id`, `nombre_original`, `ruta_archivo` relativa a `img/`, `activo = 1`).
