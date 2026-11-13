@@ -264,6 +264,13 @@ registros de personas): el repo es público.
    compilación y después verde: `AdjuntosClinicaTest` 19 y `HcClinicaBackendAdjuntosTest` 10; `core:data` **2225** (2221 + 4), clinica 38, ui 17,
    crecimiento 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. Cambió el `AdjuntosFalso` (contesta `limites()`). Sin migración,
    sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` igual. **T107 hecha; sigue T108** (habilitar E4); la revisión visual es T112.
+   **T108 reducida hecha (2026-11-13, decisión del usuario): documentos habilitados; quedan sin habilitar reducido, pendientes y alimentación/exámenes/interconsultas.**
+   `SECCIONES_HABILITADAS` = 20 ids (los 9 de E1 + las 8 del alcance de E2 + `laboratorio_general` y `tabla_peso` + **`documentos`**); `SUBENTREGA_HABILITADA` sigue en E1 y
+   solo siembra, y no se habilitó nada más (las fotos de exámenes siguen fuera de alcance, T105). Rojo 6 de 2226 en `core:data` y 1 de 38 en `especialidades:clinica`;
+   verde `core:data` **2226** (2225 + 1 test nuevo; uno existente se reemplazó por otro del mismo asunto), clinica 38, ui 17 y crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y
+   `:server:compileKotlin`, todo en 0. Cambiaron `SeccionesEnviablesTest` (cuenta 20, conjunto exacto de 20, `documentos` fuera de los «todavía no» y por omisión
+   `SE_ENVIA`), `LecturaClinicaCatalogoTest` (se ofrece; «todavía no» 5 → 4) y `EstadoEnPantallaTest` (sin aviso). Sin migración, sin Laravel y sin pedidos reales.
+   **Sigue T109** (E2E de E4 contra la copia local); la revisión visual es T112.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

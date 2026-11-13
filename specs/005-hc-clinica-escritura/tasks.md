@@ -2331,11 +2331,26 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     y `:composeApp:compileKotlinWasmJs -Pentorno=dev`, los dos en 0. **Un test existente cambió** (sin comportamiento): el `AdjuntosFalso` de
     `HcClinicaBackendAdjuntosTest` contesta `limites()` y anota los pedidos (antes fallaba a propósito porque T106 no los preguntaba), y su KDoc suma T107.
     **Sigue T108** (levantar el candado de E4: recién ahí se ve todo esto en la app).
-- [ ] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
+- [x] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
   - `SUBENTREGA_HABILITADA = E4`: la HC general ofrece las 25 secciones (menos las que D9 deja afuera, que no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
     `LecturaClinicaCatalogoTest`, `EstadoEnPantallaTest` y los que usan la constante por omisión (con su porqué). **Con esto "casi todo el perfil queda editable"**: lo único que sigue de solo lectura
     es lo que D9 dice (ver el resumen final del planificador).
   - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; el wasm compila.
+  - **Resultado (2026-11-13): HECHA REDUCIDA — se habilita solo `documentos` (decisión del usuario); las fotos de exámenes siguen fuera de alcance.** No se sube `SUBENTREGA_HABILITADA` a E4: sigue en
+    E1 y solo siembra; el candado es el conjunto. `SECCIONES_HABILITADAS` pasa de 19 a **20 ids**: los 9 de E1, las 8 del alcance de E2, `laboratorio_general` y `tabla_peso` de la E3 reducida y
+    **`documentos`** (E4 reducida: PDF, JPG, JPEG y PNG). **No se habilita nada más**: `alimentacion`, `examenes_complementarios`, `interconsulta`, `laboratorio_reducido` y `pendientes` siguen en
+    «todavía no»; las fotos de exámenes (T105) no están en la 005 y el resto de E4 no existe. `SeccionesEnviables.kt`: la constante suma `documentos` y sus comentarios (la subentrega que siembra y el
+    candado) cuentan la decisión de esta tarea. **Rojo:** `:core:data:jvmTest` **6 fallos de 2226** y `:especialidades:clinica:jvmTest` **1 de 38** (las cuentas y los conjuntos esperados de abajo).
+    **Verde:** `core:data` **2226** (2225 + 1 test nuevo), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos ni salteados; compilan
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin` (salida 0).
+    **Tests que cambiaron y porqué:** `SeccionesEnviablesTest` — `el_candado_habilitado_…` (cuenta 19 → 20 y el alcance de E4 en el conjunto esperado), `el_conjunto_exacto_de_la_version_es_el_de_los_20_ids`
+    (eran 19 literales; suma `documentos`), `la_e3_reducida_deja_el_laboratorio_reducido_y_los_pendientes_todavia_no` (saca `documentos`, que ya viaja), `sin_indicar_el_conjunto_rige_el_candado_de_la_version`
+    (`documentos` por omisión ya es `SE_ENVIA`) y **dos tests nuevos**: `el_candado_suma_los_documentos_a_los_19_de_la_e3_reducida_y_no_enciende_ninguna_otra` (19 + `documentos` = 20, sin nada de más) y
+    `lo_que_queda_fuera_del_candado_sigue_todavia_no_con_los_documentos_adentro` (el complemento exacto sigue en `TODAVIA_NO`, sin ofrecerse y con el aviso), que reemplaza a
+    `lo_que_el_alcance_del_usuario_deja_afuera_sigue_todavia_no` (mismo asunto, hoy sin `documentos`). `LecturaClinicaCatalogoTest` (en `especialidades:clinica`): `las_25_secciones_siguen_decididas_…` suma
+    `documentos` a las que se ofrecen y lo saca de las que dicen «todavía no» (5 → 4). `EstadoEnPantallaTest`: `una_seccion_sin_envio_dice_por_que_solo_si_la_consulta_se_envia` suma `documentos` a las que
+    ya no llevan aviso (el «Esta sección todavía no se envía a la web» de la sección desaparece en la pantalla). Ningún test de la cola cambió: pasan su propio conjunto. Sin migración, sin dependencias
+    nuevas, sin Laravel y sin pedidos reales. **Sigue T109** (E2E de E4 contra la copia local); la revisión visual es T112.
 
 ## Pruebas y cierre de E4
 - [ ] **T109. E2E de E4 contra la copia local.** RF-15, RF-16, RF-44 a RF-46 — M — Toca API Laravel: no
