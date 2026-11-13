@@ -2291,12 +2291,46 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs`, `:server:compileKotlin` y
     `:features:hc:compileKotlinJvm`, todos en 0. **Ningún test existente cambió**: solo la firma del ayudante `HcClinicaPruebas.conBackend` (parámetro `adjuntos`), que los
     `HcClinicaBackend*Test` de la L siguen llamando igual. **Sigue T107**; las fotos de exámenes siguen fuera de alcance (T105).
-- [ ] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no
+- [x] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no
   - `features/hc` (`ArchivosSeccion.kt`): en una consulta propia de clínica el selector de `documentos` ofrece **PDF, JPG, JPEG y PNG** (`accept` con los cuatro, Q-E4-1 revisada); mensaje del tope
     antes de subir (T103); estado de cada adjunto («Falta enviar», «En espera», «No se pudo enviar», ya cubiertos por T37); abrir un adjunto de la web con la sesión (`abrirArchivo`), con
     miniatura/ícono de PDF o de imagen; la lista sigue la regla de Q-E4-3 (**consulta nueva** = todos los documentos del paciente; **consulta previa** = solo los de esa consulta); «Esta sección
     todavía no se envía a la web» desaparece de `documentos`. Los adjuntos de registros de examen **no** se muestran: las fotos de exámenes están fuera de alcance (T105).
   - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T112.
+  - **Resultado (2026-11-13): HECHA — las pantallas de los documentos quedan listas; el candado de E4 sigue puesto (T108).** Sin migración, sin Laravel,
+    sin dependencias nuevas y sin pedidos reales; `SECCIONES_HABILITADAS` **no cambió**, así que hasta T108 la sección se ve solo para leer y el aviso
+    «Esta sección todavía no se envía a la web» sigue saliendo de `avisoDeEnvioDeLaSeccion` (T37): no se tocó ni se duplicó en la pantalla, y desaparece
+    solo al encender E4. Las fotos de los exámenes siguen fuera de alcance (T105) y la revisión visual es T112.
+    **Qué hace la pantalla (`features/hc/secciones/ArchivosSeccion.kt`, solo en la sección `documentos`).** (1) El selector ofrece **PDF, JPG, JPEG y
+    PNG** (`TIPOS_MIME_DE_ADJUNTO`, de `TipoDeAdjunto`: `application/pdf,image/jpeg,image/png`; `.jpg` y `.jpeg` son el mismo MIME) y el botón dice
+    «Agregar PDF o imagen»; lo demás (HC digitalizada, familigrama, adjuntos de estudios) sigue con «cualquier imagen o PDF» y «Agregar foto o PDF».
+    (2) Un archivo que no es de los cuatro se rechaza **antes de guardarlo** con `avisoDelTipoDeAdjunto` («Solo se aceptan PDF, JPG, JPEG o PNG»,
+    `AVISO_TIPO_DE_ADJUNTO`): la app mira la extensión y, si no tiene, el `Content-Type`; el contenido lo valida la web por su firma (T96) y vuelve
+    como «No se pudo enviar». (3) El tope se avisa **antes de subir** con `limiteExcedido` (T103): `ConsultaViewModel.avisoDelTope` pregunta los límites
+    de la web una sola vez por pantalla y el texto sale en rojo debajo del botón; el archivo **no se guarda** (no queda en el dispositivo ni pendiente).
+    (4) Ícono/miniatura por tipo (`tipoDeAdjunto`): PDF → ícono, JPG/JPEG/PNG → miniatura (`decodificarImagen`), audio y lo demás como antes; se abre con
+    `bytesDe` + `abrirArchivo` (T106: lo de la web se baja con la sesión la primera vez y queda cacheado) y con el `mime` del tipo, no con un
+    `application/octet-stream`. (5) Estado de cada adjunto: el ícono de nube de T37 y, en una consulta que se envía, **«Falta enviar»**
+    (`TEXTO_FALTA_ENVIAR`) debajo mientras un adjunto **de esta consulta** no esté en la web; los de consultas anteriores que lista una consulta nueva no
+    se marcan (no viajan con esta, RF-46) y los textos de «En espera» y «No se pudo enviar» siguen siendo los de la franja (son por parte, no por
+    archivo: la cola no guarda un estado por archivo). (6) La lista sigue Q-E4-3 con `Consulta.documentosDeTodoElPaciente()`: una consulta **nueva y en
+    curso** lee los documentos de **todo** el paciente (`observarArchivos`) y una **previa** solo los suyos (`observarArchivosDeConsulta`); lo que cuelga
+    de un registro de examen **no** se muestra (filtro `registroId == null`, T105).
+    **Cambios de interfaz (compilado; lo que el plan no cubría).** La pantalla no tenía de dónde sacar el tope —la cola lo pregunta por su cuenta, T104—,
+    así que hay una capacidad nueva `LimitesDeAdjuntos` (en `core/data/repos`, como `ListaDeAdjuntos`), la implementa `HcClinicaBackend`
+    (`limiteDeAdjuntos()` = `GET adjuntos/limites`, `null` sin API de adjuntos) y `HcRepository.limiteDeAdjuntos(especialidad)` la expone; si el pedido
+    falla o no hay API el archivo **no se frena**: se guarda y la cola lo compara igual al subir (T104). `ArchivosInline` gana `lecturaPorPaciente`
+    (dónde se leen los adjuntos) separado de `porPaciente` (dónde se guardan: los documentos siempre cuelgan de la consulta abierta) y `ArchivoMiniatura`,
+    `faltaEnviar`. Además `HcClinicaBackend.traerAdjuntos` pasa a usar `documentosDeTodoElPaciente()` (la misma regla que la pantalla, en un solo lugar;
+    mismo comportamiento).
+    **Rojo:** `:core:data:compileTestKotlinJvm` con **21 errores** (18 en `AdjuntosClinicaTest` y 3 en `HcClinicaBackendAdjuntosTest`: no existían
+    `TIPOS_MIME_DE_ADJUNTO`, `avisoDelTipoDeAdjunto`, `AVISO_TIPO_DE_ADJUNTO`, `documentosDeTodoElPaciente` ni `limiteDeAdjuntos`).
+    **Verde:** `AdjuntosClinicaTest` **19** (16 + 3: el selector ofrece los tres MIME que cubren los cuatro tipos, el rechazo antes de guardar y la regla
+    de lista de Q-E4-3) y `HcClinicaBackendAdjuntosTest` **10** (9 + 1: el tope se pregunta a la API, sin backend o sin API no hay tope). `core:data`
+    **2225** (2221 + 4), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos ni salteados; compilan `:features:hc:compileKotlinJvm`
+    y `:composeApp:compileKotlinWasmJs -Pentorno=dev`, los dos en 0. **Un test existente cambió** (sin comportamiento): el `AdjuntosFalso` de
+    `HcClinicaBackendAdjuntosTest` contesta `limites()` y anota los pedidos (antes fallaba a propósito porque T106 no los preguntaba), y su KDoc suma T107.
+    **Sigue T108** (levantar el candado de E4: recién ahí se ve todo esto en la app).
 - [ ] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
   - `SUBENTREGA_HABILITADA = E4`: la HC general ofrece las 25 secciones (menos las que D9 deja afuera, que no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
     `LecturaClinicaCatalogoTest`, `EstadoEnPantallaTest` y los que usan la constante por omisión (con su porqué). **Con esto "casi todo el perfil queda editable"**: lo único que sigue de solo lectura

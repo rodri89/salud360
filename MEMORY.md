@@ -250,6 +250,20 @@ registros de personas): el repo es público.
    clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm, `:server` y `:features:hc`. Ningún test
    existente cambió (solo la firma del ayudante `HcClinicaPruebas.conBackend`). Sin migración, sin Laravel y sin pedidos reales;
    `SECCIONES_HABILITADAS` sigue igual. **Sigue T107** (pantallas de E4); las fotos de exámenes siguen fuera de alcance (T105).
+   **T107 hecha (2026-11-13): las pantallas de la sección «Documentos» de la HC general quedan listas (el candado de E4 sigue puesto, T108).**
+   `features/hc/secciones/ArchivosSeccion.kt`: selector con PDF, JPG, JPEG y PNG (`TIPOS_MIME_DE_ADJUNTO`, de `TipoDeAdjunto`), rechazo antes de
+   guardar con `avisoDelTipoDeAdjunto` («Solo se aceptan PDF, JPG, JPEG o PNG», `AVISO_TIPO_DE_ADJUNTO`), tope avisado antes de subir con
+   `limiteExcedido` (T103; `ConsultaViewModel.avisoDelTope` pregunta los límites una vez por pantalla y el archivo no se guarda), ícono/miniatura por
+   `tipoDeAdjunto`, apertura con `bytesDe`/`abrirArchivo` y el `mime` del tipo (T106), «Falta enviar» bajo el adjunto propio que todavía no está en la
+   web y la lista de Q-E4-3 con `Consulta.documentosDeTodoElPaciente()` (nueva = todo el paciente; previa = solo los suyos). Los adjuntos de registros
+   de examen no se muestran (filtro `registroId == null`; T105 sigue fuera de alcance) y «Esta sección todavía no se envía a la web» sigue saliendo de
+   `avisoDeEnvioDeLaSeccion` (desaparece solo en T108). **Decisión no prevista:** el tope necesita los límites de la web y la pantalla no los tenía,
+   así que `LimitesDeAdjuntos` (capacidad nueva en `core/data/repos`, como `ListaDeAdjuntos`), `HcClinicaBackend.limiteDeAdjuntos()` y
+   `HcRepository.limiteDeAdjuntos(especialidad)`; si falla, el archivo se guarda igual (la cola lo compara al subir, T104). `ArchivosInline` separa
+   `porPaciente` (dónde se guarda) de `lecturaPorPaciente` (dónde se lee); `HcClinicaBackend.traerAdjuntos` usa la misma regla. Rojo 21 errores de
+   compilación y después verde: `AdjuntosClinicaTest` 19 y `HcClinicaBackendAdjuntosTest` 10; `core:data` **2225** (2221 + 4), clinica 38, ui 17,
+   crecimiento 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. Cambió el `AdjuntosFalso` (contesta `limites()`). Sin migración,
+   sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` igual. **T107 hecha; sigue T108** (habilitar E4); la revisión visual es T112.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
