@@ -1,6 +1,7 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.flujoLista
 import com.salud360.core.data.flujoUno
 import com.salud360.core.data.hcgeneral.AvisoDeCambios
@@ -131,6 +132,16 @@ class HcRepository(
         val backend = backends[consulta.especialidad] ?: return
         if (consulta.remotoId.isBlank()) return
         backend.traerConsulta(consulta.id, consulta.remotoId)
+    }
+
+    /**
+     * Lista los documentos de la web de una consulta que se acaba de **abrir** (spec 005, T106; RF-45), con la regla de Q-E4-3 que decide el
+     * backend: una consulta nueva y en curso lista todos los documentos del paciente y una previa solo los de esa consulta. Solo la HC general
+     * sabe hacerlo ([ListaDeAdjuntos]): las demás no piden nada. **Nunca** se llama desde el autoguardado, y no se reintenta sola: si falla, lo
+     * ya traído se queda y el error sale tal cual (la pantalla lo absorbe para no romperse).
+     */
+    suspend fun traerAdjuntosRemotos(consulta: Consulta) {
+        (backends[consulta.especialidad] as? ListaDeAdjuntos)?.traerAdjuntos(consulta.id)
     }
 
     // ---- aviso al envío y estado de envío de la consulta (spec 005, T36) ----
@@ -499,11 +510,30 @@ class HcRepository(
     /**
      * Baja de la API de la especialidad el contenido de un adjunto que no está en este dispositivo,
      * porque lo subió la web o alguien desde otro teléfono. Null si no hay API o no se pudo.
+     *
+     * La HC general baja el documento **por su id de la web** (T106): la consulta que lo lista puede ser nueva y todavía no tener id allá. Las
+     * demás historias clínicas piden el id de la consulta, como siempre.
      */
     suspend fun bajarArchivo(consulta: Consulta, archivo: Archivo): ByteArray? {
         val backend = backends[consulta.especialidad] ?: return null
-        if (consulta.remotoId.isBlank() || archivo.remotoId.isBlank()) return null
+        if (archivo.remotoId.isBlank()) return null
+        if (consulta.remotoId.isBlank() && consulta.especialidad != CodigosHc.GENERAL) return null
         return backend.bajarArchivo(consulta.remotoId, archivo)
+    }
+
+    /**
+     * Los bytes de un documento para mostrarlo (spec 005, T106; RF-45): si ya están en el dispositivo, de la copia local; si no, se bajan **una
+     * sola vez** con la sesión del médico ([bajarArchivo]) y quedan cacheados en [store]. Relee la fila, así la pantalla que se quedó con el
+     * adjunto de antes (sin ruta) no los vuelve a pedir. `null` si no hay nada que bajar o la web no lo tiene (un `404` de un documento dado de
+     * baja o de un archivo que falta): la pantalla no se rompe.
+     */
+    suspend fun bytesDeArchivo(consulta: Consulta, archivo: Archivo, store: ArchivoStore): ByteArray? {
+        val actual = q.archivoPorId(archivo.id).uno { it.toModel() } ?: archivo
+        actual.rutaLocal?.let { store.leer(it) }?.let { return it }
+        if (actual.remotoId.isBlank()) return null
+        val bytes = bajarArchivo(consulta, actual) ?: return null
+        guardarRutaLocal(actual, store.guardar(actual.id, actual.nombre, bytes))
+        return bytes
     }
 
     /** Anota dónde quedó guardado en este dispositivo un adjunto que se acaba de bajar: no hay nada que enviar. */

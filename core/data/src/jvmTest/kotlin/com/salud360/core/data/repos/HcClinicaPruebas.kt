@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import com.salud360.core.data.hcgeneral.RespuestasClinicaDeEjemplo
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApi
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
 import com.salud360.core.data.network.hc.ConsultasClinicaApi
 import com.salud360.core.data.network.hc.EjemplosConsultasClinica
@@ -154,13 +155,20 @@ internal object HcClinicaPruebas {
 
     class Contexto(val backend: HcClinicaBackend, val db: Salud360Db, val driver: SqlDriver, val api: ApiFalsa, val reloj: Reloj)
 
-    /** El backend con una [ApiFalsa], un reloj falso y una base temporal con el paciente de prueba. */
-    fun conBackend(api: ApiFalsa = ApiFalsa(), vinculado: Boolean = true, bloque: suspend Contexto.() -> Unit) =
-        conBase(vinculado) { db, driver ->
-            val reloj = Reloj()
-            val backend = HcClinicaBackend(db, api, pacientes(db), { reloj.millis }, HcClinicaBackend.MAX_PAGINAS)
-            Contexto(backend, db, driver, api, reloj).bloque()
-        }
+    /**
+     * El backend con una [ApiFalsa], un reloj falso y una base temporal con el paciente de prueba. [adjuntos] es la API de adjuntos
+     * (spec 005, T106): sin ella el backend queda como antes (no lista ni baja documentos).
+     */
+    fun conBackend(
+        api: ApiFalsa = ApiFalsa(),
+        vinculado: Boolean = true,
+        adjuntos: ClinicaAdjuntosApi? = null,
+        bloque: suspend Contexto.() -> Unit,
+    ) = conBase(vinculado) { db, driver ->
+        val reloj = Reloj()
+        val backend = HcClinicaBackend(db, api, pacientes(db), { reloj.millis }, HcClinicaBackend.MAX_PAGINAS, adjuntos)
+        Contexto(backend, db, driver, api, reloj).bloque()
+    }
 
     /** Cómo se pidió una página de la lista. */
     class Pedido(val ficha: Long, val limite: Int, val desde: Int)

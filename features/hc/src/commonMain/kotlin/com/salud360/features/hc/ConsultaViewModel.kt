@@ -203,6 +203,9 @@ class ConsultaViewModel(
             // Una consulta de la web: un solo pedido (RF-57), a mano si falla (RF-58), y nada que enviar ni reintentar.
             if (soloLecturaWeb) { leerDeLaWeb(c); return@launch }
             runCatching { hc.traerConsultaRemota(c) }
+            // Spec 005 (T106, RF-45): los documentos de la sección «Documentos» se listan **al abrir** la consulta, nunca desde el
+            // autoguardado. Si falla, la pantalla no se rompe: se vuelve a intentar al abrirla de nuevo.
+            listarAdjuntos(c)
             hcApi.empujarTodo()
         }
     }
@@ -218,12 +221,28 @@ class ConsultaViewModel(
         viewModelScope.launch {
             _lecturaWeb.value = try {
                 hc.traerConsultaRemota(c)
+                listarAdjuntos(c)
                 LecturaDeLaConsulta()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 LecturaDeLaConsulta(error = e)
             }
+        }
+    }
+
+    /**
+     * Los documentos de la sección «Documentos» de la consulta que se está abriendo (spec 005, T106; RF-45): una consulta nueva y en curso
+     * lista los de todo el paciente y una previa solo los suyos (lo decide el backend). Nunca desde el autoguardado y nunca frena la consulta:
+     * si falla, lo ya traído se queda y se vuelve a intentar al abrirla de nuevo o con «Reintentar» (RF-58).
+     */
+    private suspend fun listarAdjuntos(c: Consulta) {
+        try {
+            hc.traerAdjuntosRemotos(c)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // La lista de documentos no puede impedir que la consulta se abra ni que se lea su contenido.
         }
     }
 
@@ -483,14 +502,11 @@ class ConsultaViewModel(
 
     suspend fun bytesDe(archivo: Archivo): ByteArray? {
         archivo.rutaLocal?.let { archivos.leer(it) }?.let { return it }
-        // Lo que subió la web u otro dispositivo llega sin archivo: se baja la primera vez que hay que
-        // mostrarlo y queda guardado acá, así no se vuelve a pedir en cada recomposición.
+        // Lo que subió la web u otro dispositivo llega sin archivo: se baja la primera vez que hay que mostrarlo
+        // (con la sesión) y queda guardado acá, así no se vuelve a pedir en cada recomposición (spec 005, T106).
         val consulta = ui.value.consulta
         if (consulta != null && archivo.remotoId.isNotBlank()) {
-            hc.bajarArchivo(consulta, archivo)?.let { bytes ->
-                hc.guardarRutaLocal(archivo, archivos.guardar(archivo.id, archivo.nombre, bytes))
-                return bytes
-            }
+            hc.bytesDeArchivo(consulta, archivo, archivos)?.let { return it }
         }
         val ruta = sync.descargarArchivo(archivo.id) ?: return null
         return archivos.leer(ruta)

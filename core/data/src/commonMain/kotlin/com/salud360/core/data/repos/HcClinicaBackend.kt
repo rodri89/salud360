@@ -8,7 +8,9 @@ import com.salud360.core.data.hcgeneral.CLAVE_OMITIDAS_LABORATORIO
 import com.salud360.core.data.hcgeneral.LecturaWeb
 import com.salud360.core.data.hcgeneral.LoEnviado
 import com.salud360.core.data.hcgeneral.PREFIJO_ID_WEB
+import com.salud360.core.data.hcgeneral.SECCION_DOCUMENTOS
 import com.salud360.core.data.hcgeneral.antecedentesDeLaWeb
+import com.salud360.core.data.hcgeneral.archivosDeLaWeb
 import com.salud360.core.data.hcgeneral.camposConfirmadosDelEstudio
 import com.salud360.core.data.hcgeneral.cargaDeLaWebParaLaPropia
 import com.salud360.core.data.hcgeneral.claveNoLeidas
@@ -40,6 +42,9 @@ import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.AdjuntoDeLaWebDto
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApi
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApiRemota
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ClinicaEscrituraApiRemota
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
@@ -106,7 +111,12 @@ class HcClinicaBackend internal constructor(
     val escritura: ClinicaEscrituraApi,
     /** El turno por consulta que comparte con la cola de envío: la lectura de una propia lo toma solo para aplicar lo que trajo. */
     private val turnos: TurnosPorConsulta = TurnosPorConsulta(),
-) : HcBackend, Refrescable {
+    /**
+     * La API de adjuntos (spec 005, T106): con ella la lectura lista los documentos de la sección `documentos` al abrir una consulta y los
+     * baja con la sesión. Sin ella (los tests de la lectura que no la pasan) el backend se comporta como antes: no lista ni baja documentos.
+     */
+    private val adjuntos: ClinicaAdjuntosApi? = null,
+) : HcBackend, Refrescable, ListaDeAdjuntos {
     /** Con el cliente completo: la lectura por su envoltorio de solo lectura y la escritura por [ClinicaEscrituraApiRemota]. */
     constructor(
         db: Salud360Db,
@@ -114,11 +124,24 @@ class HcClinicaBackend internal constructor(
         pacientes: PacientesHcRepository,
         ahora: () -> Long = ::ahoraMillis,
         turnos: TurnosPorConsulta = TurnosPorConsulta(),
-    ) : this(db, ConsultasClinicaApiRemota(HcApiSoloLectura(cliente)), pacientes, ahora, MAX_PAGINAS, ClinicaEscrituraApiRemota(cliente), turnos)
+    ) : this(
+        db, ConsultasClinicaApiRemota(HcApiSoloLectura(cliente)), pacientes, ahora, MAX_PAGINAS, ClinicaEscrituraApiRemota(cliente), turnos,
+        ClinicaAdjuntosApiRemota(cliente),
+    )
 
     /** Para probar la lectura sin API de escritura: cualquier uso de [escritura] falla (la lectura nunca la usa). */
     internal constructor(db: Salud360Db, api: ConsultasClinicaApi, pacientes: PacientesHcRepository, ahora: () -> Long, maxPaginas: Int) :
         this(db, api, pacientes, ahora, maxPaginas, SinEscritura)
+
+    /** Para probar la lectura de documentos (T106) sin API de escritura: la de adjuntos es la que se pase (o ninguna). */
+    internal constructor(
+        db: Salud360Db,
+        api: ConsultasClinicaApi,
+        pacientes: PacientesHcRepository,
+        ahora: () -> Long,
+        maxPaginas: Int,
+        adjuntos: ClinicaAdjuntosApi?,
+    ) : this(db, api, pacientes, ahora, maxPaginas, SinEscritura, TurnosPorConsulta(), adjuntos)
 
     override val especialidad: String = CodigosHc.GENERAL
 
@@ -552,6 +575,77 @@ class HcClinicaBackend internal constructor(
     }
 
     // ------------------------------------------------------------------
+    // Los documentos de la sección `documentos` (`GET pacientes|consultas/{id}/adjuntos`, T106)
+    // ------------------------------------------------------------------
+
+    /**
+     * Lista los documentos de la web de la consulta que se acaba de **abrir** (T106, RF-45); nunca desde el autoguardado. La regla es la de
+     * Q-E4-3: una consulta **nueva y en curso** (una propia abierta, la que se está cargando) lista **todos** los documentos del paciente
+     * (`GET pacientes/{id}/adjuntos`, cada uno con su consulta de origen); una **previa** (cerrada o del histórico) lista **solo** los de esa
+     * consulta (`GET consultas/{id}/adjuntos`). Una previa que nunca se envió no tiene nada en la web y no pide nada, y sin ficha del paciente
+     * tampoco (RF-49). Es un solo pedido, sin reintento propio; si falla, lo ya traído se queda como siempre y el error sale tal cual (la
+     * pantalla lo absorbe: la lista de documentos no puede impedir que la consulta se abra).
+     *
+     * Lo que trae se guarda como filas `archivo` **sin archivo** (`rutaLocal` nula, `remoto_id` = el id de la web) y sin `dirty`. Lo que esta
+     * app ya subió (su fila con `remoto_id`) y lo mismo que trae la lista son **una sola** fila (RF-33); un documento que la web dejó de listar
+     * se marca `activo = 0` —deja de verse— y **nada se borra**: ni la fila ni el archivo del dispositivo (Q15). Lo pendiente de enviar no se
+     * toca. No toma el turno de la consulta: no escribe nada que la cola de envío esté mandando (solo filas limpias y filas nuevas).
+     */
+    override suspend fun traerAdjuntos(consultaLocalId: Id) = candado.withLock {
+        val apiAdjuntos = adjuntos ?: return@withLock
+        val local = hq.consultaPorId(consultaLocalId).uno { it.toModel() } ?: return@withLock
+        if (local.especialidad != especialidad) return@withLock
+        val ficha = pacientes.fichaConocida(local.pacienteId, especialidad)
+        if (ficha == null) {
+            log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
+            return@withLock
+        }
+        val porPaciente = local.propia && local.estado == EstadoConsulta.ABIERTA
+        val consultaWebId = local.remotoId.toLongOrNull()?.takeIf { it > 0 }
+        if (!porPaciente && consultaWebId == null) {
+            log.i { "la consulta $consultaLocalId no tiene id en la web: no hay documentos que listar" }
+            return@withLock
+        }
+        val documentos = if (porPaciente) apiAdjuntos.listarDePaciente(ficha).adjuntos else apiAdjuntos.listarDeConsulta(consultaWebId!!).adjuntos
+        db.transaction { aplicarAdjuntos(local, documentos, porPaciente) }
+    }
+
+    /**
+     * Escribe lo que trajo la lista de documentos, dentro de una transacción: empareja por `remoto_id` (lo que la app subió y lo de la web son
+     * una sola fila), no toca lo que tiene cambios sin enviar y da de baja lógica (`activo = 0`, nunca `DELETE`) lo que esta lista cubría y la
+     * web ya no trae. [porPaciente]: la lista es de todo el paciente (una consulta nueva) y no solo de la consulta abierta.
+     */
+    private suspend fun aplicarAdjuntos(local: Consulta, documentos: List<AdjuntoDeLaWebDto>, porPaciente: Boolean) {
+        val sello = ahora()
+        val consultas = hq.consultasDePaciente(local.pacienteId, especialidad).lista { it.id }.toSet()
+        val vinculadas = vinculadasDelPaciente(local.pacienteId)
+        val traidos = archivosDeLaWeb(local.pacienteId, documentos, consultas, vinculadas)
+        // Lo que esta lista cubre: todos los documentos del paciente (consulta nueva) o solo los de la consulta abierta (previa).
+        val cubiertas = if (porPaciente) consultas else setOf(local.id)
+        val locales = hq.archivosDePacienteTodos(local.pacienteId).lista { it.toModel() }
+            .filter { it.seccion == SECCION_DOCUMENTOS && it.consultaId?.let { c -> c in cubiertas } == true }
+        val porRemoto = locales.filter { it.remotoId.isNotBlank() }.associateBy { it.remotoId }
+        val sucios = hq.archivosDirty().lista { it.id }.toSet()
+        val vistos = mutableSetOf<String>()
+        traidos.forEach { web ->
+            vistos += web.remotoId
+            val propia = porRemoto[web.remotoId]
+            if (propia != null) {
+                // La misma fila: no se duplica ni se pisa, y lo pendiente manda. Solo se reactiva una que la web volvió a listar y no espera envío.
+                if (!propia.activo && propia.id !in sucios) hq.upsertArchivo(propia.copy(activo = true).filaDeLaWeb(sello))
+                return@forEach
+            }
+            // Una fila con ese id que no se empareja por `remoto_id` no se toca (nunca se pisa lo que hay).
+            if (hq.archivoPorId(web.id).uno { it.toModel() } != null) return@forEach
+            hq.upsertArchivo(web.filaDeLaWeb(sello))
+        }
+        // Lo que la web dejó de listar deja de verse, **sin borrar nada** (Q15): ni la fila ni su archivo del dispositivo. Lo que tiene cambios
+        // sin enviar no se toca (todavía no viajó, o su baja está esperando).
+        locales.filter { it.activo && it.remotoId.isNotBlank() && it.remotoId !in vistos && it.id !in sucios }
+            .forEach { hq.upsertArchivo(it.copy(activo = false).filaDeLaWeb(sello)) }
+    }
+
+    // ------------------------------------------------------------------
     // Envío: no existe (RF-47)
     // ------------------------------------------------------------------
 
@@ -569,8 +663,25 @@ class HcClinicaBackend internal constructor(
 
     override suspend fun borrarArchivo(remotoId: String, archivo: Archivo) = noEnvia("borrarArchivo")
 
-    /** La entrega L no trae adjuntos (`no_leidas` los avisa): no hay nada que bajar. */
-    override suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray? = null
+    /**
+     * Los bytes de un documento de la sección `documentos`, **con la sesión** del médico (T106, RF-45): un solo `GET adjuntos/{id}/archivo`,
+     * nunca un enlace público. `null` si no hay API de adjuntos, si la fila no tiene id de la web o si la web no lo puede dar —un `404` de un
+     * adjunto dado de baja o de un archivo que falta en el disco—: la pantalla se queda sin mostrarlo y no se rompe.
+     */
+    override suspend fun bajarArchivo(remotoId: String, archivo: Archivo): ByteArray? {
+        val apiAdjuntos = adjuntos ?: return null
+        // Solo los documentos de la sección `documentos`: las fotos de exámenes no son parte de E4 (T105) y esta API no las sirve.
+        if (archivo.seccion != SECCION_DOCUMENTOS) return null
+        if (archivo.remotoId.isBlank()) return null
+        return try {
+            apiAdjuntos.bajar(archivo.remotoId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            log.i { "no se pudo bajar el documento ${archivo.nombre}: ${e.message}" }
+            null
+        }
+    }
 
     // Estos métodos son del motor viejo (`HcApiSync`), que ignora a este backend por `envioPropio`: la HC general se envía con
     // `HcClinicaEnvio` y la API de escritura ([escritura]). Si alguien los llama, lanzan sin tocar la red, como siempre.

@@ -1,6 +1,7 @@
 package com.salud360.core.data.hcgeneral
 
 import com.salud360.core.data.mappers.toRow
+import com.salud360.core.data.network.hc.AdjuntoDeLaWebDto
 import com.salud360.core.data.network.hc.CargaLaboratorioDto
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
 import com.salud360.core.data.network.hc.ExamenFisicoDto
@@ -18,6 +19,7 @@ import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.especialidad.TipoConsultaHc
 import com.salud360.core.model.especialidad.TipoSeccion
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.ExamenFisico
@@ -45,7 +47,8 @@ import kotlinx.datetime.LocalDate
 /**
  * Prefijo de los ids locales de todo lo que se trae de la web de la HC general (spec 002, "Identificadores locales"):
  * consulta `hcc-c<id>`, médico de otro `hcc-m<id>`, carga de laboratorio o de peso `hcc-l<tipo>-<id>`, fila de estudio,
- * examen o interconsulta `hcc-r<tipo>-<id>`, pendiente `hcc-p<id>` y antecedente familiar `hcc-a<ficha>-<clave>`. Todos
+ * examen o interconsulta `hcc-r<tipo>-<id>`, pendiente `hcc-p<id>`, antecedente familiar `hcc-a<ficha>-<clave>` y documento
+ * de la sección `documentos` `hcc-f<id>`. Todos
  * llevan el tipo (la web repite los números entre sus tablas: veda, biopsia y TC comparten el 1797 en el fixture) y salen
  * solo de lo que la web mandó, así que traer lo mismo dos veces da el mismo id. Disjunto de `hcp-c…` (pediatría), de
  * `hc-clinica-p…` (paciente de clínica), de `tobb-…` (turnos) y de los ids del dispositivo (UUID: la `h` no es hexadecimal).
@@ -116,6 +119,9 @@ fun idPendienteWeb(idWeb: Long): Id = "${PREFIJO_ID_WEB}p$idWeb"
 
 /** [pacienteWebId] es el de la ficha de la web (`paciente_id` de la historia); [clave] es la de la casilla o una nota. */
 fun idAntecedenteWeb(pacienteWebId: Long, clave: String): Id = "${PREFIJO_ID_WEB}a$pacienteWebId-$clave"
+
+/** Id local de un documento de la sección `documentos` que trae la lista de la web (spec 005, T106): el de su fila es el id del adjunto. */
+fun idArchivoWeb(idWeb: Long): Id = "${PREFIJO_ID_WEB}f$idWeb"
 
 // ---------- Lo común ----------
 
@@ -544,6 +550,45 @@ private fun pendienteWeb(h: RespuestaHistoriaDto) = h.pendientes?.takeIf { it.id
 fun pendienteDeLaWeb(pacienteLocalId: Id, medicoSesionId: Id, h: RespuestaHistoriaDto): Pendiente? =
     pendienteWeb(h)?.let { Pendiente(idPendienteWeb(it.id), pacienteLocalId, medicoSesionId, it.texto, null, false) }
 
+// ---------- Documentos de la sección `documentos` (spec 005, T106) ----------
+
+/** El `Content-Type` del `tipo` que informa la lista de la web (`pdf`, `jpeg`, `png`); uno desconocido queda genérico. */
+private fun mimeDeDocumento(tipo: String): String =
+    TipoDeAdjunto.entries.firstOrNull { it.id == tipo }?.mime ?: "application/octet-stream"
+
+/**
+ * Los documentos de la sección [SECCION_DOCUMENTOS] que trae la lista de la web (T106, RF-45), con `remoto_id` = el id del adjunto en la
+ * web: es con lo que la lectura empareja lo que esta app ya subió (su id local) con lo mismo que trae la lista, y así no se duplica (RF-33).
+ * La consulta de origen es la local —la `hcc-c<id>` o la propia ya enviada ([vinculadas])— y un documento de una consulta que el dispositivo
+ * no tiene se deja afuera: no hay dónde mostrarlo, y la web nunca lista uno sin consulta ni de otra historia clínica (RF-46). Se guarda
+ * **sin archivo** (`rutaLocal` nula: los bytes se bajan la primera vez que hay que mostrarlos) y sin pendiente de envío; el `tipo` de la
+ * lista da el `Content-Type` con el que se abre (RF-45).
+ */
+fun archivosDeLaWeb(
+    pacienteLocalId: Id,
+    adjuntos: List<AdjuntoDeLaWebDto>,
+    consultasLocales: Set<Id>,
+    vinculadas: Map<Long, Id> = emptyMap(),
+): List<Archivo> = adjuntos.mapNotNull { a ->
+    val idWeb = a.id.toLongOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+    // Sin consulta de origen no se lista (la web no manda uno así) y con una consulta que no está en el dispositivo no hay dónde mostrarlo.
+    val consultaWebId = a.consultaId.toLongOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+    val consultaLocal = consultaLocalDe(consultaWebId, consultasLocales, vinculadas) ?: return@mapNotNull null
+    Archivo(
+        id = idArchivoWeb(idWeb),
+        pacienteId = pacienteLocalId,
+        consultaId = consultaLocal,
+        seccion = SECCION_DOCUMENTOS,
+        nombre = a.nombreOriginal,
+        mime = mimeDeDocumento(a.tipo),
+        tamanioBytes = a.tamanio,
+        rutaLocal = null,
+        subido = false,
+        activo = true,
+        remotoId = a.id,
+    )
+}
+
 // ---------- Filas para guardar (siempre sin pendiente de envío, RF-53) ----------
 // `toRow` tiene `dirty = true` por defecto; lo traído de la web nunca debe quedar sucio (el motor de envío lo empujaría).
 // `ahora` solo se pasa para lo que de verdad se escribe.
@@ -561,6 +606,8 @@ fun Laboratorio.filaDeLaWeb(ahora: Long) = toRow(ahora, dirty = false)
 fun RegistroClinico.filaDeLaWeb(ahora: Long) = toRow(ahora, dirty = false)
 
 fun Pendiente.filaDeLaWeb(ahora: Long) = toRow(ahora, dirty = false)
+
+fun Archivo.filaDeLaWeb(ahora: Long) = toRow(ahora, dirty = false)
 
 fun MedicoPreferencia.filaDeLaWeb(ahora: Long) = toRow(ahora, dirty = false)
 
