@@ -184,6 +184,14 @@ registros de personas): el repo es público.
    a los de carga) y repetir es `ok`. `tamanio` sale de `filesize` (0 si falta el archivo) y el tipo de la extensión que generó el servidor. No toca la lectura ni `medico_infos`; sin columnas ni migraciones.
    **`tests/Unit` 1345 en verde (7549 aserciones; 1330 + 15)**, base descartable 54 controles × 2 modos, HTTP 35 controles, 5/5 mutaciones; `hc_clinica` igual salvo `salud360_token_cache`.
    Cambiaron dos tests existentes (rutas de `EscrituraAdjuntosTest` y el conteo de `Route::delete(` de `EscrituraBajaCargasTest`, 4 → 5). **Sigue T99** (límites de subida); las fotos de exámenes siguen fuera de alcance.
+   **T99 hecha (2026-11-13): `GET adjuntos/limites` (solo lectura), hclinica `5e475ee` (rama `salud360-api`, sin push; copia servida idéntica en los archivos del repo —solo quedan distintos los dos
+   blades del parche local— y `route:clear`).** Con la sesión del médico; sin token `401 sin_token`. Contesta `{ok, maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` y en la copia local
+   `{"maximo_bytes":15728640,"maximo_web_bytes":15728640,"upload_max_filesize":"64M","post_max_size":"64M"}` (los de T95). La forma la arma `AdjuntosReglas::limites`, pura: `maximo_bytes` =
+   `limiteEfectivo` (si el tope de la web no sirve, `MAXIMO_WEB`; **nunca** null, la app necesita un número), `maximo_web_bytes` = el de la web parseado y los dos crudos tal como los da `ini_get`
+   (`null` si la instalación no los informa; cero/vacío no recortan). El controlador solo llama a `ini_get`: no escribe ni consulta la base ni toca el disco. **`tests/Unit` 1349 en verde (7593
+   aserciones; 1345 + 4)**, HTTP 11 controles OK; `hc_clinica` idéntica (`suma`/`contar` con el mismo SHA-256, `medico_infos` 213039496) y la foto del disco de la copia servida también: lo único que se
+   movió en la pasada fueron los dos contadores del *throttle* de `storage/framework/cache/data` (los escribe cualquier pedido) y la fila de `salud360_token_cache`, y se restauraron. Cambió una aserción de
+   `EscrituraAdjuntosTest` (daba `limites` por inexistente). Sigue **T101** (prueba de punta a punta de E4 y documentación); las fotos de exámenes siguen fuera de alcance.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

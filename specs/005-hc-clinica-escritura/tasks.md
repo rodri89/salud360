@@ -2064,10 +2064,33 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `rutaDelArchivo`, `accionDeBaja`, `respuestaDeBaja`, `respuestaDeBajaGuardada`, `adjuntoNoEncontrado`/`adjuntoNoPropio`), `AdjuntosService` (`listarDelPaciente`, `listarDeLaConsulta`,
     `adjunto`, `paraBajar`, `bajaAdjunto`), `AdjuntosController` (`delPaciente`, `deLaConsulta`, `archivo`, `baja` y sus auxiliares) y `routes/api.php`. **Sigue T99** (límites de subida).
 
-- [ ] **T99. Límites de subida (solo lectura).** RF-44, D18 — S — Toca API Laravel: sí
+- [x] **T99. Límites de subida (solo lectura).** RF-44, D18 — S — Toca API Laravel: sí
   - Tests primero: `AdjuntosReglasTest` (la forma de la respuesta con `limiteEfectivo`). Código: `Route::get('adjuntos/limites', …)` → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` con
     `ini_get`; **no escribe nada** y no toca el disco. En producción solo se llama cuando el usuario apruebe la etapa de producción (D18).
   - Hecho cuando: curl con token devuelve los límites de la copia local (iguales a los de T95); sin token `401`; ningún archivo ni fila cambió.
+  - **Resultado (2026-11-13): HECHA — los límites de la copia local por HTTP, sin escribir nada.** hclinica `5e475ee` (rama `salud360-api`, sin push; copia
+    servida idéntica en los archivos del repo —2411 de 2413: solo quedan distintos los dos blades del parche local, que no se tocaron— y `route:clear`).
+    **Contrato.** `GET adjuntos/limites` dentro del grupo `salud360` → `200 {ok, maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}`, con la sesión del
+    médico. Con la copia local: `{"ok":true,"maximo_bytes":15728640,"maximo_web_bytes":15728640,"upload_max_filesize":"64M","post_max_size":"64M"}` (los de T95). La
+    forma la arma `AdjuntosReglas::limites($web, $upload, $post)`, pura: `maximo_bytes` = `limiteEfectivo` y, si el tope de la web no sirve, `MAXIMO_WEB`;
+    `maximo_web_bytes` = el de la web parseado (`MAXIMO_WEB` si no sirve); los dos crudos tal como los informa `ini_get` (`null` si la instalación no los informa; cero
+    y vacío no recortan). El controlador solo llama a `ini_get` (`soloMedico` y `AdjuntosReglas::limites`): no escribe, no consulta la base ni toca el disco.
+    **Decisiones no previstas en el plan:** (a) la ruta exige **médico** (`403 sin_permiso` a administrador y secretaria), como el resto de E4; (b) los crudos de
+    `ini_get` viajan tal cual (texto, sin normalizar) y un valor ausente sale `null`, no un texto inventado; (c) `maximo_bytes` **nunca** queda nulo (la app necesita
+    un número para avisar antes de subir); (d) un entero de `ini` se toma como bytes (`parsearBytes`), así que un 5 de verdad recorta.
+    **Pruebas.** (1) **Unit, primero EN ROJO:** tres tests nuevos en `AdjuntosReglasTest` (la forma de la copia local, el hosting más chico y los casos sin tope/sin
+    valor) y uno en `LecturaAdjuntosTest` (la ruta en el grupo con el middleware, antes de `adjuntos/{id}/archivo`, y el método solo lee); en rojo dieron 5 errores por el
+    método y la ruta que todavía no existían. **`tests/Unit` completo en la copia servida: 1349 tests, 7593 aserciones, salida 0** (1345 + 4). (2) **HTTP contra
+    `hc_clinica`** (`%TEMP%\opencode\t99\http-t99.ps1`, pedidos ~1,3 s, el token leído de un archivo fuera del repo y nunca impreso): **11 controles OK, 0 fallas** —
+    `200` con las cuatro claves, los dos valores de la copia local y `maximo_bytes ≤ maximo_web_bytes`; `401 sin_token` sin token; `401 token` con un token inventado.
+    (3) **Snapshot:** la base quedó **idéntica** (`escritura-suma.sql` y `escritura-contar.sql` con el mismo SHA-256 antes y después; `medico_infos` 213039496) y la foto
+    del disco de la copia servida (2466 archivos) también, salvo el archivo del controlador (que cambia por esta tarea): lo único que se movió durante la pasada fueron
+    los dos contadores del *throttle* de la caché de archivos de Laravel (`storage/framework/cache/data`, los escribe **cualquier** pedido) y la fila de
+    `salud360_token_cache` del middleware, y los dos se restauraron a su contenido y valores anteriores.
+    **Archivos:** `app/Services/Salud360/AdjuntosReglas.php` (`limites`, `valorDeIni`), `AdjuntosController` (`limites`), `routes/api.php`, `AdjuntosReglasTest` y
+    `LecturaAdjuntosTest` (nuevos tests) y `EscrituraAdjuntosTest` (deja de dar `limites` por inexistente). Sin columnas ni migraciones; `ConsultaController`,
+    `ConsultasService` y `medico_infos` intactos. **Sigue T101** (prueba de punta a punta del servidor de E4 y documentación); las fotos de exámenes (T100/T105) siguen
+    fuera de alcance.
 - [ ] **T100. Fotos de exámenes complementarios — FUERA DE ALCANCE por ahora.** RF-44 (D24 revisada) — M — Toca API Laravel: sí — **No se implementa sin pedido del usuario** (ya no depende de T95: T95 no verifica fotos)
   - *(2026-11-13: el usuario dejó las fotos de exámenes fuera de alcance; el cambio de D24 vale solo para la sección `documentos`.)* Lo que sigue es el diseño que quedó, para cuando se pida:
   - Código: `AdjuntosService::subirFotoDeExamen` (`tipo = foto_examen`, `registro_id` = id de la web de un examen **confirmado** del paciente o de esta consulta): escribe
