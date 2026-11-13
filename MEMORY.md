@@ -203,6 +203,15 @@ registros de personas): el repo es público.
    del disco (ruta + SHA-256 anotados antes). Scripts con base de T97/T98 en `hc_clinica_t10` (estricto y sin `sql_mode`): misma salida que sus tareas.
    **Grep:** 0 `medico_infos`, 0 DDL, 0 `delete` sobre `consulta_pdfs`; los tres `unlink` son del temporal `.part` → nunca se borra un archivo guardado.
    `tests/Unit` **1349 en verde (7593 aserciones)**. Apache: solo `GET`/`POST`/`DELETE`, sin `5xx`.
+   **T102 hecha (2026-11-13): la API de adjuntos de E4 en la app, con servidor falso (nada cableado).** `core:data`: `network/hc/ClinicaAdjuntosApi.kt` (nuevo):
+   `ClinicaAdjuntosApi` (`subir`, `listarDePaciente`, `listarDeConsulta`, `bajar`, `borrar`, `limites`) + `ClinicaAdjuntosApiRemota` sobre el `HcApiClient` completo
+   (multipart de `subir`, `descargar` que rechaza un JSON en lugar del archivo) y `TIPO_ADJUNTO_DOCUMENTO`; en `HcClinicaEscrituraDtos.kt`, los DTOs del alta y de la
+   lista (ids como **texto**, `created_at` opcional) y de los límites; `PayloadsClinica.claveDeAdjunto` (`a:<id local>`), `claveDeBajaDeAdjunto` (`a:<id local>-baja`)
+   y `bajaDeAdjunto` (comparte con `bajaDeCarga` un `bajaConConsulta`). **Un `413` del servidor web al subir se lee como `archivo_grande`**; `bajar` devuelve solo
+   los bytes (el tipo de la descarga lo da `tipo` de la lista). Se hizo como interfaz aparte y no sumando métodos a `ClinicaEscrituraApi`, para no tocar el
+   `ServidorFalso` de las pruebas de la cola. Rojo por compilación (73 errores) y después verde: `ClinicaAdjuntosApiTest` **21**, `core:data` **2160** (2139 + 21),
+   `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin
+   migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` igual y las fotos de exámenes siguen fuera de alcance. **Sigue T103.**
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

@@ -2147,13 +2147,32 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     exámenes siguen fuera de alcance y **Q-E4-2 sigue pendiente**.
 
 ## App de E4
-- [ ] **T102. API de adjuntos (subir, listar por paciente y por consulta, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no
+- [x] **T102. API de adjuntos (subir, listar por paciente y por consulta, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no
   - Tests primero: jvm `ClinicaAdjuntosApiTest` con `HttpServer`: `subir` usa `HcApiClient.subir` (ya existe, multipart con tiempo largo) con los campos `clave`, `dispositivo`, `tipo` (`documento`;
     `foto_examen` queda fuera de alcance); el servidor falso recibe los bytes y los campos exactos de un PDF, un JPG y un PNG; `listar` con las **dos** formas (`GET pacientes/{id}/adjuntos` y
     `GET consultas/{id}/adjuntos`), `bajar` (`HcApiClient.descargar`, que rechaza un JSON en lugar del archivo, con `Content-Type` de PDF o de imagen), `borrar` (`DELETE` con cuerpo) y `limites`;
     errores `401/403/404/409/413/422/429/500` con `status` y `codigo` (`archivo_grande`, `archivo_invalido`, `tipo_invalido`, `carpeta_no_escribible`); un pedido por error; JSON cortado.
   - Código: `ClinicaEscrituraApi` (+ adjuntos) o `ClinicaAdjuntosApi` aparte, remota sobre el `HcApiClient` completo; DTOs; `PayloadsClinica.claveDeAdjunto`. Ninguna dependencia nueva.
   - Hecho cuando: tests en verde (antes, en rojo); compila el wasm (el multipart de la web se prueba a mano en T112).
+  - **Resultado (2026-11-13): HECHA — la API de E4 en la app, contra un servidor falso; nada cableado.** Se eligió una interfaz **aparte**
+    (`ClinicaAdjuntosApi`) y no sumar seis métodos a `ClinicaEscrituraApi`: así no hay que tocar el `ServidorFalso` de las pruebas de la cola (que implementa esa
+    interfaz) ni su test de «las once operaciones», y T104 puede combinar las dos. `core:data`, `network/hc/ClinicaAdjuntosApi.kt` (nuevo):
+    `ClinicaAdjuntosApi` (`subir`, `listarDePaciente`, `listarDeConsulta`, `bajar`, `borrar`, `limites`), `ClinicaAdjuntosApiRemota` sobre el `HcApiClient` completo
+    y `TIPO_ADJUNTO_DOCUMENTO` (`documento`; las fotos de exámenes siguen fuera de alcance). La subida va por `HcApiClient.subir` (multipart `archivo`, `clave`,
+    `dispositivo`, `tipo`; un archivo por pedido) y la descarga por `HcApiClient.descargar` (rechaza un JSON en lugar del archivo). **Un `413` del servidor web en
+    la subida se lee como `413 archivo_grande`** (el cuerpo se cortó antes de Laravel, sin JSON ni `codigo`); un `413` que sí trae `codigo` se respeta.
+    `HcClinicaEscrituraDtos.kt`: `RespuestaAdjuntoDto`/`AdjuntoSubidoDto` (el `id` como **texto**, como el de una carga), `RespuestaAdjuntosDto`/`AdjuntoDeLaWebDto`
+    (`tipo`, `consulta_id`, `tamanio`; `created_at` opcional como en la lectura), `RespuestaBajaDeAdjuntoDto` y `RespuestaLimitesDeAdjuntosDto` (`maximo_bytes` y
+    `maximo_web_bytes` obligatorios; los dos crudos, `null` si la instalación no los informa); `PayloadsClinica.claveDeAdjunto` (`a:<id local>`),
+    `claveDeBajaDeAdjunto` (`a:<id local>-baja`) y `bajaDeAdjunto`, que comparte con `bajaDeCarga` un `bajaConConsulta` (mismo cuerpo, sin cambiar lo que sale).
+    `bajar` devuelve **solo los bytes**: el tipo de la descarga (`pdf`/`jpeg`/`png`) lo da `tipo` de la lista, que es lo que T106 necesita para abrirlo.
+    **Rojo:** el test no compilaba (73 errores: `ClinicaAdjuntosApi`, sus DTOs y las dos claves no existían). **Verde:** `ClinicaAdjuntosApiTest` **21 tests**
+    (método, ruta y multipart con los bytes exactos de un PDF, un JPG y un PNG; las dos listas con su `consulta_id`; la descarga con `application/pdf` e
+    `image/png` y el JSON que no se toma por archivo; la baja con cuerpo; los límites; `401`/`403`/`404`/`409`/`413`/`422`/`429`/`500` con `status` y `codigo` y
+    **un pedido por error**; el JSON cortado; sin red; las claves del contrato). `core:data` **2160** en verde (2139 + 21), `especialidades:clinica` 38, `core:ui` 17
+    y `core:crecimiento` 6; compilan `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`,
+    `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`. Ningún test existente cambió. **Sin cablear** (`HcClinicaBackend`, `HcClinicaEnvio` y la UI
+    intactos), `SECCIONES_HABILITADAS` igual, sin migración, sin dependencias nuevas y sin pedidos reales. **Sigue T103.**
 - [ ] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir (PDF e imágenes).** RF-44, RF-46, RF-60 — M — Toca API Laravel: no
   - Tests primero: common `AdjuntosClinicaTest`: `adjuntoViaja(archivo, consulta)` solo si cuelga de **esa** consulta propia (`consulta_id` no nulo), es de la sección `documentos`, es **PDF, JPG, JPEG
     o PNG** y no está desactivado; **nunca** uno sin consulta ni de otra historia clínica del mismo paciente (RF-46); el tipo se mira por lo que la app ya sabe del archivo (extensión declarada), y el
