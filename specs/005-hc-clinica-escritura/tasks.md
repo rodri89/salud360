@@ -2392,3 +2392,16 @@ Se detalla al llegar a E5, con aprobación aparte (no entra en el camino a «tod
 No se detalla. Requiere: respaldo restaurable verificado, paciente y médico de prueba que indique el usuario, tabla de repetibilidad
 aprobada, comprobación sin token, `APP_DEBUG=false`, lectura de los límites del hosting (D18) y la comprobación de licencias (T42).
 Después, y solo con aprobación aparte, la publicación de la app (E1 a E3 cerradas).
+
+**Paso previo de esquema: `php artisan salud360:preparar` (hclinica `79a4790`, 2026-11-13).** La API crea sus 8 tablas `salud360_*`
+(`salud360_perfiles`, `salud360_perfil_pestanias`, `salud360_perfil_secciones`, `salud360_perfil_medicos`, `salud360_cargas`,
+`salud360_token_cache`, `salud360_vinculos_pendientes` y `salud360_envios`) y `pacientes.paciente_id_tobb` (con su índice) en el primer
+pedido; si el usuario de la base no tiene `CREATE`/`ALTER`, ese primer pedido da `500`. Antes de publicar, correr el comando con un
+usuario que tenga `CREATE` y `ALTER` sobre la base. Reutiliza los mismos `asegurar*` de los servicios (no copia DDL), es idempotente
+(la segunda corrida dice «ya existía»), no toca datos de pacientes y no encola nada. Informa cada tabla y la columna/índice con
+«creada ahora»/«ya existía» y, ante un error de permisos, el `SQLSTATE` (por ejemplo `[42000]` código `1142`), terminando con código 1.
+`--datos` corre además la carga inicial de perfiles ([CargaInicialPerfiles]: «Clínica general» y «Hepatología» y sus asignaciones;
+idempotente por el marcador `perfiles_iniciales`); sin la opción no escribe datos. En la copia local se probó dos veces contra una base
+descartable (`hc_clinica_preparar`, copia de `hc_clinica_t10`): creó las 8 tablas y la columna/índice, la segunda corrida las dio por
+existentes, el `SHOW CREATE TABLE` quedó idéntico al de `hc_clinica` (creadas por la API) y, con un usuario de solo `SELECT`, terminó en
+código 1 mostrando `SQLSTATE[42000]` código 1142. `tests/Unit` 1349 en verde.

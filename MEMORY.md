@@ -271,6 +271,12 @@ registros de personas): el repo es público.
    `:server:compileKotlin`, todo en 0. Cambiaron `SeccionesEnviablesTest` (cuenta 20, conjunto exacto de 20, `documentos` fuera de los «todavía no» y por omisión
    `SE_ENVIA`), `LecturaClinicaCatalogoTest` (se ofrece; «todavía no» 5 → 4) y `EstadoEnPantallaTest` (sin aviso). Sin migración, sin Laravel y sin pedidos reales.
    **Sigue T109** (E2E de E4 contra la copia local); la revisión visual es T112.
+   **Comando para preparar la base antes de publicar (2026-11-13, hclinica `79a4790`, rama `salud360-api`, sin push):** `php artisan salud360:preparar`
+   crea las 8 tablas `salud360_*` y `pacientes.paciente_id_tobb` (+ índice) reutilizando los `asegurar*` de los servicios (sin copiar DDL);
+   es idempotente, no toca datos de pacientes y no encola nada. Informa «creada ahora»/«ya existía» por tabla/columna y, sin permisos,
+   el `SQLSTATE` (código `1142`, salida 1). `--datos` corre además la carga inicial de perfiles (idempotente); sin la opción no escribe datos.
+   Probado dos veces en una base descartable (copia de `t10`) y con un usuario de solo `SELECT`; `SHOW CREATE TABLE` idéntico al de `hc_clinica`.
+   `tests/Unit` 1349 en verde. Pasos de producción en `specs/005-hc-clinica-escritura/tasks.md` (§E9).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
