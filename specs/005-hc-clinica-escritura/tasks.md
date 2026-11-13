@@ -1924,7 +1924,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
   - **`tests/Unit` completo en verde: 1281 tests (6740 aserciones)**, corridos con el `vendor` de la copia servida (el clon no tiene `vendor`).
   - **Alcance de E4 confirmado:** documentos **PDF, JPG, JPEG y PNG** validados por firma; **fotos de exámenes complementarias fuera de alcance** (T100 y T105, no se verificaron ni se
     escribieron filas ni archivos); **Q-E4-2 sigue pendiente** (carpeta del hosting, paso de producción).
-- [ ] **T96. Reglas puras de los adjuntos (servidor) y su test: PDF, JPG, JPEG y PNG por contenido.** RF-44, RF-46, RF-15 — M — Toca API Laravel: sí
+- [x] **T96. Reglas puras de los adjuntos (servidor) y su test: PDF, JPG, JPEG y PNG por contenido.** RF-44, RF-46, RF-15 — M — Toca API Laravel: sí
   - Tests primero: `tests/Unit/AdjuntosReglasTest.php`: clave `a:<id local>` (hasta 191; el prefijo `a` se suma a `EnviosRegistro::PREFIJOS`, que hoy es `c r l p`, T9 lo dejó
     «a definir en E4»); **cuatro tipos por firma** y nada más: `%PDF-` → `pdf`, `FF D8 FF` → `jpeg` (vale para `.jpg` y `.jpeg`), `89 50 4E 47 0D 0A 1A 0A` → `png`; una
     extensión o un `Content-Type` que digan `pdf`/`jpg`/`png` con otra firma → `archivo_invalido` (nunca se confía en el nombre), y un archivo vacío también; nombre original
@@ -1935,6 +1935,46 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     propia, creada por la app y abierta.
   - Código: `app/Services/Salud360/AdjuntosReglas.php`.
   - Hecho cuando: el test en verde (antes, en rojo); controles estáticos de las reglas comunes; `tests/Unit` completo en verde.
+  - **Resultado (2026-11-13): HECHA — reglas puras y su test; sin ruta, controlador ni servicio (T97/T98), sin tocar la lectura ni `medico_infos`.** hclinica
+    `9212707` (rama `salud360-api`, sin push): `app/Services/Salud360/AdjuntosReglas.php` (nuevo), `EnviosRegistro.php` (el prefijo `a` en `PREFIJOS`),
+    `tests/Unit/AdjuntosReglasTest.php` (nuevo, 32 tests) y `tests/Unit/EnviosRegistroTest.php` (dos aserciones). Copia servida idéntica al clon (los cuatro
+    archivos con el mismo hash de git); no hay rutas nuevas, así que no hubo `route:clear`.
+    **Contrato exacto.** `clave($valor)` = `EscrituraReglas::clave` con el prefijo `a`: `a:<id local>`, hasta 191 y `[A-Za-z0-9._-]` después del prefijo;
+    `EnviosRegistro::PREFIJOS` queda `c r l p a`. `tipo($valor)` devuelve `documento` y null para todo lo demás: `foto_examen`, otro valor o su ausencia son
+    `422 tipo_invalido` con `campo: "tipo"` (en `adjunto`). `tipoDeArchivo($cabeza)` mira la firma —`%PDF-` → `pdf`; `FF D8 FF` → `jpeg` (vale `.jpg` y
+    `.jpeg`, que son el mismo tipo); `89 50 4E 47 0D 0A 1A 0A` → `png`— y cualquier otra, una cabeza vacía o un archivo de 0 bytes es `422 archivo_invalido`
+    con `campo: "archivo"`; el nombre y el `Content-Type` no se miran. `extensionDe`: `pdf|jpeg|png` → `pdf|jpg|png` (el archivo en disco usa la extensión
+    del tipo detectado, no la del cliente). `nombreOriginal`: último tramo del camino con `/` y `\`, sin caracteres de control (NUL incluido), sin espacios en
+    los extremos, UTF-8 válido obligatorio, hasta 255 caracteres (si pasa, se recorta conservando la extensión); null si queda vacío o es `.`/`..`.
+    `nombreEnDisco($tipo, $ahora, $azar)` → `<segundos>_<azar>.<ext>` con `$ahora` entero > 0 y `$azar` de 1 a 32 alfanuméricos (el servicio pasa los dos:
+    la regla no usa el reloj ni el azar de Laravel). `rutaRelativa($carpeta, $archivo)` → `<carpeta>/consulta_pdf/<archivo>`, con la carpeta como un solo
+    tramo de ruta y el archivo solo `[A-Za-z0-9._-]`. `parsearBytes` acepta entero no negativo o `N`, `NK`, `NM`, `NG` (mayúscula o minúscula, con espacios
+    alrededor) y satura en `PHP_INT_MAX` lo que no entra en el PHP de 32 bits (`2G`); lo ilegible es null. `limiteEfectivo($web, $upload, $post)` = el menor
+    entre `MAXIMO_WEB` (**15.728.640**) y los dos de `ini_get`; 0, vacío o ilegible no recortan, y null si el de la web no es un tope válido. `cabe($tamanio,
+    $limite)` es `<=` (el límite entra). `errorDeSubida`: 0 → null; `INI_SIZE`/`FORM_SIZE` → `archivo_grande`; `PARTIAL`/`NO_FILE` → `archivo_invalido`; los
+    demás errores del servidor, null (T97 los trata como `500`). `adjunto($datos, $limite)` compone todo con `datos = {error, tamanio, cabeza, nombre, tipo}`:
+    devuelve `{ok: true, tipo, extension, nombre_original, tamanio}` o `{ok: false, status: 422, codigo, campo, mensaje}`, en este orden: tipo de la sección →
+    error de PHP → tamaño (no entero, vacío, mayor que el tope) → firma → nombre; si `$limite` no sirve usa `MAXIMO_WEB`. `autorizarSubida($consulta,
+    $medicoId, $creadaPorLaApp, $yaRegistrada = false)` y `autorizarBaja(...)` delegan en `EscrituraReglas::autorizarConsulta`: **propia, creada por la app y
+    abierta**; `404 consulta_no_encontrada`, `403 consulta_no_propia`, `409 consulta_cerrada` y repetir = ok. Constantes: `PREFIJO`, `CARPETA`
+    (`consulta_pdf`), `TIPO_DOCUMENTO`, `TIPO_FOTO_EXAMEN`, `TIPO_REGISTRO` (`adjunto`), `TIPO_REGISTRO_BAJA` (`baja_adjunto`), los tres códigos,
+    `MAXIMO_WEB`, `NOMBRE_MAXIMO` (255), `CABEZA_BYTES` (8), `FIRMAS`, `EXTENSIONES` y `MENSAJES`. El `dispositivo` y el `consulta_id` **no** se validan acá
+    (los valida el registro de lo recibido / el servicio, como en `carga`), y la carpeta del médico la pasa T97: la regla no conoce el email.
+    **Rojo:** `AdjuntosReglasTest` 32 tests, **32 errores** (la clase no existía; `corre.php`, porque el printer de PHPUnit 7.5 se cae con PHP 7.3 al fallar);
+    `EnviosRegistroTest` con el `PREFIJOS` de HEAD: 96 tests, **1 falla** (data set `adjunto`, `a:12`). **Verde:** `AdjuntosReglasTest` 32 tests y 527
+    aserciones; `EnviosRegistroTest` 96, sin fallas. `tests/Unit` completo en la copia servida: **1313 tests, 7267 aserciones, salida 0** (1281 + 32). `php -l`
+    limpio en los cuatro archivos.
+    **Tests existentes que cambiaron (dos aserciones de `EnviosRegistroTest`, por el prefijo `a`):** el caso del proveedor `'adjunto todavía no' => ['a:12',
+    false]` pasa a `'adjunto' => ['a:12', true]`; y en `testParaOtrosTiposRigenLosPrefijosDelRegistro` el `validarClaves(['a:1'], 'laboratorio')` que se
+    esperaba null pasa a `['x:1']` (con `a` ya es válido para cualquier tipo, y el sentido de la aserción es un prefijo que no existe). No se tocó
+    `testNingunOtroTestDeUnitUsaElRegistro`, que prohíbe a los demás tests de Unit nombrar `EnviosRegistro`: por eso el test nuevo comprueba la forma de la
+    clave y los tipos `adjunto`/`baja_adjunto`, y el prefijo en `PREFIJOS` queda probado en `EnviosRegistroTest`.
+    **Controles estáticos de `AdjuntosReglas.php`:** `medico_infos` **0**, `DELETE`/`delete(` **0**, `Schema::` **0**, `fn (` **0** y propiedades tipadas
+    **0** (el archivo no toca base, disco ni reloj; hay un test que lo fija). En `EnviosRegistro.php`, `Schema::` sigue solo en las 3 de siempre; en
+    `AdjuntosReglasTest`, la palabra `Schema::` aparece **solo** en la lista de tokens prohibidos de la prueba de pureza.
+    **`hc_clinica` no cambió:** `t11\snapshot.cmd t96-antes` y `t96-despues` idénticas (138 líneas; ninguna tabla cambió), con el `tests/Unit` completo
+    corrido entre las dos. **A tener en cuenta:** contra `t79-final` hay 7 tablas distintas (2 consultas, 1 ecografía, 2 laboratorios, 2 pesos, 9 filas de
+    `salud360_envios` y 1 de `salud360_token_cache`): actividad posterior a T79 y ajena a esta tarea (no hubo pedidos a la API ni escrituras mías).
 - [ ] **T97. Subir documentos (PDF, JPG, JPEG y PNG): servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
   - Código: `app/Services/Salud360/AdjuntosService.php` y `app/Http/Controllers/Api/Salud360/AdjuntosController.php` (nuevos: la lectura sigue sin escribir), `Route::post('consultas/{id}/adjuntos', …)`
     (multipart: `archivo`, `clave`, `dispositivo`, `tipo`). El tipo lo decide la **firma** (T96), no el nombre: PDF, JPG/JPEG o PNG, hasta el límite. Orden para que no queden filas sin

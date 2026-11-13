@@ -154,7 +154,19 @@ registros de personas): el repo es público.
   `config('salud360.img_path')` vacío → `public_path('img')` (existe y es escribible). **Scripts de `e0`** ampliados con `consulta_pdfs` (contar/suma/cargar; limpiar ya la
   tenía) y ensayados **solo en `hc_clinica_respaldo`** con `ensayo-t95.cmd` y `ensayo-t95-extra.cmd` (con y sin modo estricto): cargar → limpiar → cargar → limpiar con las
   tres sumas idénticas y `FALLOS=0`; `hc_clinica` con el **mismo SHA-256** de suma y conteos antes y después. `tests/Unit` **1281 en verde**. Las **fotos de exámenes**
-  (T100/T105) siguen **fuera de alcance** y **Q-E4-2** (carpeta y límites del hosting) sigue pendiente y es paso de producción. Sigue **T96** (reglas puras de los adjuntos).
+  (T100/T105) siguen **fuera de alcance** y **Q-E4-2** (carpeta y límites del hosting) sigue pendiente y es paso de producción.
+  **T96 hecha (2026-11-13): reglas puras de los adjuntos de la HC general (servidor), hclinica `9212707` (rama `salud360-api`, sin push; copia servida idéntica).**
+  `app/Services/Salud360/AdjuntosReglas.php` (nuevo): `clave` `a:`, `tipo` (solo `documento`; `foto_examen` → `tipo_invalido`), `tipoDeArchivo` por firma
+  (`%PDF-`, `FF D8 FF`, `89 50 4E 47 0D 0A 1A 0A`), `extensionDe`, `nombreOriginal` (basename, sin caracteres de control, UTF-8, recorte a 255 conservando la
+  extensión), `nombreEnDisco` (`<segundos>_<azar>.<ext>`, azar de 1 a 32 alfanuméricos), `rutaRelativa` (`<carpeta>/consulta_pdf/<archivo>`), `parsearBytes` y
+  `limiteEfectivo` (el menor entre 15 MB y `upload_max_filesize`/`post_max_size`; 0, vacío o ilegible no recorta; `2G` se satura en `PHP_INT_MAX` por el PHP de
+  32 bits), `cabe`, `errorDeSubida` (INI/FORM_SIZE → `archivo_grande`; PARTIAL/NO_FILE → `archivo_invalido`), `adjunto($datos, $limite)` que compone todo, y
+  `autorizarSubida`/`autorizarBaja` sobre `EscrituraReglas::autorizarConsulta`; test nuevo `tests/Unit/AdjuntosReglasTest.php` (32 tests; **rojo 32 errores**).
+  `EnviosRegistro::PREFIJOS` suma `a`: por eso cambian **dos aserciones** de `EnviosRegistroTest` (el caso «adjunto todavía no» pasa a válido y el `['a:1']` de
+  «otros tipos» pasa a `['x:1']`). **Decisión no prevista en el plan:** el test nuevo **no puede nombrar `EnviosRegistro`** (el propio `EnviosRegistroTest` se lo
+  prohíbe a los demás tests de Unit), así que la comprobación del prefijo queda en `EnviosRegistroTest` y en `AdjuntosReglasTest` solo la forma de la clave y los
+  tipos `adjunto`/`baja_adjunto`. `tests/Unit` en la copia servida: **1313 en verde, 7267 aserciones, salida 0** (1281 + 32). `hc_clinica` idéntica (foto
+  antes/después: ninguna tabla cambió). Sigue **T97** (subir: servicio, controlador y ruta).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
