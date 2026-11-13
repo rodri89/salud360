@@ -124,6 +124,71 @@ data class RespuestaBajaDeCargaDto(
     val id: String,
 )
 
+// ---------- E4 (spec 005, T102): adjuntos de la sección `documentos` ----------
+// Los ids de hclinica viajan como texto (el PHP de 32 bits satura los enteros grandes y el servidor los manda como cadena),
+// igual que el de una carga. `created_at` es opcional como en la lectura: el servidor de E4 lo manda siempre, pero una
+// respuesta sin él no se descarta por eso (Q15, nunca inventar una ausencia). Lo que sí es obligatorio es lo que permite
+// saber qué quedó escrito o listado: sin `adjunto`, sin `adjuntos`, sin `baja`/`id` o sin `maximo_bytes`, no es un éxito.
+
+/**
+ * `POST consultas/{id}/adjuntos` (E4, RF-44): lo que contestó el alta. [adjunto] es obligatorio: una respuesta `200/201`
+ * sin él no es un éxito (no se sabe qué fila de la web quedó). Nunca trae la ruta del disco ni una URL.
+ */
+@Serializable
+data class RespuestaAdjuntoDto(val adjunto: AdjuntoSubidoDto)
+
+/** El adjunto recién subido: [id] de la fila de la web (texto), [nombreOriginal] saneado y [tamanio] en bytes. */
+@Serializable
+data class AdjuntoSubidoDto(
+    val id: String,
+    @SerialName("nombre_original") val nombreOriginal: String,
+    val tamanio: Long,
+    @SerialName("created_at") val creadoEn: String? = null,
+)
+
+/**
+ * `GET pacientes/{id}/adjuntos` y `GET consultas/{id}/adjuntos` (E4, RF-45): la lista de documentos vigentes. [adjuntos] es
+ * obligatoria: sin ella no se sabe si el paciente no tiene o si la respuesta vino mal (y una lista vacía inventada haría
+ * creer que la web ya no los tiene, Q15).
+ */
+@Serializable
+data class RespuestaAdjuntosDto(val adjuntos: List<AdjuntoDeLaWebDto>)
+
+/** Un documento de la lista: nunca la ruta del disco ni un enlace público. */
+@Serializable
+data class AdjuntoDeLaWebDto(
+    /** Id de la fila de la web, como texto. */
+    val id: String,
+    @SerialName("nombre_original") val nombreOriginal: String,
+    /** Tamaño del archivo en el disco de la web; `0` si falta (la fila se lista igual). */
+    val tamanio: Long,
+    /** `pdf`, `jpeg` o `png`: el tipo detectado por la firma, con la extensión que generó el servidor (nunca el nombre original). */
+    val tipo: String,
+    @SerialName("created_at") val creadoEn: String? = null,
+    /** La consulta de la que cuelga, como texto: la lista del paciente trae los de todas sus consultas (RF-45). */
+    @SerialName("consulta_id") val consultaId: String,
+)
+
+/** `DELETE adjuntos/{id}` (E4, RF-46): la baja lógica y el id del adjunto (texto). */
+@Serializable
+data class RespuestaBajaDeAdjuntoDto(
+    val baja: Boolean,
+    val id: String,
+)
+
+/**
+ * `GET adjuntos/limites` (E4, D18): [maximoBytes] es el límite efectivo y **nunca** es nulo (la app lo necesita para avisar
+ * antes de subir); [maximoWebBytes] es el que acepta la web y los dos crudos del hosting van tal como los informa `ini_get`
+ * (`null` si la instalación no los informa). Sin [maximoBytes] no sirve para decidir y no es un éxito.
+ */
+@Serializable
+data class RespuestaLimitesDeAdjuntosDto(
+    @SerialName("maximo_bytes") val maximoBytes: Long,
+    @SerialName("maximo_web_bytes") val maximoWebBytes: Long,
+    @SerialName("upload_max_filesize") val uploadMaxFilesize: String? = null,
+    @SerialName("post_max_size") val postMaxSize: String? = null,
+)
+
 /**
  * Los cuerpos de los pedidos. Puros: sin red ni reloj. Reglas (spec 005):
  * - **Solo lo tocado** (RF-34): una sección o un campo que no se pasa no sale; nunca un `null`.
@@ -502,10 +567,33 @@ object PayloadsClinica {
     }
 
     /** `DELETE pacientes/{id}/laboratorios/{cargaId}` y `/pesos/{cargaId}`: la clave de la baja, el dispositivo y la consulta. */
-    fun bajaDeCarga(clave: String, dispositivo: String, consultaWebId: Long): JsonObject = buildJsonObject {
+    fun bajaDeCarga(clave: String, dispositivo: String, consultaWebId: Long): JsonObject = bajaConConsulta(clave, dispositivo, consultaWebId)
+
+    /** `DELETE adjuntos/{id}`: el mismo cuerpo que la baja de una carga (la clave `a:<id local>-baja`, el dispositivo y la consulta). */
+    fun bajaDeAdjunto(clave: String, dispositivo: String, consultaWebId: Long): JsonObject = bajaConConsulta(clave, dispositivo, consultaWebId)
+
+    private fun bajaConConsulta(clave: String, dispositivo: String, consultaWebId: Long): JsonObject = buildJsonObject {
         put("clave", clave)
         put("dispositivo", dispositivo)
         put("consulta_id", consultaWebId.toString())
+    }
+
+    // ---------- E4 (spec 005, T102): la clave de un adjunto ----------
+
+    /**
+     * La clave de repetibilidad de un adjunto (RF-15, RF-44): `a:<id local>`, hasta 191 caracteres, solo letras, números, `.`, `_` y `-`
+     * después del prefijo (la misma regla del servidor). Estable entre reintentos: sale del id local del archivo, así que una subida
+     * cortada que se repite devuelve la misma fila y no deja un adjunto duplicado (D21). Un id que el servidor rechazaría no se arma.
+     */
+    fun claveDeAdjunto(idLocal: String): String = claveDeAdjuntoConSufijo(idLocal, sufijo = "")
+
+    /** La clave de la baja de un adjunto: `a:<id local>-baja` (el servidor la registra con tipo `baja_adjunto`). */
+    fun claveDeBajaDeAdjunto(idLocal: String): String = claveDeAdjuntoConSufijo(idLocal, sufijo = "-baja")
+
+    private fun claveDeAdjuntoConSufijo(idLocal: String, sufijo: String): String {
+        val clave = "a:$idLocal$sufijo"
+        require(ID_LOCAL_VALIDO.matches(idLocal) && clave.length <= CLAVE_MAXIMA) { "El id local '$idLocal' no sirve para una clave de adjunto" }
+        return clave
     }
 
     private fun textoAMandar(texto: String): String = if (esVacio(texto)) "" else texto
