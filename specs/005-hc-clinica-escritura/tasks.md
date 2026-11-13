@@ -2100,12 +2100,51 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     anterior es lo que hace pediatría (`docs/hc-pediatria-estado-y-plan.md` «Los exámenes de otras consultas»).
   - Hecho cuando: PHP-base y curl: una foto de prueba (generada por la prueba) queda asociada al examen y la web la muestra (a mano, T112); el reintento con la misma clave da la misma fila; sobre un examen
     `activo = 2` (todavía no confirmado) → error claro sin escribir; `medico_infos` idéntico; el archivo se borra en la limpieza.
-- [ ] **T101. Prueba de punta a punta del servidor de E4 y documentación.** RF-15, RF-16, RF-44 a RF-46, RF-52, RF-53 — M — Toca API Laravel: sí
+- [x] **T101. Prueba de punta a punta del servidor de E4 y documentación.** RF-15, RF-16, RF-44 a RF-46, RF-52, RF-53 — M — Toca API Laravel: sí
   - Pasada por HTTP con curl espaciado ~1,3 s de T97 a T99 (un PDF y una imagen); scripts contra la descartable; sumas antes/después (cambian solo `consulta_pdfs` y `salud360_envios`);
     greps estáticos (en este caso `unlink`/`delete` de archivos = 0: nunca se borra un archivo); limpieza por id y por clave **y borrado de los archivos de prueba del disco**.
     Docs: «Escritura (E4)» en `md/API_SALUD360_CLINICA.md` (rutas, multipart, los cuatro tipos y la validación por contenido, listado por paciente/consulta, códigos, límites, carpeta y el
     paso de hosting [Q-E4-2], que sigue pendiente y es de producción).
   - Hecho cuando: phpunit completo en verde; copia servida igual al clon; cero escrituras de `medico_infos`; `salud360_token_cache` vaciada; las rutas nuevas responden `401` sin token.
+  - **Resultado (2026-11-13): HECHA — el servidor de E4 probado de punta a punta; «Escritura (E4)» definitiva en el `.md`.** hclinica `cc41316` (rama
+    `salud360-api`, sin push; un solo archivo, la documentación). La copia servida quedó idéntica al clon en los archivos del repo (2411 de 2413: solo los dos
+    blades del parche local, que no se tocaron; no hubo rutas nuevas, así que no hizo falta `route:clear`).
+    **Recorrido (un solo recorrido por HTTP, scripts fuera del repo en `%TEMP%\opencode\t101`, pedidos ~1,3 s, token leído de un archivo y nunca impreso;
+    paciente sintético 99000990 y uno fuera de cartera 99000991, claves `c:t101-h*`/`a:t101-h*`): 58 controles OK, 0 fallas, salida 0.** Crear una consulta
+    nueva y una previa (las dos de la app) → subir un PDF, un PNG y un JPG a la nueva y un PDF a la previa (201, ruta `<usuario>/consulta_pdf/…`, SHA-256 del
+    archivo en disco igual al subido; el alta contesta solo `id`, `nombre_original`, `tamanio` y `created_at`) → repetir la subida con la misma clave (200, misma
+    fila, una sola fila con esa ruta, un solo archivo y el mismo SHA-256) → **las dos listas**: la del paciente trae los cuatro documentos de las dos consultas
+    con su `consulta_id`, la de la consulta nueva solo los tres suyos y la de la previa solo el suyo (seis campos, `tamanio` igual al archivo, `tipo` por la
+    firma; nunca la ruta ni una URL) → **bajar los cuatro** con `SHA-256` y `Content-Type` (`application/pdf`, `image/png`, `image/jpeg`) → **baja** del PDF (200,
+    fila `activo = 0`, deja de listarse en las dos listas, **el archivo sigue en el disco con el mismo SHA-256**), repetir la misma clave y otra clave (`200` sin
+    escribir, `updated_at` igual), bajar el dado de baja (`404 adjunto_no_encontrado`) → **cerrar la previa** (200) y comprobar que su documento se sigue
+    listando en la lista del paciente y se sigue bajando → **límites** (`200` con las cuatro claves, `15728640/15728640/64M/64M`, `maximo_bytes ≤
+    maximo_web_bytes`) → **rechazos**: `422 archivo_invalido` (un `.pdf` sin `%PDF-`), `422 archivo_grande` (15.728.641 bytes, sin fila ni archivo), `422
+    tipo_invalido` (`foto_examen`), `401 sin_token` en **las seis rutas** (existen: no dan `404`), `403 fuera_de_cartera` (paciente de otro médico) y `409
+    consulta_cerrada` al subir o dar de baja en la previa cerrada (sin tocar la fila) → limpieza **por id y por clave** y **archivos de prueba borrados del
+    disco** (ruta + SHA-256 anotados antes en `%TEMP%\opencode\t101\archivos-http-antes-de-borrar.txt`; la carpeta del médico vuelve a la misma cantidad de
+    archivos). `medico_infos` con el **mismo CHECKSUM (213039496)** de punta a punta.
+    **Sumas (T4/T95, `%TEMP%\opencode\t101`):** desde la foto tomada con el fixture sembrado y las dos consultas creadas hasta la de antes de limpiar cambian
+    **solo `consulta_pdfs` y `salud360_envios`** (F01; el conteo ve las cuatro filas de la prueba, una de baja); el paso siguiente -el cierre de la previa, que es
+    de E1- mueve `consultas` y `salud360_envios`, nada más (F03). Después de limpiar, `escritura-suma.sql` y `escritura-contar.sql` contra la foto de antes:
+    **conteos idénticos byte a byte** y, en las sumas, la única fila distinta es `salud360_token_cache`, que se **vació** (2 → 0) al cerrar la tarea; la foto de
+    las 68 tablas (`t11\snapshot.cmd t101-antes` vs `t101-final`) difiere **solo** en esa tabla. P1–P5 (1441–1445), 1997–2001 y `medico_infos` intactos.
+    **Scripts con base:** los de T97 (`adjuntos-con-base.php`) y T98 (`adjuntos-lectura-con-base.php`) contra la descartable **`hc_clinica_t10`**, con
+    `sql_mode` estricto y sin él: **misma salida que cuando se hicieron** (33 y 54 controles OK por modo, `RESULTADO: TODO OK`), sin restos en el disco.
+    **Grep estáticos (los tres archivos de E4):** `medico_infos` **0**, DDL (`Schema::`/`DROP`/`TRUNCATE`) **0**, `delete` sobre `consulta_pdfs` **0** —la baja
+    es `activo = 0`— y los **tres `unlink`** del servicio son sobre el archivo **temporal** `.part` de una subida que falló: **ningún archivo guardado se borra**.
+    **phpunit:** `tests/Unit` completo en la copia servida, **1349 tests y 7593 aserciones, salida 0**; por archivo, `AdjuntosReglasTest` 35,
+    `EscrituraAdjuntosTest` 17 y `LecturaAdjuntosTest` 16.
+    **Apache:** en la pasada solo `GET`/`POST`/`DELETE` de curl (sin `PUT` ni métodos inesperados), 0 respuestas `5xx`, `error.log` y `storage/logs` sin entradas
+    nuevas. **Docs:** «Escritura (E4)» definitiva en `md/API_SALUD360_CLINICA.md` (rutas, multipart, tipos por firma y `Content-Type` de la descarga, límites y
+    `GET adjuntos/limites`, carpeta con **[Q-E4-2] como pendiente de producción**, nombre, repetible, quién, las dos listas de Q-E4-3, bajar, baja, la tabla de
+    códigos, ejemplos de curl y el registro de esta prueba), más los archivos y los tests de E4 en las tablas del `.md` y los 1349 del `tests/Unit`.
+    **Decisiones no previstas en el plan:** (a) además del PDF y el PNG se subió un **JPG** para cubrir los tres `Content-Type` de la descarga (T97 ya había
+    probado el JPEG: acá se cierra el círculo de la bajada); (b) la comparación de sumas se hace entre dos fotos de la propia pasada (tras crear las consultas y
+    antes de limpiar), porque el fixture y el cierre de la previa escriben `pacientes`, `medico_pacientes` y `consultas` por fuera de E4; (c) la caché de tokens
+    se informa aparte en esas comparaciones (la escribe cualquier pedido, T99) y se vacía al final como pide el «Hecho cuando»; (d) el commit del clon se rehízo
+    sin `amend` (reset --soft + commit) porque el mensaje salió con BOM y los mensajes van sin BOM. **Sigue T102** (la API de adjuntos en la app); las fotos de
+    exámenes siguen fuera de alcance y **Q-E4-2 sigue pendiente**.
 
 ## App de E4
 - [ ] **T102. API de adjuntos (subir, listar por paciente y por consulta, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no

@@ -192,6 +192,17 @@ registros de personas): el repo es público.
    aserciones; 1345 + 4)**, HTTP 11 controles OK; `hc_clinica` idéntica (`suma`/`contar` con el mismo SHA-256, `medico_infos` 213039496) y la foto del disco de la copia servida también: lo único que se
    movió en la pasada fueron los dos contadores del *throttle* de `storage/framework/cache/data` (los escribe cualquier pedido) y la fila de `salud360_token_cache`, y se restauraron. Cambió una aserción de
    `EscrituraAdjuntosTest` (daba `limites` por inexistente). Sigue **T101** (prueba de punta a punta de E4 y documentación); las fotos de exámenes siguen fuera de alcance.
+   **T101 hecha (2026-11-13): el servidor de E4 está probado de punta a punta y documentado; sigue T102 (la API en la app).** hclinica `cc41316` (rama `salud360-api`,
+   sin push; solo `md/API_SALUD360_CLINICA.md`, copiado a la servida: idéntica en los archivos del repo salvo el parche local de dos blades). «Escritura (E4)» deja de
+   ser borrador: seis rutas, multipart, tipos por firma con su `Content-Type`, límites y `GET adjuntos/limites`, carpeta con **[Q-E4-2] pendiente (paso de
+   producción)**, las dos listas (Q-E4-3), la baja lógica y la tabla de códigos. **Un solo recorrido por HTTP contra `hc_clinica` con datos inventados: 58 controles,
+   0 fallas** (crear → subir PDF/PNG/JPG y el PDF de una consulta previa → repetir la misma clave = una fila y un archivo → las dos listas → bajar los cuatro con
+   SHA-256 y `Content-Type` → baja (deja de listarse y el archivo queda) → cerrar la previa → límites → `422` firma/grande/`foto_examen`, `401` en las seis rutas,
+   `403` de otro paciente, `409` en la cerrada → limpieza por id y por clave). Desde el fixture cambian **solo `consulta_pdfs` y `salud360_envios`**; `medico_infos`
+   con el mismo CHECKSUM (213039496); conteos finales idénticos y la única tabla distinta es `salud360_token_cache`, que se **vació**. Archivos de prueba borrados
+   del disco (ruta + SHA-256 anotados antes). Scripts con base de T97/T98 en `hc_clinica_t10` (estricto y sin `sql_mode`): misma salida que sus tareas.
+   **Grep:** 0 `medico_infos`, 0 DDL, 0 `delete` sobre `consulta_pdfs`; los tres `unlink` son del temporal `.part` → nunca se borra un archivo guardado.
+   `tests/Unit` **1349 en verde (7593 aserciones)**. Apache: solo `GET`/`POST`/`DELETE`, sin `5xx`.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
