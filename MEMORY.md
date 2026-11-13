@@ -145,6 +145,16 @@ registros de personas): el repo es público.
   complementarios y las interconsultas. `core:data` 2139 en verde (2137 + 2 tests nuevos: el conjunto exacto de 19 y lo que queda afuera), `especialidades:clinica`
   38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin migración, sin Laravel,
   sin pedidos reales. Con esto la HC general ya manda laboratorio general y peso; sigue el cierre de E1 (T11) y la revisión visual (T92).**
+  **T95 hecha (2026-11-13): arranca E4 (adjuntos) con el contrato y los límites de los documentos PDF, JPG, JPEG y PNG (borrador).** Solo documentación y ensayos: **no
+  escribe código ni toca la base de trabajo**. En el clon de la API: `plan.md` («Contrato de E4 (revisado el 2026-11-13)») completado (clave `a:<id local>` hasta 191 y
+  `dispositivo` obligatorios; `consulta_pdfs` es la tabla de `documentos`; nunca se lista un adjunto sin consulta ni de otra HC; el `413` del servidor web la app lo trata
+  como `archivo_grande`) y copiado como «Escritura (E4) — BORRADOR» a `md/API_SALUD360_CLINICA.md` (hclinica `1eb1316`, rama `salud360-api`, sin push; copia servida
+  idéntica en los archivos del repo salvo el parche local de dos blades, que no se tocó). **Límites locales** (`notas-para-el-plan.md` §13.1): `upload_max_filesize` 64M,
+  `post_max_size` 64M, `memory_limit` 128M, `max_execution_time` 300 en el `php.ini` (la CLI informa 0), GD 2.1.0 cargada (no se usa), web 15 MB → **límite efectivo 15 MB**;
+  `config('salud360.img_path')` vacío → `public_path('img')` (existe y es escribible). **Scripts de `e0`** ampliados con `consulta_pdfs` (contar/suma/cargar; limpiar ya la
+  tenía) y ensayados **solo en `hc_clinica_respaldo`** con `ensayo-t95.cmd` y `ensayo-t95-extra.cmd` (con y sin modo estricto): cargar → limpiar → cargar → limpiar con las
+  tres sumas idénticas y `FALLOS=0`; `hc_clinica` con el **mismo SHA-256** de suma y conteos antes y después. `tests/Unit` **1281 en verde**. Las **fotos de exámenes**
+  (T100/T105) siguen **fuera de alcance** y **Q-E4-2** (carpeta y límites del hosting) sigue pendiente y es paso de producción. Sigue **T96** (reglas puras de los adjuntos).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

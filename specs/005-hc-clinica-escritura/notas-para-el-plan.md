@@ -452,3 +452,41 @@ Qué cambia para la escritura:
 - **App:** `HcApiClient.subir` (multipart, un archivo por pedido, tiempo largo) y `descargar` (rechaza un JSON en lugar del archivo) ya existen (`HcApiClient.kt:139-194`); `archivo.remoto_id` existe desde `5.sqm`;
   el selector de `documentos` acepta `image/*` y `application/pdf` (`ArchivosSeccion.kt:78`); `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`) toma también los adjuntos por paciente sin consulta
   (lo que RF-46 prohíbe enviar a clínica).
+
+### 13.1 T95 - Límites locales, carpeta y extensión (medido el 2026-11-13, solo lectura)
+Se midió la **copia local** con `C:\xampp\php\php.exe -i` y la copia servida con lecturas de solo lectura (ACL y estructura de carpetas). **No se escribió nada**: ni filas, ni
+archivos, ni configuración. Los límites de **producción** siguen sin medirse: eso es la etapa de producción (D18) y **Q-E4-2** (qué carpeta del hosting y cómo se crea) **sigue pendiente**.
+
+| Dato | Valor local | De dónde sale |
+|---|---|---|
+| PHP | 7.3.0, 32 bits, ZTS | `php -i`; es el mismo binario que carga Apache (`php7apache2_4.dll`, `PHPRC=\xampp\php`) |
+| `php.ini` | `C:\xampp\php\php.ini` | `php -i` → `Loaded Configuration File` |
+| `upload_max_filesize` | **64M** | `php -i` |
+| `post_max_size` | **64M** | `php -i` |
+| `memory_limit` | **128M** | `php -i` |
+| `max_execution_time` | **300** en el `php.ini` (Apache lo usa); `php -i` por consola informa **0** porque la CLI lo desactiva | `php.ini` y `php -i` |
+| `max_input_time` | 60 | `php.ini` |
+| `file_uploads` | On | `php -i` |
+| Extensión GD | **cargada** (`bundled (2.1.0 compatible)`) | `php -i` → `GD Support: enabled` |
+| Máximo de la web | **15 MB** = **15.728.640 bytes** | `MedicoController.php:3624` (`15 * 1024 * 1024`) |
+| **Límite efectivo de E4** | **15 MB**: `min(15 MB, upload_max_filesize 64 MB, post_max_size 64 MB)` | `AdjuntosReglas::limiteEfectivo` (T96) |
+| `config('salud360.img_path')` | **vacío** (`SALUD360_IMG_PATH` no está en el `.env` de la copia servida) → se resuelve a `public_path('img')` | `config/salud360.php:37` + `.env` |
+| Carpeta `img` que usaría la API | `C:\xampp\htdocs\HClinica-salud360\public\img` | `public_path('img')` |
+| Contenido de `img` | **existe**; 104 archivos y carpetas sueltas: `examenes_complementarios`, `medico1` (con `consulta_pdf` adentro), y carpetas de usuarios reales con `consulta_pdf` | lectura del árbol (no se listan nombres de usuarios) |
+| Permisos de `img` | `Usuarios autenticados: Modify` (además de Administradores y SYSTEM con control total) → `mkdir` funciona en la copia local | ACL de la carpeta |
+| Carpeta `consulta_pdf` | ya existe para el médico de prueba y para los usuarios de la copia servida | árbol de `img` |
+
+Consecuencias para T96 a T99:
+- El tope que ve el médico es **15 MB** (el de la web) y no hay que recortarlo por PHP en la copia local. `post_max_size` (64M) deja aire para el `multipart` (el archivo más la cabecera),
+  así que el límite práctico es el de la web.
+- La carpeta sale de `config('salud360.img_path')` **si está definida**; hoy está vacía y se resuelve con `public_path('img')`, que en la copia local es la de la copia servida. En producción
+  hay que decidir si se define `SALUD360_IMG_PATH` (Q-E4-2) y si el hosting permite `mkdir`: si no, `500 carpeta_no_escribible` **nombrando la ruta exacta**.
+- GD está, pero E4 **no redimensiona ni convierte**: el archivo viaja tal cual (T97). GD solo importaría si algún día se quisiera achicar imágenes (no es de esta spec).
+- **Fotos de exámenes complementarios (D24):** **no se verificaron ni se implementan** en esta tanda (T100 y T105, fuera de alcance por decisión del usuario). Lo que ya se sabe del código está
+  arriba (§13) y no hizo falta escribir filas ni archivos de prueba: la web muestra una foto si `examenes_complementarios_fotos.activo = 1` y el examen está confirmado (`MedicoController.php:2352-2404`,
+  `examenes_complementarios.blade.php:504-518`). Queda para cuando el usuario lo pida.
+- **Scripts de los ensayos (T4 ampliados en T95):** `consulta_pdfs` entra en `escritura-contar.sql` (tabla `tabla_e4`, con activas y de baja), en `escritura-suma.sql` (`tablas_de_e4_presentes`) y en
+  `cargar-prueba.sql` (una fila inventada, `filas_e4_sembradas = 1`); `escritura-limpiar.sql` ya la tenía en la lista fija de hijas y en el control de hijas de otro paciente (sin cambios de código).
+  `examenes_complementarios_fotos` queda **nombrada como fuera de alcance** y sigue en la lista fija de la limpieza, sin sembrarse. Ensayado **solo en `hc_clinica_respaldo`** (`ensayo-t95.cmd` y
+  `ensayo-t95-extra.cmd`, con y sin `STRICT_TRANS_TABLES`): cargar → limpiar → cargar → limpiar con las tres sumas idénticas, `FALLOS=0`. `hc_clinica` quedó **igual** (suma y conteos con el mismo
+  SHA-256 antes y después; no se corrió nada que escriba en la base de trabajo).

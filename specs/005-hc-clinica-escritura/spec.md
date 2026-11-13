@@ -4,6 +4,9 @@ Estado: **aprobada por el usuario el 2026-11-04**. Decisiones D1 a D15 (2026-11-
 clarificaciones y la corrección final, y el usuario resolvió D17, D19 y D24 al aprobar: **no queda ninguna duda abierta**. El plan
 y las tareas están en borrador (`plan.md`, `tasks.md`). Lleva una **enmienda a la spec 004** (D22), todavía no aplicada a la 004:
 el plan la trata como tarea.
+**Cambio del 2026-11-13 (E4):** el usuario revisó D24 y resolvió Q-E4-1 y Q-E4-3: la sección «Documentos (PDF e imágenes)» de la HC
+general acepta **PDF, JPG, JPEG y PNG** (ya no es solo PDF) y el listado de los adjuntos depende de si la consulta es nueva (todos los
+del paciente) o previa (solo los de esa consulta); las fotos de exámenes complementarios siguen **fuera de alcance** (RF-44, RF-45, D24).
 Depende de la spec 002 (parte 1: pacientes y cartera; entrega L: lectura, implementada y validada en local, falta el reviewer
 y producción), de la 001 (qué secciones ve cada médico lo decide su perfil), de la 003 (el patrón de una sección que escribe
 contra la API de la web, el vínculo de pacientes y la pantalla de elegir ficha) y de la 004 (licencia que informa el servidor,
@@ -104,7 +107,7 @@ se publica recién con E1 a E3 cerradas** (D23); E4 y E5 pueden ir después. Pub
 | **E1** | Crear la consulta; textos; examen físico; cerrar, anular; el envío (diferido, sin conexión, sin duplicar, rechazo); histórico del dispositivo; candado por sección; la licencia de la HC general en el ingreso y el panel de licencias sin regresión (D22) | RF-1 a RF-34, RF-50 a RF-69 | **sí, chica: marca de histórico/propio (D26)** | crear, secciones, examen, cerrar, baja; registro de lo recibido (D21) |
 | **E2** | Formularios y listas sin migración: alimentación, antecedentes familiares, serologías, Child-Pugh, los 5 estudios, exámenes complementarios, interconsultas | RF-35 a RF-40, RF-70 | no | formularios y listas; baja de exámenes e interconsultas (capacidad nueva) |
 | **E3** | Laboratorio general y reducido, peso y pendientes | RF-41 a RF-43 | **sí: identificador de la web en laboratorio y pendiente (D8), distinta de la de E1** | laboratorio, peso, pendientes |
-| **E4** | Adjuntos (PDF y fotos de exámenes complementarios, estas solo si se verifica que la web las muestra, D24); es lo primero que se recorta (D12) | RF-44 a RF-46 | no | subir, bajar, borrar, límites del hosting |
+| **E4** | Adjuntos: los documentos de la HC general en **PDF, JPG, JPEG y PNG**, listados según la consulta (nueva: todos los del paciente; previa: solo los de esa consulta); las fotos de exámenes complementarios quedan **fuera de alcance por ahora** (D24 revisada); es lo primero que se recorta (D12) | RF-44 a RF-46 | no | subir, bajar, borrar, límites del hosting; listar por paciente y por consulta |
 | **E5** | Aviso de vencimiento y panel de licencias de la HC general (D11); el ingreso ya está en E1 (D22) | RF-47 a RF-49 | no (D11) | administración de licencias |
 
 Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partición:
@@ -112,7 +115,8 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
    «pendientes de confirmar» no aparecen allá.
 2. **Exámenes e interconsultas van en E2**, no con el laboratorio: ya guardan el identificador de la web, así que no necesitan
    esquema nuevo. Todo lo que necesita la segunda migración queda junto en E3 y se puede frenar ahí sin trabar nada más.
-3. **Adjuntos aparte (E4)** porque es lo más frágil (límites del hosting, carpetas creadas a mano en pediatría, PDF grandes).
+3. **Adjuntos aparte (E4)** porque es lo más frágil (límites del hosting, carpetas creadas a mano en pediatría, archivos grandes,
+   PDF o imágenes).
 4. **La licencia en el ingreso va en E1 (D22)**: la escritura necesita que el médico sin licencia vigente no entre; el aviso y el
    panel (E5) no tocan consultas. Entre E1 y E5, una licencia de clínica se renueva desde la web de hclinica, como hoy (RF-66).
 5. **Candado por sección (RF-4):** mientras una sección no tenga su envío, la consulta nueva no la ofrece para cargar. Así
@@ -377,15 +381,22 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
   otra HC del mismo paciente, no se envían a la HC general.
 
 ### Adjuntos — E4
-- RF-44: CUANDO el médico adjunta un PDF a la consulta, EL SISTEMA lo guarda en el dispositivo, lo sube a la web y la web lo
-  muestra; sin señal queda en el dispositivo y se sube después, **una sola vez**: una subida cortada a la mitad no deja un
-  adjunto a medias ni duplicado al reintentar (002 RF-30; D21). SI el archivo supera el límite —el menor entre el máximo que la web
-  de hclinica ya acepta para sus PDF y el que acepta el hosting—, ENTONCES EL SISTEMA lo dice antes de subirlo y no lo da por
-  enviado. El límite del hosting se mide en local; leerlo en producción solo se hace cuando el usuario apruebe la etapa de
-  producción de la escritura, y sin escribir allá (D12, D18). Las fotos de exámenes complementarios entran solo si se verifica que la web las muestra; las demás fotos
-  quedan afuera (D24).
-- RF-45: CUANDO el médico abre una consulta con adjuntos cargados desde la web, EL SISTEMA los lista y permite abrirlos, bajándolos
-  con la sesión del médico y nunca por un enlace público (002 RF-31); hoy la lectura solo avisa que existen.
+- RF-44: CUANDO el médico adjunta un archivo a la sección «Documentos (PDF e imágenes)» de la consulta, EL SISTEMA acepta **PDF, JPG,
+  JPEG y PNG** y nada más (D24 revisada); lo guarda en el dispositivo, lo sube a la web y la web lo muestra; sin señal queda en el
+  dispositivo y se sube después, **una sola vez**: una subida cortada a la mitad no deja un adjunto a medias ni duplicado al
+  reintentar (002 RF-30; D21). SI el contenido del archivo no es uno de esos cuatro tipos —aunque el nombre o la extensión digan otra
+  cosa—, ENTONCES EL SISTEMA no lo acepta y lo dice: el tipo se valida por el **contenido** del archivo, no solo por la extensión. SI
+  el archivo supera el límite —el menor entre el máximo que la web de hclinica ya acepta para sus adjuntos y el que acepta el
+  hosting—, ENTONCES EL SISTEMA lo dice antes de subirlo y no lo da por enviado. El límite del hosting se mide en local; leerlo en
+  producción solo se hace cuando el usuario apruebe la etapa de producción de la escritura, y sin escribir allá (D12, D18). Las
+  **fotos de exámenes complementarios** no son parte de esta sección y quedan **fuera de alcance por ahora**: solo entrarían si se
+  verifica que la web las muestra y el usuario lo pide (D24 revisada).
+- RF-45: CUANDO el médico abre una consulta, EL SISTEMA lista los adjuntos de la sección «Documentos» de la HC general y permite
+  abrirlos, bajándolos con la sesión del médico y nunca por un enlace público (002 RF-31); hoy la lectura solo avisa que existen. SI
+  la consulta es **nueva y en curso**, ENTONCES lista **todos los documentos del paciente**, de todas sus consultas anteriores (los que
+  la web ya tiene y los del dispositivo); SI la consulta es **previa** (cerrada, o abierta pero no la que se está cargando), ENTONCES
+  lista **solo los documentos subidos en esa consulta** (Q-E4-3). En los dos casos, EL SISTEMA nunca lista los de otra historia clínica
+  del mismo paciente ni los que no cuelgan de una consulta (RF-46).
 - RF-46: CUANDO el médico borra un adjunto propio ya subido, EL SISTEMA lo da de baja en la web y deja de mostrarlo en ambas;
   EL SISTEMA nunca envía a la HC general adjuntos que pertenecen a otra historia clínica del mismo paciente ni adjuntos sin
   consulta asociada (002 RF-32; D12).
@@ -438,6 +449,9 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
   laboratorio o peso dada de baja sigue de baja: el cierre no la toca (D20).
 - Campo vaciado a propósito: se envía vacío; un campo que el médico no tocó no se envía (RF-69).
 - Texto con tildes, ñ, emojis y saltos de línea: llega igual (como en la lectura).
+- Un archivo llamado `.pdf` que no es un PDF, o `.jpg` que no es una imagen: no se acepta (el tipo se valida por el contenido, RF-44).
+- Consulta nueva en curso: lista todos los documentos del paciente; consulta previa: solo los de esa consulta (RF-45).
+- Un documento de la sección `documentos` con imagen (JPG, JPEG o PNG) se sube, se lista y se abre igual que un PDF (RF-44, RF-45).
 - Sesión que vence mientras se envía, o médico que cierra sesión con datos sin enviar: queda «En espera»; al volver a entrar su
   dueño, sale (RF-6, RF-50, RF-51).
 - Servidor de la web caído un rato con la app abierta: lo pendiente queda «En espera» y se reintenta de forma periódica (RF-29).
@@ -468,6 +482,7 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
   vínculos.
 - Secretarias.
 - Corregir cómo pediatría marca el médico de las consultas ajenas (002 Q17).
+- Las fotos de exámenes complementarios de E4: fuera de alcance por ahora (T100 y T105; D24 revisada).
 - Cambiar las pantallas de la web de hclinica.
 - Publicar y subir el servidor a producción: son decisiones y aprobaciones aparte.
 
@@ -486,7 +501,7 @@ Hoy no existe ninguna ruta de escritura de consultas [VERIFICADO]. Los nombres d
 | E1 | Recordar de forma permanente lo recibido de cada dispositivo (registro propio de la API, D21) y rechazar escrituras de administrador, secretaria, otro médico, consultas de la web y consultas cerradas (RF-52, RF-53) | E1 cerrada |
 | E2 | Guardar formularios, antecedentes familiares y listas (estudios, exámenes, interconsultas), devolviendo los identificadores de la web; **dar de baja exámenes e interconsultas (capacidad nueva)** | E2 cerrada |
 | E3 | Guardar, actualizar y dar de baja laboratorio y peso (visibles al instante) y el texto de pendientes, devolviendo identificadores | E3 cerrada |
-| E4 | Subir, bajar y dar de baja adjuntos; listar los adjuntos de una consulta; informar los límites del hosting sin escribir | E4 cerrada |
+| E4 | Subir los documentos de la HC general (PDF, JPG, JPEG y PNG, validados por contenido), bajarlos, listarlos según la consulta (nueva: todos los del paciente; previa: solo los de esa consulta) y darlos de baja; informar los límites del hosting sin escribir | E4 cerrada |
 | E5 | Leer y guardar la licencia de cada médico para la HC general | E5 cerrada |
 
 **Orden de despliegue (cada paso con su aprobación):** 1) servidor en la copia local → 2) app contra la copia local (tests, E2E,
@@ -647,12 +662,16 @@ Cada una con la alternativa descartada.
   a la copia local recién al empezar su subentrega. (d) Si una parte de una consulta es rechazada, la consulta no se cierra hasta
   que el médico la corrija y reenvíe o decida descartarla («Descartado: no se envió a la web») (RF-30, RF-56). *Descartado:*
   cerrar igual con lo que llegó, que dejaría en la web una consulta cerrada e incompleta sin aviso.
-- **D24 — Fotos.** E4 lleva PDF y fotos de exámenes complementarios; estas últimas **solo si se verifica que la web las muestra**
-  (la verificación es una tarea de E4). Las demás fotos de consulta quedan afuera. *Descartados:* solo PDF (deja afuera las fotos
-  de exámenes que la web sí usa) y todas las fotos sin verificar (se escribiría en tablas que la web quizá no muestra).
+- **D24 — Adjuntos: tipos y fotos (revisada el 2026-11-13).** La sección «Documentos (PDF e imágenes)» de la HC general se envía con
+  **PDF, JPG, JPEG y PNG**, validados por contenido; **ya no es solo PDF**. Las **fotos de exámenes complementarios** quedan **fuera de
+  alcance por ahora**: solo entrarían si se verifica que la web las muestra (T95) y el usuario lo pide, y son una parte aparte de los
+  documentos. *Descartados:* seguir con solo PDF (el usuario pidió las imágenes, que la web ya muestra en esa sección) y todas las fotos
+  sin verificar (se escribiría en tablas que la web quizá no muestra). El cambio vale solo para `documentos`; **no** alcanza a las fotos
+  de exámenes.
 
 ## Dudas abiertas
-Ninguna.
+Ninguna. (Q-E4-2 —qué carpeta del hosting y cómo se crea en producción— no es una duda de comportamiento: es un **paso de la etapa de
+producción** (D18, E9 de la escritura) y sigue pendiente.)
 
 ## Hallazgos de la clarificación (2026-11-04) y cómo se resolvieron
 Numeración del reviewer. «Pasa al plan» = la spec fija el QUÉ y el plan resuelve el cómo.

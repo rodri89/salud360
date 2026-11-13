@@ -13,9 +13,13 @@ RF-70). Plan: `plan.md`. Apoyo técnico: `notas-para-el-plan.md`.
 > - **Q-B: se acepta el orden alternativo** (ver «Orden recomendado»): **E2-a** (T48 a T56 y las tareas de app de formularios,
 >   antecedentes y los cinco estudios) → **E3** → **E2-b** (exámenes, interconsultas, baja y completar) → **E4** (PDF primero), con la tarea
 >   chica del «candado por sección» **antes de T61** (hecha como **T60-bis**, sin renumerar).
-> - **Las demás preguntas siguen ABIERTAS** (Q-E2-1 a Q-E2-6, Q-E3-1, Q-E3-2 y Q-E4-1 a Q-E4-3): las tareas marcadas «BLOQUEADA por
+> - **Las demás preguntas siguen ABIERTAS** (Q-E2-1 a Q-E2-6, Q-E3-1, Q-E3-2 y Q-E4-2): las tareas marcadas «BLOQUEADA por
 >   Q-…» **no se empiezan sin la respuesta del usuario**. El usuario todavía no las respondió y **la recomendación del planificador NO está
 >   aprobada**; las «Decisiones de contrato» de más abajo se aprobaron con las tareas, salvo lo que dependa de una pregunta abierta.
+> - **Decisiones del 2026-11-13 (E4):** **Q-E4-1 revisada** y **Q-E4-3 resuelta** (ver «Preguntas abiertas»): los documentos de la HC
+>   general se aceptan en **PDF, JPG, JPEG y PNG** y el listado de adjuntos depende de la consulta (**nueva** = todos los del paciente;
+>   **previa** = solo los de esa consulta). **Q-E4-2 (carpeta del hosting) sigue pendiente y es un paso de producción.** Las **fotos de
+>   exámenes** (T100 y T105) quedan **fuera de alcance**.
 **Por qué E2, E3 y E4 se detallan juntas.** La skill pide proponer dividir si salen más de 10 tareas; esta spec ya está partida en
 subentregas (D5) y cada una se aprueba, se prueba y se cierra por separado: que estén detalladas no las junta. Se detallaron las
 tres para poder ordenar el camino más corto a «todo editable» (ver «Orden recomendado») y para fijar de una vez lo que enseñó E1 (las
@@ -518,7 +522,8 @@ T35), interfaz (T36 a T39) → pruebas y cierre (T40 a T47).
     descontaba `tabaquismo` a mano; ahora usa `casillaSeEnvia`); `CatalogoHcGeneralTest` y los demás, sin tocar.
     **Decisiones a revisar.** (a) **Pantalla no tocada y afectada:** `AntecedentesSeccion` recorre `cat.items`, así que sigue mostrando el tabaquismo como casilla **editable** en una consulta; también ofrece lo que E1 aún no envía
     (la pantalla de la consulta no consulta `seccionSeOfrece`). Dejarlo así hasta T36 a T39 no envía nada (no hay envío todavía) pero T36 a T39 tienen que leer `sinEnvio` y `seccionSeOfrece`/`avisoDeSeccion`. Lo contrario (sacar el
-    tabaquismo de `items`) habría ocultado en pantalla lo ya cargado. (b) `fotos` (historia digitalizada) queda en «todavía no» sin subentrega que la habilite: la 005 solo habla de fotos de exámenes complementarios (E4, D24). (c) La
+    tabaquismo de `items`) habría ocultado en pantalla lo ya cargado. (b) `fotos` (historia digitalizada) queda en «todavía no» sin subentrega que la habilite: la 005 cubre los documentos de la HC general
+    (PDF, JPG, JPEG y PNG; E4) y deja las fotos de exámenes complementarios fuera de alcance (D24 revisada). (c) La
     nota `nota_perfil4` cuenta como que puede viajar en `casillaSeEnvia`; E2 (RF-36) decide si la app la escribe. (d) `enfermedades` es `APARTE` y se ofrece siempre.
 - [x] **T18. «Cambio real» al guardar y datos por paciente asociados a la consulta.** RF-68, RF-69 — M — Toca API Laravel: no
   - Tests primero: common `CambioRealTest` (vacío sobre «nada» no es un cambio; vacío sobre texto es un vaciado a propósito;
@@ -960,7 +965,7 @@ sin la respuesta.
   lo recibido vale «para las filas hijas (laboratorio, peso, registros, pendientes, adjuntos)». Formularios, antecedentes, los cinco
   estudios y el texto de pendientes se escriben con *upsert* por (consulta, paciente) y repetirlos ya no duplica nada (RF-15 se
   cumple); registrarlos con clave los dejaría en «ya recibido» y **no aplicaría una segunda edición**. *Recomendación:* registro con
-  clave solo para las filas que **se crean** (exámenes, interconsultas, cargas de laboratorio y peso, PDF y fotos); upsert para lo demás.
+  clave solo para las filas que **se crean** (exámenes, interconsultas, cargas de laboratorio y peso, adjuntos); upsert para lo demás.
   *Hallazgo de T48 (la pregunta citaba solo D21; ahora cita su fuente):* ninguna de las once tablas que existen tiene `UNIQUE (consulta_id, paciente_id)`; `EnviosRegistro::PREFIJOS` ya trae `c r l p` (`EnviosRegistro.php:55`) y `salud360_envios.remoto_id` es `bigint unsigned`. Fuente: §11.0.
 - **Q-E3-1. Editar una carga de laboratorio o peso ya guardada.** RF-41 dice «editar una carga ya enviada la actualiza, no crea otra»;
   la interfaz de las specs 001/002 dice «las guardadas no se editan, se borran y se recargan» (`CargasLaboratorio.kt`, RF-55 a RF-64).
@@ -969,16 +974,20 @@ sin la respuesta.
 - **Q-E3-2. Datos por paciente sin enviar de una consulta propia anulada** (cargas de laboratorio, peso, estudios, antecedentes).
   RF-26 solo habla de lo ya enviado (no se da de baja). T21 (d) y T28 (b) los dejaron «en reserva para siempre» (siguen `dirty = 1`,
   no se envían ni se tiran). *Recomendación:* dejarlos así (lo conservador) y documentarlo; o preguntar si preferís descartarlos al anular.
-- **Q-E4-1. Imágenes que no son fotos de exámenes complementarios.** El selector de «Documentos (PDF e imágenes)» acepta imágenes
-  (`ArchivosSeccion.kt`); D24 deja afuera las demás fotos. *Recomendación:* en una consulta propia de clínica el selector de
-  `documentos` ofrece solo PDF; las imágenes ya cargadas (histórico) se ven con «No se envía a la web».
-- **Q-E4-2. Carpeta y límites del hosting en producción** (se mide en local; leer producción solo con la aprobación de producción,
-  D18). La web crea `img/<usuario>/consulta_pdf` con `mkdir` (`MedicoController.php:3630-3633`) y en el hosting de pediatría `mkdir` no
-  estaba permitido (carpeta creada a mano, `docs/hc-pediatria-estado-y-plan.md`). *Pregunta:* ¿se crea a mano una carpeta única
-  (p. ej. `img/salud360`) en producción, como en pediatría, y se fija `SALUD360_IMG_PATH`? Es un paso de hosting para E9, no de local.
-- **Q-E4-3. Qué adjuntos lista la app al abrir una consulta (RF-45).** La web lista los PDF **del paciente** (cualquier consulta, incluso
-  `consulta_id = 0`, `MedicoController.php:3571-3590`). RF-46 prohíbe *enviar* adjuntos sin consulta; no dice qué *mostrar*.
-  *Recomendación:* mostrar solo los de esa consulta (más simple y consistente con RF-46).
+- **Q-E4-1. Imágenes de la sección «Documentos» — RESUELTA (revisada) por el usuario el 2026-11-13.** El selector de «Documentos (PDF
+  e imágenes)» acepta `pdf`, `jpg`, `jpeg` y `png` (el usuario escribió «npg»; se interpretó `png`): los documentos de la HC general **sí**
+  viajan como PDF o imagen, validados por **contenido** y no solo por la extensión. Vale **solo** para `documentos`; las **fotos de
+  exámenes complementarios** siguen fuera de alcance (T100 y T105). *(Antes, la recomendación del planificador era ofrecer solo PDF.)*
+- **Q-E4-2. Carpeta y límites del hosting en producción — SIGUE PENDIENTE; es un paso de producción.** (Se mide en local; leer producción
+  solo con la aprobación de producción, D18.) La web crea `img/<usuario>/consulta_pdf` con `mkdir` (`MedicoController.php:3630-3633`) y en el hosting de
+  pediatría `mkdir` no estaba permitido (carpeta creada a mano, `docs/hc-pediatria-estado-y-plan.md`). *Pregunta:* ¿se crea a mano una carpeta
+  única (p. ej. `img/salud360`) en producción, como en pediatría, y se fija `SALUD360_IMG_PATH`? Es un paso de hosting para la etapa de
+  producción (E9 de la escritura), **no** de la copia local; sin respuesta no se frena nada de E4 en local.
+- **Q-E4-3. Qué adjuntos se listan al abrir una consulta (RF-45) — RESUELTA por el usuario el 2026-11-13.** La web lista los PDF **del
+  paciente** (cualquier consulta, incluso `consulta_id = 0`, `MedicoController.php:3571-3590`) y RF-46 solo prohíbe *enviarlos*. Regla: al abrir
+  una **consulta nueva (en curso)** la app lista **todos los adjuntos del paciente**, de todas las consultas anteriores; al abrir una **consulta
+  previa** (cerrada o de otra consulta) lista **solo los subidos en esa consulta**. En ambos casos, solo los de la sección `documentos` de la
+  HC general y siempre con la sesión (nunca enlace público, nunca uno sin consulta ni de otra HC).
 
 ## Decisiones de contrato que el plan propone (no son huecos; se revisan al aprobar)
 - **Serología y Child-Pugh «sin cargar» a propósito:** se envía `""` y el servidor escribe `0` (nunca `NO`/puntos inventados); coherente
@@ -1011,7 +1020,7 @@ sin la respuesta.
 2. **No se cambia de orden de subentregas salvo que el usuario lo acepte (Q-B).** Si lo acepta, el orden más corto a «todo editable
    para un médico de hepatología» es: **E2-a** (T48 a T56 + sus tareas de app: formularios, antecedentes y los cinco estudios) → **E3**
    (laboratorio, peso y pendientes; es lo que más se usa y trae la única migración) → **E2-b** (exámenes, interconsultas, baja y completar:
-   lo más delicado, depende de Q-E2-2, Q-E2-4 y Q-E2-5) → **E4** (PDF primero; fotos de exámenes al final y solo si D24 lo confirma).
+   lo más delicado, depende de Q-E2-2, Q-E2-4 y Q-E2-5) → **E4** (documentos en PDF, JPG, JPEG y PNG; las fotos de exámenes quedan fuera de alcance).
    Para eso se agregó una tarea chica **antes de T61** (hecha: **T60-bis**): «candado por sección» (`SeccionesEnviables` con un conjunto de secciones
    habilitadas en vez de una sola subentrega; no cambia lo que ofrece E1) y cada sección se habilita cuando su E2E pasa.
 3. **Costo del orden alternativo:** más rondas de reviewer y de prueba manual (una por mitad en vez de una por subentrega). Si el
@@ -1874,86 +1883,117 @@ pruebas y cierre (T89 a T94). Servidor y app pueden ir en paralelo salvo T80, qu
 
 ---
 
-# E4 — Adjuntos (PDF y fotos de exámenes complementarios)
+# E4 — Adjuntos: documentos de la HC general en PDF, JPG, JPEG y PNG
 RF-44 a RF-46 (más RF-15, RF-16, RF-33, RF-52, RF-53, RF-60). Sin migración (`archivo.remoto_id` ya existe desde `5.sqm`). **Es lo más frágil y lo primero que se
-recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95 a T101) → app (T102 a T108) → pruebas y cierre (T109 a T113). Las **fotos de exámenes**
-(T100, T105) solo se hacen si T95 confirma que la web las muestra (D24); si no, se cancelan y se documenta.
+recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95 a T101) → app (T102 a T108) → pruebas y cierre (T109 a T113). **Decisiones del usuario
+del 2026-11-13:** la sección `documentos` acepta **PDF, JPG, JPEG y PNG** (Q-E4-1 revisada) y el listado depende de la consulta (Q-E4-3: nueva = todos los del
+paciente; previa = solo los de esa consulta). Las **fotos de exámenes** (T100, T105) quedan **FUERA DE ALCANCE por ahora**; solo vuelven si T95 verifica que la web las
+muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigue pendiente y es un paso de producción**.
 
 ## Servidor local de E4 (hclinica, rama `salud360-api`) — todas «Toca API Laravel: sí; autorizado en D3 solo para la copia local»
-- [ ] **T95. Verificación de las fotos de exámenes (D24), de los límites locales y contrato JSON (borrador).** RF-44 — M — Toca API Laravel: no (verificación a mano con
-  el usuario; la única escritura es una fila y un archivo de prueba, que se limpian por id)
-  - **Fotos (D24):** por lectura del código, la web muestra una foto de examen si la fila de `examenes_complementarios_fotos` tiene `activo = 1` y el examen al que apunta
-    está confirmado (`activo = 1`): `cargarExamenesComplementarios` cuenta y busca esas fotos (`MedicoController.php:2352-2404`) y la vista arma `img/<foto>`
-    (`resources/views/medico/seccion/examenes_complementarios.blade.php:504-518`). Falta **verlo en la copia local**: con un examen confirmado creado por la API (E2)
-    insertar por SQL una fila de foto de prueba (más un archivo chico en la carpeta `img` de la copia servida) y que el usuario la abra en la web. Se anota también que la
-    web crea el examen con `activo = 1` si no existe (`:2437-2459`), que redimensiona con `Image::make(...)->resize(1980, 1920)` (`:2490`; paquete ya presente en la web) y que escribe
-    `medico_infos` (`:2497-2506`, lo que la API **no** hace).
+- [x] **T95. Límites locales y contrato de E4 para documentos en PDF, JPG, JPEG y PNG (borrador).** RF-44, RF-45 — M — Toca API Laravel: no
+  (verificación a mano; no escribe nada en la base ni en disco)
+  - **Contrato:** tipos aceptados (`pdf`, `jpg`, `jpeg`, `png`), validación por **contenido** (firma del archivo) y no solo por la extensión, límite, listado por consulta
+    **nueva** (todos los documentos del paciente) o **previa** (solo los de esa consulta, Q-E4-3) y baja; se copia a `plan.md` y al borrador de `md/API_SALUD360_CLINICA.md`.
   - **Límites locales (solo lectura):** `upload_max_filesize`, `post_max_size`, `memory_limit` y `max_execution_time` de `C:\xampp\php\php.ini` (con `php -i`), el máximo de la web
     (15 MB, `MedicoController.php:3624`), la carpeta `img/` de la copia servida y `config('salud360.img_path')` (`config/salud360.php:37`), y si la extensión GD está.
-    Contrato JSON de E4 en `plan.md` y borrador en `md/API_SALUD360_CLINICA.md`. La lectura de los límites de **producción** solo con la aprobación de producción (D18).
-  - Hecho cuando: «las fotos de exámenes se ven en la web: sí/no» queda anotado en `notas-para-el-plan.md` §13 con el resultado del usuario y la decisión sobre T100 y T105; los
-    límites locales anotados; el contrato escrito; la fila y el archivo de prueba, borrados por id/ruta; scripts de T4 ampliados con `consulta_pdfs`,
-    `examenes_complementarios_fotos` (igual criterio que T49); sumas iguales a la línea base salvo lo borrado.
-- [ ] **T96. Reglas puras de los adjuntos (servidor) y su test.** RF-44, RF-46, RF-15 — M — Toca API Laravel: sí
+    La lectura de los límites de **producción** solo con la aprobación de producción (D18); **Q-E4-2** (qué carpeta en el hosting) sigue pendiente y es un paso de producción.
+  - **Fotos de exámenes (D24):** **no se verifican ni se implementan** en esta tanda: T100 y T105 quedan **fuera de alcance por ahora**. Se deja anotado lo que ya se sabe por el
+    código (la web muestra una foto si `examenes_complementarios_fotos.activo = 1` y el examen está confirmado, `MedicoController.php:2352-2404`,
+    `examenes_complementarios.blade.php:504-518`), sin escribir filas ni archivos de prueba, para cuando el usuario lo pida.
+  - Hecho cuando: los límites locales anotados; el contrato escrito con los cuatro tipos, la validación por contenido y las dos formas de listar; scripts de T4 ampliados con
+    `consulta_pdfs` (igual criterio que T49; `examenes_complementarios_fotos` queda nombrada como fuera de alcance); sumas iguales a la línea base (T95 no escribe nada).
+  - **Hecha (2026-11-13).** Contrato revisado en `plan.md` («Contrato de E4 (revisado el 2026-11-13)»), completado en esta tarea con: `clave` `a:<id local>` (hasta 191) y `dispositivo`
+    obligatorios en el alta; `consulta_pdfs` **es** la tabla de `documentos` (y la web no guarda otra cosa ahí) y el listado nunca devuelve uno sin consulta (`consulta_id = 0`) ni de otra HC;
+    límites locales medidos; y el `413` del servidor web, que la app trata como `archivo_grande`. Copiado como **«Escritura (E4) — BORRADOR»** a `md/API_SALUD360_CLINICA.md` del clon
+    (`1eb1316`, rama `salud360-api`, sin push) y a la copia servida (idéntica en los archivos del repo, salvo el parche local de dos blades que no se tocó).
+  - Límites locales (solo lectura, `C:\xampp\php\php.exe -i`; detalle en `notas-para-el-plan.md` §13.1): PHP 7.3.0 con `C:\xampp\php\php.ini`; `upload_max_filesize` **64M**, `post_max_size`
+    **64M**, `memory_limit` **128M**, `max_execution_time` **300** en el `php.ini` (la consola informa 0 porque la CLI lo desactiva), `max_input_time` 60; **GD cargada** (2.1.0 *bundled*,
+    no se usa: no se redimensiona). Máximo de la web 15 MB (`MedicoController.php:3624`) → **límite efectivo 15 MB = 15.728.640 bytes**. `config('salud360.img_path')` **vacío** (no hay
+    `SALUD360_IMG_PATH` en el `.env`) → `public_path('img')` = `C:\xampp\htdocs\HClinica-salud360\public\img`, que existe (104 archivos, con `medico1/consulta_pdf` y carpetas de usuarios)
+    y es escribible (ACL *Modify*). **Q-E4-2** (carpeta y límites del hosting) sigue pendiente y es paso de producción.
+  - Scripts de `e0` ampliados con `consulta_pdfs`, igual criterio que T49 (copias `.antes-de-t95`): `escritura-contar.sql` trae la tabla `tabla_e4` (existe, total, por consulta,
+    activas, de baja y por paciente); `escritura-suma.sql`, la fila `tablas_de_e4_presentes` (1 | 0 | todas en el bloque 1); `cargar-prueba.sql` siembra una fila inventada
+    (`filas_e4_sembradas = 1`, sin crear archivos); `escritura-limpiar.sql` **sin cambios de código** (ya estaba en la lista fija de hijas y en el control de hijas de otro paciente).
+    `examenes_complementarios_fotos` queda **nombrada como fuera de alcance** y no se sembró ni se usó.
+  - Ensayo **solo en `hc_clinica_respaldo`**: `ensayo-t95.cmd` (dos tandas, sin modo y con `STRICT_TRANS_TABLES`: suma → cargar → contar → cinco rechazos → limpiar → suma → cargar →
+    limpiar → suma, más el chequeo de `filas_e3_sembradas = 4` y `filas_e4_sembradas = 1`) y `ensayo-t95-extra.cmd sinmodo|estricto` (una fila de `consulta_pdfs` de la consulta de prueba
+    con `paciente_id` de otro paciente → `RECHAZADO`, no borra nada; después limpia de verdad y las sumas vuelven). Resultado: **`FALLOS=0`** en las dos tandas y en los dos extra, con las
+    tres sumas idénticas (escritura, lectura y 68 tablas) en cada comparación. **`hc_clinica` no cambió**: `escritura-suma.sql` y `escritura-contar.sql` (versión anterior, para comparar
+    con la foto de antes) dieron el **mismo SHA-256** antes y después (`35DE2453A613B1B9…` y `174B105B0258FA47…`), con `salud360_token_cache` incluida.
+  - **`tests/Unit` completo en verde: 1281 tests (6740 aserciones)**, corridos con el `vendor` de la copia servida (el clon no tiene `vendor`).
+  - **Alcance de E4 confirmado:** documentos **PDF, JPG, JPEG y PNG** validados por firma; **fotos de exámenes complementarias fuera de alcance** (T100 y T105, no se verificaron ni se
+    escribieron filas ni archivos); **Q-E4-2 sigue pendiente** (carpeta del hosting, paso de producción).
+- [ ] **T96. Reglas puras de los adjuntos (servidor) y su test: PDF, JPG, JPEG y PNG por contenido.** RF-44, RF-46, RF-15 — M — Toca API Laravel: sí
   - Tests primero: `tests/Unit/AdjuntosReglasTest.php`: clave `a:<id local>` (hasta 191; el prefijo `a` se suma a `EnviosRegistro::PREFIJOS`, que hoy es `c r l p`, T9 lo dejó
-    «a definir en E4»); solo PDF: extensión `.pdf`, `Content-Type` y la **cabecera `%PDF-`** de los primeros bytes (no se confía en el nombre); nombre original saneado (sin rutas, `basename`,
-    UTF-8, hasta 255); tamaño máximo = el **menor** entre el de la web (15 MB) y el del hosting (`min(upload_max_filesize, post_max_size)`), función pura `limiteEfectivo($web,
-    $upload, $post)` con el parseo de «8M»/«2G»; nombre en disco **generado por el servidor** (`time()_azar.pdf`), nunca el del cliente; ruta relativa guardada como la web
-    (`<carpeta>/consulta_pdf/<archivo>`); `UPLOAD_ERR_PARTIAL`/`INI_SIZE`/`FORM_SIZE` → `archivo_invalido`/`archivo_grande`; foto de examen (si T95 lo confirma): JPEG/PNG por
-    `getimagesize`, `registro_id` obligatorio; la baja y la subida exigen consulta propia, creada por la app y abierta.
+    «a definir en E4»); **cuatro tipos por firma** y nada más: `%PDF-` → `pdf`, `FF D8 FF` → `jpeg` (vale para `.jpg` y `.jpeg`), `89 50 4E 47 0D 0A 1A 0A` → `png`; una
+    extensión o un `Content-Type` que digan `pdf`/`jpg`/`png` con otra firma → `archivo_invalido` (nunca se confía en el nombre), y un archivo vacío también; nombre original
+    saneado (sin rutas, `basename`, UTF-8, hasta 255); tamaño máximo = el **menor** entre el de la web (15 MB) y el del hosting (`min(upload_max_filesize, post_max_size)`,
+    función pura `limiteEfectivo($web, $upload, $post)` con el parseo de «8M»/«2G»); nombre en disco **generado por el servidor** con la extensión del tipo detectado
+    (`time()_azar.<ext>`), nunca el del cliente; ruta relativa guardada como la web (`<carpeta>/consulta_pdf/<archivo>`); `UPLOAD_ERR_PARTIAL`/`INI_SIZE`/`FORM_SIZE` →
+    `archivo_invalido`/`archivo_grande`; `tipo = documento` (el único aceptado: `foto_examen` → `tipo_invalido`, fuera de alcance); la baja y la subida exigen consulta
+    propia, creada por la app y abierta.
   - Código: `app/Services/Salud360/AdjuntosReglas.php`.
   - Hecho cuando: el test en verde (antes, en rojo); controles estáticos de las reglas comunes; `tests/Unit` completo en verde.
-- [ ] **T97. Subir un PDF: servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
+- [ ] **T97. Subir documentos (PDF, JPG, JPEG y PNG): servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
   - Código: `app/Services/Salud360/AdjuntosService.php` y `app/Http/Controllers/Api/Salud360/AdjuntosController.php` (nuevos: la lectura sigue sin escribir), `Route::post('consultas/{id}/adjuntos', …)`
-    (multipart: `archivo`, `clave`, `dispositivo`, `tipo`). Orden para que no queden filas sin archivo ni archivos sin fila: el archivo se guarda con un nombre temporal; la fila de
-    `consulta_pdfs` (`consulta_id`, `paciente_id`, `nombre_original`, `ruta_archivo`, `activo = 1`; `ConsultaPdf`) y el registro `a:` se escriben en una transacción; recién
-    entonces se renombra al definitivo; si algo falla se borra el temporal y se hace rollback. **Misma `clave` otra vez (subida cortada y reintento) → la misma fila, un solo archivo.** Carpeta
-    como la web resuelve el archivo (`public_path('img/'.ruta)`, o `config('salud360.img_path')` si está definida); si no existe y el hosting no deja crearla →
-    `500 carpeta_no_escribible` **nombrando la ruta exacta** (como pediatría) [Q-E4-2]. La respuesta no trae la ruta del disco.
-  - Hecho cuando: PHP-base y curl con un PDF chico real generado por la prueba: sube (`201`), el reintento con la misma clave da `200` con la misma fila y un solo archivo en disco; un PDF mayor
-    que el límite → `422 archivo_grande` sin escribir; un archivo que dice `.pdf` y no empieza con `%PDF-` → `422 archivo_invalido`; una subida cortada (cuerpo parcial) no deja fila ni archivo;
-    consulta de la web, cerrada, ajena o rol sin permiso → los códigos de RF-52/RF-53; el archivo de prueba **se borra** del disco en la limpieza (con su SHA-256 verificado antes, como T2);
-    `medico_infos` idéntico.
-- [ ] **T98. Listar, bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí — **BLOQUEADA por Q-E4-3 (qué se lista)**
-  - Código en `AdjuntosController`: `GET consultas/{id}/adjuntos` (PDF `activo = 1` de esa consulta: `id`, `nombre_original`, `tamanio`, `created_at`; nunca la ruta del disco ni una URL pública; el
-    paciente tiene que ser visible para el médico); `GET adjuntos/{id}/archivo` (stream con `Content-Type: application/pdf`, solo si la fila está `activo = 1`, el archivo existe y el paciente es visible;
-    **con la sesión, nunca por enlace público**, RF-45); `DELETE adjuntos/{id}` (cuerpo `{clave, dispositivo, consulta_id}`: `activo = 0` solo si la creó la app para este médico en esa consulta abierta; **no borra
-    el archivo del disco**, como `eliminarConsultaPdf`, `MedicoController.php:3657-3680`; repetir = ok).
-  - Hecho cuando: PHP-base y curl: la lista trae lo subido desde la web y desde la API; el `GET` del archivo devuelve los mismos bytes (SHA-256); sin token → `401`; de un paciente fuera de la cartera → `403`; la baja
-    deja la fila en 0 y el archivo en el disco; un PDF de la web no se da de baja desde la API (`403`); `medico_infos` idéntico.
+    (multipart: `archivo`, `clave`, `dispositivo`, `tipo`). El tipo lo decide la **firma** (T96), no el nombre: PDF, JPG/JPEG o PNG, hasta el límite. Orden para que no queden filas sin
+    archivo ni archivos sin fila: el archivo se guarda con un nombre temporal; la fila de `consulta_pdfs` (`consulta_id`, `paciente_id`, `nombre_original`, `ruta_archivo`, `activo = 1`;
+    `ConsultaPdf`) y el registro `a:` se escriben en una transacción; recién entonces se renombra al definitivo (con la extensión del tipo); si algo falla se borra el temporal y se hace
+    rollback. **Misma `clave` otra vez (subida cortada y reintento) → la misma fila, un solo archivo.** No se redimensiona ni se convierte ninguna imagen. Carpeta como la web resuelve el
+    archivo (`public_path('img/'.ruta)`, o `config('salud360.img_path')` si está definida); si no existe y el hosting no deja crearla → `500 carpeta_no_escribible` **nombrando la ruta
+    exacta** (como pediatría) [Q-E4-2, paso de producción]. La respuesta no trae la ruta del disco.
+  - Hecho cuando: PHP-base y curl con un PDF chico y una imagen chica (PNG y JPG) generados por la prueba: cada uno sube (`201`), el reintento con la misma clave da `200` con la misma
+    fila y un solo archivo en disco; un archivo mayor que el límite → `422 archivo_grande` sin escribir; un archivo que dice `.pdf` o `.png` y no empieza con su firma → `422 archivo_invalido`;
+    una subida cortada (cuerpo parcial) no deja fila ni archivo; `tipo = foto_examen` → `422 tipo_invalido`; consulta de la web, cerrada, ajena o rol sin permiso → los códigos de
+    RF-52/RF-53; los archivos de prueba **se borran** del disco en la limpieza (con su SHA-256 verificado antes, como T2); `medico_infos` idéntico.
+- [ ] **T98. Listar (por paciente o por consulta), bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí
+  - Código en `AdjuntosController`: `GET pacientes/{id}/adjuntos` (**consulta nueva**: todos los documentos `activo = 1` de todas las consultas del paciente, cada uno con su `consulta_id`) y
+    `GET consultas/{id}/adjuntos` (**consulta previa**: solo los de esa consulta), con `id`, `nombre_original`, `tamanio`, `tipo` (`pdf|jpeg|png`), `created_at` y `consulta_id`; nunca la ruta del
+    disco ni una URL pública; el paciente tiene que ser visible para el médico; nunca uno sin consulta ni de otra HC (RF-46). `GET adjuntos/{id}/archivo` (stream con el `Content-Type` real —
+    `application/pdf`, `image/jpeg`, `image/png`—, solo si la fila está `activo = 1`, el archivo existe y el paciente es visible; **con la sesión, nunca por enlace público**, RF-45; un archivo que falta
+    en disco → `404`). `DELETE adjuntos/{id}` (cuerpo `{clave, dispositivo, consulta_id}`: `activo = 0` solo si la creó la app para este médico en esa consulta abierta; **no borra el archivo del
+    disco**, como `eliminarConsultaPdf`, `MedicoController.php:3657-3680`; repetir = ok).
+  - Hecho cuando: PHP-base y curl: la lista del paciente trae lo de **todas** sus consultas y la de la consulta solo lo de esa; trae lo subido desde la web y desde la API (PDF, JPG/JPEG y PNG); el `GET` del
+    archivo devuelve los mismos bytes (SHA-256) y el `Content-Type` correcto; sin token → `401`; de un paciente fuera de la cartera → `403`; un adjunto sin consulta o de otra HC no se lista; la baja deja la
+    fila en 0 y el archivo en el disco; un PDF de la web no se da de baja desde la API (`403`); `medico_infos` idéntico.
 - [ ] **T99. Límites de subida (solo lectura).** RF-44, D18 — S — Toca API Laravel: sí
   - Tests primero: `AdjuntosReglasTest` (la forma de la respuesta con `limiteEfectivo`). Código: `Route::get('adjuntos/limites', …)` → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` con
     `ini_get`; **no escribe nada** y no toca el disco. En producción solo se llama cuando el usuario apruebe la etapa de producción (D18).
   - Hecho cuando: curl con token devuelve los límites de la copia local (iguales a los de T95); sin token `401`; ningún archivo ni fila cambió.
-- [ ] **T100. Fotos de exámenes complementarios (condicional a T95).** RF-44 (D24) — M — Toca API Laravel: sí — **Solo si T95 confirma que la web las muestra; si no, se cancela**
+- [ ] **T100. Fotos de exámenes complementarios — FUERA DE ALCANCE por ahora.** RF-44 (D24 revisada) — M — Toca API Laravel: sí — **No se implementa sin pedido del usuario** (ya no depende de T95: T95 no verifica fotos)
+  - *(2026-11-13: el usuario dejó las fotos de exámenes fuera de alcance; el cambio de D24 vale solo para la sección `documentos`.)* Lo que sigue es el diseño que quedó, para cuando se pida:
   - Código: `AdjuntosService::subirFotoDeExamen` (`tipo = foto_examen`, `registro_id` = id de la web de un examen **confirmado** del paciente o de esta consulta): escribe
     `examenes_complementarios_fotos` (`paciente_id`, `consulta_id`, `examen_complementario_id`, `numero` = cantidad + 1 como `getNumeroExamenComplementarioFoto`, `MedicoController.php:2512-2522`, `foto` =
     ruta relativa, `activo = 1`) y el archivo con las mismas garantías de T97 (clave `a:`, temporal, transacción). **La API no crea el examen** (la web lo crea si falta, `:2437-2459`: acá ya existe por E2) y
-    no redimensiona salvo que T95 diga que hace falta (si sí, con el paquete que la web ya usa: ninguna dependencia nueva). Baja: `activo = 0`. Poder adjuntar a un examen de una consulta
+    no redimensiona (si alguna vez hace falta, se decide al implementar, con el paquete que la web ya usa: ninguna dependencia nueva). Baja: `activo = 0`. Poder adjuntar a un examen de una consulta
     anterior es lo que hace pediatría (`docs/hc-pediatria-estado-y-plan.md` «Los exámenes de otras consultas»).
   - Hecho cuando: PHP-base y curl: una foto de prueba (generada por la prueba) queda asociada al examen y la web la muestra (a mano, T112); el reintento con la misma clave da la misma fila; sobre un examen
     `activo = 2` (todavía no confirmado) → error claro sin escribir; `medico_infos` idéntico; el archivo se borra en la limpieza.
 - [ ] **T101. Prueba de punta a punta del servidor de E4 y documentación.** RF-15, RF-16, RF-44 a RF-46, RF-52, RF-53 — M — Toca API Laravel: sí
-  - Pasada por HTTP con curl espaciado ~1,3 s de T97 a T100; scripts contra la descartable; sumas antes/después (cambian solo `consulta_pdfs`, `examenes_complementarios_fotos` si corresponde y `salud360_envios`);
+  - Pasada por HTTP con curl espaciado ~1,3 s de T97 a T99 (un PDF y una imagen); scripts contra la descartable; sumas antes/después (cambian solo `consulta_pdfs` y `salud360_envios`);
     greps estáticos (en este caso `unlink`/`delete` de archivos = 0: nunca se borra un archivo); limpieza por id y por clave **y borrado de los archivos de prueba del disco**.
-    Docs: «Escritura (E4)» en `md/API_SALUD360_CLINICA.md` (rutas, multipart, códigos, límites, carpeta y el paso de hosting [Q-E4-2]).
+    Docs: «Escritura (E4)» en `md/API_SALUD360_CLINICA.md` (rutas, multipart, los cuatro tipos y la validación por contenido, listado por paciente/consulta, códigos, límites, carpeta y el
+    paso de hosting [Q-E4-2], que sigue pendiente y es de producción).
   - Hecho cuando: phpunit completo en verde; copia servida igual al clon; cero escrituras de `medico_infos`; `salud360_token_cache` vaciada; las rutas nuevas responden `401` sin token.
 
 ## App de E4
-- [ ] **T102. API de adjuntos (subir, listar, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no
-  - Tests primero: jvm `ClinicaAdjuntosApiTest` con `HttpServer`: `subir` usa `HcApiClient.subir` (ya existe, multipart con tiempo largo) con los campos `clave`, `dispositivo`, `tipo`, `registro_id?`;
-    el servidor falso recibe los bytes y los campos exactos; `listar`, `bajar` (`HcApiClient.descargar`, que rechaza un JSON en lugar del archivo), `borrar` (`DELETE` con cuerpo) y `limites`;
-    errores `401/403/404/409/413/422/429/500` con `status` y `codigo` (`archivo_grande`, `archivo_invalido`, `carpeta_no_escribible`); un pedido por error; JSON cortado.
+- [ ] **T102. API de adjuntos (subir, listar por paciente y por consulta, bajar, borrar, límites) con servidor falso.** RF-44 a RF-46 — M — Toca API Laravel: no
+  - Tests primero: jvm `ClinicaAdjuntosApiTest` con `HttpServer`: `subir` usa `HcApiClient.subir` (ya existe, multipart con tiempo largo) con los campos `clave`, `dispositivo`, `tipo` (`documento`;
+    `foto_examen` queda fuera de alcance); el servidor falso recibe los bytes y los campos exactos de un PDF, un JPG y un PNG; `listar` con las **dos** formas (`GET pacientes/{id}/adjuntos` y
+    `GET consultas/{id}/adjuntos`), `bajar` (`HcApiClient.descargar`, que rechaza un JSON en lugar del archivo, con `Content-Type` de PDF o de imagen), `borrar` (`DELETE` con cuerpo) y `limites`;
+    errores `401/403/404/409/413/422/429/500` con `status` y `codigo` (`archivo_grande`, `archivo_invalido`, `tipo_invalido`, `carpeta_no_escribible`); un pedido por error; JSON cortado.
   - Código: `ClinicaEscrituraApi` (+ adjuntos) o `ClinicaAdjuntosApi` aparte, remota sobre el `HcApiClient` completo; DTOs; `PayloadsClinica.claveDeAdjunto`. Ninguna dependencia nueva.
   - Hecho cuando: tests en verde (antes, en rojo); compila el wasm (el multipart de la web se prueba a mano en T112).
-- [ ] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir.** RF-44, RF-46, RF-60 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-1**
-  - Tests primero: common `AdjuntosClinicaTest`: `adjuntoViaja(archivo, consulta)` solo si cuelga de **esa** consulta propia (`consulta_id` no nulo), es de la sección `documentos`, es PDF (o foto de un
-    registro de examen con `remoto_id`, T105) y no está desactivado; **nunca** uno sin consulta ni de otra historia clínica del mismo paciente (RF-46); `limiteExcedido(tamanio, limites)` → texto «El archivo
-    pesa X MB y el máximo es Y MB» **antes** de subir, sin marcarlo enviado; imágenes que no son de exámenes → «No se envía a la web» [Q-E4-1]. jvm `AdjuntosPropiosTest`: una consulta SQL nueva
-    (`archivosDeConsultaPropia`, sin cambiar el esquema) que **no** incluye los `consulta_id IS NULL` por paciente que hoy toma `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`).
+- [ ] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir (PDF e imágenes).** RF-44, RF-46, RF-60 — M — Toca API Laravel: no
+  - Tests primero: common `AdjuntosClinicaTest`: `adjuntoViaja(archivo, consulta)` solo si cuelga de **esa** consulta propia (`consulta_id` no nulo), es de la sección `documentos`, es **PDF, JPG, JPEG
+    o PNG** y no está desactivado; **nunca** uno sin consulta ni de otra historia clínica del mismo paciente (RF-46); el tipo se mira por lo que la app ya sabe del archivo (extensión declarada), y el
+    servidor lo vuelve a validar por contenido (T96); `limiteExcedido(tamanio, limites)` → texto «El archivo pesa X MB y el máximo es Y MB» **antes** de subir, sin marcarlo enviado; un archivo de otro
+    tipo (o de una foto de examen, fuera de alcance) queda afuera y no se cuenta como pendiente. jvm `AdjuntosPropiosTest`: una consulta SQL nueva (`archivosDeConsultaPropia`, sin cambiar el esquema)
+    que **no** incluye los `consulta_id IS NULL` por paciente que hoy toma `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`).
   - Código: `hcgeneral/AdjuntosClinica.kt`, `HistoriaClinica.sq` (solo consultas), `HcRepository` (barrera de T36 en `guardarArchivo/eliminarArchivo`, hoy sin ella: `HcRepository.kt:592-603`).
   - Hecho cuando: tests en verde (antes, en rojo); `HcApiSync` (pediatría) sigue sin cambios y sus tests verdes.
-- [ ] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los PDF.** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
+- [ ] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los documentos (PDF, JPG, JPEG y PNG).** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
   - Tests primero: common `PlanDeEnvioE4Test` (con `habilitada = E4`; con `E3` siguen en `enReserva`): paso `Adjuntos` (`TablaDeLaFila.ARCHIVO`) con las altas (sin `remoto_id`) y las bajas
     (`activo = false` con `remoto_id`), después de los registros y las cargas y antes del cierre; un adjunto nunca subido y borrado no viaja. jvm `HcClinicaEnvioAdjuntosTest`: **un archivo por pedido**;
     lee los bytes de `ArchivoStore`; si falta el archivo local → «No se pudo enviar: falta el archivo en este dispositivo» sin reintento solo (lo trae otro dispositivo sin archivo); el `remoto_id` va a
@@ -1963,23 +2003,29 @@ recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95
     `ConsultaViewModel.agregarArchivo` y `eliminarArchivo` **ya** llaman a `marcarSucia()` (`ConsultaViewModel.kt:466-497`), así que la cola los ve: un test lo fija y no se agrega nada
     (lo que T36 (a) dejó sin avisar son los pendientes, T83-b; el laboratorio general y el peso ya avisan, T83-a).
   - Hecho cuando: tests en verde (antes, en rojo); los de la cola de E1, E2 y E3 siguen verdes sin cambios; `SyncEngine` sigue sin subir adjuntos (T30).
-- [ ] **T105. Fotos de exámenes en el plan y en el envío (condicional a T95).** RF-44 (D24) — M — Toca API Laravel: no — **Solo si T95 confirma que la web las muestra**
+- [ ] **T105. Fotos de exámenes en el plan y en el envío — FUERA DE ALCANCE por ahora.** RF-44 (D24 revisada) — M — Toca API Laravel: no — **No se implementa sin pedido del usuario** (ya no depende de T95)
+  - *(2026-11-13: fuera de alcance; se conserva el diseño para cuando se pida.)*
   - Tests primero: common `PlanDeEnvioE4Test` ampliado y jvm `HcClinicaEnvioAdjuntosTest` ampliado: el adjunto de un registro `examen_complementario` (`archivo.registro_id`) viaja como
     `tipo = foto_examen` con el `remoto_id` del registro; **si el examen todavía no tiene `remoto_id` o no está confirmado, la foto espera** (el registro va primero y la web solo lo confirma al cerrar la
     consulta: la foto de un examen `activo = 2` se sube después del cierre o queda «En espera: el examen todavía no está confirmado» — decisión a revisar al implementar); adjuntar a un examen de una consulta
     anterior [Q-E2-4]; baja de la foto.
   - Hecho cuando: tests en verde (antes, en rojo); `RegistrosSeccion` (`conArchivos`, `RegistrosSeccion.kt:173`) muestra el adjunto solo cuando E4 está habilitada y T105 hecha.
-- [ ] **T106. La lectura lista y abre los adjuntos de la web con la sesión.** RF-45, RF-33 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-3**
-  - Hoy la lectura solo avisa que existen (`no_leidas = documentos`). Tests primero: jvm `HcClinicaBackendAdjuntosTest`: al **abrir** una consulta (nunca desde el autoguardado) se pide
-    `GET consultas/{id}/adjuntos` y se guardan filas `archivo` locales **sin archivo** (`rutaLocal` nula, `remoto_id` = id de la web, id determinista `hcc-f…` con un `idArchivoWeb` nuevo);
-    lo que la app subió (con `remoto_id`) y lo que trae la lectura son **uno solo**; `bytesDe` baja el archivo la primera vez con `HcApiClient.descargar` (con la sesión, sin enlace público) y lo cachea
-    en `ArchivoStore`; un adjunto dado de baja en la web deja de listarse sin borrar el archivo local (Q15 de la 002: nunca borrar); un `404` del archivo no rompe la pantalla.
-  - Código: `HcClinicaBackend` (lectura de adjuntos de la consulta), `LecturaClinica.kt` (`archivosDeLaWeb`), `ConsultaViewModel.bytesDe` (ya baja por `hc.bajarArchivo`; clínica lo implementa).
+- [ ] **T106. La lectura lista y abre los adjuntos de la web con la sesión (consulta nueva vs. previa).** RF-45, RF-33 — M — Toca API Laravel: no
+  - Hoy la lectura solo avisa que existen (`no_leidas = documentos`). Tests primero: jvm `HcClinicaBackendAdjuntosTest`: al **abrir** una consulta (nunca desde el autoguardado) se pide la lista que
+    corresponde a **Q-E4-3**: si es una **consulta nueva y en curso**, `GET pacientes/{id}/adjuntos` (**todos** los documentos del paciente, de todas sus consultas, cada uno con su consulta de
+    origen); si es una **consulta previa** (cerrada, o abierta pero no la que se está cargando), `GET consultas/{id}/adjuntos` (**solo** los de esa consulta); en los dos casos solo la sección
+    `documentos` y nunca uno sin consulta ni de otra HC. Se guardan filas `archivo` locales **sin archivo** (`rutaLocal` nula, `remoto_id` = id de la web, id determinista `hcc-f…` con un
+    `idArchivoWeb` nuevo); lo que la app subió (con `remoto_id`) y lo que trae la lectura son **uno solo**, sin duplicar; `bytesDe` baja el archivo la primera vez con `HcApiClient.descargar` (con la
+    sesión, sin enlace público) y lo cachea en `ArchivoStore`; el `Content-Type` de PDF y de imagen se respeta al abrirlo; un adjunto dado de baja en la web deja de listarse sin borrar el archivo
+    local (Q15 de la 002: nunca borrar); un `404` del archivo no rompe la pantalla.
+  - Código: `HcClinicaBackend` (lectura de adjuntos: por paciente o por consulta según la consulta abierta), `LecturaClinica.kt` (`archivosDeLaWeb`), `ConsultaViewModel.bytesDe` (ya baja por
+    `hc.bajarArchivo`; clínica lo implementa).
   - Hecho cuando: tests en verde (antes, en rojo); `HcClinicaBackend*Test` de la L siguen verdes; `HcClinicaLecturaE2ETest` se saltea sola.
-- [ ] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no — **BLOQUEADA por Q-E4-1**
-  - `features/hc` (`ArchivosSeccion.kt`): en una consulta propia de clínica el selector de `documentos` ofrece solo PDF [Q-E4-1]; mensaje del tope antes de subir (T103); estado de cada adjunto
-    («Falta enviar», «En espera», «No se pudo enviar», ya cubiertos por T37); abrir un adjunto de la web con la sesión (`abrirArchivo`); miniatura/ícono de PDF; los adjuntos de registros de examen visibles
-    solo si T105 está hecha; «Esta sección todavía no se envía a la web» desaparece de `documentos`.
+- [ ] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no
+  - `features/hc` (`ArchivosSeccion.kt`): en una consulta propia de clínica el selector de `documentos` ofrece **PDF, JPG, JPEG y PNG** (`accept` con los cuatro, Q-E4-1 revisada); mensaje del tope
+    antes de subir (T103); estado de cada adjunto («Falta enviar», «En espera», «No se pudo enviar», ya cubiertos por T37); abrir un adjunto de la web con la sesión (`abrirArchivo`), con
+    miniatura/ícono de PDF o de imagen; la lista sigue la regla de Q-E4-3 (**consulta nueva** = todos los documentos del paciente; **consulta previa** = solo los de esa consulta); «Esta sección
+    todavía no se envía a la web» desaparece de `documentos`. Los adjuntos de registros de examen **no** se muestran: las fotos de exámenes están fuera de alcance (T105).
   - Hecho cuando: compilan `:features:hc:compileKotlinJvm` y `:composeApp:compileKotlinWasmJs -Pentorno=dev`; la revisión visual queda para T112.
 - [ ] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
   - `SUBENTREGA_HABILITADA = E4`: la HC general ofrece las 25 secciones (menos las que D9 deja afuera, que no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
@@ -1989,9 +2035,11 @@ recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95
 
 ## Pruebas y cierre de E4
 - [ ] **T109. E2E de E4 contra la copia local.** RF-15, RF-16, RF-44 a RF-46 — M — Toca API Laravel: no
-  - `HcClinicaAdjuntosE2ETest` (**se saltea sin las propiedades** de T40): con el paciente «PRUEBA SALUD360» creado por la prueba, sube un **PDF generado por la propia prueba** (pocos KB) a una consulta
-    propia; **repite** la subida (misma clave: una sola fila y un solo archivo); lista de vuelta; lo baja con la sesión y compara el SHA-256; lo da de baja (deja de listarse, el archivo sigue en el disco); un PDF
-    por encima del límite que informa `adjuntos/limites` no se sube ni figura enviado; foto de examen si T95 la confirmó. Pedidos espaciados 1,1 s.
+  - `HcClinicaAdjuntosE2ETest` (**se saltea sin las propiedades** de T40): con el paciente «PRUEBA SALUD360» creado por la prueba, sube un **PDF generado por la propia prueba** y una **imagen
+    chica (PNG y JPG)** (pocos KB) a una consulta propia; **repite** la subida (misma clave: una sola fila y un solo archivo); lista de vuelta (`GET pacientes/{id}/adjuntos`: aparecen los de las
+    consultas anteriores; `GET consultas/{id}/adjuntos`: solo los de esa); los baja con la sesión y compara el SHA-256 y el `Content-Type`; los da de baja (dejan de listarse, los archivos siguen en el
+    disco); un archivo por encima del límite que informa `adjuntos/limites` no se sube ni figura enviado; uno con extensión válida y contenido inválido → «No se pudo enviar» por `archivo_invalido`.
+    Pedidos espaciados 1,1 s.
   - Hecho cuando: en verde contra la copia servida; `suma.sql` antes/después igual salvo lo esperado y **`medico_infos` idéntico (puerta RF-16)**; limpieza por id y por clave **y archivos de prueba borrados del
     disco** (con su ruta y SHA-256 anotados antes); sin propiedades se saltea y `:core:data:jvmTest` queda en verde.
 - [ ] **T110. Regresión de E4.** RF-5 — S — Toca API Laravel: no
@@ -2001,14 +2049,14 @@ recorta (D12)**: puede ir después de publicar (D23). Orden: servidor local (T95
   - RF por RF con su test; el límite (de dónde sale y cómo se mide); lo que nunca se envía a clínica (otra HC, sin consulta); los archivos que quedan en disco y por qué; D24; preguntas Q-E4-*; riesgos.
   - Hecho cuando: el reviewer aprueba o devuelve observaciones y quedan cerradas o anotadas.
 - [ ] **T112. Prueba manual del usuario en `devWeb` (E4).** RF-44 a RF-46 — S — Toca API Laravel: no
-  - Copia local, paciente «PRUEBA SALUD360»: (1) adjuntar un PDF a la consulta y verlo en la web de hclinica (`consulta_pdf/{id}/ver`); (2) Network → Offline: adjuntar, volver, una sola vez en la web; (3) un
-    PDF demasiado grande: el aviso sale antes de subir; (4) un PDF subido desde la web aparece en la app y se abre con la sesión; (5) borrar el PDF propio: desaparece en las dos; (6) el selector de `documentos`
-    ofrece solo PDF [Q-E4-1]; (7) **si T95 lo confirmó**: foto de un examen complementario y verla en la web; (8) **la subida multipart desde el navegador funciona** (el CORS ya permite `POST` y
-    `Authorization`).
+  - Copia local, paciente «PRUEBA SALUD360»: (1) adjuntar un PDF y una imagen (JPG y PNG) a la consulta y verlos en la web de hclinica (`consulta_pdf/{id}/ver`); (2) Network → Offline: adjuntar, volver,
+    una sola vez en la web; (3) un archivo demasiado grande: el aviso sale antes de subir; (4) un PDF y una imagen subidos desde la web aparecen en la app y se abren con la sesión; (5) borrar un adjunto
+    propio: desaparece en las dos; (6) el selector de `documentos` ofrece PDF, JPG, JPEG y PNG; (7) una **consulta nueva** lista los documentos de las consultas anteriores y una **previa** solo los suyos;
+    (8) **la subida multipart desde el navegador funciona** (el CORS ya permite `POST` y `Authorization`). Las fotos de exámenes quedan fuera de alcance (T100 y T105).
   - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar` aplicado y archivos de prueba borrados; token revocado.
 - [ ] **T113. Limpieza, documentación y cierre de E4.** D4 — S — Toca API Laravel: no
   - Con los scripts de T95: lo que dejaron T97 a T101 y T109 a T112, por id y por clave, **y los archivos del disco**; conteos y sumas contra la línea base de T5; docs y `MEMORY.md`; propuesta para `AGENTS.md`;
-    la lista de pasos de hosting para la etapa de producción (carpeta de archivos, `SALUD360_IMG_PATH`, límites, privilegios) [Q-E4-2].
+    la lista de pasos de hosting para la etapa de producción (carpeta de archivos, `SALUD360_IMG_PATH`, límites, privilegios) [Q-E4-2, **sigue pendiente**].
   - Hecho cuando: todo igual a la línea base salvo `salud360_envios`; el usuario cierra E4.
 
 ---

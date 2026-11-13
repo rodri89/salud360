@@ -1,7 +1,10 @@
 # Plan 005 — La HC general escribe sus consultas en la base de la web
 
 Estado: **borrador del planificador (2026-11-04)**, para revisar con el usuario antes de generar la tanda siguiente. Spec
-aprobada el 2026-11-04 (`spec.md`, RF-1 a RF-70, decisiones D1 a D27, sin dudas abiertas). Apoyo técnico (rutas provisorias,
+aprobada el 2026-11-04 (`spec.md`, RF-1 a RF-70, decisiones D1 a D27, sin dudas abiertas). **E4 revisada el 2026-11-13:** el usuario
+resolvió Q-E4-1 (revisada) y Q-E4-3: la sección «Documentos» de la HC general lleva **PDF, JPG, JPEG y PNG** y el listado de adjuntos
+depende de si la consulta es nueva (todos los del paciente) o previa (solo los de esa consulta); las fotos de exámenes siguen fuera de
+alcance. **Q-E4-2 (carpeta del hosting) sigue pendiente y es un paso de producción.** Apoyo técnico (rutas provisorias,
 verificación en el código con archivo y línea, enmienda a la 004): `notas-para-el-plan.md`. Rama `hc-general` de este repo; servidor
 en `C:\Users\flor\rebonline\hclinica` (rama `salud360-api`); producción **fuera** de este plan (cada etapa de producción, «E9 de la
 escritura», se aprueba aparte).
@@ -229,7 +232,7 @@ se toca `config/`). PHP 7.3 de 32 bits: sin `fn`, sin propiedades tipadas, ids c
 | E2 | `PUT consultas/{id}/registros` | `[{ref, tipo, id?, fecha, campos, borrado}]` → `{ids:{ref:id}}`; `borrado` = baja | RF-39, RF-40, RF-70 | E2 cerrada |
 | E3 | `PUT/DELETE pacientes/{id}/laboratorios` y `/pesos` | `{clave, consulta_id, id?, fecha, valores}` → `{id}` (visibles al instante) | RF-41, RF-42 | E3 cerrada |
 | E3 | `PUT consultas/{id}/pendientes` | `{texto}` → `{id}` (un texto por consulta) | RF-43 | E3 cerrada |
-| E4 | `POST consultas/{id}/adjuntos` (multipart), `DELETE`, `GET …/archivo`, `GET` de límites | subida repetible por `clave` | RF-44 a RF-46 | E4 cerrada |
+| E4 | `POST consultas/{id}/adjuntos` (multipart; PDF, JPG, JPEG y PNG), `DELETE`, `GET` del archivo, `GET` de la lista por paciente o por consulta y `GET` de límites | subida repetible por `clave` | RF-44 a RF-46 | E4 cerrada |
 | E5 | `GET licencias`, `PUT licencias/{medicoIdTobb}` | panel; el aviso ya viaja en `auth/perfil` | RF-47 a RF-49 | E5 cerrada |
 
 **Reglas del servidor (RF-52, RF-53):** todas las rutas de escritura exigen médico (`soloMedico`: administrador y secretaria →
@@ -338,7 +341,7 @@ la copia servida; **jvm** = `jvmTest` de `core:data` (`.\gradlew :core:data:jvmT
 | RF-35 a RF-40, RF-70 | PHP `EscrituraReglasTest` + PHP-base (E2); jvm `PayloadsClinicaTest`, `HcRepositoryRegistrosTest` (borrar = baja); E2E (E2) |
 | RF-41, RF-42 | PHP + PHP-base (visibles al instante, fecha de la consulta, baja); jvm `MigracionLaboratorioTest`, `HcClinicaBackendPropiasTest` (empareja, no duplica); E2E (E3) |
 | RF-43 | common `PendientesTextoTest` (uno por línea, huella, coincide/cambió); jvm test del emparejamiento; E2E (E3) |
-| RF-44 a RF-46 | PHP + PHP-base (límite, subida repetible, baja); jvm `AdjuntosClinicaTest` (solo de la consulta, nunca de otra HC ni sin consulta); E2E (E4) |
+| RF-44 a RF-46 | PHP + PHP-base (los cuatro tipos por **firma**, límite, subida repetible, listado por paciente/por consulta, baja); jvm `AdjuntosClinicaTest` (solo de la consulta, nunca de otra HC ni sin consulta); E2E (E4) |
 | RF-47, RF-48 | jvm `AvisoLicenciaClinicaTest`; PHP-base (`licencias`); manual (E5) |
 | RF-49 | curl con token de administrador (ya cubierto) |
 | RF-50, RF-51 | jvm `SesionYEnvioTest` (otro médico no envía lo del primero; cerrar sesión no borra); manual |
@@ -408,8 +411,8 @@ que dice cada fila. **La lectura no se modifica.**
 | E3 | `PUT pacientes/{id}/laboratorios` / `PUT pacientes/{id}/pesos` | `{clave:"l:<id local>", dispositivo, consulta_id, tipo?, id?, fecha, valores}` → `{ok, id, guardadas, desconocidas}` | `activo = 1` desde el alta (D20); fecha obligatoria y nunca el marcador de «sin fecha» (`422 fecha_invalida`); alta repetible por clave; actualizar (`id`) solo una carga de esa consulta creada por la app (`403 carga_no_propia`); `422 carga_vacia`; no escribe `medico_infos` | RF-41, 42 |
 | E3 | `DELETE pacientes/{id}/laboratorios/{cargaId}` / `…/pesos/{cargaId}` | `{clave, dispositivo, consulta_id}` → `{ok, baja}` | `activo = 0`, nunca físico; solo cargas propias de esa consulta; repetir = ok | RF-41, 42 |
 | E3 | `PUT consultas/{id}/pendientes` | `{texto}` → `{ok, id}` | Un texto por consulta en `aux_pendientes` (`activo = 1`), el último manda; `""` vacía; sin `resuelto` (D10); upsert | RF-43 |
-| E4 | `POST consultas/{id}/adjuntos` (multipart) | `archivo`, `clave:"a:<id local>"`, `dispositivo`, `tipo: pdf\|foto_examen`, `registro_id?` → `201/200 {ok, adjunto:{id,nombre,tamanio,created_at}}` | Solo PDF (cabecera `%PDF-`) o, si D24, JPEG/PNG de un examen confirmado; tope = menor entre 15 MB y el hosting; archivo temporal → fila + registro en una transacción → renombrar; `422 archivo_grande\|archivo_invalido`; `500 carpeta_no_escribible` con la ruta | RF-44, 46 |
-| E4 | `GET consultas/{id}/adjuntos`, `GET adjuntos/{id}/archivo` | lista / bytes | Con sesión, paciente visible, nunca enlace público; la lista no trae rutas del disco | RF-45 |
+| E4 | `POST consultas/{id}/adjuntos` (multipart) | `archivo`, `clave:"a:<id local>"`, `dispositivo`, `tipo: documento` → `201/200 {ok, adjunto:{id,nombre,tamanio,created_at}}` | PDF, JPG, JPEG o PNG **validados por contenido** (`%PDF-`, `FF D8 FF`, `89 50 4E 47`), nunca por la extensión; `tipo = foto_examen` → `422 tipo_invalido` (fuera de alcance); tope = menor entre 15 MB y el hosting; archivo temporal → fila + registro en una transacción → renombrar; `422 archivo_grande\|archivo_invalido`; `500 carpeta_no_escribible` con la ruta (Q-E4-2, paso de producción) | RF-44, 46 |
+| E4 | `GET pacientes/{id}/adjuntos` (consulta nueva), `GET consultas/{id}/adjuntos` (consulta previa), `GET adjuntos/{id}/archivo` | lista / bytes | La del paciente: **todos** los documentos de sus consultas; la de la consulta: **solo** los subidos en esa consulta; con sesión, paciente visible, nunca enlace público; la lista no trae rutas del disco | RF-45 |
 | E4 | `DELETE adjuntos/{id}` | `{clave, dispositivo, consulta_id}` → `{ok, baja}` | `activo = 0`; no borra el archivo; solo adjuntos propios | RF-46 |
 | E4 | `GET adjuntos/limites` | → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` | Solo lectura (`ini_get`); en producción solo con la aprobación de producción (D18) | RF-44 |
 
@@ -533,6 +536,55 @@ Mismo grupo `salud360`, mismo middleware, cuerpo JSON (**todo escalar es texto**
 
 **Errores nuevos de E3** (se suman a los de E1 y E2; `422 datos_invalidos` con `campo` y `motivo`, salvo los `403` y `404`): `fecha_invalida`, `carga_vacia`, `texto_demasiado_largo`, `tipo_invalido`, `clave_en_uso`, `consulta_de_otro_paciente`; `403 carga_no_propia`; `404 carga_no_encontrada`.
 **Pruebas del contrato:** PHP `CargasReglasTest` (T74) y PHP-base/curl (T76, T77); la app, contra un servidor falso. **El registro de lo recibido** suma los tipos `carga` y `baja_carga` (el prefijo `l` ya está en `EnviosRegistro::PREFIJOS`).
+
+### Contrato de E4 (revisado el 2026-11-13) - documentos de la HC general: PDF, JPG, JPEG y PNG
+**Alcance (decisiones del usuario del 2026-11-13):** la sección «Documentos (PDF e imágenes)» lleva **PDF, JPG, JPEG y PNG** (Q-E4-1 revisada); las **fotos
+de exámenes complementarios** (T100 y T105) quedan **fuera de alcance por ahora**. El listado depende de la consulta: **nueva** = todos los documentos del
+paciente; **previa** = solo los de esa consulta (Q-E4-3). Mismo grupo `salud360`, mismo middleware y mismos errores que E1 a E3; **la lectura no cambia**
+salvo los `GET` nuevos. **Q-E4-2** (qué carpeta del hosting y cómo se crea en producción) **sigue pendiente**: es un paso de la etapa de producción (D18, E9
+de la escritura), no de la copia local.
+
+**Límites de la copia local (medidos en T95, solo lectura):** `php.ini` `C:\xampp\php\php.ini` (PHP 7.3.0, el mismo que carga Apache):
+`upload_max_filesize` **64M**, `post_max_size` **64M**, `memory_limit` **128M**, `max_execution_time` **300** (la consola, `php -i`, informa 0 porque la CLI lo desactiva), `max_input_time` 60;
+extensión **GD cargada** (2.1.0 *bundled*). El máximo de la web es **15 MB** (`15 * 1024 * 1024` = **15.728.640 bytes**, `MedicoController.php:3624`), así que el **límite efectivo es 15 MB**
+(`min(15 MB, upload, post)`); `post_max_size` deja aire para el `multipart`. `config('salud360.img_path')` está **vacío** (no hay `SALUD360_IMG_PATH` en el `.env`): la carpeta se resuelve a
+`public_path('img')` = `C:\xampp\htdocs\HClinica-salud360\public\img`, que existe y es escribible para el usuario de Apache (ACL *Modify*). Los límites y la carpeta de **producción** siguen sin
+medirse: eso es Q-E4-2.
+
+**`POST consultas/{id}/adjuntos`** (multipart: `archivo`, `clave:"a:<id local>"`, `dispositivo`, `tipo`).
+- **`clave`** `a:<id local>` (prefijo `a`, hasta 191 caracteres, `EscrituraReglas::clave`) y **`dispositivo`** son obligatorios; se registran con tipo `adjunto`, el id de la fila y la consulta
+  (el prefijo `a` se suma a `EnviosRegistro::PREFIJOS`, hoy `c r l p`).
+- **`tipo`**: `documento` (la sección `documentos` de la HC general, que es la tabla `consulta_pdfs`: la web no guarda otra cosa ahí). `foto_examen` está reservado para las fotos de exámenes y hoy responde `422 tipo_invalido`.
+- **Tipos y validación por contenido** (nunca por la extensión ni por el `Content-Type` del cliente): el archivo temporal se lee y se mira su **firma**:
+  `%PDF-` → PDF; `FF D8 FF` → JPG/JPEG; `89 50 4E 47 0D 0A 1A 0A` → PNG. Cualquier otra firma —también si el nombre termina en `.pdf`, `.jpg` o `.png`— es
+  `422 archivo_invalido`, sin escribir nada; un archivo vacío (0 bytes) también. `.jpeg` y `.jpg` son el mismo tipo (JPEG).
+- **Nombre original saneado** (`basename`, sin rutas, UTF-8, hasta 255) y **nombre en disco generado por el servidor** (`time()_azar.<ext>`); la fila guarda
+  la ruta relativa como la web (`<carpeta>/consulta_pdf/<archivo>`). **No se redimensiona ni se convierte** nada: el archivo viaja tal cual.
+- **Límite:** el **menor** entre el que la web ya acepta (15 MB) y el del hosting (`min(upload_max_filesize, post_max_size)`, `AdjuntosReglas::limiteEfectivo`)
+  → `422 archivo_grande` **antes** de escribir. `UPLOAD_ERR_PARTIAL`/`INI_SIZE`/`FORM_SIZE` → `archivo_invalido`/`archivo_grande`.
+- **Repetible:** la misma `clave` (`a:<id local>`, registrada con tipo `adjunto`) devuelve la **misma fila** y un solo archivo, aunque la subida anterior se haya
+  cortado (RF-15, D21). Orden: archivo temporal → fila de `consulta_pdfs` (`activo = 1`) + registro **en una transacción** → renombrar al definitivo; si algo
+  falla se borra el temporal y se hace rollback (P21). **Nunca se borra un archivo del disco.**
+- Respuesta `201/200 {ok, adjunto:{id, nombre_original, tamanio, created_at}}`; nunca la ruta del disco.
+
+**`GET pacientes/{id}/adjuntos`** (lo que lista una **consulta nueva**) y **`GET consultas/{id}/adjuntos`** (lo que lista una **consulta previa**).
+- La del **paciente**: **todos** los documentos (`activo = 1`) de todas sus consultas, cada uno con su consulta de origen. La de la **consulta**: **solo** los
+  subidos en esa consulta. En los dos casos, **solo** la sección `documentos` de la HC general (`consulta_pdfs`) y **nunca** uno sin consulta (`consulta_id = 0`, que la web
+  admite) ni de otra HC (RF-46).
+- **`GET adjuntos/{id}/archivo`**: los bytes con su `Content-Type` real (`application/pdf`, `image/jpeg`, `image/png`), solo si la fila está `activo = 1`, el
+  archivo existe y el paciente es visible; **con la sesión, nunca por enlace público** (RF-45). Un archivo que falta en disco → `404`, sin romper la pantalla.
+- Respuesta de las listas: `{ok, adjuntos:[{id, nombre_original, tamanio, tipo, created_at, consulta_id}]}`; sin rutas del disco ni URL pública.
+
+**`DELETE adjuntos/{id}`**: cuerpo `{clave:"a:<id local>-baja", dispositivo, consulta_id}` → `{ok, baja, id}`; `activo = 0`, nunca `DELETE` físico, solo si la creó
+la app para este médico en esa consulta abierta; repetir = ok (RF-46). **`GET adjuntos/limites`** no cambia (`{maximo_bytes, maximo_web_bytes,
+upload_max_filesize, post_max_size}`, solo lectura, D18).
+
+**Errores nuevos de E4:** `archivo_invalido`, `archivo_grande`, `tipo_invalido`, `clave_en_uso`, `consulta_de_otro_paciente`; `500 carpeta_no_escribible`
+(nombra la ruta). Se suman los de E1 a E3 (`401`, `403 sin_permiso|fuera_de_cartera|consulta_no_propia`, `404`, `409 consulta_cerrada`, `422 datos_invalidos` con `campo` y `motivo`, `500 escritura`) y la app
+también trata un **`413`** del servidor web como `archivo_grande` (T102).
+**Pruebas del contrato:** PHP `AdjuntosReglasTest` (T96); PHP-base y curl (T97 a T99); la app, contra un servidor falso (T102). **El registro de lo recibido**
+suma los tipos `adjunto` y `baja_adjunto` (el prefijo `a`).
+
 ## Decisiones del plan para E2 a E4 (con la alternativa descartada)
 - **P14. Contrato primero, servidor y app en paralelo.** La primera tarea de cada subentrega deja el contrato escrito; la app se construye contra un servidor falso.
   *Descartado:* que la app espere al servidor (alarga el camino sin bajar el riesgo: el E2E igual prueba los dos juntos).
@@ -564,8 +616,8 @@ Mismo grupo `salud360`, mismo middleware, cuerpo JSON (**todo escalar es texto**
 | RF-40, RF-70 | PHP `RegistrosReglasTest`, `RegistrosBajaTest`, PHP-base (T57, T58, T59); common `ReglasDeRegistroTest`; jvm `HcRepositoryRegistrosTest`, `HcClinicaBackendPropiasE2Test` (las `activo = 2` no vuelven hasta cerrar); E2E |
 | RF-41, RF-42 | PHP `CargasReglasTest`, PHP-base (T76, T77); jvm `MigracionLaboratorioTest`, `HcRepositoryCargasTest`, `HcClinicaEnvioCargasTest`, `HcClinicaBackendPropiasE3Test`; E2E `HcClinicaLaboratorioE2ETest` |
 | RF-43 | PHP `PendientesReglasTest`, PHP-base (T78); common `PendientesTextoTest`; jvm `HcRepositoryPendientesTest`, `HcClinicaEnvioPendientesTest`, `HcClinicaBackendPropiasE3Test`; E2E |
-| RF-44 | PHP `AdjuntosReglasTest`, PHP-base (T97, T99); common `AdjuntosClinicaTest`; jvm `ClinicaAdjuntosApiTest`, `HcClinicaEnvioAdjuntosTest`; E2E `HcClinicaAdjuntosE2ETest` |
-| RF-45 | PHP-base (T98); jvm `HcClinicaBackendAdjuntosTest`; manual (T112) |
+| RF-44 | PHP `AdjuntosReglasTest` (PDF/JPG/JPEG/PNG por **firma**, extensión mentirosa, límite), PHP-base y curl (T97, T99); common `AdjuntosClinicaTest` (los cuatro tipos viajan; el resto no); jvm `ClinicaAdjuntosApiTest`, `HcClinicaEnvioAdjuntosTest`; E2E `HcClinicaAdjuntosE2ETest` (un PDF y una imagen) |
+| RF-45 | PHP-base y curl (T98: la lista del paciente trae todas sus consultas; la de la consulta, solo la suya; sin enlace público); jvm `HcClinicaBackendAdjuntosTest` (consulta nueva → todos; previa → solo esa); manual (T112) |
 | RF-46 | PHP-base (T98); common `AdjuntosClinicaTest`, jvm `AdjuntosPropiosTest` (nunca sin consulta ni de otra HC); E2E |
 | RF-15, RF-61 en E2 a E4 | PHP `EnviosRegistroTest` (T53) + PHP-base; jvm `HcClinicaEnvioRepetibleTest` y `…AtomicoTest` ampliados en T63, T85 y T104 |
 | RF-16 en E2 a E4 | E2E de cada subentrega: `medico_infos` idéntico (también tras laboratorio y peso) |
@@ -579,6 +631,6 @@ Mismo grupo `salud360`, mismo middleware, cuerpo JSON (**todo escalar es texto**
 | **La web reactiva lo dado de baja si alguien cierra en la web una consulta de la app** (`setActivoExamenesComplementarios`/`Interconsulta`, `MedicoController.php:2225-2278`) | Ya declarado; documentado en T60 y en el manual |
 | **Migración v11 sin vuelta atrás y un solo puerto de `devWeb` (8080)** | Aviso al usuario en T80; 001 y 002 se publican juntas |
 | **Tope de largo de las columnas `string` (191)** distinto en producción | T48 mide la local; producción solo con su aprobación; el servidor devuelve `texto_demasiado_largo` en vez de truncar |
-| **Archivos en disco: carpeta, permisos, límite y espacio en el hosting** | T95 mide lo local; el paso de hosting se lista en T113 y se hace en la etapa de producción con aprobación; el servidor nombra la ruta si no puede escribir |
+| **Archivos en disco: carpeta, permisos, límite y espacio en el hosting** | T95 mide lo local; **Q-E4-2 sigue pendiente** (carpeta y límites del hosting): es un paso de la etapa de producción, listado en T113; el servidor nombra la ruta si no puede escribir |
 | **Una subida cortada deja fila sin archivo o archivo sin fila** | Temporal + transacción + renombrar (T97); la lectura de la web ya responde 404 si falta el archivo |
 | **Más rondas de reviewer y prueba manual si se adopta el orden alternativo** | Es la contrapartida de Q-B; el usuario decide |
