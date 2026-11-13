@@ -2,6 +2,7 @@ package com.salud360.core.data.sync
 
 import co.touchlab.kermit.Logger
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.hcgeneral.CargaQueViaja
 import com.salud360.core.data.hcgeneral.EntradaDelContador
 import com.salud360.core.data.hcgeneral.EntradaDelPlan
@@ -25,6 +26,7 @@ import com.salud360.core.data.hcgeneral.esperaDeReintento
 import com.salud360.core.data.hcgeneral.estadoDeLaConsulta
 import com.salud360.core.data.hcgeneral.estadoDeVinculo
 import com.salud360.core.data.hcgeneral.estadoPendienteDeLaConsulta
+import com.salud360.core.data.hcgeneral.limiteExcedido
 import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.hcgeneral.planDeEnvio
 import com.salud360.core.data.hcgeneral.registroEnviado
@@ -32,9 +34,12 @@ import com.salud360.core.data.hcgeneral.resumenDeEnvio
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApi
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.network.hc.PayloadsClinica
+import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
+import com.salud360.core.data.network.hc.TIPO_ADJUNTO_DOCUMENTO
 import com.salud360.core.data.repos.EnvioDeConsultas
 import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.LoEnviadoGuardado
@@ -46,6 +51,7 @@ import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.CausaDeRechazo
 import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.Consulta
@@ -98,15 +104,15 @@ import kotlinx.datetime.toLocalDateTime
  *
  * **Qué sale y en qué orden** ([enviar], RF-14, RF-56): lo decide `planDeEnvio` y esta clase lo ejecuta de a un paso: **primero la
  * creación** (clave `c:<id local>`), **después el contenido** (los textos, el examen, los formularios, los antecedentes, los cinco
- * estudios y las cargas de laboratorio general y de peso, T85-a) y **al final el cierre** (o la baja de una anulada), y el cierre
- * solo sale cuando todo lo anterior llegó. El envío **se corta en el primer paso que falla**: lo que ya llegó queda anotado y lo que
- * falló, con su estado, para el próximo intento. Un error se clasifica con `clasificarErrorDeEnvio` (T20) y el estado se guarda por
- * parte (`EstadosDeEnvio`).
+ * estudios, las cargas de laboratorio general y de peso de T85-a y los documentos de T104) y **al final el cierre** (o la baja de una
+ * anulada), y el cierre solo sale cuando todo lo anterior llegó. El envío **se corta en el primer paso que falla**: lo que ya llegó queda
+ * anotado y lo que falló, con su estado, para el próximo intento. Un error se clasifica con `clasificarErrorDeEnvio` (T20) y el estado se
+ * guarda por parte (`EstadosDeEnvio`).
  *
  * **Qué se anota al confirmar un paso** (RF-32, RF-55, RF-61), todo en **una sola transacción** local, así un corte entre «el servidor
  * confirmó» y «anotado» no deja nada a medias (y el reenvío repite la misma clave sin duplicar):
- * - el id de la web (`remoto_id`) al crear, y el de cada estudio que la web confirmó, en la misma transacción que lo limpia; la fila de la consulta se
- *   limpia solo si ya no falta el cierre ni la baja;
+ * - el id de la web (`remoto_id`) al crear, y el de cada estudio, carga o documento que la web confirmó, en la misma transacción que lo
+ *   limpia; la fila de la consulta se limpia solo si ya no falta el cierre ni la baja;
  * - lo que la web confirmó en `guardadas` (nunca lo que no figura ahí: un envío parcial deja el resto pendiente y «No se pudo enviar»);
  * - la limpieza de las filas que viajaron, **solo las que no cambiaron mientras viajaban** (se compara `updated_at`);
  * - `LoEnviado` (lo último que la web tiene: así un texto vaciado a propósito sale vacío y un vacío no tocado no sale nunca);
@@ -162,6 +168,13 @@ open class HcClinicaEnvio(
     private val medicoDeLaSesion: () -> Id? = { null },
     /** El turno de cada consulta, compartido con la lectura de las propias (HcClinicaBackend) y HcRepository: nunca dos a la vez sobre la misma. */
     private val turnos: TurnosPorConsulta = TurnosPorConsulta(),
+    /**
+     * La API de documentos de la HC general (E4, T104); sin ella (la HC general no tiene URL en este entorno) no se sube ningún documento y el paso
+     * queda pendiente, como sin API de escritura. Las fotos de exámenes quedan fuera de alcance (T105) y no pasan por acá.
+     */
+    private val adjuntos: ClinicaAdjuntosApi? = null,
+    /** De dónde salen los bytes de un documento (`rutaLocal` de la fila). Sin él no se puede subir nada de E4. */
+    private val archivos: ArchivoStore? = null,
 ) : EnvioDeConsultas {
     private val log = Logger.withTag("HcClinicaEnvio")
     private val hq get() = db.historiaClinicaQueries
@@ -469,6 +482,7 @@ open class HcClinicaEnvio(
             is PasoDeEnvio.Antecedentes -> antecedentes(paso)
             is PasoDeEnvio.Registros -> registros(paso)
             is PasoDeEnvio.Cargas -> cargas(paso)
+            is PasoDeEnvio.Adjuntos -> enviarAdjuntos(paso)
             is PasoDeEnvio.Cerrar -> cerrar(paso)
             is PasoDeEnvio.Baja -> baja(paso)
             // El `when` es exhaustivo sobre el `sealed interface`: un paso que una versión futura agregue no compila hasta que la cola sepa enviarlo
@@ -676,6 +690,88 @@ open class HcClinicaEnvio(
             lo = nuevo
         }
 
+        /**
+         * Los **documentos** de la sección `documentos` (E4, T104): **un archivo por pedido** (P23), como las cargas. Los bytes salen del
+         * `ArchivoStore` del dispositivo (`rutaLocal`); el tope se pregunta una sola vez por paso (`adjuntos/limites`, D18) y se compara
+         * **antes** de subir con [limiteExcedido] (RF-44), así un archivo demasiado grande no se manda ni figura enviado. Cada subida usa la clave
+         * estable `a:<id local>`: repetirla devuelve la misma fila y un solo archivo (RF-15, D21). El `id` de la web se anota en
+         * `archivo.remoto_id` en **una sola transacción** con la limpieza de la fila (RF-61), y solo si la fila no cambió mientras viajaba (RF-55).
+         * Una **baja** que la web tiene sale como `DELETE adjuntos/{id}` con `a:<id local>-baja`.
+         *
+         * Lo que no se puede mandar no frena a los demás archivos del paso pero sí deja el paso sin confirmar (y el cierre espera): un archivo
+         * que falta en este dispositivo («No se pudo enviar: falta el archivo en este dispositivo», sin reintento solo: lo trajo otro dispositivo
+         * sin el archivo) o uno que supera el tope (el aviso de T103). Lo que la web confirma queda anotado; lo que la web no confirma queda sucio y
+         * sin id. Una respuesta perdida no anota nada: el reenvío repite la misma clave y no duplica el archivo.
+         */
+        private suspend fun enviarAdjuntos(paso: PasoDeEnvio.Adjuntos): Boolean {
+            val id = webId ?: return false
+            val apiAdjuntos = adjuntos ?: return false
+            val store = archivos ?: return false
+            val sinConfirmar = mutableSetOf<String>()
+            var faltaEnElDispositivo = false
+            var avisoDelTope: String? = null
+            var limites: RespuestaLimitesDeAdjuntosDto? = null
+            for (a in paso.adjuntos) {
+                val clave = PayloadsClinica.claveDeAdjunto(a.id)
+                if (!a.activo) {
+                    val enLaWeb = a.remotoId.takeIf { it.isNotBlank() }
+                    if (enLaWeb == null) {
+                        sinConfirmar += clave
+                        continue
+                    }
+                    val respuesta = intentar(paso) {
+                        apiAdjuntos.borrar(enLaWeb, id, PayloadsClinica.claveDeBajaDeAdjunto(a.id), dispositivo)
+                    } ?: return false
+                    if (!respuesta.baja) {
+                        sinConfirmar += clave
+                        continue
+                    }
+                    db.transaction { paso.cubre.filter { it.clave == a.id }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) } }
+                    continue
+                }
+                val bytes = a.rutaLocal?.let { store.leer(it) }
+                if (bytes == null) {
+                    // La fila está (la trajo otro dispositivo), el archivo no: no se reintenta solo.
+                    faltaEnElDispositivo = true
+                    sinConfirmar += clave
+                    continue
+                }
+                val delPaso = limites ?: (intentar(paso) { apiAdjuntos.limites() } ?: return false).also { limites = it }
+                val aviso = limiteExcedido(maxOf(a.tamanioBytes, bytes.size.toLong()), delPaso)
+                if (aviso != null) {
+                    avisoDelTope = aviso
+                    sinConfirmar += clave
+                    continue
+                }
+                val respuesta = intentar(paso) {
+                    apiAdjuntos.subir(id, clave, dispositivo, a.nombre, a.mime, bytes, TIPO_ADJUNTO_DOCUMENTO)
+                } ?: return false
+                val remoto = respuesta.adjunto.id.takeIf { it.isNotBlank() }
+                if (remoto == null) {
+                    sinConfirmar += clave
+                    continue
+                }
+                // El id de la web y la limpieza de la misma fila: nunca una fila sin id y limpia (RF-61).
+                db.transaction {
+                    hq.guardarRemotoIdArchivo(remoto, a.id)
+                    paso.cubre.filter { it.clave == a.id }.forEach { limpiarSiNoCambio(consulta.id, it.tabla, it.clave, it.actualizadaEn) }
+                }
+            }
+            db.transaction {
+                val motivo = when {
+                    faltaEnElDispositivo -> MOTIVO_FALTA_EL_ARCHIVO
+                    avisoDelTope != null -> avisoDelTope
+                    else -> null
+                }
+                if (motivo != null) {
+                    estados.guardar(consulta.pacienteId, consulta.id, paso.parte, EstadoEnvio.NoSePudoEnviar(CausaDeRechazo.OTRO, motivo), hoy())
+                } else {
+                    anotarEstado(paso.parte, sinConfirmar)
+                }
+            }
+            return sinConfirmar.isEmpty()
+        }
+
         private suspend fun cerrar(paso: PasoDeEnvio.Cerrar): Boolean {
             val id = webId ?: return false
             // «Enviando el cierre.» (RF-55): desde que sale el pedido hasta que queda anotado, así no se reabre ni se anula en el medio.
@@ -811,6 +907,10 @@ open class HcClinicaEnvio(
                 val fila = hq.laboratoriosDirty().lista { it }.firstOrNull { it.id == clave }
                 if (fila != null && fila.updated_at == actualizadaEn) hq.limpiarLaboratorio(clave)
             }
+            TablaDeLaFila.ARCHIVO -> {
+                val fila = hq.archivosDirty().lista { it }.firstOrNull { it.id == clave }
+                if (fila != null && fila.updated_at == actualizadaEn) hq.limpiarArchivo(clave)
+            }
         }
     }
 
@@ -828,10 +928,11 @@ open class HcClinicaEnvio(
         val antecedentes: List<FilaSucia<Antecedente>>,
         val registros: List<FilaSucia<RegistroClinico>>,
         val laboratorios: List<FilaSucia<Laboratorio>>,
+        val archivos: List<FilaSucia<Archivo>>,
         val pendientes: List<Pendiente>,
     )
 
-    /** Los ids de las consultas que tienen alguna fila sucia (la propia, sus textos, su examen, sus antecedentes, registros, laboratorios o pendientes). */
+    /** Los ids de las consultas que tienen alguna fila sucia (la propia, sus textos, su examen, sus antecedentes, registros, laboratorios, documentos o pendientes). */
     private fun consultasConAlgoSucio(sucio: Sucio): Set<Id> = mutableSetOf<Id>().apply {
         addAll(sucio.consultas)
         sucio.valores.mapTo(this) { it.fila.consultaId }
@@ -839,6 +940,7 @@ open class HcClinicaEnvio(
         sucio.antecedentes.mapNotNullTo(this) { it.fila.consultaId }
         sucio.registros.mapNotNullTo(this) { it.fila.consultaId }
         sucio.laboratorios.mapNotNullTo(this) { it.fila.consultaId }
+        sucio.archivos.mapNotNullTo(this) { it.fila.consultaId }
         sucio.pendientes.mapNotNullTo(this) { it.consultaId }
     }
     private suspend fun cargarSucio() = Sucio(
@@ -848,6 +950,7 @@ open class HcClinicaEnvio(
         antecedentes = hq.antecedentesDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         registros = hq.registrosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         laboratorios = hq.laboratoriosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
+        archivos = hq.archivosDirty().lista { FilaSucia(it.toModel(), true, it.updated_at) },
         pendientes = hq.pendientesDirty().lista { it.toModel() },
     )
 
@@ -865,6 +968,7 @@ open class HcClinicaEnvio(
         antecedentes = sucio.antecedentes.filter { it.fila.consultaId == consulta.id },
         registros = sucio.registros.filter { it.fila.consultaId == consulta.id },
         cargas = sucio.laboratorios.filter { it.fila.consultaId == consulta.id },
+        archivos = sucio.archivos.filter { it.fila.consultaId == consulta.id },
         loEnviado = lo,
         estados = estados,
         habilitadas = habilitadas,
@@ -951,3 +1055,9 @@ data class ConsultaCreadaEnLaWeb(val consultaId: Id, val consultaWebId: Long, va
 
 /** Cómo terminó una carga del paso de cargas de E3 (T85-a): la web la confirmó, no la guardó, o la llamada falló y el envío se corta. */
 private enum class ResultadoDeCarga { CONFIRMADA, SIN_CONFIRMAR, CORTE }
+
+/**
+ * El motivo del documento que falta en este dispositivo (T104): el texto que ve el médico es «No se pudo enviar: falta el archivo en este
+ * dispositivo» (lo arma `textoDelEstado`). No se reintenta solo: reintentar sin el archivo no lo trae.
+ */
+private const val MOTIVO_FALTA_EL_ARCHIVO = "falta el archivo en este dispositivo"

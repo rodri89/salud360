@@ -1,6 +1,8 @@
 package com.salud360.core.data.sync
 
 import com.salud360.core.data.hcgeneral.LoEnviado
+import com.salud360.core.data.hcgeneral.SubentregaDeEscritura
+import com.salud360.core.data.hcgeneral.seccionesDe
 import com.salud360.core.data.network.TobbException
 import com.salud360.core.model.hc.EstadoConsulta
 import kotlin.test.Test
@@ -22,6 +24,15 @@ class HcClinicaEnvioAtomicoTest {
         driver.execute(
             null,
             "CREATE TRIGGER corte BEFORE UPDATE OF dirty ON consulta WHEN NEW.dirty = 0 BEGIN SELECT RAISE(ABORT, 'corte simulado'); END",
+            0,
+        ).value
+    }
+
+    /** Aborta al limpiar el documento (`dirty = 0`): la segunda escritura de la anotación de una subida (después del `remoto_id`). */
+    private fun Escena.cortarAlLimpiarElDocumento() {
+        driver.execute(
+            null,
+            "CREATE TRIGGER corte BEFORE UPDATE OF dirty ON archivo WHEN NEW.dirty = 0 BEGIN SELECT RAISE(ABORT, 'corte simulado'); END",
             0,
         ).value
     }
@@ -149,6 +160,34 @@ class HcClinicaEnvioAtomicoTest {
         assertEquals(listOf("baja 7001 c:u1-baja", "baja 7001 c:u1-baja"), servidor.pedidos)
         assertFalse(db.consultaSucia("u1"))
     }
+
+    @Test
+    fun un_corte_al_anotar_la_subida_de_un_documento_deja_la_fila_sin_id_y_el_reenvio_no_duplica_el_archivo() =
+        conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E4)) {
+            db.sembrarPropia("u1", remotoId = "7001", dirty = false)
+            servidor.consultas[7001] = ServidorFalso.ConsultaWeb(7001, "c:u1", 5001, "control")
+            val ruta = archivos.guardar("a1", "a1.pdf", "%PDF-1.4".toByteArray())
+            db.sembrarDocumento("a1", rutaLocal = ruta, tamanioBytes = 8)
+            cortarAlLimpiarElDocumento()
+
+            envio.empujarYa("u1").join()
+
+            // El servidor subió el archivo…
+            assertEquals(1, servidor.documentos.size)
+            // …y el dispositivo quedó exactamente como estaba: ni el id de la web ni la limpieza (una sola transacción).
+            assertEquals("", db.archivoLocal("a1")!!.remotoId, "el id de la web no quedó guardado a medias")
+            assertTrue(db.archivoSucio("a1"))
+            assertEquals(emptyMap(), db.estadosDe("u1"), "y un corte local no se toma por un error de la web")
+
+            repararElCorte()
+            envio.empujarYa("u1").join()
+
+            assertEquals(listOf("adjunto 7001 a:a1", "adjunto 7001 a:a1"), servidor.pedidos)
+            assertEquals(1, servidor.documentos.size, "un solo archivo: nada duplicado")
+            assertEquals(servidor.documentos.values.single().id.toString(), db.archivoLocal("a1")!!.remotoId)
+            assertFalse(db.archivoSucio("a1"), "ni nada pendiente")
+            assertEquals(emptyMap(), db.estadosDe("u1"))
+        }
 
     @Test
     fun una_consulta_cerrada_no_pierde_su_pendiente_de_cierre_al_anotar_la_creacion() = conServidor {

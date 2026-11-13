@@ -1,10 +1,14 @@
 package com.salud360.core.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.hcgeneral.SECCIONES_HABILITADAS
 import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
 import com.salud360.core.data.hcgeneral.TIPO_PESO
 import com.salud360.core.data.network.TobbException
+import com.salud360.core.data.network.hc.AdjuntoDeLaWebDto
+import com.salud360.core.data.network.hc.AdjuntoSubidoDto
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApi
 import com.salud360.core.data.network.hc.ClinicaEscrituraApi
 import com.salud360.core.data.network.hc.ConsultaAbiertaDto
 import com.salud360.core.data.network.hc.ConsultaCabeceraDto
@@ -15,7 +19,10 @@ import com.salud360.core.data.network.hc.HcResolverRespuesta
 import com.salud360.core.data.network.hc.PaginaCartera
 import com.salud360.core.data.network.hc.PacientesHcApi
 import com.salud360.core.data.network.hc.PacientesHcApis
+import com.salud360.core.data.network.hc.RespuestaAdjuntoDto
+import com.salud360.core.data.network.hc.RespuestaAdjuntosDto
 import com.salud360.core.data.network.hc.RespuestaAntecedentesDto
+import com.salud360.core.data.network.hc.RespuestaBajaDeAdjuntoDto
 import com.salud360.core.data.network.hc.RespuestaBajaDeCargaDto
 import com.salud360.core.data.network.hc.RespuestaBajaDto
 import com.salud360.core.data.network.hc.RespuestaCargaDto
@@ -23,6 +30,8 @@ import com.salud360.core.data.network.hc.RespuestaCerrarDto
 import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
 import com.salud360.core.data.network.hc.RespuestaRegistrosDto
+import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
+import com.salud360.core.data.network.hc.TIPO_ADJUNTO_DOCUMENTO
 import com.salud360.core.data.repos.HcClinicaBackend
 import com.salud360.core.data.repos.HcClinicaPruebas
 import com.salud360.core.data.repos.HcRepository
@@ -58,7 +67,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * no guarda (van en `desconocidas`); [alRecibir] corre cuando el servidor ya aplicó la operación y todavía no contestó (el momento en
  * que, en la vida real, el médico puede seguir escribiendo: «cambio en vuelo»).
  */
-internal class ServidorFalso : ClinicaEscrituraApi {
+internal class ServidorFalso : ClinicaEscrituraApi, ClinicaAdjuntosApi {
     class ConsultaWeb(val id: Long, val clave: String, val pacienteWebId: Long, val tipo: String) {
         var fecha: LocalDate? = null
         var edadMostrar: String = ""
@@ -457,6 +466,114 @@ internal class ServidorFalso : ClinicaEscrituraApi {
         fila.activo = false
         RespuestaBajaDeCargaDto(baja = true, id = fila.id.toString())
     }
+
+    // ---------- E4 (T104): documentos (PDF, JPG, JPEG y PNG) ----------
+
+    /** Un documento de la «web», por id: su consulta, su clave (`a:<id local>`), el archivo y si está de baja. */
+    class AdjuntoWeb(val id: Long, val consultaWebId: Long, val pacienteWebId: Long, val clave: String) {
+        var nombre = ""
+        var mime = ""
+        var tipo = TIPO_ADJUNTO_DOCUMENTO
+        var bytes: ByteArray = ByteArray(0)
+        var activo = true
+    }
+
+    /** Lo que hay en la «web» de los documentos, por id (lo que comparan los tests de T104). */
+    val documentos = linkedMapOf<Long, AdjuntoWeb>()
+
+    /** Cada subida de documento que llegó, en orden (un archivo por pedido). */
+    val documentosSubidos = CopyOnWriteArrayList<AdjuntoWeb>()
+
+    /** `"<consulta>|<clave>"` -> id del documento: la misma clave (`a:<id local>`) devuelve la misma fila y no deja otro archivo (RF-15). */
+    private val idsDeDocumentos = linkedMapOf<String, Long>()
+    private var proximoDocumentoId = 2000L
+
+    /** Lo que contesta `GET adjuntos/limites` (D18). */
+    @Volatile
+    var limitesDeAdjuntos = RespuestaLimitesDeAdjuntosDto(maximoBytes = 15_728_640, maximoWebBytes = 15_728_640, uploadMaxFilesize = "16M", postMaxSize = "16M")
+
+    /** Cuántas veces se pidieron los límites: la cola los pide una sola vez por paso (T104). */
+    val pedidosDeLimites = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * `POST consultas/{id}/adjuntos` (T104, RF-44): **un archivo por pedido**. La fila se busca por la `clave` (`a:<id local>`): la misma clave devuelve
+     * el mismo documento y no deja un archivo duplicado (una subida cortada que se repite, RF-15). La consulta tiene que existir y estar abierta (`409`), y
+     * `tipo` tiene que ser `documento` (`422 tipo_invalido`: las fotos de exámenes quedan fuera de alcance, T105).
+     */
+    override suspend fun subir(
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+        nombre: String,
+        mime: String,
+        bytes: ByteArray,
+        tipo: String,
+    ): RespuestaAdjuntoDto = operar("adjunto", "$consultaWebId $clave") {
+        if (tipo != TIPO_ADJUNTO_DOCUMENTO) throw TobbException(422, "tipo_invalido", "La app solo sube documentos.")
+        val c = consulta(consultaWebId)
+        if (c.estado != "ABIERTA" || c.baja) throw TobbException(409, "consulta_cerrada", "La consulta está cerrada o dada de baja.")
+        val registro = "$consultaWebId|$clave"
+        val fila = idsDeDocumentos[registro]?.let { documentos.getValue(it) }
+            ?: AdjuntoWeb(proximoDocumentoId++, consultaWebId, c.pacienteWebId, clave).also { documentos[it.id] = it }
+        idsDeDocumentos[registro] = fila.id
+        fila.nombre = nombre
+        fila.mime = mime
+        fila.tipo = tipo
+        fila.bytes = bytes
+        documentosSubidos += fila
+        RespuestaAdjuntoDto(AdjuntoSubidoDto(id = fila.id.toString(), nombreOriginal = nombre, tamanio = bytes.size.toLong(), creadoEn = "2026-11-13 10:00:00"))
+    }
+
+    /** `GET pacientes/{id}/adjuntos` (RF-45): todos los documentos vigentes del paciente, de todas sus consultas. */
+    override suspend fun listarDePaciente(pacienteWebId: Long): RespuestaAdjuntosDto =
+        RespuestaAdjuntosDto(documentos.values.filter { it.pacienteWebId == pacienteWebId && it.activo }.map { it.deLaWeb() })
+
+    /** `GET consultas/{id}/adjuntos` (RF-45): solo los documentos vigentes de esa consulta. */
+    override suspend fun listarDeConsulta(consultaWebId: Long): RespuestaAdjuntosDto =
+        RespuestaAdjuntosDto(documentos.values.filter { it.consultaWebId == consultaWebId && it.activo }.map { it.deLaWeb() })
+
+    /** `GET adjuntos/{id}/archivo` (RF-45): los bytes de un documento activo. */
+    override suspend fun bajar(adjuntoWebId: String): ByteArray {
+        val fila = documentos[adjuntoWebId.toLongOrNull()]
+        if (fila == null || !fila.activo) throw TobbException(404, "adjunto_no_encontrado", "No existe el adjunto.")
+        return fila.bytes
+    }
+
+    /**
+     * `DELETE adjuntos/{id}` (T104, RF-46): baja lógica del documento de esa consulta. Repetir la baja es `ok`; un documento que no existe para esa
+     * consulta es `404`.
+     */
+    override suspend fun borrar(
+        adjuntoWebId: String,
+        consultaWebId: Long,
+        clave: String,
+        dispositivo: String,
+    ): RespuestaBajaDeAdjuntoDto = operar("bajaDeAdjunto", "$consultaWebId $clave") {
+        val fila = documentos[adjuntoWebId.toLongOrNull()]
+        if (fila == null || fila.consultaWebId != consultaWebId) throw TobbException(404, "adjunto_no_encontrado", "No existe el adjunto.")
+        fila.activo = false
+        RespuestaBajaDeAdjuntoDto(baja = true, id = fila.id.toString())
+    }
+
+    /** `GET adjuntos/limites` (D18): solo lectura; no entra en [pedidos] (no es el envío de un archivo) y cuenta en [pedidosDeLimites]. */
+    override suspend fun limites(): RespuestaLimitesDeAdjuntosDto {
+        pedidosDeLimites.incrementAndGet()
+        falla?.invoke("limites")?.let { throw it }
+        return limitesDeAdjuntos
+    }
+
+    private fun AdjuntoWeb.deLaWeb() = AdjuntoDeLaWebDto(
+        id = id.toString(),
+        nombreOriginal = nombre,
+        tamanio = bytes.size.toLong(),
+        tipo = when (mime) {
+            "application/pdf" -> "pdf"
+            "image/png" -> "png"
+            else -> "jpeg"
+        },
+        creadoEn = "2026-11-13 10:00:00",
+        consultaId = consultaWebId.toString(),
+    )
 }
 
 /**
@@ -497,6 +614,8 @@ internal class Escena(
     val scope: CoroutineScope,
     private val habilitadas: Set<String>,
     pacientesApi: PacientesHcApi,
+    /** Los archivos del dispositivo (T104): de acá salen los bytes que se suben. */
+    val archivos: ArchivoStore,
     /** El médico de la sesión, que el test puede cambiar (otro médico entra en el mismo dispositivo) o dejar en `null` (sin sesión). */
     @Volatile var medicoDeLaSesion: Id? = MEDICO,
 ) {
@@ -513,6 +632,10 @@ internal class Escena(
         escritura: ClinicaEscrituraApi? = servidor,
         dispositivo: String = DISPOSITIVO,
         habilitadas: Set<String> = this.habilitadas,
+        /** La API de documentos de la HC general (E4, T104): por omisión, el mismo servidor falso. */
+        adjuntos: ClinicaAdjuntosApi? = servidor,
+        /** De dónde salen los bytes de los documentos (T104). */
+        archivos: ArchivoStore? = this.archivos,
     ) = HcClinicaEnvio(
         db, scope, reloj::esperar, { base + reloj.ahora }, habilitadas,
         escritura = escritura,
@@ -521,6 +644,8 @@ internal class Escena(
         nombreHc = "Clínica general",
         medicoDeLaSesion = { medicoDeLaSesion },
         turnos = turnos,
+        adjuntos = adjuntos,
+        archivos = archivos,
     )
 
     val envio: HcClinicaEnvio = nuevoEnvio()
@@ -550,9 +675,12 @@ internal fun conServidor(
     bloque: suspend Escena.() -> Unit,
 ) = HcClinicaPruebas.conBase(vinculado) { db, driver ->
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    // Los archivos del dispositivo de la escena (T104): una carpeta temporal que se borra al terminar.
+    val carpeta = java.io.File.createTempFile("salud360-envio-adjuntos", "").also { it.delete(); it.mkdirs() }
     try {
-        Escena(db, driver, servidor, RelojFalso(), scope, habilitadas, pacientesApi).bloque()
+        Escena(db, driver, servidor, RelojFalso(), scope, habilitadas, pacientesApi, ArchivoStore(carpeta.absolutePath)).bloque()
     } finally {
         scope.cancel()
+        carpeta.deleteRecursively()
     }
 }

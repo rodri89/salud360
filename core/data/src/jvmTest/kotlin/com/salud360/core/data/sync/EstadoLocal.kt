@@ -2,6 +2,7 @@ package com.salud360.core.data.sync
 
 import com.salud360.core.data.hcgeneral.EstadoGuardado
 import com.salud360.core.data.hcgeneral.LoEnviado
+import com.salud360.core.data.hcgeneral.SECCION_DOCUMENTOS
 import com.salud360.core.data.hcgeneral.TIPO_LABORATORIO_GENERAL
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
@@ -13,6 +14,7 @@ import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.ExamenFisico
 import com.salud360.core.model.hc.Laboratorio
@@ -43,6 +45,7 @@ internal suspend fun Salud360Db.filasSucias(): List<List<Any>> = listOf(
     historiaClinicaQueries.examenesFisicosDirty().lista { it },
     historiaClinicaQueries.antecedentesDirty().lista { it },
     historiaClinicaQueries.registrosDirty().lista { it },
+    historiaClinicaQueries.archivosDirty().lista { it },
 )
 
 internal suspend fun Salud360Db.estadosDe(consultaId: Id, paciente: Id = PACIENTE): Map<String, EstadoGuardado> =
@@ -137,3 +140,28 @@ internal suspend fun Salud360Db.cargaActualizadaEn(id: Id): Long? = historiaClin
 /** Los ids de las cargas sin enviar de [consultaId]. */
 internal suspend fun Salud360Db.cargasSucias(consultaId: Id): Set<String> =
     historiaClinicaQueries.laboratoriosDirty().lista { it }.filter { it.consulta_id == consultaId }.map { it.id }.toSet()
+
+/** Un documento sin enviar de [consultaId] (T104): la fila de `archivo` con su `ruta_local` y su `remoto_id`. */
+internal suspend fun Salud360Db.sembrarDocumento(
+    id: Id,
+    consultaId: Id? = "u1",
+    nombre: String = "$id.pdf",
+    mime: String = "application/pdf",
+    rutaLocal: String? = null,
+    tamanioBytes: Long = 0,
+    remotoId: String = "",
+    activo: Boolean = true,
+    actualizadaEn: Long = 160,
+) = historiaClinicaQueries.upsertArchivo(
+    Archivo(
+        id = id, pacienteId = PACIENTE, consultaId = consultaId, seccion = SECCION_DOCUMENTOS, nombre = nombre, mime = mime,
+        tamanioBytes = tamanioBytes, rutaLocal = rutaLocal, activo = activo, remotoId = remotoId,
+    ).toRow(actualizadaEn),
+)
+
+/** La fila del dispositivo de un documento, con su `remoto_id`, su `activo` y su `ruta_local`. */
+internal suspend fun Salud360Db.archivoLocal(id: Id): Archivo? = historiaClinicaQueries.archivoPorId(id).uno { it.toModel() }
+
+internal suspend fun Salud360Db.archivoSucio(id: Id): Boolean = historiaClinicaQueries.archivosDirty().lista { it.id }.contains(id)
+
+internal suspend fun Salud360Db.archivoActualizadoEn(id: Id): Long? = historiaClinicaQueries.archivoPorId(id).uno { it.updated_at }

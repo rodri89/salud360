@@ -4,6 +4,7 @@ import com.salud360.core.data.network.hc.PayloadsClinica
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.SeccionesComunes
 import com.salud360.core.model.hc.Antecedente
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
@@ -13,13 +14,13 @@ import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.model.hc.SeccionValor
 import kotlinx.datetime.LocalDate
 
-// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-41, RF-42, RF-55, RF-56, RF-60, RF-68, RF-69, RF-70). **Puro**: las
-// filas, lo último que la web confirmó, los estados y el momento del armado entran como parámetros; no hay red, base ni reloj, y el
-// mismo ingreso da siempre el mismo plan. **Solo ordena**: no ejecuta ningún pedido ni escribe nada (un envío por consulta a la vez,
-// RF-54, es de quien envía, `HcClinicaEnvio`). Responde tres preguntas:
+// El plan de envío de una consulta propia de la HC general (spec 005, RF-9, RF-34, RF-41, RF-42, RF-44, RF-46, RF-55, RF-56, RF-60,
+// RF-68, RF-69, RF-70). **Puro**: las filas, lo último que la web confirmó, los estados y el momento del armado entran como parámetros;
+// no hay red, base ni reloj, y el mismo ingreso da siempre el mismo plan. **Solo ordena**: no ejecuta ningún pedido ni escribe nada (un
+// envío por consulta a la vez, RF-54, es de quien envía, `HcClinicaEnvio`). Responde tres preguntas:
 // - **Qué viaja** ([PlanDeEnvio.pasos]), en este orden: creación → contenido (textos, examen, formularios y antecedentes de T62-a, los cinco
-//   estudios de T62-b y las cargas de laboratorio general y peso de T84-a) → cierre al final (RF-56). Solo lo tocado (`dirty`) y solo si
-//   es un cambio real (T18): un vacío que el médico no tocó no se envía nunca; vaciar algo que la web tiene sí (RF-69).
+//   estudios de T62-b, las cargas de laboratorio general y peso de T84-a y los documentos de T104) → cierre al final (RF-56). Solo lo tocado
+//   (`dirty`) y solo si es un cambio real (T18): un vacío que el médico no tocó no se envía nunca; vaciar algo que la web tiene sí (RF-69).
 // - **Qué no viaja y se limpia** ([PlanDeEnvio.sinViaje]): lo que nunca va a viajar (lo que la web no guarda, antecedentes desactivados, lo
 //   que ya está igual en la web). Quien envía lo deja con `dirty = 0` **sin** figurar como enviado ni como pendiente (RF-60).
 // - **Qué no viaja y se queda** ([PlanDeEnvio.enReserva]): lo que la web guarda pero esta versión todavía no envía (RF-4): sigue sucio para
@@ -34,11 +35,12 @@ const val PARTE_FORMULARIOS = "formularios"
 const val PARTE_ANTECEDENTES = "antecedentes"
 const val PARTE_REGISTROS = "registros"
 const val PARTE_CARGAS = "cargas"
+const val PARTE_ADJUNTOS = "adjuntos"
 const val PARTE_CIERRE = "cierre"
 const val PARTE_BAJA = "baja"
 
 private val PARTES_DE_CONTENIDO = listOf(
-    PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS, PARTE_CARGAS,
+    PARTE_SECCIONES, PARTE_EXAMEN, PARTE_FORMULARIOS, PARTE_ANTECEDENTES, PARTE_REGISTROS, PARTE_CARGAS, PARTE_ADJUNTOS,
 )
 private val ORDEN_DE_PARTES = listOf(PARTE_CREAR) + PARTES_DE_CONTENIDO + listOf(PARTE_CIERRE, PARTE_BAJA)
 
@@ -176,6 +178,8 @@ data class EntradaDelPlan(
     val registros: List<FilaSucia<RegistroClinico>> = emptyList(),
     /** Las cargas de laboratorio y de peso del paciente; solo cuentan las asociadas a esta consulta (RF-68). */
     val cargas: List<FilaSucia<Laboratorio>> = emptyList(),
+    /** Los adjuntos del paciente; solo cuentan los asociados a esta consulta (RF-68). */
+    val archivos: List<FilaSucia<Archivo>> = emptyList(),
     val loEnviado: LoEnviado = LoEnviado(),
     /** El estado guardado de cada parte (T20); lo que no figura es «Falta enviar». */
     val estados: Map<String, EstadoEnvio> = emptyMap(),
@@ -187,7 +191,7 @@ data class EntradaDelPlan(
     val armadoEn: Long,
 )
 
-enum class TablaDeLaFila { CONSULTA, SECCION_VALOR, EXAMEN_FISICO, ANTECEDENTE, REGISTRO, LABORATORIO }
+enum class TablaDeLaFila { CONSULTA, SECCION_VALOR, EXAMEN_FISICO, ANTECEDENTE, REGISTRO, LABORATORIO, ARCHIVO }
 
 /**
  * Una fila que viaja en un paso, con su `updated_at` al armar el plan: al confirmarse el paso, solo se limpia la que sigue igual (RF-55).
@@ -250,6 +254,16 @@ sealed interface PasoDeEnvio {
     /** Las cargas de laboratorio general y peso de esta consulta (E3, T84-a): cada una es un pedido, con su fecha o como baja de la que la web tiene. */
     data class Cargas(val cargas: List<CargaQueViaja>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
         override val parte get() = PARTE_CARGAS
+    }
+
+    /**
+     * Los **documentos** de la sección `documentos` de esta consulta (E4, T104, RF-44, RF-46): cada uno es un pedido. Un adjunto **sin
+     * `remotoId`** es un alta (`POST consultas/{id}/adjuntos`, un archivo por pedido) y uno **dado de baja con `remotoId`** es la baja de
+     * la fila que la web ya tiene (`DELETE adjuntos/{id}`). No hay actualización: reemplazar un archivo es un alta nueva. Las fotos de
+     * exámenes quedan fuera de alcance (T105) y no se arman.
+     */
+    data class Adjuntos(val adjuntos: List<Archivo>, override val cubre: List<FilaCubierta>) : PasoDeEnvio {
+        override val parte get() = PARTE_ADJUNTOS
     }
 
     /** `POST consultas/{id}/cerrar`: con la clave de este cierre y la fecha y la edad de la consulta. Siempre el último. */
@@ -375,6 +389,7 @@ private class Armado(private val e: EntradaDelPlan) {
         antecedentes(anulada = true)
         registros(anulada = true)
         cargas(anulada = true)
+        adjuntos(anulada = true)
         if (!yaCreada || !e.consultaSucia) return emptyList()
         if (rechazada(PARTE_BAJA)) {
             retenciones += Retencion(PARTE_BAJA, MotivoRetencion.RECHAZADA)
@@ -392,6 +407,7 @@ private class Armado(private val e: EntradaDelPlan) {
         val antecedentes = antecedentes(anulada = false)
         val registros = registros(anulada = false)
         val cargas = cargas(anulada = false)
+        val adjuntos = adjuntos(anulada = false)
         val contenido = buildList {
             secciones?.let { add(it) }
             examen?.let { add(it) }
@@ -399,6 +415,7 @@ private class Armado(private val e: EntradaDelPlan) {
             antecedentes?.let { add(it) }
             registros?.let { add(it) }
             cargas?.let { add(it) }
+            adjuntos?.let { add(it) }
         }.sortedBy { ORDEN_DE_PARTES.indexOf(it.parte) }
 
         val quiereCrear = !yaCreada
@@ -656,6 +673,46 @@ private class Armado(private val e: EntradaDelPlan) {
         }
         if (viajan.isEmpty()) return null
         return PasoDeEnvio.Cargas(viajan, cubre)
+    }
+
+    // ---------- Documentos (E4, T104) ----------
+
+    /**
+     * Los **documentos** de la sección `documentos` que viajan (T104, RF-44, RF-46): solo filas sucias de esta consulta (RF-68) y solo si el candado
+     * de la versión enciende la sección (RF-4). Un **alta** es un archivo activo sin `remotoId`; una **baja**, uno que la web ya tiene (`remotoId`) y
+     * se dio de baja (`activo = false`, lo mismo que deja el repositorio en T103). Un documento que **nunca se subió y se borró** no viaja ni queda
+     * pendiente (en la web no hay nada que dar de baja) y uno que la web ya tiene y sigue activo tampoco: no hay actualización de un archivo (reemplazarlo
+     * es un alta nueva). Son las mismas reglas que [adjuntoViaja] (T103): **nunca** uno sin consulta, de otra consulta u otra HC, la **foto de un examen**
+     * (T105, queda en reserva sin perder el dato) ni uno que no sea PDF, JPG, JPEG o PNG (la web lo rechazaría; se limpia sin figurar enviado, RF-60). El
+     * tipo lo decide la extensión declarada ([tipoDeAdjunto]). Lo que es de una consulta anulada queda en reserva (Q-E3-2, como las cargas).
+     */
+    private fun adjuntos(anulada: Boolean): PasoDeEnvio.Adjuntos? {
+        val viajan = mutableListOf<Archivo>()
+        val cubre = mutableListOf<FilaCubierta>()
+        for (f in e.archivos.filter { it.dirty && it.fila.consultaId == c.id }.sortedBy { it.fila.id }) {
+            val a = f.fila
+            when {
+                // La foto de un examen complementario (T105): todavía no hay envío, y el dato no se pierde.
+                a.registroId != null -> enReserva += FilaEnReserva(TablaDeLaFila.ARCHIVO, a.id, MotivoEnReserva.NO_HAY_ENVIO_PARA_ESTE_DATO, f.actualizadaEn)
+                a.seccion != SECCION_DOCUMENTOS ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ARCHIVO, a.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
+                tipoDeAdjunto(a.nombre, a.mime) == null ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ARCHIVO, a.id, MotivoSinViaje.LA_WEB_NO_LA_GUARDA, f.actualizadaEn)
+                anulada -> enReserva += FilaEnReserva(TablaDeLaFila.ARCHIVO, a.id, MotivoEnReserva.CONSULTA_ANULADA, f.actualizadaEn)
+                !seccionSeOfrece(SECCION_DOCUMENTOS, e.habilitadas) ->
+                    enReserva += FilaEnReserva(TablaDeLaFila.ARCHIVO, a.id, MotivoEnReserva.TODAVIA_NO_SE_ENVIA, f.actualizadaEn)
+                !a.activo && a.remotoId.isBlank() ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ARCHIVO, a.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                a.activo && a.remotoId.isNotBlank() ->
+                    sinViaje += FilaSinViaje(TablaDeLaFila.ARCHIVO, a.id, MotivoSinViaje.SIN_CAMBIO_REAL, f.actualizadaEn)
+                else -> {
+                    viajan += a
+                    cubre += FilaCubierta(TablaDeLaFila.ARCHIVO, a.id, f.actualizadaEn)
+                }
+            }
+        }
+        if (viajan.isEmpty()) return null
+        return PasoDeEnvio.Adjuntos(viajan, cubre)
     }
 }
 

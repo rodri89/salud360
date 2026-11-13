@@ -1,8 +1,10 @@
 package com.salud360.core.data
 
+import com.salud360.core.data.files.ArchivoStore
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApiRemota
 import com.salud360.core.data.network.hc.EnfermedadesApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
@@ -128,6 +130,10 @@ fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>
             nombreHc = nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
             // Solo se envía lo del médico de la sesión (RF-50). Se pregunta al enviar, no al armar: la sesión cambia con cada ingreso.
             medicoDeLaSesion = { auth.value.sesion.value?.let(::medicoParaEnfermedades) },
+            // Los documentos de E4 (T104) por el mismo cliente completo (y el mismo token) que el resto de la HC general. La plataforma aporta
+            // `ArchivoStore` (como para `HcApiSync`): `getOrNull` deja el módulo armable sin él (los tests que no lo registran).
+            adjuntos = get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ClinicaAdjuntosApiRemota(it) },
+            archivos = getOrNull<ArchivoStore>(),
         )
     }
     // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).

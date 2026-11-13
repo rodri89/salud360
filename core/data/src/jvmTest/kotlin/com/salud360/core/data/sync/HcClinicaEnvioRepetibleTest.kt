@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * Spec 005, T25 (RF-15): un envío que se repite **no duplica nada** en la web. Si se pierde la respuesta de la creación (corte, sin
  * señal), el dispositivo no sabe que la consulta ya existe: el reenvío repite **la misma clave** (`c:<id local>`) y el servidor
  * contesta la misma consulta, sin una fila nueva. Lo mismo vale para el cierre y la baja (sus claves propias), para las cargas de E3 (la clave `l:<id local>`
- * devuelve la misma carga) y al reabrir la app.
+ * devuelve la misma carga), para los documentos de E4 (la clave `a:<id local>` devuelve el mismo adjunto y un solo archivo) y al reabrir la app.
  * Contra un servidor falso con memoria que, como el real, devuelve lo mismo para la misma clave.
  */
 class HcClinicaEnvioRepetibleTest {
@@ -137,6 +137,32 @@ class HcClinicaEnvioRepetibleTest {
             assertEquals(1, servidor.cargas.size, "y sigue habiendo una sola carga")
             assertEquals(servidor.cargas.values.single().id.toString(), db.cargaLocal("l1")!!.remotoId, "el id de siempre")
             assertFalse(db.cargaSucia("l1"))
+            assertEquals(emptyMap(), db.estadosDe("u1"))
+        }
+
+    @Test
+    fun si_se_pierde_la_respuesta_de_un_documento_el_reenvio_repite_la_misma_clave_y_queda_un_solo_archivo() =
+        conServidor(habilitadas = seccionesDe(SubentregaDeEscritura.E4)) {
+            db.sembrarPropia("u1", remotoId = "7001", dirty = false)
+            servidor.consultas[7001] = ServidorFalso.ConsultaWeb(7001, "c:u1", 5001, "control")
+            val ruta = archivos.guardar("a1", "a1.pdf", "%PDF-1.4".toByteArray())
+            db.sembrarDocumento("a1", rutaLocal = ruta, tamanioBytes = 8)
+            servidor.respuestasPerdidas += "adjunto"
+
+            envio.empujarYa("u1").join()
+
+            // El servidor subió el archivo, pero el dispositivo no se enteró: la fila sigue sucia y sin id.
+            assertEquals(1, servidor.documentos.size, "el servidor ya lo tiene")
+            assertTrue(db.archivoSucio("a1"))
+            assertEquals("", db.archivoLocal("a1")!!.remotoId)
+
+            servidor.respuestasPerdidas.clear()
+            envio.empujarYa("u1").join()
+
+            assertEquals(listOf("adjunto 7001 a:a1", "adjunto 7001 a:a1"), servidor.pedidos, "se repite la misma clave")
+            assertEquals(1, servidor.documentos.size, "y sigue habiendo un solo archivo")
+            assertEquals(servidor.documentos.values.single().id.toString(), db.archivoLocal("a1")!!.remotoId, "el id de siempre")
+            assertFalse(db.archivoSucio("a1"))
             assertEquals(emptyMap(), db.estadosDe("u1"))
         }
 
