@@ -2248,7 +2248,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     consulta: la foto de un examen `activo = 2` se sube después del cierre o queda «En espera: el examen todavía no está confirmado» — decisión a revisar al implementar); adjuntar a un examen de una consulta
     anterior [Q-E2-4]; baja de la foto.
   - Hecho cuando: tests en verde (antes, en rojo); `RegistrosSeccion` (`conArchivos`, `RegistrosSeccion.kt:173`) muestra el adjunto solo cuando E4 está habilitada y T105 hecha.
-- [ ] **T106. La lectura lista y abre los adjuntos de la web con la sesión (consulta nueva vs. previa).** RF-45, RF-33 — M — Toca API Laravel: no
+- [x] **T106. La lectura lista y abre los adjuntos de la web con la sesión (consulta nueva vs. previa).** RF-45, RF-33 — M — Toca API Laravel: no
   - Hoy la lectura solo avisa que existen (`no_leidas = documentos`). Tests primero: jvm `HcClinicaBackendAdjuntosTest`: al **abrir** una consulta (nunca desde el autoguardado) se pide la lista que
     corresponde a **Q-E4-3**: si es una **consulta nueva y en curso**, `GET pacientes/{id}/adjuntos` (**todos** los documentos del paciente, de todas sus consultas, cada uno con su consulta de
     origen); si es una **consulta previa** (cerrada, o abierta pero no la que se está cargando), `GET consultas/{id}/adjuntos` (**solo** los de esa consulta); en los dos casos solo la sección
@@ -2259,6 +2259,38 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
   - Código: `HcClinicaBackend` (lectura de adjuntos: por paciente o por consulta según la consulta abierta), `LecturaClinica.kt` (`archivosDeLaWeb`), `ConsultaViewModel.bytesDe` (ya baja por
     `hc.bajarArchivo`; clínica lo implementa).
   - Hecho cuando: tests en verde (antes, en rojo); `HcClinicaBackend*Test` de la L siguen verdes; `HcClinicaLecturaE2ETest` se saltea sola.
+  - **Resultado (2026-11-13): HECHA — la lectura lista los documentos de la web al abrir y los baja con la sesión; la pantalla es T107.** Sin migración, sin Laravel, sin
+    dependencias nuevas y sin pedidos reales (solo la API de adjuntos falsa del test); `SECCIONES_HABILITADAS` sigue igual (E4 se enciende en T108).
+    **La regla (Q-E4-3), en una línea:** se lista por **paciente** cuando la consulta que se abre es una **propia abierta** —`consulta.propia && estado == ABIERTA`, la que se está
+    cargando, tenga o no ya id en la web— y por **consulta** en todos los demás casos (la del histórico, la de la web —`hcc-c…`—, o una propia ya cerrada). Una **previa que nunca se
+    envió** tiene `remoto_id` vacío y **no pide nada** (no hay nada en la web); sin ficha del paciente tampoco se pide (RF-49). `traerAdjuntos` es un solo `GET`, sin reintento propio.
+    **Dónde se dispara:** `ConsultaViewModel.init` —y el «Reintentar» de una consulta de la web (`leerDeLaWeb`)—, **nunca** desde el autoguardado; los errores de la lista se absorben ahí
+    (un fallo no impide abrir la consulta ni leer su contenido; se reintenta al abrirla de nuevo).
+    **Cómo se empareja y cachea.** `LecturaClinica.kt`: `idArchivoWeb(idWeb)` = `hcc-f<id>` y `archivosDeLaWeb(pacienteLocalId, adjuntos, consultasLocales, vinculadas)`, que exige
+    un `id` y una `consulta_id` válidos y descarta el documento de una consulta que el dispositivo no tiene (no hay dónde mostrarlo y la web nunca lista uno sin consulta, RF-46). La fila
+    se guarda **sin archivo** (`rutaLocal` nula), `dirty = 0`, `remoto_id` = el id de la web y el **mime por el `tipo`** de la lista (`TipoDeAdjunto`, T103), para abrirlo con su `Content-Type`.
+    `HcClinicaBackend.aplicarAdjuntos` empareja por `remoto_id` con lo que la app ya subió (la fila conserva su id, su archivo y su `dirty`) y **no la duplica**; una fila con ese mismo id que
+    no se empareje por `remoto_id` no se toca. **Lo que la web deja de listar** de lo que esta lista cubría (todo el paciente o solo esa consulta) queda `activo = 0` —deja de verse— y
+    **nada se borra**: ni la fila ni el archivo del dispositivo (Q15). Lo `dirty` no se toca nunca (ni se da de baja ni se reactiva): de eso se ocupa el envío.
+    **Cómo se bajan.** `HcClinicaBackend.bajarArchivo` hace un solo `GET adjuntos/{id}/archivo` **con la sesión** (nunca un enlace público) y solo para la sección `documentos`; cualquier
+    fallo —el `404` de un adjunto dado de baja o de un archivo que falta— devuelve `null` y la pantalla se queda sin mostrarlo, sin romperse. `HcRepository.bytesDeArchivo(consulta, archivo,
+    store)` relee la fila, devuelve los bytes de la copia local si ya están y, si no, baja **una sola vez** y los guarda en `ArchivoStore` con la ruta en `archivo.ruta_local` (`dirty = 0`);
+    `ConsultaViewModel.bytesDe` delega ahí y mantiene el camino viejo (`SyncEngine`) para lo que no tiene id en la web.
+    **Cambios de interfaz (compilado, prueba manual pendiente en T112):** `ListaDeAdjuntos` (nueva capacidad opcional, como `Refrescable`), `HcClinicaBackend` la implementa y gana el
+    parámetro opcional `adjuntos: ClinicaAdjuntosApi?` (el constructor con `HcApiClient` arma `ClinicaAdjuntosApiRemota` con el mismo cliente y token; sin API la lectura se comporta como
+    antes), `HcRepository.traerAdjuntosRemotos(consulta)` y `HcRepository.bytesDeArchivo(...)`.
+    **Decisiones no previstas en el plan.** (a) `HcRepository.bajarArchivo` ya no exige `consulta.remotoId` **en la HC general**: una consulta nueva lista documentos del paciente y todavía
+    no tiene id en la web; las demás historias clínicas conservan la guarda. (b) La lista de un documento de una consulta que no está en el dispositivo se descarta (no se guarda una fila
+    sin consulta). (c) La lista no toma el `TurnosPorConsulta` (para no invertir el orden turno→candado de la lectura de una propia) y no puede pisar un envío: solo escribe filas nuevas,
+    empareja por `remoto_id` y no toca lo `dirty`. (d) Abrir una consulta de la HC general pasan a ser **dos** pedidos (su contenido y su lista de documentos), uno por apertura: RF-57 sigue
+    con un pedido por contenido y el documento se pide una vez, no en cada autoguardado.
+    **Rojo:** `:core:data:compileTestKotlinJvm` con **17 errores** (no compilaban `traerAdjuntos`, `bytesDeArchivo`, el constructor con adjuntos ni `conBackend(adjuntos = …)`).
+    **Verde:** `HcClinicaBackendAdjuntosTest` **9** (nueva por paciente con el documento de una consulta ajena afuera; previa por consulta; previa nunca enviada sin pedidos; sin API de
+    adjuntos nada; lo subido por la app y lo traído, una sola fila; lo pendiente intacto; baja en la web con el archivo local y el del dispositivo intactos; bajada una sola vez y
+    cacheada; `404` sin romper). `core:data` **2221** en verde (2212 + 9), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos ni salteados; compilan
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs`, `:server:compileKotlin` y
+    `:features:hc:compileKotlinJvm`, todos en 0. **Ningún test existente cambió**: solo la firma del ayudante `HcClinicaPruebas.conBackend` (parámetro `adjuntos`), que los
+    `HcClinicaBackend*Test` de la L siguen llamando igual. **Sigue T107**; las fotos de exámenes siguen fuera de alcance (T105).
 - [ ] **T107. Pantallas de E4.** RF-44, RF-45, RF-4 — M — Toca API Laravel: no
   - `features/hc` (`ArchivosSeccion.kt`): en una consulta propia de clínica el selector de `documentos` ofrece **PDF, JPG, JPEG y PNG** (`accept` con los cuatro, Q-E4-1 revisada); mensaje del tope
     antes de subir (T103); estado de cada adjunto («Falta enviar», «En espera», «No se pudo enviar», ya cubiertos por T37); abrir un adjunto de la web con la sesión (`abrirArchivo`), con

@@ -233,7 +233,23 @@ registros de personas): el repo es público.
    `core:data` **2212** (2180 + 32), clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm y `:server`. `ServidorFalso` implementa ahora
    `ClinicaAdjuntosApi` con memoria (subida repetible por clave, baja, listas, descarga y límites) y `Escena`/`conServidor` aportan una carpeta temporal de `ArchivoStore`; sin
    migración, sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` sigue igual (E4 se enciende en T108). Fotos de exámenes (T105) fuera de alcance; el E2E real es T109.
-   **Sigue T106** (la lectura lista y abre los adjuntos de la web).
+   **T106 hecha (2026-11-13): la lectura de la HC general lista los documentos de la web al abrir una consulta y los baja con la
+   sesión.** Regla de Q-E4-3: se lista por **paciente** (`GET pacientes/{id}/adjuntos`) si la consulta que se abre es una **propia abierta**
+   (la que se está cargando) y por **consulta** (`GET consultas/{id}/adjuntos`) en cualquier otro caso (histórico, de la web, propia ya
+   cerrada); una previa que nunca se envió (sin `remoto_id`) no pide nada. Se dispara al abrir (`ConsultaViewModel.init` y el
+   «Reintentar» de una consulta de la web), nunca desde el autoguardado, y un fallo de la lista no impide abrir la consulta.
+   `LecturaClinica.kt`: `idArchivoWeb` (`hcc-f<id>`) y `archivosDeLaWeb`, que guarda filas `archivo` **sin archivo** (`rutaLocal` nula,
+   `remoto_id` = id de la web, `dirty = 0`, mime por el `tipo` de la lista) y descarta el documento de una consulta que el dispositivo no
+   tiene. `HcClinicaBackend.traerAdjuntos`/`aplicarAdjuntos` empareja por `remoto_id` con lo que la app subió (una sola fila, sin duplicar),
+   no toca lo `dirty` y da de baja lógica (`activo = 0`) lo que la web dejó de listar **sin borrar** la fila ni el archivo (Q15).
+   `bajarArchivo` baja con la sesión (`GET adjuntos/{id}/archivo`, solo sección `documentos`) y cualquier error —también el `404`— devuelve
+   `null` sin romper la pantalla; `HcRepository.bytesDeArchivo` cachea en `ArchivoStore` una sola vez. Cambios de interfaz: capacidad nueva
+   `ListaDeAdjuntos`, `HcClinicaBackend` con el parámetro opcional `adjuntos` (el constructor con `HcApiClient` arma la API remota) y
+   `HcRepository.bajarArchivo` deja de exigir `consulta.remotoId` en la HC general. Abrir una consulta pasan a ser **dos** pedidos
+   (contenido y lista). Rojo 17 errores de compilación y después verde: `HcClinicaBackendAdjuntosTest` **9**, `core:data` **2221** (2212 + 9),
+   clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm, `:server` y `:features:hc`. Ningún test
+   existente cambió (solo la firma del ayudante `HcClinicaPruebas.conBackend`). Sin migración, sin Laravel y sin pedidos reales;
+   `SECCIONES_HABILITADAS` sigue igual. **Sigue T107** (pantallas de E4); las fotos de exámenes siguen fuera de alcance (T105).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
