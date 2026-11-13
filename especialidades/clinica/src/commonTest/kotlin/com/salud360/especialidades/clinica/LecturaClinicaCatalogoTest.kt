@@ -205,23 +205,24 @@ class LecturaClinicaCatalogoTest {
         val estados = catalogoHcGeneral.ids.associateWith { envioDeSeccion(it) }
         // Ninguna del catálogo es de las que la web no guarda.
         assertTrue(estados.values.none { it == EnvioDeSeccion.NUNCA })
-        // T67 reducida más T88 reducida: los textos, el examen, enfermedades, las ocho secciones del alcance del usuario (las de E2 que pidió y no
-        // la alimentación) y el laboratorio general y el peso (E3; decisión del usuario del 2026-11-12).
+        // T67 reducida más T88 reducida más T108 reducida: los textos, el examen, enfermedades, las ocho secciones del alcance del usuario (las de E2
+        // que pidió y no la alimentación), el laboratorio general y el peso (E3; decisión del usuario del 2026-11-12) y los documentos (E4; decisión del
+        // usuario del 2026-11-13, solo PDF, JPG, JPEG y PNG).
         assertEquals(
             setOf(
                 "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia",
                 "examen_fisico", "enfermedades", "serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda",
-                "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn", "laboratorio_general", "tabla_peso",
+                "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn", "laboratorio_general", "tabla_peso", "documentos",
             ),
             catalogoHcGeneral.ids.filter { seccionSeOfrece(it) }.toSet(),
         )
         // Todo lo demás del catálogo dice «todavía no» y se habilita por subentrega: ninguna queda sin decidir. Son la alimentación, los exámenes
-        // complementarios y las interconsultas (E2, fuera del alcance), el laboratorio reducido (E3, fuera de la E3 reducida) y los adjuntos (E4).
+        // complementarios y las interconsultas (E2, fuera del alcance) y el laboratorio reducido (E3, fuera de la E3 reducida).
         assertEquals(
-            setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_reducido", "documentos"),
+            setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_reducido"),
             estados.filterValues { it == EnvioDeSeccion.TODAVIA_NO }.keys,
         )
-        assertEquals(5, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
+        assertEquals(4, estados.values.count { it == EnvioDeSeccion.TODAVIA_NO })
         // Con todas las subentregas habilitadas se envían las 24 que viajan en una consulta; `enfermedades` va por su API.
         assertEquals(
             catalogoHcGeneral.ids.toSet() - "enfermedades",

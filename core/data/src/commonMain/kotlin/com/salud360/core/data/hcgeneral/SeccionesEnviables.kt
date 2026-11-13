@@ -19,7 +19,7 @@ enum class SubentregaDeEscritura { E1, E2, E3, E4 }
 
 /**
  * La subentrega que **siembra** [SECCIONES_HABILITADAS]: ya no es el candado real (lo es el conjunto). Sigue en [SubentregaDeEscritura.E1] porque esta versión
- * habilita de E1 y solo una parte de E2 (decisión del usuario, T67 reducida): cambiarla encendería todo lo de una subentrega de golpe.
+ * habilita de E1 y solo partes de E2, E3 y E4 (decisiones del usuario: T67, T88 y T108 reducidas): cambiarla encendería todo lo de una subentrega de golpe.
  */
 val SUBENTREGA_HABILITADA = SubentregaDeEscritura.E1
 
@@ -89,8 +89,9 @@ fun seccionesDe(subentrega: SubentregaDeEscritura): Set<String> = SUBENTREGA_QUE
  * Hoy son las nueve de [SUBENTREGA_HABILITADA] (E1: los ocho textos y el examen físico) **más una parte de E2, por decisión del usuario del 2026-11-11
  * (T67 reducida, autorizada antes del cierre de E1)**: serologías, Child-Pugh, antecedentes familiares y los cinco estudios; **más la E3 reducida, por
  * decisión del usuario del 2026-11-12 (T88 reducida, también antes del cierre de E1)**: el laboratorio general (`laboratorio_general`) y el peso
- * (`tabla_peso`). Quedan en «todavía no» la alimentación, los exámenes complementarios y las interconsultas (de E2), el laboratorio reducido y los
- * pendientes (de E3, fuera de alcance: la API de E3 solo escribe `laboratorio_generals` y `pesos`) y los adjuntos (E4); lo que la web no guarda
+ * (`tabla_peso`); **más la E4 reducida, por decisión del usuario del 2026-11-13 (T108 reducida)**: los documentos (PDF, JPG, JPEG y PNG), sin las fotos
+ * de exámenes. Quedan en «todavía no» la alimentación, los exámenes complementarios y las interconsultas (de E2) y el laboratorio reducido y los
+ * pendientes (de E3, fuera de alcance: la API de E3 solo escribe `laboratorio_generals` y `pesos`); lo que la web no guarda
  * ([SECCIONES_QUE_LA_WEB_NO_GUARDA]) y lo que tiene su propia API ([SECCIONES_APARTE]) siguen igual. Con todo habilitado se escribe `seccionesDe(E4)`.
  *
  * Va declarado **después** de [SUBENTREGA_QUE_HABILITA]: los `val` de nivel superior se inicializan en el orden del archivo.
@@ -100,6 +101,8 @@ val SECCIONES_HABILITADAS: Set<String> = seccionesDe(SUBENTREGA_HABILITADA) + se
     "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
     // T88 reducida: la E3 que la API de la web ya escribe (laboratorio general y peso); el reducido y los pendientes siguen en «todavía no».
     "laboratorio_general", "tabla_peso",
+    // T108 reducida: los documentos de E4 (PDF, JPG, JPEG y PNG); las fotos de exámenes siguen fuera de alcance.
+    "documentos",
 )
 
 /**

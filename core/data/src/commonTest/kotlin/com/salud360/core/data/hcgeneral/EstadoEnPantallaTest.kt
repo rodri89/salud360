@@ -149,11 +149,12 @@ class EstadoEnPantallaTest {
     @Test
     fun una_seccion_sin_envio_dice_por_que_solo_si_la_consulta_se_envia() {
         // Esta versión envía los textos, el examen, las enfermedades, las secciones del alcance del usuario (T67 reducida: serologías, Child-Pugh,
-        // antecedentes familiares y los cinco estudios) y el laboratorio general y el peso (T88 reducida); el resto «todavía no».
+        // antecedentes familiares y los cinco estudios), el laboratorio general y el peso (T88 reducida) y los documentos (T108 reducida); el resto
+        // «todavía no».
         assertNull(avisoDeEnvioDeLaSeccion("nota", seEnvia = true))
         assertNull(avisoDeEnvioDeLaSeccion("examen_fisico", seEnvia = true))
         assertNull(avisoDeEnvioDeLaSeccion("enfermedades", seEnvia = true))
-        for (id in listOf("serologias", "child_pugh", "antecedentes_familiares", "veda", "eco_abdominal", "tc_rmn", "laboratorio_general", "tabla_peso")) {
+        for (id in listOf("serologias", "child_pugh", "antecedentes_familiares", "veda", "eco_abdominal", "tc_rmn", "laboratorio_general", "tabla_peso", "documentos")) {
             assertNull(avisoDeEnvioDeLaSeccion(id, seEnvia = true), id)
         }
         assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion("alimentacion", seEnvia = true))

@@ -125,38 +125,45 @@ class SeccionesEnviablesTest {
     private val todasLasDeLaHcGeneral = textos + "examen_fisico" + formularios + antecedentesYListas + laboratorio + adjuntos
 
     @Test
-    fun el_candado_habilitado_es_el_de_la_e1_mas_las_ocho_secciones_del_alcance_del_usuario_mas_los_dos_de_la_e3_reducida() {
+    fun el_candado_habilitado_es_el_de_la_e1_mas_las_ocho_del_alcance_del_usuario_mas_los_dos_de_la_e3_reducida_y_los_documentos() {
         // Decisión del usuario (2026-11-11): habilitar antes de cerrar E1 solo estas de E2 —serologías, Child-Pugh, antecedentes familiares y los
-        // cinco estudios—; el resto de E2 y los adjuntos (E4) siguen "todavía no". Decisión del usuario (2026-11-12, T88 reducida): sumar el
-        // laboratorio general y el peso de E3; el laboratorio reducido y los pendientes quedaron fuera.
+        // cinco estudios—; el resto de E2 sigue "todavía no". Decisión del usuario (2026-11-12, T88 reducida): sumar el laboratorio general y el
+        // peso de E3; el laboratorio reducido y los pendientes quedaron fuera. Decisión del usuario (2026-11-13, T108 reducida): sumar los
+        // documentos de E4 (PDF, JPG, JPEG y PNG); las fotos de exámenes siguen fuera de alcance.
         val delAlcanceDeE2 = listOf("serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn")
         val delAlcanceDeE3 = listOf("laboratorio_general", "tabla_peso")
-        assertEquals((textos + "examen_fisico" + delAlcanceDeE2 + delAlcanceDeE3).toSet(), SECCIONES_HABILITADAS)
+        val delAlcanceDeE4 = listOf("documentos")
+        assertEquals((textos + "examen_fisico" + delAlcanceDeE2 + delAlcanceDeE3 + delAlcanceDeE4).toSet(), SECCIONES_HABILITADAS)
         assertEquals(
-            19,
+            20,
             SECCIONES_HABILITADAS.size,
-            "los nueve de E1 (ocho textos y el examen), las ocho del alcance de E2 y el laboratorio general y el peso de E3; enfermedades va aparte y no entra",
+            "los nueve de E1 (ocho textos y el examen), las ocho del alcance de E2, el laboratorio general y el peso de E3 y los documentos de E4; enfermedades va aparte y no entra",
         )
-        assertEquals((delAlcanceDeE2 + delAlcanceDeE3).associateWith { SE_ENVIA }, estados(delAlcanceDeE2 + delAlcanceDeE3, SECCIONES_HABILITADAS))
+        assertEquals(
+            (delAlcanceDeE2 + delAlcanceDeE3 + delAlcanceDeE4).associateWith { SE_ENVIA },
+            estados(delAlcanceDeE2 + delAlcanceDeE3 + delAlcanceDeE4, SECCIONES_HABILITADAS),
+        )
         (textos + "examen_fisico").forEach { assertEquals(SE_ENVIA, envioDeSeccion(it), it) }
         assertFalse("enfermedades" in SECCIONES_HABILITADAS, "enfermedades tiene su API y no es una sección de una subentrega")
         assertEquals(E1, SUBENTREGA_HABILITADA, "la constante no cambia: el candado real es SECCIONES_HABILITADAS")
     }
 
     @Test
-    fun el_conjunto_exacto_de_la_version_es_el_de_los_19_ids() {
-        // Fija los 19 ids literales (T88 reducida): si alguien enciende o apaga una sección, este test lo dice antes de que salga en la app.
-        val los19 = setOf(
+    fun el_conjunto_exacto_de_la_version_es_el_de_los_20_ids() {
+        // Fija los 20 ids literales (T88 reducida y T108 reducida): si alguien enciende o apaga una sección, este test lo dice antes de que salga en la app.
+        val los20 = setOf(
             // Los nueve de E1: los ocho textos y el examen físico.
             "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia", "examen_fisico",
             // Las ocho de E2 del alcance del usuario (2026-11-11).
             "serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
             // Los dos de la E3 reducida (2026-11-12): laboratorio general y peso, no el reducido ni los pendientes.
             "laboratorio_general", "tabla_peso",
+            // El de la E4 reducida (2026-11-13, T108 reducida): los documentos; las fotos de exámenes no están en la 005.
+            "documentos",
         )
-        assertEquals(19, los19.size, "el conjunto esperado tiene que tener 19: los que se comparan son los de abajo")
-        assertEquals(los19, SECCIONES_HABILITADAS)
-        los19.forEach {
+        assertEquals(20, los20.size, "el conjunto esperado tiene que tener 20: los que se comparan son los de abajo")
+        assertEquals(los20, SECCIONES_HABILITADAS)
+        los20.forEach {
             assertEquals(SE_ENVIA, envioDeSeccion(it), it)
             assertTrue(seccionSeOfrece(it), it)
             assertEquals(null, avisoDeSeccion(it), it)
@@ -164,13 +171,29 @@ class SeccionesEnviablesTest {
     }
 
     @Test
-    fun la_e3_reducida_deja_el_laboratorio_reducido_los_pendientes_y_los_documentos_todavia_no() {
-        // T88 reducida (decisión del usuario, 2026-11-12): la API de E3 solo escribe `laboratorio_generals` y `pesos`; el reducido y los
-        // pendientes quedaron fuera de alcance (T87-b) y los documentos son E4. Los tres siguen sin ofrecerse ni viajar.
-        val fueraDeLaE3Reducida = listOf("laboratorio_reducido", "pendientes", "documentos")
-        assertEquals(fueraDeLaE3Reducida.associateWith { TODAVIA_NO }, estados(fueraDeLaE3Reducida, SECCIONES_HABILITADAS))
-        fueraDeLaE3Reducida.forEach {
-            assertFalse(it in SECCIONES_HABILITADAS, it)
+    fun el_candado_suma_los_documentos_a_los_19_de_la_e3_reducida_y_no_enciende_ninguna_otra() {
+        // T108 reducida (decisión del usuario, 2026-11-13): a los 19 de antes se les suma exactamente `documentos` (PDF, JPG, JPEG y PNG); las fotos
+        // de exámenes quedan fuera de alcance y el resto de E4 no existe. Queda fijado como suma: si alguien enciende una más, este test lo dice.
+        val los19DeAntes = setOf(
+            "motivo_consulta", "datos_subjetivos", "datos_objetivos", "conductas", "nota", "habitos", "diuresis_catarsis", "somnia", "examen_fisico",
+            "serologias", "child_pugh", "antecedentes_familiares", "eco_abdominal", "veda", "biopsia_hepatica", "estudios_cardiologicos", "tc_rmn",
+            "laboratorio_general", "tabla_peso",
+        )
+        assertEquals(los19DeAntes + setOf("documentos"), SECCIONES_HABILITADAS)
+        assertEquals(20, (los19DeAntes + "documentos").size)
+        assertEquals(SE_ENVIA, envioDeSeccion("documentos"))
+        assertTrue(seccionSeOfrece("documentos"), "la sección se ofrece para cargar en una consulta propia")
+        assertEquals(null, avisoDeSeccion("documentos"), "sin aviso de «todavía no»: ya viaja")
+    }
+
+    @Test
+    fun lo_que_queda_fuera_del_candado_sigue_todavia_no_con_los_documentos_adentro() {
+        // T108 reducida (2026-11-13): solo se sumó `documentos`. Lo que queda fuera sigue sin ofrecerse ni viajar: la alimentación, los exámenes
+        // complementarios y las interconsultas (E2), el laboratorio reducido y los pendientes (E3, fuera del alcance de su API).
+        val fueraDelCandado = setOf("alimentacion", "examenes_complementarios", "interconsulta", "laboratorio_reducido", "pendientes")
+        assertEquals(fueraDelCandado, todasLasDeLaHcGeneral.toSet() - SECCIONES_HABILITADAS, "no se encendió ninguna de más")
+        assertEquals(fueraDelCandado.associateWith { TODAVIA_NO }, estados(fueraDelCandado.toList(), SECCIONES_HABILITADAS))
+        fueraDelCandado.forEach {
             assertFalse(seccionSeOfrece(it), it)
             assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeSeccion(it), it)
             assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion(it, seEnvia = true), it)
@@ -178,17 +201,17 @@ class SeccionesEnviablesTest {
     }
 
     @Test
-    fun lo_que_el_alcance_del_usuario_deja_afuera_sigue_todavia_no() {
-        // Ni la alimentación (E2), ni los exámenes complementarios ni las interconsultas (E2), ni lo que la E3 reducida dejó fuera (el
-        // laboratorio reducido y los pendientes), ni los adjuntos (E4).
-        val fueraDelAlcance = listOf(
-            "alimentacion", "examenes_complementarios", "interconsulta",
-            "laboratorio_reducido", "pendientes", "documentos",
-        )
-        assertEquals(fueraDelAlcance.associateWith { TODAVIA_NO }, estados(fueraDelAlcance, SECCIONES_HABILITADAS))
-        fueraDelAlcance.forEach {
+    fun la_e3_reducida_deja_el_laboratorio_reducido_y_los_pendientes_todavia_no() {
+        // T88 reducida (decisión del usuario, 2026-11-12): la API de E3 solo escribe `laboratorio_generals` y `pesos`; el reducido y los
+        // pendientes quedaron fuera de alcance (T87-b). Los dos siguen sin ofrecerse ni viajar. Los documentos ya no son parte de esto: T108
+        // reducida (2026-11-13) los enciende.
+        val fueraDeLaE3Reducida = listOf("laboratorio_reducido", "pendientes")
+        assertEquals(fueraDeLaE3Reducida.associateWith { TODAVIA_NO }, estados(fueraDeLaE3Reducida, SECCIONES_HABILITADAS))
+        fueraDeLaE3Reducida.forEach {
+            assertFalse(it in SECCIONES_HABILITADAS, it)
             assertFalse(seccionSeOfrece(it), it)
             assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeSeccion(it), it)
+            assertEquals(AVISO_TODAVIA_NO_SE_ENVIA, avisoDeEnvioDeLaSeccion(it, seEnvia = true), it)
         }
     }
 
@@ -272,6 +295,7 @@ class SeccionesEnviablesTest {
         assertEquals(SE_ENVIA, envioDeSeccion("tabla_peso"), "el peso se enciende en T88 reducida")
         assertEquals(TODAVIA_NO, envioDeSeccion("laboratorio_reducido"), "el reducido quedó fuera del alcance de E3")
         assertEquals(TODAVIA_NO, envioDeSeccion("pendientes"), "los pendientes quedaron fuera del alcance de E3")
+        assertEquals(SE_ENVIA, envioDeSeccion("documentos"), "los documentos se encienden en T108 reducida (PDF, JPG, JPEG y PNG)")
         for (id in todasLasDeLaHcGeneral + laWebNoGuarda + "enfermedades") {
             assertEquals(envioDeSeccion(id, SECCIONES_HABILITADAS), envioDeSeccion(id), id)
             assertEquals(seccionSeOfrece(id, SECCIONES_HABILITADAS), seccionSeOfrece(id), id)
