@@ -22,6 +22,7 @@ import com.salud360.core.data.hcgeneral.cambioDePendientes
 import com.salud360.core.data.hcgeneral.cambioEstudio
 import com.salud360.core.data.hcgeneral.camposEstudio
 import com.salud360.core.data.hcgeneral.copiaDiagnosticos
+import com.salud360.core.data.hcgeneral.documentosDeTodoElPaciente
 import com.salud360.core.data.hcgeneral.edicionDeConsulta
 import com.salud360.core.data.hcgeneral.enfermedadesEnDatosDeConsulta
 import com.salud360.core.data.hcgeneral.entradaDeConsulta
@@ -34,6 +35,7 @@ import com.salud360.core.data.hcgeneral.esSoloLecturaWeb
 import com.salud360.core.data.hcgeneral.seEnviaALaWeb
 import com.salud360.core.data.hcgeneral.extrasDeLectura
 import com.salud360.core.data.hcgeneral.layoutConsulta
+import com.salud360.core.data.hcgeneral.limiteExcedido
 import com.salud360.core.data.hcgeneral.masConsultas
 import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.hcgeneral.motivoDeLaLectura
@@ -42,6 +44,7 @@ import com.salud360.core.data.hcgeneral.soloLecturaConsulta
 import com.salud360.core.data.hcgeneral.vistaDeLaHistoria
 import com.salud360.core.data.hcgeneral.textoDePendientesLocales
 import com.salud360.core.data.hcgeneral.visibleParaSesion
+import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
 import com.salud360.core.data.repos.AuthRepository
 import com.salud360.core.data.repos.HcRepository
 import com.salud360.core.data.repos.PacientesRepository
@@ -481,6 +484,38 @@ class ConsultaViewModel(
     }
 
     // ---- archivos ----
+
+    /** La sección «Documentos» de esta consulta lista los de **todo** el paciente si es nueva y en curso (Q-E4-3, T106); una previa, los suyos. */
+    fun documentosDeTodoElPaciente(): Boolean = ui.value.consulta?.documentosDeTodoElPaciente() == true
+
+    /** La consulta se envía a la web (propia de la HC general): solo ahí los adjuntos dicen si les falta viajar (T37, T107). */
+    fun seEnviaALaWeb(): Boolean = ui.value.seEnviaALaWeb
+
+    /** El tope efectivo de los adjuntos de esta pantalla, preguntado una sola vez (T107); `null` hasta que se sepa o si no hay API. */
+    private var topeDeLosAdjuntos: RespuestaLimitesDeAdjuntosDto? = null
+
+    /**
+     * El aviso del tope **antes** de guardar un documento (spec 005, T107; RF-44): el texto de `limiteExcedido` con el máximo efectivo que
+     * informa la web, o `null` si el archivo entra o si no se pudo preguntar. No frena la consulta ni marca nada: la cola lo vuelve a comparar
+     * al subir (T104), y sin señal el archivo se guarda igual y se sube después.
+     */
+    suspend fun avisoDelTope(bytes: ByteArray): String? {
+        val c = ui.value.consulta ?: return null
+        val limites = preguntarTopeDeLosAdjuntos(c.especialidad) ?: return null
+        return limiteExcedido(bytes.size.toLong(), limites)
+    }
+
+    /** `GET adjuntos/limites` una sola vez por pantalla; si falla no se reintenta solo y el archivo no se frena (RF-44, T104). */
+    private suspend fun preguntarTopeDeLosAdjuntos(especialidad: String): RespuestaLimitesDeAdjuntosDto? {
+        topeDeLosAdjuntos?.let { return it }
+        return try {
+            hc.limiteDeAdjuntos(especialidad)?.also { topeDeLosAdjuntos = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            null
+        }
+    }
 
     fun archivos(seccion: String, porPaciente: Boolean = false) = ui.value.consulta?.let { c ->
         if (porPaciente) hc.observarArchivos(c.pacienteId, seccion) else hc.observarArchivosDeConsulta(c.id, seccion)

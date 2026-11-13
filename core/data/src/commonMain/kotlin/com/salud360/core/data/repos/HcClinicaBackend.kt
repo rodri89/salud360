@@ -15,6 +15,7 @@ import com.salud360.core.data.hcgeneral.camposConfirmadosDelEstudio
 import com.salud360.core.data.hcgeneral.cargaDeLaWebParaLaPropia
 import com.salud360.core.data.hcgeneral.claveNoLeidas
 import com.salud360.core.data.hcgeneral.consultaDeLaWeb
+import com.salud360.core.data.hcgeneral.documentosDeTodoElPaciente
 import com.salud360.core.data.hcgeneral.esDeLaWeb
 import com.salud360.core.data.hcgeneral.filaDeLaWeb
 import com.salud360.core.data.hcgeneral.fusionarAntecedente
@@ -61,6 +62,7 @@ import com.salud360.core.data.network.hc.RespuestaCrearConsultaDto
 import com.salud360.core.data.network.hc.RespuestaEscrituraDto
 import com.salud360.core.data.network.hc.RespuestaConsultaDto
 import com.salud360.core.data.network.hc.RespuestaHistoriaDto
+import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
 import com.salud360.core.data.network.hc.RespuestaListaConsultasDto
 import com.salud360.core.data.network.hc.RespuestaRegistrosDto
 import com.salud360.core.data.uno
@@ -116,7 +118,7 @@ class HcClinicaBackend internal constructor(
      * baja con la sesión. Sin ella (los tests de la lectura que no la pasan) el backend se comporta como antes: no lista ni baja documentos.
      */
     private val adjuntos: ClinicaAdjuntosApi? = null,
-) : HcBackend, Refrescable, ListaDeAdjuntos {
+) : HcBackend, Refrescable, ListaDeAdjuntos, LimitesDeAdjuntos {
     /** Con el cliente completo: la lectura por su envoltorio de solo lectura y la escritura por [ClinicaEscrituraApiRemota]. */
     constructor(
         db: Salud360Db,
@@ -600,7 +602,7 @@ class HcClinicaBackend internal constructor(
             log.i { "${local.pacienteId} no tiene ficha en la HC general: no se pide nada" }
             return@withLock
         }
-        val porPaciente = local.propia && local.estado == EstadoConsulta.ABIERTA
+        val porPaciente = local.documentosDeTodoElPaciente()
         val consultaWebId = local.remotoId.toLongOrNull()?.takeIf { it > 0 }
         if (!porPaciente && consultaWebId == null) {
             log.i { "la consulta $consultaLocalId no tiene id en la web: no hay documentos que listar" }
@@ -609,6 +611,13 @@ class HcClinicaBackend internal constructor(
         val documentos = if (porPaciente) apiAdjuntos.listarDePaciente(ficha).adjuntos else apiAdjuntos.listarDeConsulta(consultaWebId!!).adjuntos
         db.transaction { aplicarAdjuntos(local, documentos, porPaciente) }
     }
+
+    /**
+     * El tope de los adjuntos para avisar **antes** de subir (spec 005, T107; RF-44, D18): un `GET adjuntos/limites` con la sesión, sin
+     * subir ni escribir nada. `null` sin API de adjuntos (esta instalación no los sube). Si falla, el error sale tal cual y la pantalla no
+     * frena el archivo: la cola lo compara igual al subirlo (T104).
+     */
+    override suspend fun limiteDeAdjuntos(): RespuestaLimitesDeAdjuntosDto? = adjuntos?.limites()
 
     /**
      * Escribe lo que trajo la lista de documentos, dentro de una transacción: empareja por `remoto_id` (lo que la app subió y lo de la web son

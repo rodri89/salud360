@@ -4,6 +4,7 @@ import com.salud360.core.data.files.extensionDe
 import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
 import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
+import com.salud360.core.model.hc.EstadoConsulta
 
 // Spec 005, T103 (RF-44, RF-46, RF-60): qué documento de la HC general viaja a la web con su consulta y el aviso del tope
 // **antes** de subir. Puro: sin Compose, sin red, sin base y sin reloj. La sección `documentos` acepta PDF, JPG, JPEG y PNG
@@ -79,3 +80,29 @@ private fun enMb(bytes: Long, haciaArriba: Boolean): String {
     val decimal = decimas % 10
     return if (decimal == 0L) "$entero" else "$entero,$decimal"
 }
+
+// ---- La pantalla de la sección «Documentos» (spec 005, T107; Q-E4-1 revisada) ----
+
+/** El aviso de un archivo elegido que no es PDF, JPG, JPEG ni PNG (RF-44): el mismo texto para el médico, en un solo lugar. */
+const val AVISO_TIPO_DE_ADJUNTO = "Solo se aceptan PDF, JPG, JPEG o PNG"
+
+/**
+ * Lo que el selector de archivos ofrece en [SECCION_DOCUMENTOS] (Q-E4-1 revisada): PDF, JPG, JPEG y PNG. Son los MIME de [TipoDeAdjunto],
+ * así que `.jpg` y `.jpeg` los dos son `image/jpeg`; sale del mismo lugar que lo que [adjuntoViaja].
+ */
+val TIPOS_MIME_DE_ADJUNTO: List<String> = TipoDeAdjunto.entries.map { it.mime }
+
+/**
+ * El aviso de un archivo elegido para [SECCION_DOCUMENTOS] **antes** de guardarlo, o `null` si es PDF, JPG, JPEG o PNG ([tipoDeAdjunto]). La
+ * app lo mira por la extensión del nombre y, si no tiene, por el `Content-Type`; el contenido lo valida la web por su firma (T96), y un archivo
+ * que no sea de los cuatro vuelve como «No se pudo enviar».
+ */
+fun avisoDelTipoDeAdjunto(nombre: String, mime: String): String? =
+    AVISO_TIPO_DE_ADJUNTO.takeIf { tipoDeAdjunto(nombre, mime) == null }
+
+/**
+ * La sección [SECCION_DOCUMENTOS] de [consulta] se lista con **todos** los documentos del paciente (Q-E4-3, T106, T107): solo cuando es una
+ * consulta **nueva y en curso** —propia de la HC general y abierta, la que se está cargando—. Una **previa** (cerrada, del histórico o de la
+ * web) lista solo los documentos de esa consulta.
+ */
+fun Consulta.documentosDeTodoElPaciente(): Boolean = seEnviaALaWeb() && estado == EstadoConsulta.ABIERTA

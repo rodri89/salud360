@@ -169,4 +169,44 @@ class AdjuntosClinicaTest {
     fun debajo_de_un_mb_el_aviso_igual_habla_de_mb() {
         assertEquals("El archivo pesa 0,6 MB y el máximo es 0,5 MB", limiteExcedido(600_000, limites(maximo = 524_288)))
     }
+
+    // ---------- La pantalla de la sección «Documentos» (T107) ----------
+
+    @Test
+    fun el_selector_ofrece_pdf_jpg_jpeg_y_png_y_nada_mas() {
+        assertEquals(
+            listOf("application/pdf", "image/jpeg", "image/png"),
+            TIPOS_MIME_DE_ADJUNTO,
+            "los tres MIME que cubren PDF, JPG, JPEG y PNG (`.jpg` y `.jpeg` son `image/jpeg`)",
+        )
+        assertEquals(TipoDeAdjunto.entries.map { it.mime }, TIPOS_MIME_DE_ADJUNTO, "salen del mismo lugar que lo que viaja")
+    }
+
+    @Test
+    fun un_archivo_que_no_es_de_los_cuatro_se_rechaza_antes_de_guardarlo() {
+        listOf(
+            "informe.pdf" to "application/pdf",
+            "foto.jpg" to "image/jpeg",
+            "foto.jpeg" to "image/jpeg",
+            "Informe.PDF" to "",
+            "placa.png" to "image/png",
+        ).forEach { (nombre, mime) ->
+            assertNull(avisoDelTipoDeAdjunto(nombre, mime), "$nombre tiene que aceptarse")
+        }
+        listOf("informe.doc", "dibujo.gif", "audio.mp3", "informe.txt", "vacío").forEach { nombre ->
+            assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto(nombre, "application/octet-stream"), nombre)
+        }
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("dibujo.gif", "image/png"), "la extensión declarada manda")
+        assertEquals("Solo se aceptan PDF, JPG, JPEG o PNG", AVISO_TIPO_DE_ADJUNTO, "el mismo texto para el médico")
+    }
+
+    @Test
+    fun una_consulta_nueva_y_en_curso_lista_los_documentos_de_todo_el_paciente() {
+        assertTrue(consulta().documentosDeTodoElPaciente(), "propia, abierta y de la general: la que se está cargando")
+        assertTrue(consulta(remotoId = "7001").documentosDeTodoElPaciente(), "ya creada en la web y todavía abierta también")
+        assertFalse(consulta(estado = EstadoConsulta.CERRADA).documentosDeTodoElPaciente(), "una previa lista solo los suyos")
+        assertFalse(consulta(propia = false).documentosDeTodoElPaciente(), "el histórico no se envía")
+        assertFalse(consulta(id = "hcc-c7003", propia = false, remotoId = "7003").documentosDeTodoElPaciente(), "la de la web es previa")
+        assertFalse(consulta(especialidad = "pediatria").documentosDeTodoElPaciente(), "la regla es de la HC general")
+    }
 }

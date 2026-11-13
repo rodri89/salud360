@@ -28,6 +28,7 @@ import com.salud360.core.data.hcgeneral.origenDeConsulta
 import com.salud360.core.data.lista
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
+import com.salud360.core.data.network.hc.RespuestaLimitesDeAdjuntosDto
 import com.salud360.core.data.uno
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
@@ -143,6 +144,14 @@ class HcRepository(
     suspend fun traerAdjuntosRemotos(consulta: Consulta) {
         (backends[consulta.especialidad] as? ListaDeAdjuntos)?.traerAdjuntos(consulta.id)
     }
+
+    /**
+     * El tope de los adjuntos de una consulta de [especialidad] (spec 005, T107; RF-44, D18), para avisar **antes** de subir con `limiteExcedido`:
+     * el máximo efectivo que informa la web. `null` si esa historia clínica no sube adjuntos ([LimitesDeAdjuntos]) o su API no está. Un solo pedido,
+     * sin reintento propio: si falla, el error sale tal cual y la pantalla no frena el archivo (la cola lo compara igual al subirlo, T104).
+     */
+    suspend fun limiteDeAdjuntos(especialidad: String): RespuestaLimitesDeAdjuntosDto? =
+        (backends[especialidad] as? LimitesDeAdjuntos)?.limiteDeAdjuntos()
 
     // ---- aviso al envío y estado de envío de la consulta (spec 005, T36) ----
 

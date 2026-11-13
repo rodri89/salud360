@@ -37,6 +37,9 @@ import kotlin.test.assertTrue
  * baja con la sesión la primera vez que hay que mostrarlos. Lo que la app subió y lo que trae la lectura es **una sola fila**
  * (se empareja por `remoto_id`), un documento dado de baja en la web deja de listarse sin borrar el archivo local (Q15) y un
  * `404` del archivo no rompe la pantalla. API de adjuntos falsa y base SQLite de verdad; datos inventados.
+ *
+ * T107: además, el tope de los adjuntos que la pantalla de la sección «Documentos» pregunta **antes** de subir un archivo sale de la misma API
+ * (una capacidad aparte, [LimitesDeAdjuntos]) y sin ella no hay tope que preguntar.
  */
 class HcClinicaBackendAdjuntosTest {
 
@@ -300,16 +303,36 @@ class HcClinicaBackendAdjuntosTest {
         }
     }
 
+    // ---------- El tope antes de subir: la pantalla lo pregunta a la API (T107) ----------
+
+    @Test
+    fun el_tope_de_los_adjuntos_se_pregunta_a_la_api_y_sin_api_no_hay_tope() {
+        val web = AdjuntosFalso(tope = RespuestaLimitesDeAdjuntosDto(maximoBytes = 15_728_640, maximoWebBytes = 15_728_640))
+        conBackend(adjuntos = web) {
+            db.sembrarPropia("u-1")
+            val repo = HcRepository(db, mapOf(CodigosHc.GENERAL to backend))
+
+            assertEquals(15_728_640L, repo.limiteDeAdjuntos(CodigosHc.GENERAL)?.maximoBytes, "el tope efectivo que informa la web")
+            assertEquals(1, web.pedidosDeLimites.size, "un pedido de límites, sin subir nada")
+            assertNull(HcRepository(db).limiteDeAdjuntos(CodigosHc.GENERAL), "sin el backend de la HC general no hay tope que preguntar")
+        }
+        conBackend {
+            assertNull(backend.limiteDeAdjuntos(), "sin API de adjuntos no hay tope: la pantalla no frena el archivo")
+        }
+    }
+
     /**
-     * La web de adjuntos de mentira (T106): lo que contesta cada lista, los bytes de cada documento y qué se pidió. La subida,
-     * la baja y los límites son de T104 y acá no se usan.
+     * La web de adjuntos de mentira (T106, T107): lo que contesta cada lista, los bytes de cada documento, el tope que informa y
+     * qué se pidió. La subida y la baja son de T104 y acá no se usan.
      */
     private class AdjuntosFalso(
         var dePaciente: List<AdjuntoDeLaWebDto> = emptyList(),
         var deConsulta: List<AdjuntoDeLaWebDto> = emptyList(),
+        var tope: RespuestaLimitesDeAdjuntosDto? = null,
     ) : ClinicaAdjuntosApi {
         val pedidosDePaciente = mutableListOf<Long>()
         val pedidosDeConsulta = mutableListOf<Long>()
+        val pedidosDeLimites = mutableListOf<Int>()
         val bajados = mutableListOf<String>()
         val bytes = mutableMapOf<String, ByteArray>()
         var fallaAlBajar: Throwable? = null
@@ -347,6 +370,9 @@ class HcClinicaBackendAdjuntosTest {
             dispositivo: String,
         ): RespuestaBajaDeAdjuntoDto = error("T106 no da de baja documentos")
 
-        override suspend fun limites(): RespuestaLimitesDeAdjuntosDto = error("T106 no pregunta los límites")
+        override suspend fun limites(): RespuestaLimitesDeAdjuntosDto {
+            pedidosDeLimites += 1
+            return tope ?: error("el test no preparó el tope")
+        }
     }
 }
