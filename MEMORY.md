@@ -221,6 +221,19 @@ registros de personas): el repo es público.
    de compilación. **Verde:** `AdjuntosClinicaTest` 16 + `AdjuntosPropiosTest` 3; `core:data` **2180** (2160 + 20), clinica 38, ui 17, crecimiento 6; compilan features:hc, las dos wasm (`-Pentorno=dev`),
    core:data wasm y `:server`. Cambió `HcRepositoryCierreEnviadoTest` (la lista de escrituras suma `guardarArchivo`, 6 → 7, y una baja de adjunto). `HcApiSync` sin cambios, sin migración ni Laravel.
    **Sigue T104** (el plan y la cola envían los documentos).
+   **T104 hecha (2026-11-13): el plan y la cola envían los documentos de la HC general (PDF, JPG, JPEG y PNG).** `PlanDeEnvio.kt`: `PARTE_ADJUNTOS`,
+   `PasoDeEnvio.Adjuntos` (una `List<Archivo>`: alta = activo sin `remotoId`, baja = `remotoId` + `activo = false`) y `TablaDeLaFila.ARCHIVO`, **después de los estudios y las
+   cargas y antes del cierre**; `EntradaDelPlan.archivos`; solo la sección `documentos`, solo los cuatro tipos, nunca otra consulta ni otra HC (RF-46), la foto de un examen
+   espera en reserva (T105), lo de una anulada también, y lo que nunca viaja se limpia sin figurar enviado (RF-60). `HcClinicaEnvio`: parámetros nuevos `adjuntos:
+   ClinicaAdjuntosApi?` y `archivos: ArchivoStore?` (al final, para no romper las llamadas posicionales), `EnvioEnCurso.enviarAdjuntos` **un archivo por pedido**, bytes de
+   `ArchivoStore`, tope (`GET adjuntos/limites`, una vez por paso) comparado **antes** de subir, clave `a:<id local>`, `remoto_id` en la **misma transacción** que la limpieza
+   (RF-61/RF-55), baja con `a:<id local>-baja`, «falta el archivo en este dispositivo» sin reintento solo, y `limpiarSiNoCambio` para `ARCHIVO`. `DataModule`: la API de
+   adjuntos es `ClinicaAdjuntosApiRemota` sobre el mismo cliente completo y el `ArchivoStore` va con `getOrNull` (los tests de Koin que no lo registran no rompen). **Rojo:** 73
+   errores de compilación. **Verde:** `PlanDeEnvioE4Test` 19 + `HcClinicaEnvioAdjuntosTest` 11 + 1 en `HcClinicaEnvioRepetibleTest` y 1 en `HcClinicaEnvioAtomicoTest`;
+   `core:data` **2212** (2180 + 32), clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm y `:server`. `ServidorFalso` implementa ahora
+   `ClinicaAdjuntosApi` con memoria (subida repetible por clave, baja, listas, descarga y límites) y `Escena`/`conServidor` aportan una carpeta temporal de `ArchivoStore`; sin
+   migración, sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` sigue igual (E4 se enciende en T108). Fotos de exámenes (T105) fuera de alcance; el E2E real es T109.
+   **Sigue T106** (la lectura lista y abre los adjuntos de la web).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

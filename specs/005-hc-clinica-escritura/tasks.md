@@ -2196,7 +2196,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`
     (salida 0). **Cambió un test existente** (`HcRepositoryCierreEnviadoTest`): `intentarEscribir` suma `guardarArchivo` (6 → **7** escrituras, porque la barrera ahora también cubre los adjuntos) y se
     agrega la baja de un adjunto a la consulta cerrada y enviada. Sin migración, sin dependencias nuevas, sin Laravel y sin pedidos reales; `SECCIONES_HABILITADAS` sigue igual. **Sigue T104.**
-- [ ] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los documentos (PDF, JPG, JPEG y PNG).** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
+- [x] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los documentos (PDF, JPG, JPEG y PNG).** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
   - Tests primero: common `PlanDeEnvioE4Test` (con `habilitada = E4`; con `E3` siguen en `enReserva`): paso `Adjuntos` (`TablaDeLaFila.ARCHIVO`) con las altas (sin `remoto_id`) y las bajas
     (`activo = false` con `remoto_id`), después de los registros y las cargas y antes del cierre; un adjunto nunca subido y borrado no viaja. jvm `HcClinicaEnvioAdjuntosTest`: **un archivo por pedido**;
     lee los bytes de `ArchivoStore`; si falta el archivo local → «No se pudo enviar: falta el archivo en este dispositivo» sin reintento solo (lo trae otro dispositivo sin archivo); el `remoto_id` va a
@@ -2206,6 +2206,41 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `ConsultaViewModel.agregarArchivo` y `eliminarArchivo` **ya** llaman a `marcarSucia()` (`ConsultaViewModel.kt:466-497`), así que la cola los ve: un test lo fija y no se agrega nada
     (lo que T36 (a) dejó sin avisar son los pendientes, T83-b; el laboratorio general y el peso ya avisan, T83-a).
   - Hecho cuando: tests en verde (antes, en rojo); los de la cola de E1, E2 y E3 siguen verdes sin cambios; `SyncEngine` sigue sin subir adjuntos (T30).
+  - **Resultado (2026-11-13): HECHA — el plan y la cola envían los documentos; nada de UI ni de lectura.** Sin migración, sin Laravel, sin dependencias nuevas y sin
+    pedidos reales (solo el `ServidorFalso`, que ahora también es la API de adjuntos con memoria); `SECCIONES_HABILITADAS` sigue igual (E4 todavía no se enciende, T108) y
+    `HcApiSync`/`SyncEngine` no cambian (pediatría sigue con su camino). Las fotos de exámenes quedan fuera de alcance (T105).
+    **Rojo:** `:core:data:compileTestKotlinJvm` con **73 errores** antes del código (no compilaban `PlanDeEnvioE4Test` —`PARTE_ADJUNTOS`, `PasoDeEnvio.Adjuntos`,
+    `TablaDeLaFila.ARCHIVO` y `EntradaDelPlan.archivos`—, `HcClinicaEnvioAdjuntosTest` ni el `ServidorFalso`/`Escena` con `adjuntos` y `archivos`).
+    **Verde:** `PlanDeEnvioE4Test` **19**, `HcClinicaEnvioAdjuntosTest` **11**, y un test más en `HcClinicaEnvioRepetibleTest` y en `HcClinicaEnvioAtomicoTest`.
+    **Qué arma el plan (`PARTE_ADJUNTOS`).** Paso `Adjuntos` (`TablaDeLaFila.ARCHIVO`) **después de los estudios y las cargas y antes del cierre**, con una fila cubierta
+    por adjunto (`<id local>` y su `updated_at`). Un **alta** es un documento activo **sin** `remoto_id`; una **baja**, uno con `remoto_id` y `activo = false` (lo que deja el
+    repositorio, T103). Un documento **nunca subido y borrado** no viaja (se limpia con `SIN_CAMBIO_REAL`: en la web no hay nada que dar de baja) y uno que la web ya tiene y
+    sigue activo tampoco (no hay actualización de un archivo: reemplazarlo es un alta nueva). Son las reglas de `adjuntoViaja` (T103) más el candado: solo la sección
+    `documentos` y solo PDF/JPG/JPEG/PNG (lo demás es `LA_WEB_NO_LA_GUARDA` y se limpia); la **foto de un examen** (`registroId`) espera en reserva
+    (`NO_HAY_ENVIO_PARA_ESTE_DATO`, T105); con `E3` todo `documentos` espera en reserva (`TODAVIA_NO_SE_ENVIA`); lo de una anulada queda en reserva (`CONSULTA_ANULADA`); y
+    los de otra consulta ni se miran (RF-68). La parte entra en las de contenido: una rechazada saca el paso y **frena el cierre**.
+    **Qué hace la cola (`EnvioEnCurso.enviarAdjuntos`).** **Un archivo por pedido** (P23). Los bytes salen de `ArchivoStore.leer(rutaLocal)`; el tope se pregunta **una sola
+    vez por paso** (`GET adjuntos/limites`, D18) y se compara **antes de subir** con `limiteExcedido` (T103, sobre el mayor entre `tamanio_bytes` y los bytes leídos): uno
+    demasiado grande **no se sube, no recibe id y no figura enviado** (RF-44). La subida va por `ClinicaAdjuntosApi.subir` con `a:<id local>`, el dispositivo, el nombre, el
+    mime y `tipo = documento`; el `id` que contesta la web se anota en `archivo.remoto_id` **en la misma transacción** que la limpieza por `updated_at` (RF-61, RF-55). La
+    **baja** sale como `DELETE adjuntos/{id}` con `a:<id local>-baja` y solo limpia la fila. Lo que la web no confirma (sin `id`, o la llamada cortada) deja el archivo sucio
+    y sin id; el paso se cierra con la parte «No se pudo enviar» y el resto de los archivos del paso se intenta igual. Un `429` o un `5xx` deja «En espera» a lo que sigue
+    —incluido el cierre— y sale solo con la espera de siempre (15 s, sin ráfagas). **Falta el archivo en este dispositivo** → `NoSePudoEnviar` con el texto exacto «No se pudo
+    enviar: falta el archivo en este dispositivo», **sin reintento solo** (reintentar no trae el archivo) y sin frenar los demás archivos del paso; el cierre espera igual.
+    **Decisiones a revisar.** (a) `PasoDeEnvio.Adjuntos` lleva la `List<Archivo>` tal cual y la cola decide alta u operación con `activo`/`remotoId`: no hay fecha ni campos
+    que resolver, así que no hizo falta un `sealed` como `CargaQueViaja`. (b) `LoEnviado` **no cambia** (el id de un adjunto vive en su fila): el JSON de `paciente_extra`
+    queda igual. (c) Un documento de otra sección de la consulta (un audio, por ejemplo) se limpia como «la web no la guarda» (no hay API para eso); reemplazar un archivo
+    con el mismo id local no es una actualización: es otra fila. (d) Sin `ClinicaAdjuntosApi` o sin `ArchivoStore` el paso **queda pendiente y no se marca estado**, como
+    cuando no hay API de escritura (no puede pasar en la app: `DataModule` los inyecta; los tests que arman Koin sin `ArchivoStore` no rompen). (e) `DataModule`: la API de
+    adjuntos es `ClinicaAdjuntosApiRemota` sobre el **mismo cliente completo** (y token) que el resto de la HC general; el `ArchivoStore` va con `getOrNull` para no
+    atar el módulo a un registro que los tests de licencia/backends no aportan.
+    **Tests existentes que cambian (ninguno de comportamiento).** `HcClinicaEnvioRepetibleTest` y `HcClinicaEnvioAtomicoTest` suman un test de documentos y ajustan su KDoc;
+    `EstadoLocal.filasSucias()` suma la tabla `archivo` (infraestructura de prueba); `ServidorFalso` implementa `ClinicaAdjuntosApi` (subida repetible por clave, baja, listas,
+    descarga y límites) y `Escena`/`conServidor` aportan una carpeta temporal de `ArchivoStore` por test. Los de la cola de E1, E2 y E3 y los del plan de E1 a E3 siguen verdes
+    sin cambios. Un test fija que lo que guarda o da de baja el repositorio ya queda sucio y la cola lo ve (el `marcarSucia()` de `ConsultaViewModel`, como en T103).
+    **Totales.** `core:data` **2212** en verde (2180 + 32), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos ni salteados. Compilan
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`,
+    todos en 0. **Sigue T106**; T105 (fotos de exámenes) sigue fuera de alcance y el E2E contra el servidor real es T109.
 - [ ] **T105. Fotos de exámenes en el plan y en el envío — FUERA DE ALCANCE por ahora.** RF-44 (D24 revisada) — M — Toca API Laravel: no — **No se implementa sin pedido del usuario** (ya no depende de T95)
   - *(2026-11-13: fuera de alcance; se conserva el diseño para cuando se pida.)*
   - Tests primero: common `PlanDeEnvioE4Test` ampliado y jvm `HcClinicaEnvioAdjuntosTest` ampliado: el adjunto de un registro `examen_complementario` (`archivo.registro_id`) viaja como
