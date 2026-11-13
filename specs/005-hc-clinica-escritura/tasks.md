@@ -2173,7 +2173,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     y `core:crecimiento` 6; compilan `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`,
     `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`. Ningún test existente cambió. **Sin cablear** (`HcClinicaBackend`, `HcClinicaEnvio` y la UI
     intactos), `SECCIONES_HABILITADAS` igual, sin migración, sin dependencias nuevas y sin pedidos reales. **Sigue T103.**
-- [ ] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir (PDF e imágenes).** RF-44, RF-46, RF-60 — M — Toca API Laravel: no
+- [x] **T103. Funciones puras: qué adjunto viaja y el tope antes de subir (PDF e imágenes).** RF-44, RF-46, RF-60 — M — Toca API Laravel: no
   - Tests primero: common `AdjuntosClinicaTest`: `adjuntoViaja(archivo, consulta)` solo si cuelga de **esa** consulta propia (`consulta_id` no nulo), es de la sección `documentos`, es **PDF, JPG, JPEG
     o PNG** y no está desactivado; **nunca** uno sin consulta ni de otra historia clínica del mismo paciente (RF-46); el tipo se mira por lo que la app ya sabe del archivo (extensión declarada), y el
     servidor lo vuelve a validar por contenido (T96); `limiteExcedido(tamanio, limites)` → texto «El archivo pesa X MB y el máximo es Y MB» **antes** de subir, sin marcarlo enviado; un archivo de otro
@@ -2181,6 +2181,21 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     que **no** incluye los `consulta_id IS NULL` por paciente que hoy toma `archivosPendientesDeConsulta` (`HistoriaClinica.sq:236-240`).
   - Código: `hcgeneral/AdjuntosClinica.kt`, `HistoriaClinica.sq` (solo consultas), `HcRepository` (barrera de T36 en `guardarArchivo/eliminarArchivo`, hoy sin ella: `HcRepository.kt:592-603`).
   - Hecho cuando: tests en verde (antes, en rojo); `HcApiSync` (pediatría) sigue sin cambios y sus tests verdes.
+  - **Resultado (2026-11-13): HECHA — qué documento viaja, su tipo y el aviso del tope; sin cablear nada.** `core:data`, `hcgeneral/AdjuntosClinica.kt` (nuevo, puro: sin Compose, sin red,
+    sin base y sin reloj): `SECCION_DOCUMENTOS`, `TipoDeAdjunto` (`PDF`/`JPEG`/`PNG`, con el `id` que devuelve la lista de la web —`pdf`, `jpeg`, `png`—, su `mime` de descarga y las extensiones),
+    `tipoDeAdjunto(nombre, mime)` y `adjuntoViaja(archivo, consulta)`, que exige consulta propia de la general (`seEnviaALaWeb`), `consultaId` **igual** a esa consulta, el mismo paciente, sección
+    `documentos`, sin registro, activa y uno de los cuatro tipos: ni sin consulta ni de otra HC del paciente (RF-46) ni foto de examen (T105). El tipo lo decide la **extensión declarada** (un
+    `.gif` con `image/png` no se cuela) y, sin extensión, el `Content-Type`; la web igual valida por firma (T96). `limiteExcedido(tamanio, limites): String?` → `null` si entra y si no «El archivo
+    pesa X MB y el máximo es Y MB»; **solo texto** (no marca enviado ni escribe nada: lo usa T104), manda `maximo_bytes` (el efectivo, D18) y no el de la web solo, los MB son de 1.048.576 bytes y
+    el peso se redondea hacia arriba y el máximo hacia abajo (un décimo como mucho, con coma): 15 MB + 1 byte → «15,1 MB» contra «15 MB», así el aviso no dice que el archivo pesa lo mismo que el tope.
+    `core:database`, `HistoriaClinica.sq`: `archivosDeConsultaPropia` (los `dirty = 1`, `deleted = 0` de **una** consulta, altas y bajas, sin los `consulta_id IS NULL` del paciente); **el esquema no
+    cambia** (v11, comprobado columna por columna en el test). `HcRepository`: `guardarArchivo` y `eliminarArchivo` ahora aplican la **barrera de T36** (una propia con el cierre enviado o viajando
+    rechaza la escritura; el histórico y pediatría siguen igual). `HcApiSync` y `archivosPendientesDeConsulta` **sin cambios**.
+    **Rojo:** no compilaba por `core:data:compileTestKotlinJvm` (**60 errores**: `adjuntoViaja`, `tipoDeAdjunto`, `TipoDeAdjunto`, `limiteExcedido` y `archivosDeConsultaPropia` no existían).
+    **Verde:** `AdjuntosClinicaTest` **16**, `AdjuntosPropiosTest` **3**; `core:data` **2180** (2160 + 20), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan
+    `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`
+    (salida 0). **Cambió un test existente** (`HcRepositoryCierreEnviadoTest`): `intentarEscribir` suma `guardarArchivo` (6 → **7** escrituras, porque la barrera ahora también cubre los adjuntos) y se
+    agrega la baja de un adjunto a la consulta cerrada y enviada. Sin migración, sin dependencias nuevas, sin Laravel y sin pedidos reales; `SECCIONES_HABILITADAS` sigue igual. **Sigue T104.**
 - [ ] **T104. `PlanDeEnvio` y `HcClinicaEnvio` envían los documentos (PDF, JPG, JPEG y PNG).** RF-44, RF-46, RF-15, RF-55, RF-56, RF-61 — M — Toca API Laravel: no
   - Tests primero: common `PlanDeEnvioE4Test` (con `habilitada = E4`; con `E3` siguen en `enReserva`): paso `Adjuntos` (`TablaDeLaFila.ARCHIVO`) con las altas (sin `remoto_id`) y las bajas
     (`activo = false` con `remoto_id`), después de los registros y las cargas y antes del cierre; un adjunto nunca subido y borrado no viaja. jvm `HcClinicaEnvioAdjuntosTest`: **un archivo por pedido**;

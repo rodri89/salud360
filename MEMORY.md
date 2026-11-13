@@ -212,6 +212,15 @@ registros de personas): el repo es público.
    `ServidorFalso` de las pruebas de la cola. Rojo por compilación (73 errores) y después verde: `ClinicaAdjuntosApiTest` **21**, `core:data` **2160** (2139 + 21),
    `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin
    migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` igual y las fotos de exámenes siguen fuera de alcance. **Sigue T103.**
+   **T103 hecha (2026-11-13): qué documento de la HC general viaja y el aviso del tope antes de subir (puro, sin cablear).** `core:data/hcgeneral/AdjuntosClinica.kt` (nuevo):
+   `SECCION_DOCUMENTOS`, `TipoDeAdjunto` (`pdf`/`jpeg`/`png`, con su `mime` y extensiones), `tipoDeAdjunto(nombre, mime)` (manda la extensión declarada; sin extensión, el `Content-Type`) y
+   `adjuntoViaja(archivo, consulta)` (solo de **esa** consulta propia, mismo paciente, sección `documentos`, sin registro, activa y PDF/JPG/JPEG/PNG: nunca sin consulta ni de otra HC, RF-46) y
+   `limiteExcedido(tamanio, limites)` → «El archivo pesa X MB y el máximo es Y MB» o `null`; solo texto, no marca enviado, manda `maximo_bytes` (el efectivo) y los MB son de 1.048.576 (peso hacia
+   arriba, máximo hacia abajo, un décimo con coma). `HistoriaClinica.sq`: `archivosDeConsultaPropia` (dirty de **una** consulta, altas y bajas, sin los `consulta_id IS NULL` del paciente); **sin
+   cambio de esquema** (v11). `HcRepository.guardarArchivo/eliminarArchivo` ahora aplican la **barrera de T36** (cierre enviado o viajando → rechaza; pediatría e histórico igual). **Rojo:** 60 errores
+   de compilación. **Verde:** `AdjuntosClinicaTest` 16 + `AdjuntosPropiosTest` 3; `core:data` **2180** (2160 + 20), clinica 38, ui 17, crecimiento 6; compilan features:hc, las dos wasm (`-Pentorno=dev`),
+   core:data wasm y `:server`. Cambió `HcRepositoryCierreEnviadoTest` (la lista de escrituras suma `guardarArchivo`, 6 → 7, y una baja de adjunto). `HcApiSync` sin cambios, sin migración ni Laravel.
+   **Sigue T104** (el plan y la cola envían los documentos).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
