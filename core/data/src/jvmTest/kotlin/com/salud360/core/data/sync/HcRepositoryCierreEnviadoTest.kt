@@ -8,11 +8,13 @@ import com.salud360.core.data.repos.EstadosDeEnvio
 import com.salud360.core.data.repos.HcClinicaPruebas.PACIENTE
 import com.salud360.core.data.repos.HcClinicaPruebas.volcarTodo
 import com.salud360.core.model.Id
+import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.Consulta
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
 import com.salud360.core.model.hc.ExamenFisico
 import com.salud360.core.model.hc.RegistroClinico
+import com.salud360.core.model.newId
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +40,7 @@ class HcRepositoryCierreEnviadoTest {
             hc.guardarExamenFisico(ExamenFisico(id, peso = "80")),
             hc.guardarAntecedente(PACIENTE, "clinica", "familiares", "hta", true, "detalle", id),
             hc.guardarRegistro(RegistroClinico("r-nuevo", PACIENTE, id, "clinica", "veda", FECHA_DE_PRUEBA, mapOf("detalle" to "x")), enConsulta = id),
+            hc.guardarArchivo(Archivo(newId(), PACIENTE, id, null, "documentos", "informe.pdf", "application/pdf")),
             hc.guardarConsulta(c.copy(edadMostrar = "otra edad")),
         )
     }
@@ -69,6 +72,19 @@ class HcRepositoryCierreEnviadoTest {
     }
 
     @Test
+    fun eliminar_un_adjunto_de_una_cerrada_con_el_cierre_enviado_tampoco() = conServidor {
+        db.sembrarPropia("u1", remotoId = "7001", estado = EstadoConsulta.ABIERTA, dirty = false)
+        assertTrue(hc.guardarArchivo(Archivo("a-1", PACIENTE, "u1", null, "documentos", "informe.pdf", "application/pdf")))
+        db.historiaClinicaQueries.limpiarArchivo("a-1")
+        db.historiaClinicaQueries.upsertConsulta(consulta("u1").copy(estado = EstadoConsulta.CERRADA).toRow(200, dirty = false))
+        val antes = volcarTodo(driver)
+
+        assertFalse(hc.eliminarArchivo("a-1"))
+
+        assertEquals(antes, volcarTodo(driver))
+    }
+
+    @Test
     fun una_cerrada_con_el_cierre_pendiente_o_descartado_sigue_aceptando_escrituras_como_antes() = conServidor {
         db.sembrarPropia("pendiente", estado = EstadoConsulta.CERRADA) // dirty: el cierre espera
         db.sembrarPropia("descartada", remotoId = "7002", estado = EstadoConsulta.CERRADA, dirty = false)
@@ -83,7 +99,7 @@ class HcRepositoryCierreEnviadoTest {
     fun una_abierta_ya_enviada_sigue_editable() = conServidor {
         db.sembrarPropia("u1", remotoId = "7001", dirty = false)
 
-        assertEquals(List(6) { true }, intentarEscribir("u1").map { it })
+        assertEquals(List(7) { true }, intentarEscribir("u1").map { it })
     }
 
     @Test

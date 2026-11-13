@@ -244,6 +244,14 @@ WHERE dirty = 1 AND deleted = 0
 ORDER BY updated_at ASC;
 guardarRemotoIdArchivo: UPDATE archivo SET remoto_id = ? WHERE id = ?;
 
+-- Los adjuntos tocados de **una** consulta (altas y bajas: un `activo = 0` también viaja). No lleva los `consulta_id` NULL
+-- por paciente que `archivosPendientesDeConsulta` toma para el envío de la especialidad: en la HC general un documento sin
+-- consulta no viaja (RF-46, T103). Solo es otra consulta sobre `archivo`: el esquema no cambia.
+archivosDeConsultaPropia:
+SELECT * FROM archivo
+WHERE consulta_id = :consultaId AND dirty = 1 AND deleted = 0
+ORDER BY updated_at ASC;
+
 CREATE TABLE pendiente (
     id TEXT NOT NULL PRIMARY KEY,
     paciente_id TEXT NOT NULL,

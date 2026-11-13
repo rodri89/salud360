@@ -626,16 +626,24 @@ class HcRepository(
     suspend fun archivosPendientesDeSubir(): List<Archivo> = q.archivosPendientesDeSubir().lista { it.toModel() }
     suspend fun archivo(id: Id): Archivo? = q.archivoPorId(id).uno { it.toModel() }
 
-    /** `false` si el adjunto cuelga de una consulta de la web (o lleva un id de la web): esas no se escriben desde acá. */
+    /**
+     * `false` si el adjunto cuelga de una consulta de la web (o lleva un id de la web): esas no se escriben desde acá.
+     *
+     * También `false` si la consulta que lo recibe tiene el cierre **ya enviado** o **viajando** (la segunda barrera de
+     * escritura de T36; RF-25, D13): una consulta cerrada en la web no admite un documento nuevo. El histórico y las demás
+     * historias clínicas no están bloqueados por esto.
+     */
     suspend fun guardarArchivo(archivo: Archivo): Boolean {
         if (archivo.deLaWeb()) return false
+        if (archivo.consultaId != null && cierreEnviadoOViajando(archivo.consultaId!!)) return false
         q.upsertArchivo(archivo.toRow(ahoraMillis()))
         return true
     }
 
-    /** `false` si no existe o cuelga de una consulta de la web. */
+    /** `false` si no existe, cuelga de una consulta de la web o su consulta ya tiene el cierre enviado o viajando (T36). */
     suspend fun eliminarArchivo(id: Id): Boolean {
         val a = archivo(id)?.takeUnless { it.deLaWeb() } ?: return false
+        if (a.consultaId != null && cierreEnviadoOViajando(a.consultaId!!)) return false
         q.upsertArchivo(a.copy(activo = false).toRow(ahoraMillis()))
         return true
     }
