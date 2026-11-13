@@ -167,6 +167,15 @@ registros de personas): el repo es público.
   prohíbe a los demás tests de Unit), así que la comprobación del prefijo queda en `EnviosRegistroTest` y en `AdjuntosReglasTest` solo la forma de la clave y los
   tipos `adjunto`/`baja_adjunto`. `tests/Unit` en la copia servida: **1313 en verde, 7267 aserciones, salida 0** (1281 + 32). `hc_clinica` idéntica (foto
   antes/después: ninguna tabla cambió). Sigue **T97** (subir: servicio, controlador y ruta).
+   **T97 hecha (2026-11-13): `POST consultas/{id}/adjuntos` en hclinica `0df2c05` (rama `salud360-api`, sin push; copia servida idéntica y `route:clear`).**
+   `AdjuntosService` (nuevo) y `AdjuntosController` (nuevo), `tests/Unit/EscrituraAdjuntosTest.php` (17 tests). Multipart `archivo`, `clave:"a:<id local>"`,
+   `dispositivo`, `tipo:"documento"`: `201`/`200` (repetir la misma clave = misma fila, un solo archivo), PDF/JPG/JPEG/PNG por **firma**, límite 15 MB, `422`
+   `archivo_invalido|archivo_grande|tipo_invalido|clave_en_uso`, `403/404/409` de RF-52/53, `500 carpeta_no_escribible` con la ruta exacta y `500 escritura` sin
+   detalle. Orden sin huérfanos: temporal -> fila de `consulta_pdfs` + registro `a:` en una transacción -> renombrar; `finally` borra el temporal. La respuesta no
+   trae la ruta del disco; `tamanio` sale del archivo (la tabla no tiene esa columna). No toca la lectura ni `medico_infos`, sin columnas ni migraciones.
+   **Pruebas:** `tests/Unit` **1330 en verde (7410 aserciones)**; base descartable `hc_clinica_t10` **40 controles por modo** (estricto y sin) y HTTP contra
+   `hc_clinica` **26 controles**; 6/6 mutaciones detectadas; `t97-clean-antes` vs `t97-clean-final` **sin diferencias** y P1-P5 intactos. Los archivos de prueba se
+   borraron del disco con su SHA-256 anotado en `%TEMP%\opencode\t97\*antes-de-borrar.txt`. Sigue **T98** (listar, bajar y baja lógica).
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

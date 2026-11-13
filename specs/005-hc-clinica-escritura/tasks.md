@@ -1975,7 +1975,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     **`hc_clinica` no cambió:** `t11\snapshot.cmd t96-antes` y `t96-despues` idénticas (138 líneas; ninguna tabla cambió), con el `tests/Unit` completo
     corrido entre las dos. **A tener en cuenta:** contra `t79-final` hay 7 tablas distintas (2 consultas, 1 ecografía, 2 laboratorios, 2 pesos, 9 filas de
     `salud360_envios` y 1 de `salud360_token_cache`): actividad posterior a T79 y ajena a esta tarea (no hubo pedidos a la API ni escrituras mías).
-- [ ] **T97. Subir documentos (PDF, JPG, JPEG y PNG): servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
+- [x] **T97. Subir documentos (PDF, JPG, JPEG y PNG): servicio, controlador y ruta (repetible y sin archivos huérfanos).** RF-44, RF-15, RF-52, RF-53 — M — Toca API Laravel: sí
   - Código: `app/Services/Salud360/AdjuntosService.php` y `app/Http/Controllers/Api/Salud360/AdjuntosController.php` (nuevos: la lectura sigue sin escribir), `Route::post('consultas/{id}/adjuntos', …)`
     (multipart: `archivo`, `clave`, `dispositivo`, `tipo`). El tipo lo decide la **firma** (T96), no el nombre: PDF, JPG/JPEG o PNG, hasta el límite. Orden para que no queden filas sin
     archivo ni archivos sin fila: el archivo se guarda con un nombre temporal; la fila de `consulta_pdfs` (`consulta_id`, `paciente_id`, `nombre_original`, `ruta_archivo`, `activo = 1`;
@@ -1987,6 +1987,37 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     fila y un solo archivo en disco; un archivo mayor que el límite → `422 archivo_grande` sin escribir; un archivo que dice `.pdf` o `.png` y no empieza con su firma → `422 archivo_invalido`;
     una subida cortada (cuerpo parcial) no deja fila ni archivo; `tipo = foto_examen` → `422 tipo_invalido`; consulta de la web, cerrada, ajena o rol sin permiso → los códigos de
     RF-52/RF-53; los archivos de prueba **se borran** del disco en la limpieza (con su SHA-256 verificado antes, como T2); `medico_infos` idéntico.
+  - **Resultado (2026-11-13): HECHA — `POST consultas/{id}/adjuntos` en hclinica local.** hclinica `0df2c05` (rama `salud360-api`, sin push):
+    `app/Services/Salud360/AdjuntosService.php` (nuevo), `app/Http/Controllers/Api/Salud360/AdjuntosController.php` (nuevo), `Route::post('consultas/{id}/adjuntos', …)`
+    dentro del grupo `salud360` y `tests/Unit/EscrituraAdjuntosTest.php` (nuevo, 17 tests). La copia servida quedó idéntica al clon (MD5 de los cuatro archivos) y con `route:clear`;
+    no se tocó el parche local de los dos blades. `php -l` limpio y sin BOM.
+    **Contrato.** Multipart `{archivo, clave:"a:<id local>", dispositivo, tipo:"documento"}`. `201 {ok, adjunto:{id, nombre_original, tamanio, created_at}}`; con la misma clave otra vez
+    `200` con la misma fila y un solo archivo (no se reescribe ni el archivo ni la fila); `tamanio` sale del archivo subido (la tabla `consulta_pdfs` no tiene esa columna). `422 archivo_invalido`
+    si la firma no es `%PDF-`, `FF D8 FF` o `89 50 4E 47 0D 0A 1A 0A` (el nombre y el `Content-Type` no se miran; `.jpg` y `.jpeg` son el mismo tipo), `422 archivo_grande` por encima del
+    límite efectivo (15 MB locales) **antes** de escribir, `422 tipo_invalido` para `foto_examen` u otro valor, `422 datos_invalidos` con `clave_invalida`/`dispositivo_invalido`/
+    `consulta_invalida`/`clave_en_uso`, `403 sin_permiso|fuera_de_cartera|consulta_no_propia`, `404 consulta_no_encontrada`, `409 consulta_cerrada`, `500 escritura` sin detalle y
+    `500 carpeta_no_escribible` **nombrando la ruta exacta** si la carpeta no se crea o no se puede escribir. La respuesta nunca trae la ruta del disco. Orden: temporal
+    (`tmp_<seg>_<azar>.part`) en la carpeta definitiva → fila de `consulta_pdfs` (`activo = 1`) + registro `a:` en una transacción con la consulta bloqueada → renombrar al definitivo
+    (`<seg>_<azar>.<ext>` del tipo detectado); `finally` borra el temporal si quedó y el rollback revierte la fila y el registro. La carpeta es `config('salud360.img_path')` o
+    `public_path('img')`, más `<email antes de la arroba>/consulta_pdf`; el nombre original se sanea con `AdjuntosReglas` y el de disco lo genera el servidor. La subida exige consulta
+    propia, creada por la app y abierta (repetir la misma clave se admite aun cerrada); rol médico y cartera los controla el controlador. No toca la lectura, no agrega tablas ni columnas
+    y nunca escribe `medico_infos`.
+    **Pruebas.** (1) **Unit, primero EN ROJO:** `EscrituraAdjuntosTest` 17 tests, **15 errores y 1 falla** (la clase no existía; 1 test de reglas ya pasaba), después verde. **`tests/Unit`
+    completo en la copia servida: 1330 tests, 7410 aserciones, salida 0** (1313 + 17). (2) **Base descartable `hc_clinica_t10`** (`%TEMP%\opencode\t97\adjuntos-con-base.php`, estricto y
+    sin `sql_mode`): **40 controles OK por modo, 0 fallas**: PDF/PNG/JPEG (fila activa, ruta relativa de la web, SHA-256 del archivo y registro `adjunto` con el id), repetir la misma
+    clave (200, misma fila, un solo archivo y SHA intacto), `a:` de otra operación → `clave_en_uso`, PDF falso, extensión mentirosa (PNG `.pdf` se guarda `.png`), 15.728.641 bytes →
+    `archivo_grande` sin fila ni archivo, subida parcial y `foto_examen` sin escribir, consulta de la web/cerrada/ajena/fuera de cartera/administrador/secretaria, y rollback con un
+    trigger que hace fallar el registro: `500 escritura`, ni fila ni archivo definitivo ni `.part` (conexión aparte para el trigger). `medico_infos` con el mismo CHECKSUM de punta a punta
+    (antes del fallo simulado) y limpieza por id y por clave al final. (3) **HTTP contra `hc_clinica`** (paciente sintético 99000961, consultas `c:t97-h*`, claves `a:t97-h*`, pedidos
+    ~1,3 s, `%TEMP%\opencode\t97\http-t97.ps1`): **26 controles OK, 0 fallas, salida 0**: sin token `401 sin_token` (la ruta existe, no `404`), `GET` sobre la subida `405`, PDF/PNG/JPEG con
+    su SHA-256, repetir `200` misma fila y un solo archivo, falso/límite/`foto_examen`, consulta de la web/ajena/fuera de cartera/cerrada (`403`/`403`/`403`/`409`), `medico_infos`
+    idéntico y limpieza por id y por clave. `t11\snapshot.cmd t97-clean-antes` y `t97-clean-final` **sin diferencias** (ni siquiera `salud360_token_cache`); P1–P5 y 1997–2001 intactos.
+    (4) **Mutaciones** (copia servida, restaurada desde el clon y MD5 verificado): **6 aplicadas, 6 detectadas** — aceptar sin firma (unit 2 fallas; el script con base se corta al
+    aceptar el PDF falso), no borrar el temporal (unit 1 y base 1 falla), no repetible (unit 1 y base 1), escribir `medico_infos` (base 1: el CHECKSUM cambia), borrar el archivo definitivo
+    en el `finally` (base 7), y renombrar antes de registrar (unit 1 y base 1: queda el archivo huérfano).
+    **Archivos de prueba.** Se anotó ruta + SHA-256 antes de borrarlos en `%TEMP%\opencode\t97\archivos-antes-de-borrar.txt` (base), `archivos-http-antes-de-borrar.txt` (HTTP) y
+    `restos-antes-de-borrar.txt` (restos de las mutaciones); después se borraron todos, junto con las carpetas `public\img\t97.medico` y `t97.otro`. Los scripts, salidas y snapshots
+    quedan fuera del repo, en `%TEMP%\opencode\t97` y `t11`. **Sigue T98** (listar, bajar y baja lógica); no se adelantó nada de eso.
 - [ ] **T98. Listar (por paciente o por consulta), bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí
   - Código en `AdjuntosController`: `GET pacientes/{id}/adjuntos` (**consulta nueva**: todos los documentos `activo = 1` de todas las consultas del paciente, cada uno con su `consulta_id`) y
     `GET consultas/{id}/adjuntos` (**consulta previa**: solo los de esa consulta), con `id`, `nombre_original`, `tamanio`, `tipo` (`pdf|jpeg|png`), `created_at` y `consulta_id`; nunca la ruta del
