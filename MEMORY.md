@@ -176,6 +176,14 @@ registros de personas): el repo es público.
    **Pruebas:** `tests/Unit` **1330 en verde (7410 aserciones)**; base descartable `hc_clinica_t10` **40 controles por modo** (estricto y sin) y HTTP contra
    `hc_clinica` **26 controles**; 6/6 mutaciones detectadas; `t97-clean-antes` vs `t97-clean-final` **sin diferencias** y P1-P5 intactos. Los archivos de prueba se
    borraron del disco con su SHA-256 anotado en `%TEMP%\opencode\t97\*antes-de-borrar.txt`. Sigue **T98** (listar, bajar y baja lógica).
+   **T98 hecha (2026-11-13): listas, descarga y baja lógica de los documentos, hclinica `a68bb95` (rama `salud360-api`, sin push; copia servida idéntica y `route:clear`).**
+   `GET pacientes/{id}/adjuntos` (consulta nueva: todos los documentos vigentes de todas las consultas del paciente, con su `consulta_id`) y `GET consultas/{id}/adjuntos` (previa: solo los suyos), con
+   `{id, nombre_original, tamanio, tipo pdf|jpeg|png, created_at, consulta_id}`; nunca la ruta del disco ni una URL; sin consulta (`consulta_id = 0`) ni de otro paciente no se listan. `GET adjuntos/{id}/archivo`
+   baja los bytes con la sesión y el `Content-Type` real (solo `activo = 1`, archivo en disco y paciente en cartera; falta → `404`). `DELETE adjuntos/{id}` con `{clave:"a:<id local>-baja", dispositivo,
+   consulta_id}` → `200 {ok, baja, id}`, `activo = 0` sin borrar el archivo, solo lo que subió la app para ese médico en esa consulta abierta; lo de la web es `403 adjunto_no_propio` (códigos nuevos, análogos
+   a los de carga) y repetir es `ok`. `tamanio` sale de `filesize` (0 si falta el archivo) y el tipo de la extensión que generó el servidor. No toca la lectura ni `medico_infos`; sin columnas ni migraciones.
+   **`tests/Unit` 1345 en verde (7549 aserciones; 1330 + 15)**, base descartable 54 controles × 2 modos, HTTP 35 controles, 5/5 mutaciones; `hc_clinica` igual salvo `salud360_token_cache`.
+   Cambiaron dos tests existentes (rutas de `EscrituraAdjuntosTest` y el conteo de `Route::delete(` de `EscrituraBajaCargasTest`, 4 → 5). **Sigue T99** (límites de subida); las fotos de exámenes siguen fuera de alcance.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

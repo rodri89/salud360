@@ -2018,7 +2018,7 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     **Archivos de prueba.** Se anotó ruta + SHA-256 antes de borrarlos en `%TEMP%\opencode\t97\archivos-antes-de-borrar.txt` (base), `archivos-http-antes-de-borrar.txt` (HTTP) y
     `restos-antes-de-borrar.txt` (restos de las mutaciones); después se borraron todos, junto con las carpetas `public\img\t97.medico` y `t97.otro`. Los scripts, salidas y snapshots
     quedan fuera del repo, en `%TEMP%\opencode\t97` y `t11`. **Sigue T98** (listar, bajar y baja lógica); no se adelantó nada de eso.
-- [ ] **T98. Listar (por paciente o por consulta), bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí
+- [x] **T98. Listar (por paciente o por consulta), bajar y dar de baja adjuntos.** RF-45, RF-46, RF-52 — M — Toca API Laravel: sí
   - Código en `AdjuntosController`: `GET pacientes/{id}/adjuntos` (**consulta nueva**: todos los documentos `activo = 1` de todas las consultas del paciente, cada uno con su `consulta_id`) y
     `GET consultas/{id}/adjuntos` (**consulta previa**: solo los de esa consulta), con `id`, `nombre_original`, `tamanio`, `tipo` (`pdf|jpeg|png`), `created_at` y `consulta_id`; nunca la ruta del
     disco ni una URL pública; el paciente tiene que ser visible para el médico; nunca uno sin consulta ni de otra HC (RF-46). `GET adjuntos/{id}/archivo` (stream con el `Content-Type` real —
@@ -2028,6 +2028,42 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
   - Hecho cuando: PHP-base y curl: la lista del paciente trae lo de **todas** sus consultas y la de la consulta solo lo de esa; trae lo subido desde la web y desde la API (PDF, JPG/JPEG y PNG); el `GET` del
     archivo devuelve los mismos bytes (SHA-256) y el `Content-Type` correcto; sin token → `401`; de un paciente fuera de la cartera → `403`; un adjunto sin consulta o de otra HC no se lista; la baja deja la
     fila en 0 y el archivo en el disco; un PDF de la web no se da de baja desde la API (`403`); `medico_infos` idéntico.
+  - **Resultado (2026-11-13): HECHA — listas, descarga y baja lógica en hclinica local.** hclinica `a68bb95` (rama `salud360-api`, sin push; copia
+    servida idéntica en los siete archivos del repo y `route:clear`; el parche local de los dos blades no se tocó). Sin columnas ni migraciones; `ConsultaController`,
+    `ConsultasService` y `medico_infos` intactos.
+    **Contrato.** `GET pacientes/{id}/adjuntos` → `{ok, adjuntos:[{id, nombre_original, tamanio, tipo, created_at, consulta_id}]}` con **todos** los documentos vigentes de todas
+    las consultas del paciente (de la más nueva a la más vieja); `GET consultas/{id}/adjuntos` → lo mismo con **solo** los de esa consulta. En los dos: solo `consulta_pdfs` de la HC general con
+    `activo = 1`, con la consulta del paciente (el `JOIN` con `consultas` deja afuera `consulta_id = 0` y la fila cuyo paciente no es ese) y `tamanio` = `filesize` del archivo (0 si falta en el disco,
+    la fila se lista igual; la tabla no tiene la columna). El `tipo` sale de la **extensión que generó el servidor** (`.pdf`, `.jpg`/`.jpeg`, `.png`) y nunca del nombre original; no se devuelve la ruta del
+    disco ni una URL. `GET adjuntos/{id}/archivo` → los bytes por `response()->file` con `Content-Type` `application/pdf`, `image/jpeg` o `image/png`, solo con sesión de médico, paciente en cartera,
+    fila `activo = 1` y archivo en el disco; si falta → `404 adjunto_no_encontrado` (también si la fila está de baja). `DELETE adjuntos/{id}` con `{clave:"a:<id local>-baja", dispositivo, consulta_id}`
+    → `200 {ok, baja: true, id}`; `activo = 0` y `updated_at`, **sin borrar el archivo**, solo si la consulta es propia, creada por la app, abierta y del paciente del documento, y el documento lo subió la
+    app para ese médico (registro `a:` de `salud360_envios`); repetir la misma clave contesta lo registrado y otra clave sobre uno ya de baja es `200` sin escribir. Lo de la web es
+    `403 adjunto_no_propio`; fuera de la cartera, `403 fuera_de_cartera`; de otra consulta/de la web, `403 consulta_no_propia`; consulta cerrada, `409`.
+    **Decisiones no previstas en el plan:** (a) los códigos `403 adjunto_no_propio` y `404 adjunto_no_encontrado` (el plan solo decía `403`; son los análogos de `carga_no_propia`/`carga_no_encontrada`);
+    (b) la descarga **sí** entrega un documento sin consulta (`consulta_id = 0`) por id si el paciente es visible, porque el contrato de la descarga solo exige `activo`, archivo y paciente visible: lo que
+    se excluye es **listarlo**; (c) el nombre con el que se baja es el `basename` del disco (lo pone `BinaryFileResponse`); el original está en la lista; (d) la baja mira la autorización de la consulta
+    **antes** de la transacción, como T77, así que repetirla después de cerrar da `409`; (e) se tocaron **dos tests existentes**: el de rutas de `EscrituraAdjuntosTest` (T97 fijaba que no existieran
+    `archivo`/`baja`) y el conteo de `Route::delete(` de `EscrituraBajaCargasTest` (4 → 5).
+    **Pruebas.** (1) **Unit, primero EN ROJO:** `tests/Unit/LecturaAdjuntosTest.php` (nuevo, 15 tests) dio **13 errores + 1 falla** (métodos y rutas que no existían), después verde.
+    **`tests/Unit` completo en la copia servida: 1345 tests, 7549 aserciones, salida 0** (1330 + 15). (2) **Base descartable `hc_clinica_t10`** (`%TEMP%\opencode\t98\adjuntos-lectura-con-base.php`,
+    estricto y sin `sql_mode`): **54 controles OK por modo, 0 fallas**. Arma con la app PDF/PNG en una consulta abierta y JPG en una que después cierra, y con filas directas lo que sube la web
+    (PDF/PNG en una consulta de la web, un PDF en una consulta propia sin registro `a:`, otro en `consulta_id = 0`, uno de otro paciente, uno `activo = 0` y uno cuyo archivo no está): comprueba
+    las dos listas (ids exactos, seis campos, `consulta_id`, `tamanio`, tipo, orden, sin ruta ni URL), la descarga con SHA-256 y `Content-Type` de los tres tipos (también lo de la web), los `404` de
+    archivo faltante/inactivo, `403 fuera_de_cartera` y `sin_permiso`, la baja (`activo = 0`, archivo con el mismo SHA, registro `baja_adjunto`, ya no se lista), la repetición con la misma y con otra
+    clave, `403 adjunto_no_propio` de lo de la web, `404` de otro paciente, `409` de consulta cerrada, `403` de consulta de la web/ajena, `422 clave_en_uso`/`clave_invalida`/`consulta_invalida`,
+    `medico_infos` con el mismo CHECKSUM y limpieza por id y por clave. (3) **HTTP contra `hc_clinica`** (`%TEMP%\opencode\t98\http-t98.ps1`, paciente sintético 99000983, uno sin cartera
+    99000984, consulta `c:t98-h*`, claves `a:t98-h*`, pedidos ~1,3 s): **35 controles OK, 0 fallas, salida 0**; las cuatro rutas nuevas responden `401 sin_token` (no `404`), la lista del paciente y las
+    dos de consulta, la descarga con SHA-256/`Content-Type` de PDF/PNG y de lo de la web, la baja y su repetición, `403` de lo de la web y de la consulta de la web, `409` tras cerrar, la descarga
+    sigue después del cierre, `medico_infos` idéntico y limpieza. `t11\snapshot.cmd t98-antes` y `t98-final`: **la única tabla distinta es `salud360_token_cache`** (2 filas, contenido),
+    esperable; P1–P5 y 1997–2001 intactos. (4) **Mutaciones** (copia servida, restaurada desde el clon con MD5 verificado): **5 aplicadas, 5 detectadas** — listar los de `consulta_id = 0`/otro
+    paciente (unit 1, base 2), listar de otra consulta (base 3), borrar el archivo físico en la baja (unit 1, base 3), `Content-Type` fijo `application/pdf` (unit 1, base 3) y permitir la baja de lo de
+    la web (unit 1, base 1). **Archivos de prueba:** ruta + SHA-256 anotados antes de borrarlos en `%TEMP%\opencode\t98\archivos-antes-de-borrar.txt` y `archivos-http-antes-de-borrar.txt`;
+    después se borraron los del disco, las descargas y las carpetas `public\img\t98.medico` y `t98.otro` (la carpeta del médico real quedó con la misma cantidad de archivos que antes).
+    **Archivos:** `app/Services/Salud360/AdjuntosReglas.php` (`CONTENIDOS`, `tipoDeRuta`, `tipoDeContenido`, `adjuntoDeLista`, `adjuntoVigente`, `rutaDelAdjunto`, `rutaGuardadaValida`,
+    `rutaDelArchivo`, `accionDeBaja`, `respuestaDeBaja`, `respuestaDeBajaGuardada`, `adjuntoNoEncontrado`/`adjuntoNoPropio`), `AdjuntosService` (`listarDelPaciente`, `listarDeLaConsulta`,
+    `adjunto`, `paraBajar`, `bajaAdjunto`), `AdjuntosController` (`delPaciente`, `deLaConsulta`, `archivo`, `baja` y sus auxiliares) y `routes/api.php`. **Sigue T99** (límites de subida).
+
 - [ ] **T99. Límites de subida (solo lectura).** RF-44, D18 — S — Toca API Laravel: sí
   - Tests primero: `AdjuntosReglasTest` (la forma de la respuesta con `limiteEfectivo`). Código: `Route::get('adjuntos/limites', …)` → `{maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` con
     `ini_get`; **no escribe nada** y no toca el disco. En producción solo se llama cuando el usuario apruebe la etapa de producción (D18).
