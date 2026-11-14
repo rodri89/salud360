@@ -282,6 +282,16 @@ registros de personas): el repo es público.
    el `SQLSTATE` (código `1142`, salida 1). `--datos` corre además la carga inicial de perfiles (idempotente); sin la opción no escribe datos.
    Probado dos veces en una base descartable (copia de `t10`) y con un usuario de solo `SELECT`; `SHOW CREATE TABLE` idéntico al de `hc_clinica`.
    `tests/Unit` 1349 en verde. Pasos de producción en `specs/005-hc-clinica-escritura/tasks.md` (§E9).
+- **Correcciones del reviewer de la 005 hechas (2026-11-14, sin push).** (1) **RF-31/RF-60:** el contador ya no agrega la parte de laboratorio
+  por ver una carga sucia; las partes salen **solo del plan** (`PARTE_CARGAS`), así que una carga sin fecha útil, una baja que nunca llegó a la web
+  o la de una consulta anulada no dejan la consulta en «Falta enviar» para siempre. `EntradaDelContador` perdió `laboratorios` y se borró
+  `PARTE_LABORATORIOS` (nadie lo escribía: la cola anota `PARTE_CARGAS`). (2) **RF-44:** `AdjuntosClinica.tipoPorContenido` valida las firmas de la
+  web (`%PDF-`, `FF D8 FF`, PNG) y `avisoDelTipoDeAdjunto` recibe los bytes, así que un `.pdf` con contenido inválido se rechaza **antes** de crear
+  la fila (la extensión/MIME sigue siendo el primer filtro). (3) Doc: T108/P22 ya no dicen `SUBENTREGA_HABILITADA = E4` (el candado es
+  `SECCIONES_HABILITADAS`, 20 ids; `SUBENTREGA_HABILITADA` sigue en E1), `SeccionesEnviables` dice «documentos (PDF, JPG, JPEG y PNG)» y
+  `DataModule` ya no dice que la cola no la llama nadie. **El tope de 191 no se aplica en la app** (decisión del usuario, Q-E2-3): lo valida el
+  servidor (`422 texto_demasiado_largo`); **riesgo aceptado** y anotado en T64. Rojo: 3 de 30 en `ContadorDeEnvioTest` y 20 errores de
+  compilación; verde `core:data` **2234** (+8), clinica 38, ui 17, crecimiento 6 y los cinco compilados en 0.
 - **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
   (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
   main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del

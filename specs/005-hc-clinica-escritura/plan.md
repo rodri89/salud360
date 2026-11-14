@@ -600,8 +600,9 @@ suma los tipos `adjunto` y `baja_adjunto` (el prefijo `a`).
 - **P20. Pendientes: fila portadora + huella (P4) y upsert en el servidor.**
 - **P21. Adjuntos: controlador y servicio aparte, archivo temporal + transacción + renombrar, nunca se borra un archivo del disco.** *Descartado:* ampliar el controlador de escritura
   (mezclaría subidas de archivos con la garantía «la escritura de datos es JSON»), y borrar el archivo al dar de baja (la web no lo hace y el historial puede apuntar a él).
-- **P22. Una constante de subentrega por tarea de habilitación** (T67, T88, T108), la última antes del E2E de cada subentrega. Si el usuario acepta el orden alternativo (Q-B), una tarea chica
-  anterior la reemplaza por un conjunto de secciones habilitadas. *Descartado:* habilitar de a poco sin tarea propia (se publicaría una versión intermedia por accidente).
+- **P22. Un conjunto de secciones habilitadas por versión (`SECCIONES_HABILITADAS`) y tareas que solo lo suman** (T60-bis, T67, T88, T108), la última antes del E2E de cada subentrega.
+  `SUBENTREGA_HABILITADA` sigue en E1 y solo siembra el conjunto; el candado real es el conjunto. *Descartado:* una constante de subentrega por tarea de habilitación (se pisaba entre subentregas),
+  y habilitar de a poco sin tarea propia (se publicaría una versión intermedia por accidente).
 - **P23. Pedidos por envío.** RF-28 pide fijar y justificar el número. Una consulta completa con cola real manda, en una ráfaga y en este orden: crear (1), secciones (1), examen (1), formularios
   (1), antecedentes (1), registros (1), cargas (una por carga nueva o tocada), pendientes (1), adjuntos (uno por archivo) y cierre (1); lo ya enviado no se reenvía, así que una ráfaga normal de
   cambios cuesta, **según una estimación del planificador (a medir en T68, T89 y T109)**, de 2 a 5 pedidos. Con 60 por minuto por IP y la espera de 4 s, un consultorio con varios médicos no se acerca al límite; si un envío grande se acerca, `429` frena a **todas**

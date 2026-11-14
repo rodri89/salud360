@@ -1309,6 +1309,10 @@ migración local. Orden: servidor local (T48 a T60) → app: datos (T61 a T65), 
     **Decisiones a revisar.** (a) **Un `ref` confirmado sin id no se limpia:** el servidor real siempre devuelve `ids` de lo aceptado (contrato de T61), pero si faltara, limpiar la fila sin id la dejaría sin «la web ya la tiene» y el próximo cambio crearía una fila nueva; dejarla pendiente es lo único que no pierde nada. (b) **El motivo del parcial nombra los `ref` (`r:<id local>`)** y no el tipo de estudio: es lo que devuelve la API en `guardadas`; si el usuario prefiere el nombre del estudio («ecografía abdominal»), es un cambio chico en `anotarEstado`. (c) **La `else` de `ejecutar` ahora lanza** en vez de devolver `false` (como pedía la tarea): con los pasos de hoy es inalcanzable; un paso nuevo sin rama se ve como un fallo local y se reintenta con la espera de una causa pasajera. (d) La baja de un registro (`borrado`) sigue fuera de alcance: el plan de T62-b no la arma (Q-E2-2) y el `ServidorFalso` la aplica por si la usa T64, sin test propio.
 - [ ] **T64. Tope de largo, borrar/completar y el repositorio.** RF-39, RF-40, RF-68, RF-70 — M — Toca API Laravel: no — **BLOQUEADA por Q-E2-3 y Q-E2-4**
   - La parte de borrar y completar registros depende de T62-b (`LoEnviado.registros` y el plan de registros); el tope de largo, de Q-E2-3.
+  - **Riesgo aceptado (corrección del reviewer, 2026-11-14): el tope de 191 no se aplica en la app.** Por decisión del usuario (Q-E2-3) la app no
+    avisa ni recorta el largo: el **servidor** lo valida y contesta `422 texto_demasiado_largo` (en la copia local la columna es `varchar(191)`), así
+    que el dato queda sucio con «No se pudo enviar» y el médico lo ve. No se implementa; si algún día se hace, es solo la mitad de esta tarea
+    (`LimitesDeCampo` y el aviso en la pantalla).
   - Tests primero: common `LimitesDeCampoTest` (largo por campo según T48; `limiteAlcanzado(texto)`; nunca recorta; cuenta caracteres con la misma regla que
     el servidor) y `ReglasDeRegistroTest` (`puedeBorrar(registro, consulta)`: solo examen/interconsulta, de esta consulta, abierta y no `hcc-`;
     `puedeCompletar(…)` [Q-E2-4]); jvm `HcRepositoryRegistrosTest`: borrar un registro **ya enviado** → `activo = 0, dirty = 1` y viaja la baja;
@@ -2311,8 +2315,9 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     PNG** (`TIPOS_MIME_DE_ADJUNTO`, de `TipoDeAdjunto`: `application/pdf,image/jpeg,image/png`; `.jpg` y `.jpeg` son el mismo MIME) y el botón dice
     «Agregar PDF o imagen»; lo demás (HC digitalizada, familigrama, adjuntos de estudios) sigue con «cualquier imagen o PDF» y «Agregar foto o PDF».
     (2) Un archivo que no es de los cuatro se rechaza **antes de guardarlo** con `avisoDelTipoDeAdjunto` («Solo se aceptan PDF, JPG, JPEG o PNG»,
-    `AVISO_TIPO_DE_ADJUNTO`): la app mira la extensión y, si no tiene, el `Content-Type`; el contenido lo valida la web por su firma (T96) y vuelve
-    como «No se pudo enviar». (3) El tope se avisa **antes de subir** con `limiteExcedido` (T103): `ConsultaViewModel.avisoDelTope` pregunta los límites
+    `AVISO_TIPO_DE_ADJUNTO`): la app mira la extensión y, si no tiene, el `Content-Type`. Desde la corrección del reviewer de 2026-11-14 también mira el
+    **contenido** con `tipoPorContenido` (las firmas que valida la web, T96): un `.pdf` que no es un PDF se rechaza acá, sin crear la fila, en vez de
+    guardarse y volver después como «No se pudo enviar». (3) El tope se avisa **antes de subir** con `limiteExcedido` (T103): `ConsultaViewModel.avisoDelTope` pregunta los límites
     de la web una sola vez por pantalla y el texto sale en rojo debajo del botón; el archivo **no se guarda** (no queda en el dispositivo ni pendiente).
     (4) Ícono/miniatura por tipo (`tipoDeAdjunto`): PDF → ícono, JPG/JPEG/PNG → miniatura (`decodificarImagen`), audio y lo demás como antes; se abre con
     `bytesDe` + `abrirArchivo` (T106: lo de la web se baja con la sesión la primera vez y queda cacheado) y con el `mime` del tipo, no con un
@@ -2338,8 +2343,9 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `HcClinicaBackendAdjuntosTest` contesta `limites()` y anota los pedidos (antes fallaba a propósito porque T106 no los preguntaba), y su KDoc suma T107.
     **Sigue T108** (levantar el candado de E4: recién ahí se ve todo esto en la app).
 - [x] **T108. Habilitar E4 (levantar el último candado).** RF-4 — S — Toca API Laravel: no — **Solo con E3 cerrada**
-  - `SUBENTREGA_HABILITADA = E4`: la HC general ofrece las 25 secciones (menos las que D9 deja afuera, que no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
-    `LecturaClinicaCatalogoTest`, `EstadoEnPantallaTest` y los que usan la constante por omisión (con su porqué). **Con esto "casi todo el perfil queda editable"**: lo único que sigue de solo lectura
+  - El candado es **`SECCIONES_HABILITADAS`** (el conjunto de secciones que esta versión envía; hoy 20 ids); **`SUBENTREGA_HABILITADA` sigue en E1** y solo siembra el conjunto
+    (`SeccionesEnviables.kt`). La HC general ofrece las secciones que esta versión envía (las que D9 y la 005 dejan afuera no cuentan en el catálogo que se envía). Tests que cambian: `SeccionesEnviablesTest`,
+    `LecturaClinicaCatalogoTest`, `EstadoEnPantallaTest` y los que usan el conjunto por omisión (con su porqué). **Con esto "casi todo el perfil queda editable"**: lo único que sigue de solo lectura
     es lo que D9 dice (ver el resumen final del planificador).
   - Hecho cuando: `:core:data:jvmTest` y `:especialidades:clinica:jvmTest` completos en verde; el wasm compila.
   - **Resultado (2026-11-13): HECHA REDUCIDA — se habilita solo `documentos` (decisión del usuario); las fotos de exámenes siguen fuera de alcance.** No se sube `SUBENTREGA_HABILITADA` a E4: sigue en
@@ -2357,6 +2363,25 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `documentos` a las que se ofrecen y lo saca de las que dicen «todavía no» (5 → 4). `EstadoEnPantallaTest`: `una_seccion_sin_envio_dice_por_que_solo_si_la_consulta_se_envia` suma `documentos` a las que
     ya no llevan aviso (el «Esta sección todavía no se envía a la web» de la sección desaparece en la pantalla). Ningún test de la cola cambió: pasan su propio conjunto. Sin migración, sin dependencias
     nuevas, sin Laravel y sin pedidos reales. **Sigue T109** (E2E de E4 contra la copia local); la revisión visual es T112.
+    **Correcciones del reviewer de la 005 (2026-11-14): dos arreglos de código y documentación; el tope de 191 no se aplica y queda como riesgo aceptado (ver T64).**
+    (1) **RF-31/RF-60, el contador contaba cargas que el plan no envía.** `ContadorDeEnvio.estadoPendienteDeLaConsulta` agregaba la parte de laboratorio con solo
+    ver una carga sucia: una carga **sin fecha útil** (ni la suya ni la de la consulta), una **dada de baja que nunca llegó a la web** y la de una **consulta
+    anulada** quedan en reserva o sin viaje en `PlanDeEnvio.cargas`, pero la consulta se contaba y quedaba «Falta enviar» para siempre (lo mismo alimentaba
+    el estado de la tarjeta en `HcClinicaEnvio`). Ahora las partes salen **solo del plan** (`plan.pasos` y `plan.retenciones`, que ya traen `PARTE_CARGAS`):
+    `EntradaDelContador` deja de recibir `laboratorios` y se va `PARTE_LABORATORIOS` (nadie lo escribía: la cola anota el estado de las cargas en
+    `PARTE_CARGAS`). (2) **RF-44, el contenido se valida en la app antes de guardar.** `AdjuntosClinica.tipoPorContenido(bytes)` reconoce las firmas de la web
+    (`%PDF-`, `FF D8 FF`, `89 50 4E 47 0D 0A 1A 0A`) y `avisoDelTipoDeAdjunto(nombre, mime, bytes)` exige que el contenido sea del tipo declarado: un `.pdf`
+    con contenido inválido (o vacío) se rechaza con el mismo `AVISO_TIPO_DE_ADJUNTO` y **no se crea la fila**; `ArchivosSeccion` le pasa los bytes. La extensión/
+    MIME sigue siendo el primer filtro y un documento de la web (sin bytes) no cambia. (3) Documentación: T108 decía `SUBENTREGA_HABILITADA = E4` y P22 del
+    plan seguía hablando de «una constante de subentrega»; el candado es `SECCIONES_HABILITADAS` y `SUBENTREGA_HABILITADA` sigue en E1 (solo siembra). También
+    se corrigieron «adjuntos (PDF)» en `SeccionesEnviables.kt` y «todavía no la llama nadie» en `DataModule.kt` (la llama el autoguardado desde T31/T36).
+    **Rojo:** `ContadorDeEnvioTest` 3 fallos de 30 (sin fecha útil, baja nunca enviada y anulada, los tres con el código viejo) y `:core:data:compileTestKotlinJvm`
+    con **20 errores** por el contenido (no existían `tipoPorContenido` ni el tercer parámetro). **Verde:** `core:data` **2234** (2226 + 8: 4 en `ContadorDeEnvioTest`,
+    1 en `HcClinicaEnvioContadorTest` sobre base y 3 en `AdjuntosClinicaTest`), clinica 38, ui 17 y crecimiento 6, sin fallos ni salteados; compilan
+    `:features:hc:compileKotlinJvm`, `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`,
+    `:core:data:compileKotlinWasmJs` y `:server:compileKotlin` (salida 0). Cambiaron solo los tests del nuevo comportamiento: el ayudante `entrada()` de
+    `ContadorDeEnvioTest` ahora pasa las cargas al **plan** (como hace la cola) y `laboratorio_y_pendientes_cuentan_solo_cuando_esta_version_los_envia`
+    sigue igual; sin migración, sin dependencias nuevas, sin Laravel y sin pedidos reales.
 
 ## Pruebas y cierre de E4
 - [ ] **T109. E2E de E4 contra la copia local.** RF-15, RF-16, RF-44 a RF-46 — M — Toca API Laravel: no
