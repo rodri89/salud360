@@ -2241,6 +2241,12 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     **Totales.** `core:data` **2212** en verde (2180 + 32), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6, sin fallos ni salteados. Compilan
     `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y `:server:compileKotlin`,
     todos en 0. **Sigue T106**; T105 (fotos de exámenes) sigue fuera de alcance y el E2E contra el servidor real es T109.
+  - **Nota (2026-11-14, rama `hc-general`): el test de reintento de adjuntos quedó estabilizado.** `HcClinicaEnvioAdjuntosTest.un_5xx_deja_en_espera_y_sale_solo_al_volver_el_servidor`
+    (y su vecino del `429`) fallaba una vez cada tanto con `expected [adjunto a:a1, adjunto a:a1] but was [adjunto a:a1]`: el reintento de 15 s lo programa el
+    propio envío desde otra corrutina (los bytes del documento se leen con `Dispatchers.IO`), así que la espera podía quedar anotada en el `RelojFalso` **después** de
+    que volviera el `join()` del envío; el `avanzar` no encontraba nada que reanudar y `terminarElEnvio()` tomaba el turno libre. Ahora el test espera el hecho
+    observable (`RelojFalso.esperarAQueHaya(1)`, sin dormir ni reintentar) antes de mover el reloj y de llamar a `terminarElEnvio()`; el sentido del test no cambia
+    (`5xx` → «En espera» y el reintento sale solo con **dos** intentos del adjunto). Sin cambios de producción, sin migración y sin dependencias nuevas.
 - [ ] **T105. Fotos de exámenes en el plan y en el envío — FUERA DE ALCANCE por ahora.** RF-44 (D24 revisada) — M — Toca API Laravel: no — **No se implementa sin pedido del usuario** (ya no depende de T95)
   - *(2026-11-13: fuera de alcance; se conserva el diseño para cuando se pida.)*
   - Tests primero: common `PlanDeEnvioE4Test` ampliado y jvm `HcClinicaEnvioAdjuntosTest` ampliado: el adjunto de un registro `examen_complementario` (`archivo.registro_id`) viaja como

@@ -233,6 +233,11 @@ registros de personas): el repo es público.
    `core:data` **2212** (2180 + 32), clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm y `:server`. `ServidorFalso` implementa ahora
    `ClinicaAdjuntosApi` con memoria (subida repetible por clave, baja, listas, descarga y límites) y `Escena`/`conServidor` aportan una carpeta temporal de `ArchivoStore`; sin
    migración, sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` sigue igual (E4 se enciende en T108). Fotos de exámenes (T105) fuera de alcance; el E2E real es T109.
+   **Nota (2026-11-14, rama `hc-general`): el test de reintento de adjuntos quedó estabilizado.** `HcClinicaEnvioAdjuntosTest.un_5xx_…` (y el `429` de al lado) fallaba
+   una vez cada tanto (`expected [adjunto a:a1, adjunto a:a1] but was [adjunto a:a1]`): el reintento de 15 s lo programa el envío desde otra corrutina (los bytes se
+   leen con `Dispatchers.IO`), así que la espera podía quedar anotada en el `RelojFalso` **después** de que volviera el `join()`; el `avanzar` no encontraba nada que
+   reanudar y `terminarElEnvio()` tomaba el turno libre (en una sonda en proceso: 92 de 300). Arreglo: `RelojFalso.esperarAQueHaya(1)` —espera ese hecho observable, sin
+   dormir ni reintentar— antes de mover el reloj: 0 de 300, 30 corridas del test y la suite completa en verde. Sin cambios de producción, sin migración, sin dependencias.
    **T106 hecha (2026-11-13): la lectura de la HC general lista los documentos de la web al abrir una consulta y los baja con la
    sesión.** Regla de Q-E4-3: se lista por **paciente** (`GET pacientes/{id}/adjuntos`) si la consulta que se abre es una **propia abierta**
    (la que se está cargando) y por **consulta** (`GET consultas/{id}/adjuntos`) en cualquier otro caso (histórico, de la web, propia ya
