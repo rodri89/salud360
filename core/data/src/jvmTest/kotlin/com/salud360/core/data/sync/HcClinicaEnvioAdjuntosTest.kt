@@ -15,6 +15,7 @@ import com.salud360.core.model.hc.Archivo
 import com.salud360.core.model.hc.CausaEnEspera
 import com.salud360.core.model.hc.EstadoConsulta
 import com.salud360.core.model.hc.EstadoEnvio
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,6 +68,15 @@ class HcClinicaEnvioAdjuntosTest {
      * `Dispatchers.IO` (`ArchivoStore`), así que `reloj.avanzar` no alcanza: se lo espera con el turno de la consulta (RF-54).
      */
     private suspend fun Escena.terminarElEnvio(consultaId: Id = "u1") = turnos.conTurno(consultaId) { }
+
+    /**
+     * Espera el hecho observable de que el envío fallido ya dejó **programado** su reintento en el [RelojFalso]. Como el envío leyó el
+     * documento en `Dispatchers.IO`, la espera puede quedar anotada en el reloj después de que vuelva el `join()` del envío; si se avanzara
+     * el reloj antes, el `avanzar` no encontraría nada que reanudar y el reintento no saldría. No duerme ni reintenta: espera esa condición.
+     */
+    private suspend fun Escena.esperarElReintentoProgramado() {
+        withTimeout(10_000) { reloj.esperarAQueHaya(1) }
+    }
 
     // ---------- Un archivo por pedido, en su lugar ----------
 
@@ -226,6 +236,7 @@ class HcClinicaEnvioAdjuntosTest {
         assertFalse("cerrar" in servidor.operaciones)
 
         val pedidos = servidor.pedidos.size
+        esperarElReintentoProgramado()
         reloj.avanzar(14_000)
         assertEquals(pedidos, servidor.pedidos.size, "sin ráfagas: se espera el reintento de los 15 s")
 
@@ -251,6 +262,7 @@ class HcClinicaEnvioAdjuntosTest {
         assertTrue(db.archivoSucio("a1"))
 
         servidor.falla = null
+        esperarElReintentoProgramado()
         reloj.avanzar(15_000)
         terminarElEnvio()
 
