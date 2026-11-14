@@ -113,9 +113,10 @@ fun ArchivosInline(
     // PDF, JPG, JPEG y PNG en «Documentos» (Q-E4-1 revisada); lo demás, como siempre.
     val picker = rememberFilePicker(if (esDocumentos) TIPOS_MIME_DE_ADJUNTO else TIPOS_MIME_DE_SIEMPRE) { elegido ->
         scope.launch {
-            // Antes de guardarlo: que sea de los cuatro tipos y que entre en el tope que informa la web (T103, T107).
+            // Antes de guardarlo: que sea de los cuatro tipos (por el nombre y por el contenido, T107 y la corrección del reviewer) y que
+            // entre en el tope que informa la web (T103, T107).
             val aviso = if (esDocumentos) {
-                avisoDelTipoDeAdjunto(elegido.nombre, mimeDe(elegido.nombre)) ?: ctx.vm.avisoDelTope(elegido.bytes)
+                avisoDelTipoDeAdjunto(elegido.nombre, mimeDe(elegido.nombre), elegido.bytes) ?: ctx.vm.avisoDelTope(elegido.bytes)
             } else {
                 null
             }

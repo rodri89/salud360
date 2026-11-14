@@ -33,7 +33,11 @@ class ContadorDeEnvioTest {
     private fun sucia(valor: SeccionValor) = FilaSucia(valor, dirty = true, actualizadaEn = 10)
     private fun texto(consulta: Id, seccion: String = SeccionesComunes.NOTA) = sucia(SeccionValor(consulta, seccion, "texto", "texto inventado"))
 
-    /** La entrada del contador de [consulta] con lo que tenga de sucio, para la versión que envía hasta [habilitadas]. */
+    /**
+     * La entrada del contador de [consulta] con lo que tenga de sucio, para la versión que envía hasta [habilitadas]. Las [cargas] van al
+     * **plan** (que es quien decide si viajan) y no al contador: desde la corrección del reviewer de 2026-11-14, lo que queda en reserva o sin
+     * viaje no cuenta (una carga sin fecha útil, una baja nunca enviada o la de una consulta anulada).
+     */
     private fun entrada(
         consulta: Consulta,
         consultaSucia: Boolean = false,
@@ -41,17 +45,20 @@ class ContadorDeEnvioTest {
         examen: FilaSucia<ExamenFisico>? = null,
         antecedentes: List<FilaSucia<Antecedente>> = emptyList(),
         registros: List<FilaSucia<RegistroClinico>> = emptyList(),
-        laboratorios: List<Laboratorio> = emptyList(),
+        cargas: List<Laboratorio> = emptyList(),
         pendientes: List<Pendiente> = emptyList(),
         estados: Map<String, EstadoEnvio> = emptyMap(),
         habilitadas: Set<String> = seccionesDe(SubentregaDeEscritura.E1),
     ) = EntradaDelContador(
         pacienteId = consulta.pacienteId,
         plan = planDeEnvio(
-            EntradaDelPlan(consulta, consultaSucia, valores, examen, antecedentes, registros, estados = estados, habilitadas = habilitadas, armadoEn = 1_000),
+            EntradaDelPlan(
+                consulta, consultaSucia, valores, examen, antecedentes, registros,
+                cargas = cargas.map { FilaSucia(it, dirty = true, actualizadaEn = 10) },
+                estados = estados, habilitadas = habilitadas, armadoEn = 1_000,
+            ),
         ),
         estados = estados,
-        laboratorios = laboratorios,
         pendientes = pendientes,
         habilitadas = habilitadas,
     )
@@ -147,7 +154,7 @@ class ContadorDeEnvioTest {
             ),
             entrada(
                 propia("laboratorio"),
-                laboratorios = listOf(Laboratorio("l1", "p-laboratorio", "laboratorio", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
+                cargas = listOf(Laboratorio("l1", "p-laboratorio", "laboratorio", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
                 habilitadas = e,
             ),
             entrada(propia("pendiente"), pendientes = listOf(Pendiente("pe1", "p-pendiente", "m1", "pedir estudio", "pendiente")), habilitadas = e),
@@ -166,7 +173,7 @@ class ContadorDeEnvioTest {
 
         fun cuenta(habilitadas: Set<String>) = resumenDeEnvio(
             listOf(
-                entrada(propia("c1", remotoId = "7001"), laboratorios = listOf(lab), habilitadas = habilitadas),
+                entrada(propia("c1", remotoId = "7001"), cargas = listOf(lab), habilitadas = habilitadas),
                 entrada(propia("c2", remotoId = "7002"), pendientes = listOf(pend), habilitadas = habilitadas),
             ),
         ).total
@@ -175,6 +182,46 @@ class ContadorDeEnvioTest {
         assertEquals(0, cuenta(seccionesDe(SubentregaDeEscritura.E1)))
         assertEquals(0, cuenta(seccionesDe(SubentregaDeEscritura.E2)))
         assertEquals(2, cuenta(seccionesDe(SubentregaDeEscritura.E3)))
+    }
+
+    // ---- Cargas: solo cuentan si el plan las envía (corrección del reviewer, 2026-11-14) ----
+
+    @Test
+    fun una_carga_sin_fecha_util_no_cuenta_aunque_siga_sucia() {
+        // Ni la carga ni su consulta tienen una fecha que mandar: el plan la deja en reserva y no la va a enviar.
+        val sinFecha = LocalDate.parse("2000-01-01")
+        val c = Consulta("c1", "p-c1", "m1", "clinica", "consulta", sinFecha, EstadoConsulta.ABIERTA, remotoId = "7001", propia = true)
+        val lab = Laboratorio("l1", "p-c1", "c1", "clinica", "laboratorio_general", sinFecha, mapOf("hb" to "13"))
+        val e = entrada(c, cargas = listOf(lab), habilitadas = seccionesDe(SubentregaDeEscritura.E3))
+
+        assertEquals(0, resumenDeEnvio(listOf(e)).total, "una carga que no viaja no deja la consulta en «Falta enviar» para siempre")
+        assertNull(estadoPendienteDeLaConsulta(e))
+    }
+
+    @Test
+    fun una_carga_dada_de_baja_que_nunca_llego_a_la_web_no_cuenta() {
+        val lab = Laboratorio("l1", "p-c1", "c1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"), activo = false)
+        val e = entrada(propia("c1", remotoId = "7001"), cargas = listOf(lab), habilitadas = seccionesDe(SubentregaDeEscritura.E3))
+
+        assertEquals(0, resumenDeEnvio(listOf(e)).total, "en la web no hay nada que dar de baja: el plan la limpia sin enviarla")
+        assertNull(estadoPendienteDeLaConsulta(e))
+    }
+
+    @Test
+    fun una_carga_de_una_consulta_anulada_no_cuenta() {
+        val lab = Laboratorio("l1", "p-c1", "c1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))
+        val e = entrada(propia("c1", EstadoConsulta.ANULADA, remotoId = "7001"), cargas = listOf(lab), habilitadas = seccionesDe(SubentregaDeEscritura.E3))
+
+        assertEquals(0, resumenDeEnvio(listOf(e)).total, "lo de una anulada queda en reserva: solo sale la baja de la consulta")
+    }
+
+    @Test
+    fun una_carga_que_el_plan_envia_cuenta() {
+        val lab = Laboratorio("l1", "p-c1", "c1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))
+        val e = entrada(propia("c1", remotoId = "7001"), cargas = listOf(lab), habilitadas = seccionesDe(SubentregaDeEscritura.E3))
+
+        assertEquals(1, resumenDeEnvio(listOf(e)).total)
+        assertEquals(EstadoEnvio.Pendiente, estadoPendienteDeLaConsulta(e))
     }
 
     // ---- Lo que no cuenta ----
@@ -189,7 +236,7 @@ class ContadorDeEnvioTest {
                     consultaSucia = true,
                     valores = listOf(texto("h1")),
                     examen = FilaSucia(ExamenFisico("h1", peso = "70"), dirty = true, actualizadaEn = 10),
-                    laboratorios = listOf(Laboratorio("l1", "p-h1", "h1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
+                    cargas = listOf(Laboratorio("l1", "p-h1", "h1", "clinica", "laboratorio_general", fecha, mapOf("hb" to "13"))),
                     habilitadas = seccionesDe(SubentregaDeEscritura.E3),
                 ),
             ),

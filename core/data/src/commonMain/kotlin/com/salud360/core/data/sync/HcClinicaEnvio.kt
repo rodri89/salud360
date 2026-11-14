@@ -998,7 +998,6 @@ open class HcClinicaEnvio(
             pacienteId = consulta.pacienteId,
             plan = planDeEnvio(entradaDelPlan(consulta, sucio, loEnviados.deLaConsulta(consulta.pacienteId, consulta.id), estados)),
             estados = estados,
-            laboratorios = sucio.laboratorios.filter { it.fila.consultaId == consulta.id }.map { it.fila },
             pendientes = sucio.pendientes.filter { it.consultaId == consulta.id },
             habilitadas = habilitadas,
         )

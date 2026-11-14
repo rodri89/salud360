@@ -20,6 +20,7 @@ import com.salud360.core.model.hc.EstadoEnvio
 import com.salud360.core.model.hc.ExamenFisico
 import com.salud360.core.model.hc.Laboratorio
 import com.salud360.core.model.hc.Pendiente
+import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -110,6 +111,26 @@ class HcClinicaEnvioContadorTest {
 
         conLaboratorioYPendiente(seccionesDe(SubentregaDeEscritura.E1), 0)
         conLaboratorioYPendiente(seccionesDe(SubentregaDeEscritura.E3), 1)
+    }
+
+    @Test
+    fun una_carga_que_el_plan_no_envia_no_deja_la_consulta_en_falta_enviar() = conCola(seccionesDe(SubentregaDeEscritura.E3)) { db, envio, _ ->
+        // Corrección del reviewer (2026-11-14): el contador cuenta lo que el plan va a mandar, no toda fila sucia de laboratorio.
+        val sinFecha = LocalDate.parse("2000-01-01")
+        db.historiaClinicaQueries.upsertConsulta(
+            Consulta("propia-1", PACIENTE, MEDICO, "clinica", "consulta", sinFecha, EstadoConsulta.ABIERTA, remotoId = "7001", propia = true)
+                .toRow(100, dirty = false),
+        )
+        val q = db.historiaClinicaQueries
+        // Ni la carga ni la consulta tienen una fecha que mandar: el plan la deja en reserva.
+        q.upsertLaboratorio(Laboratorio("l1", PACIENTE, "propia-1", "clinica", "laboratorio_general", sinFecha, mapOf("hb" to "13")).toRow(20))
+        // Una baja que nunca llegó a la web: no hay nada que dar de baja ni que mandar.
+        q.upsertLaboratorio(Laboratorio("l2", PACIENTE, "propia-1", "clinica", "laboratorio_general", FECHA_DE_PRUEBA, mapOf("hb" to "12"), activo = false).toRow(21))
+        assertEquals(0, envio.contarPendientes().total)
+
+        // Una carga válida: viaja y cuenta.
+        q.upsertLaboratorio(Laboratorio("l3", PACIENTE, "propia-1", "clinica", "laboratorio_general", FECHA_DE_PRUEBA, mapOf("hb" to "13")).toRow(22))
+        assertEquals(listOf("propia-1"), envio.contarPendientes().consultas.map { it.consultaId })
     }
 
     @Test

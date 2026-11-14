@@ -200,6 +200,39 @@ class AdjuntosClinicaTest {
         assertEquals("Solo se aceptan PDF, JPG, JPEG o PNG", AVISO_TIPO_DE_ADJUNTO, "el mismo texto para el médico")
     }
 
+    // ---------- El contenido antes de guardar (corrección del reviewer, 2026-11-14; RF-44) ----------
+
+    private fun pdf() = "%PDF-1.7\nresto del archivo".encodeToByteArray()
+    private fun jpeg() = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0x00, 0x10, 0x4A, 0x46)
+    private fun png() = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D)
+
+    @Test
+    fun el_tipo_por_contenido_son_las_mismas_firmas_que_valida_la_web() {
+        assertEquals(TipoDeAdjunto.PDF, tipoPorContenido(pdf()), "la firma `%PDF-`")
+        assertEquals(TipoDeAdjunto.JPEG, tipoPorContenido(jpeg()), "la firma `FF D8 FF`")
+        assertEquals(TipoDeAdjunto.PNG, tipoPorContenido(png()), "la firma `89 50 4E 47 0D 0A 1A 0A`")
+        assertNull(tipoPorContenido(ByteArray(0)), "un archivo vacío no es de ninguno de los cuatro")
+        assertNull(tipoPorContenido("%PD".encodeToByteArray()), "una firma cortada no alcanza")
+        assertNull(tipoPorContenido("<html>no es un documento</html>".encodeToByteArray()))
+    }
+
+    @Test
+    fun un_archivo_con_extension_valida_y_contenido_invalido_se_rechaza_antes_de_guardarlo() {
+        // Antes se guardaba y recién la web lo rechazaba por la firma (T96): no se crea la fila ni queda «No se pudo enviar».
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", png()), "un PNG con nombre .pdf")
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", ByteArray(0)), "un archivo vacío")
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", "<html>".encodeToByteArray()))
+    }
+
+    @Test
+    fun un_archivo_con_extension_valida_y_contenido_valido_se_acepta() {
+        assertNull(avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", pdf()))
+        assertNull(avisoDelTipoDeAdjunto("foto.jpg", "image/jpeg", jpeg()))
+        assertNull(avisoDelTipoDeAdjunto("foto.jpeg", "image/jpeg", jpeg()), ".jpg y .jpeg son el mismo tipo")
+        assertNull(avisoDelTipoDeAdjunto("placa.png", "image/png", png()))
+        assertNull(avisoDelTipoDeAdjunto("informe", "application/pdf", pdf()), "sin extensión, el Content-Type y la firma coinciden")
+    }
+
     @Test
     fun una_consulta_nueva_y_en_curso_lista_los_documentos_de_todo_el_paciente() {
         assertTrue(consulta().documentosDeTodoElPaciente(), "propia, abierta y de la general: la que se está cargando")

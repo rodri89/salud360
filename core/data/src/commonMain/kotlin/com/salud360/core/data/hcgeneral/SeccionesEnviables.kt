@@ -69,7 +69,7 @@ private val SUBENTREGA_QUE_HABILITA: Map<String, SubentregaDeEscritura> = buildM
     ).forEach { put(it, SubentregaDeEscritura.E2) }
     // E3: laboratorio general y reducido, peso y pendientes.
     listOf("laboratorio_general", "laboratorio_reducido", "tabla_peso", SeccionesComunes.PENDIENTES).forEach { put(it, SubentregaDeEscritura.E3) }
-    // E4: adjuntos (PDF).
+    // E4: documentos (PDF, JPG, JPEG y PNG).
     put("documentos", SubentregaDeEscritura.E4)
 }
 
