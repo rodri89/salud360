@@ -221,7 +221,7 @@ class AdjuntosClinicaTest {
         // Antes se guardaba y recién la web lo rechazaba por la firma (T96): no se crea la fila ni queda «No se pudo enviar».
         assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", png()), "un PNG con nombre .pdf")
         assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", ByteArray(0)), "un archivo vacío")
-        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", "<html>".encodeToByteArray()))
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe.pdf", "application/pdf", "<html>".encodeToByteArray()), "un HTML con nombre .pdf")
     }
 
     @Test
@@ -231,6 +231,37 @@ class AdjuntosClinicaTest {
         assertNull(avisoDelTipoDeAdjunto("foto.jpeg", "image/jpeg", jpeg()), ".jpg y .jpeg son el mismo tipo")
         assertNull(avisoDelTipoDeAdjunto("placa.png", "image/png", png()))
         assertNull(avisoDelTipoDeAdjunto("informe", "application/pdf", pdf()), "sin extensión, el Content-Type y la firma coinciden")
+    }
+
+    // ---------- El contenido decide cuando el nombre no define el tipo (segunda vuelta del reviewer, 2026-11-14; RF-44) ----------
+
+    @Test
+    fun un_archivo_sin_extension_con_contenido_valido_se_acepta_por_su_contenido() {
+        assertNull(avisoDelTipoDeAdjunto("informe", "application/octet-stream", pdf()), "el contenido es un PDF")
+        assertNull(avisoDelTipoDeAdjunto("foto", "", jpeg()), "el contenido es un JPG")
+        assertNull(avisoDelTipoDeAdjunto("captura", "text/plain", png()), "un MIME que no es de los cuatro tampoco decide")
+    }
+
+    @Test
+    fun un_archivo_sin_extension_con_contenido_invalido_se_rechaza() {
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe", "application/octet-stream", ByteArray(0)), "un archivo vacío")
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe", "", "<html>no es un documento</html>".encodeToByteArray()), "un HTML")
+    }
+
+    @Test
+    fun sin_bytes_el_nombre_sigue_decidiendo() {
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe", "application/octet-stream"), "sin bytes no hay contenido que mirar")
+        assertEquals(AVISO_TIPO_DE_ADJUNTO, avisoDelTipoDeAdjunto("informe", ""), "sin extensión ni Content-Type no se cuela")
+    }
+
+    @Test
+    fun el_tipo_que_se_guarda_sale_del_contenido_cuando_el_nombre_no_lo_define() {
+        assertEquals(TipoDeAdjunto.PDF, tipoDelArchivo("informe", "application/octet-stream", pdf()), "sin extensión decide el contenido")
+        assertEquals(TipoDeAdjunto.PNG, tipoDelArchivo("captura", "", png()), "sin extensión ni Content-Type, el contenido")
+        assertEquals(TipoDeAdjunto.PDF, tipoDelArchivo("informe.pdf", "application/pdf", pdf()), "el nombre manda y el contenido coincide")
+        assertEquals(TipoDeAdjunto.JPEG, tipoDelArchivo("foto", "image/jpeg", null), "sin bytes decide el nombre y el Content-Type")
+        assertNull(tipoDelArchivo("informe", "application/octet-stream", ByteArray(0)), "vacío y sin extensión: no hay tipo para guardar")
+        assertNull(tipoDelArchivo("informe", ""), "sin extensión, sin Content-Type y sin bytes no hay tipo")
     }
 
     @Test

@@ -44,9 +44,8 @@ private val FIRMA_PNG = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A,
 
 /**
  * El tipo de un adjunto por el **contenido** del archivo (su firma), o `null` si no es PDF, JPG, JPEG ni PNG. Son las mismas firmas que
- * valida la web (T96), así que lo que pasa acá no lo rechaza el servidor después. La extensión y el `Content-Type` ([tipoDeAdjunto]) son
- * el primer filtro, antes de leer el archivo; esto es lo que decide si el archivo se guarda. Un archivo vacío, o uno con otra firma, no
- * tiene tipo.
+ * valida la web (T96), así que lo que pasa acá no lo rechaza el servidor después. Con los bytes a mano, esto es lo que decide si el
+ * archivo se acepta y con qué tipo se guarda. Un archivo vacío, o uno con otra firma, no tiene tipo.
  */
 fun tipoPorContenido(bytes: ByteArray): TipoDeAdjunto? = when {
     bytes.empiezaCon(FIRMA_PDF) -> TipoDeAdjunto.PDF
@@ -57,6 +56,14 @@ fun tipoPorContenido(bytes: ByteArray): TipoDeAdjunto? = when {
 
 private fun ByteArray.empiezaCon(firma: ByteArray): Boolean =
     size >= firma.size && firma.indices.all { this[it] == firma[it] }
+
+/**
+ * El tipo con el que se **guarda** un adjunto de [SECCION_DOCUMENTOS] (RF-44, segunda vuelta del reviewer): el que define el nombre o el
+ * `Content-Type` ([tipoDeAdjunto]) y, cuando ninguno lo define (un archivo sin extensión conocida), el del **contenido** ([tipoPorContenido]).
+ * `null` si no es PDF, JPG, JPEG ni PNG. Con ese tipo se guarda el `mime` de la fila, así el plan de envío (T104) también lo reconoce.
+ */
+fun tipoDelArchivo(nombre: String, mime: String, bytes: ByteArray? = null): TipoDeAdjunto? =
+    tipoDeAdjunto(nombre, mime) ?: bytes?.let { tipoPorContenido(it) }
 
 /**
  * El adjunto viaja con [consulta] (RF-44, RF-46): solo si cuelga de **esa** consulta propia de la HC general
@@ -114,15 +121,17 @@ const val AVISO_TIPO_DE_ADJUNTO = "Solo se aceptan PDF, JPG, JPEG o PNG"
 val TIPOS_MIME_DE_ADJUNTO: List<String> = TipoDeAdjunto.entries.map { it.mime }
 
 /**
- * El aviso de un archivo elegido para [SECCION_DOCUMENTOS] **antes** de guardarlo, o `null` si es PDF, JPG, JPEG o PNG. La extensión del nombre y,
- * si no tiene, el `Content-Type` ([tipoDeAdjunto]) son el primer filtro; con los [bytes] a mano, el **contenido** tiene que ser de ese mismo tipo
- * ([tipoPorContenido], las firmas que valida la web en T96): un `.pdf` que no lo es se rechaza acá, sin crear la fila, en vez de guardarse y volver
- * después como «No se pudo enviar». Sin [bytes] (por ejemplo, al mirar un adjunto que ya está en la web) decide solo el nombre.
+ * El aviso de un archivo elegido para [SECCION_DOCUMENTOS] **antes** de guardarlo, o `null` si es PDF, JPG, JPEG o PNG. Con los [bytes] a mano
+ * **decide el contenido** (RF-44): un PDF sin extensión se acepta (y se guarda como PDF, [tipoDelArchivo]) y, si además el nombre o el
+ * `Content-Type` ([tipoDeAdjunto]) dan un tipo, tienen que **coincidir** (un PNG con nombre `.pdf` se rechaza). Un archivo vacío, o uno con otra
+ * firma, se rechaza acá, sin crear la fila, en vez de guardarse y volver después como «No se pudo enviar». Sin [bytes] deciden el nombre y el
+ * `Content-Type`, como siempre.
  */
 fun avisoDelTipoDeAdjunto(nombre: String, mime: String, bytes: ByteArray? = null): String? {
-    val tipo = tipoDeAdjunto(nombre, mime) ?: return AVISO_TIPO_DE_ADJUNTO
-    if (bytes != null && tipoPorContenido(bytes) != tipo) return AVISO_TIPO_DE_ADJUNTO
-    return null
+    val porNombre = tipoDeAdjunto(nombre, mime)
+    if (bytes == null) return if (porNombre == null) AVISO_TIPO_DE_ADJUNTO else null
+    val porContenido = tipoPorContenido(bytes) ?: return AVISO_TIPO_DE_ADJUNTO
+    return if (porNombre == null || porNombre == porContenido) null else AVISO_TIPO_DE_ADJUNTO
 }
 
 /**

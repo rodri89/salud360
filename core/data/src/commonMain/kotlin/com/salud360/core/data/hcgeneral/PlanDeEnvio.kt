@@ -684,7 +684,8 @@ private class Armado(private val e: EntradaDelPlan) {
      * pendiente (en la web no hay nada que dar de baja) y uno que la web ya tiene y sigue activo tampoco: no hay actualización de un archivo (reemplazarlo
      * es un alta nueva). Son las mismas reglas que [adjuntoViaja] (T103): **nunca** uno sin consulta, de otra consulta u otra HC, la **foto de un examen**
      * (T105, queda en reserva sin perder el dato) ni uno que no sea PDF, JPG, JPEG o PNG (la web lo rechazaría; se limpia sin figurar enviado, RF-60). El
-     * tipo lo decide la extensión declarada ([tipoDeAdjunto]). Lo que es de una consulta anulada queda en reserva (Q-E3-2, como las cargas).
+     * tipo lo decide el nombre y, si no lo define, el `mime` de la fila ([tipoDeAdjunto]): el que se guardó mirando el contenido cuando no había extensión
+     * (T107, `tipoDelArchivo`), así un PDF sin extensión también viaja. Lo que es de una consulta anulada queda en reserva (Q-E3-2, como las cargas).
      */
     private fun adjuntos(anulada: Boolean): PasoDeEnvio.Adjuntos? {
         val viajan = mutableListOf<Archivo>()
@@ -729,7 +730,7 @@ private fun seccionDelRegistro(tipo: String): String = when (tipo) {
 private val SECCION_DE_LA_CARGA = mapOf(TIPO_LABORATORIO_GENERAL to "laboratorio_general", TIPO_PESO to "tabla_peso")
 
 /**
- * La sección del catálogo de un tipo de carga de E3 (`laboratorio_general`, `tabla_peso`), o `null` si ese tipo no se envía (el reducido, T73). La usan el
- * plan y el contador (`core:data`, T85-a), para que los dos decidan con el mismo mapa: el `tipo` de la base (`peso`) no es el id de la sección (`tabla_peso`).
+ * La sección del catálogo de un tipo de carga de E3 (`laboratorio_general`, `tabla_peso`), o `null` si ese tipo no se envía (el reducido, T73). El plan
+ * decide con este mismo mapa (`core:data`, T84-a): el `tipo` de la base (`peso`) no es el id de la sección (`tabla_peso`). Fuera del plan no la llama nadie.
  */
 internal fun seccionDeLaCarga(tipo: String): String? = SECCION_DE_LA_CARGA[tipo]

@@ -16,6 +16,7 @@ import com.salud360.core.data.hcgeneral.ExtrasDeLectura
 import com.salud360.core.data.hcgeneral.LayoutConsulta
 import com.salud360.core.data.hcgeneral.LecturaDeLaConsulta
 import com.salud360.core.data.hcgeneral.SoloLecturaConsulta
+import com.salud360.core.data.hcgeneral.SECCION_DOCUMENTOS
 import com.salud360.core.data.hcgeneral.VistaDeLaHistoria
 import com.salud360.core.data.hcgeneral.avisosDeLaPantallaDeConsulta
 import com.salud360.core.data.hcgeneral.cambioDePendientes
@@ -41,6 +42,7 @@ import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.hcgeneral.motivoDeLaLectura
 import com.salud360.core.data.hcgeneral.puedeResolverse
 import com.salud360.core.data.hcgeneral.soloLecturaConsulta
+import com.salud360.core.data.hcgeneral.tipoDelArchivo
 import com.salud360.core.data.hcgeneral.vistaDeLaHistoria
 import com.salud360.core.data.hcgeneral.textoDePendientesLocales
 import com.salud360.core.data.hcgeneral.visibleParaSesion
@@ -530,7 +532,11 @@ class ConsultaViewModel(
         if (registroId != null && esIdDeLaWeb(registroId)) return@launch
         val id = newId()
         val ruta = archivos.guardar(id, nombre, bytes)
-        hc.guardarArchivo(Archivo(id, c.pacienteId, if (porPaciente) null else c.id, registroId, seccion, nombre, mimeDe(nombre), bytes.size.toLong(), duracionMs, ruta))
+        // RF-44 (segunda vuelta del reviewer): en «Documentos» el tipo lo decide el nombre o el `Content-Type` y, si no lo definen, el **contenido**;
+        // con ese MIME se guarda la fila, así el plan de envío (T104) también la reconoce.
+        val mime = mimeDe(nombre)
+        val mimeGuardado = if (seccion == SECCION_DOCUMENTOS) tipoDelArchivo(nombre, mime, bytes)?.mime ?: mime else mime
+        hc.guardarArchivo(Archivo(id, c.pacienteId, if (porPaciente) null else c.id, registroId, seccion, nombre, mimeGuardado, bytes.size.toLong(), duracionMs, ruta))
         launch { sync.sincronizar() }
         marcarSucia()
     }
