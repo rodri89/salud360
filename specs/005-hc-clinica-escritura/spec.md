@@ -7,6 +7,8 @@ el plan la trata como tarea.
 **Cambio del 2026-11-13 (E4):** el usuario revisó D24 y resolvió Q-E4-1 y Q-E4-3: la sección «Documentos (PDF e imágenes)» de la HC
 general acepta **PDF, JPG, JPEG y PNG** (ya no es solo PDF) y el listado de los adjuntos depende de si la consulta es nueva (todos los
 del paciente) o previa (solo los de esa consulta); las fotos de exámenes complementarios siguen **fuera de alcance** (RF-44, RF-45, D24).
+**Decisión del 2026-11-11 (E2, Q-E2-3):** el tope de los textos de los estudios lo valida el **servidor**, no la app; si lo rechaza
+por largo, la consulta queda «No se pudo enviar» con el motivo y el texto se conserva (RF-39).
 Depende de la spec 002 (parte 1: pacientes y cartera; entrega L: lectura, implementada y validada en local, falta el reviewer
 y producción), de la 001 (qué secciones ve cada médico lo decide su perfil), de la 003 (el patrón de una sección que escribe
 contra la API de la web, el vínculo de pacientes y la pantalla de elegir ficha) y de la 004 (licencia que informa el servidor,
@@ -350,8 +352,11 @@ Orden: E0 → E1 → E2 → E3 → E4, con E5 aparte (D5). Por qué esta partici
   clase se muestra como A (hasta 6), B (7 a 9) o C (10 o más) (002 RF-27).
 - RF-39: CUANDO el médico carga ecografía abdominal, videoendoscopía digestiva alta, biopsia hepática, TC/RMN o estudios
   cardiológicos (fecha y descripción), EL SISTEMA los guarda y los ve en el historial del paciente, cada uno con la consulta
-  donde se cargó (002 RF-28). SI la descripción supera lo que la web acepta (en estudios cardiológicos, el límite que fija la
-  web, que el plan documenta), ENTONCES EL SISTEMA no deja escribir de más y lo dice; nunca corta el texto en silencio.
+  donde se cargó (002 RF-28). El tope del texto lo valida **el servidor**, no la app: en la copia local la descripción de
+  `estudios_cardiologicos` es `varchar(191)` y las demás son `longtext` (65535 bytes). La app **no** corta el texto ni avisa
+  antes de enviarlo. SI el servidor rechaza el dato por largo (responde `422 texto_demasiado_largo`), ENTONCES la consulta
+  queda «No se pudo enviar» con el motivo (RF-30) y el texto se conserva completo, tal como el médico lo escribió: nunca se
+  corta en silencio ni se pierde. **(Decisión del usuario del 2026-11-11, Q-E2-3:** no se aplica el tope en la app.)**
 - RF-40: CUANDO el médico pide un examen complementario o una interconsulta, EL SISTEMA los guarda en la web como pendientes de
   confirmar y los confirma al cerrar la consulta (RF-22); son acumulativos del paciente, y uno cargado en una consulta anterior
   se puede completar (resultado) pero no quitar desde otra consulta (002 RF-22).

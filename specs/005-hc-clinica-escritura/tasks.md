@@ -2382,6 +2382,25 @@ muestra y el usuario lo pide. **Q-E4-2** (carpeta y límites del hosting) **sigu
     `:core:data:compileKotlinWasmJs` y `:server:compileKotlin` (salida 0). Cambiaron solo los tests del nuevo comportamiento: el ayudante `entrada()` de
     `ContadorDeEnvioTest` ahora pasa las cargas al **plan** (como hace la cola) y `laboratorio_y_pendientes_cuentan_solo_cuando_esta_version_los_envia`
     sigue igual; sin migración, sin dependencias nuevas, sin Laravel y sin pedidos reales.
+    **Segunda vuelta del reviewer (2026-11-16): un adjunto sin extensión se acepta por su contenido (RF-44).** Con el arreglo del 2026-11-14 el
+    contenido se miraba **solo después** de que el nombre o el `Content-Type` dieran un tipo: un PDF sin extensión, que el selector informa como
+    `application/octet-stream`, se rechazaba aunque su firma fuera `%PDF-`. Ahora, con los bytes a mano **decide el contenido**
+    (`avisoDelTipoDeAdjunto`) y, si además el nombre o el `Content-Type` dan un tipo, los dos tienen que **coincidir** (un PNG llamado `.pdf` se sigue
+    rechazando, igual que un archivo vacío o con otra firma); sin bytes (un documento de la web) deciden el nombre y el `Content-Type`, como siempre.
+    `tipoDelArchivo(nombre, mime, bytes)` dice con qué tipo se guarda y `ConsultaViewModel.guardarArchivo` guarda ese `mime` en la fila: es lo que hace
+    que el plan de envío (T104) reconozca el archivo y lo suba (su KDoc aclara que el tipo sale del nombre o del `mime` guardado). La spec **no** cambió
+    por esto: RF-44 ya pedía que el tipo se validara por el contenido del archivo «aunque el nombre o la extensión digan otra cosa». En la misma vuelta
+    quedó alineado **RF-39** en `spec.md`: el tope del texto lo valida el **servidor** —en la copia local la descripción de `estudios_cardiologicos` es
+    `varchar(191)` y las demás `longtext`; contesta `422 texto_demasiado_largo`, comprobado en `EscrituraReglas` de hclinica—, la app no recorta ni avisa
+    antes, y si lo rechaza la consulta queda «No se pudo enviar» con el motivo y el texto completo (decisión Q-E2-3 del 2026-11-11, ya anotada en T64).
+    **Tests:** cuatro nuevos en `AdjuntosClinicaTest` (PDF sin extensión aceptado, sin extensión con contenido inválido rechazado, sin bytes manda el
+    nombre y el tipo que se guarda sale del contenido) y un mensaje de aserción en el caso del HTML. **Verde:** `core:data` **2238** (2234 + 4),
+    `AdjuntosClinicaTest` 26; clinica 38, ui 17 y crecimiento 6, sin fallos ni salteados; compilan `:features:hc:compileKotlinJvm`,
+    `:composeApp:compileKotlinWasmJs -Pentorno=dev`, `:features:auth:compileKotlinWasmJs -Pentorno=dev`, `:core:data:compileKotlinWasmJs` y
+    `:server:compileKotlin` (salida 0). Sin migración, sin dependencias nuevas, sin Laravel y sin pedidos reales. **Nota para el reviewer:**
+    `seccionDeLaCarga` (`PlanDeEnvio`, `internal`) **no tiene llamadas**: el plan usa el mapa privado `SECCION_DE_LA_CARGA` y el contador dejó de usarlo
+    con el arreglo de RF-31/RF-60; en esta vuelta se corrigió su KDoc (el plan decide con ese mismo mapa y fuera de él no la llama nadie) y la función se
+    dejó, porque borrarla es una limpieza aparte.
 
 ## Pruebas y cierre de E4
 - [ ] **T109. E2E de E4 contra la copia local.** RF-15, RF-16, RF-44 a RF-46 — M — Toca API Laravel: no

@@ -629,6 +629,9 @@ registros de personas): el repo es público.
 - 001 y 002 se entregan juntas (rama `hc-general`; push a main publica).
 - Endpoint nuevo en turnos para editar HC habilitadas (`PUT medicos/{id}/historias-clinicas`, solo admin): mismo
   servicio que `admin_hc_medico` (desactiva, no borra); el HC del médico queda sin `dirty`.
+- Spec 005 (E4, 2026-11-16): un adjunto de «Documentos» se acepta por su **contenido** aunque no tenga extensión (un PDF con MIME
+  `application/octet-stream` entra y se guarda con el `mime` de su tipo, `tipoDelArchivo`), y si el nombre define un tipo tiene que coincidir; sin bytes
+  deciden el nombre y el `Content-Type`. RF-39 no se aplica en la app: el tope del texto lo valida el servidor (`422 texto_demasiado_largo`).
 
 ## Aprendizajes y errores a evitar
 - Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto. Si se cuelga en un
