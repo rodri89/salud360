@@ -4,6 +4,17 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
+## Traspaso 2026-11-18 (unión con `origin/main`: agenda, admin y licencia del servidor)
+- **`origin/main` se integró en `hc-general`** (merge de 43 commits). Llegan la agenda por médico y las features de
+  administración: historias clínicas habilitadas, tipos de turno, agenda con tipos, pacientes del médico, renovación de
+  licencias, ocultar inactivos, sexo desde la HC, el modal de secciones la primera vez y el botón de «Nueva consulta»
+  (el detalle está en «Estado actual» y «Aprendizajes»). La licencia del servidor de pediatría ya estaba acá desde la
+  spec 004 y no se duplicó. **Ojo:** en `main` la agenda es la spec 005, así que ahora hay **dos specs 005**
+  (`005-agenda-por-medico` y `005-hc-clinica-escritura`): renumerar una cuando se unifiquen.
+- **Memoria por HC (2026-11-03, de `main`):** cada historia clínica lleva su propia memoria en `memoria/<código>.md`
+  (ver `docs/trabajo-por-historia-clinica.md`); este archivo queda para lo transversal. Pasar el detalle de clínica a
+  `memoria/clinica.md` es una limpieza pendiente.
+
 ## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
 - **Spec 005, servidor de E3 al 2026-11-12: T73, T74, T76, T77 y T79 hechas → el servidor de E3 está completo** (hclinica rama `salud360-api`,
   sin push; **solo laboratorio general y peso**, el reducido y los pendientes quedaron fuera por decisión del usuario). T77 (`371da69`): baja lógica de una carga
@@ -566,6 +577,113 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
+- Rama `feature/hc-solo-medico-habilitado` (commiteada y mergeada en `main` local, sin pushear aún; 2026-11-09): **la secretaria ya no ve historias clínicas, solo turnos**
+  (agenda, pacientes, obras sociales); cambia el RF-4 de la spec 003, por decisión del usuario. Su ficha del paciente no tiene
+  la tarjeta «Historia clínica» ni «Nueva consulta», y las rutas `hc/...` y `consulta/...` quedan cerradas (también al restaurar
+  la URL en web) para secretaria, administrador y médico sin esa HC habilitada («No tenés habilitada esta historia clínica»).
+  El médico ve solo las HC que el administrador le habilitó en turnos: se apagó el fallback por especialidad
+  (`FALLBACK_HC_POR_ESPECIALIDAD`, eliminado) y `historias_clinicas` distingue `[]` (baja, se propaga) de campo ausente
+  (servidor viejo, se conserva la copia). Reglas puras en `HistoriasClinicasDelMedico.kt` (`historiasClinicasVisibles`,
+  `puedeAbrirHistoriaClinica`, `historiasClinicasDeTurnos`). Sin migración ni cambios de API. **Riesgo:** los médicos que
+  dependían del fallback (p. ej. un pediatra al que el admin nunca le habilitó pediatría) quedan sin HC hasta que el admin se
+  las habilite. La copia local contaminada se corrige sola en el próximo login/restauración (perfil) o sync de catálogos.
+- Rama `feature/sexo-desde-hc` (commiteada y mergeada en `main` local, sin pushear aún): los pacientes que vienen de turnos no tienen sexo (turnos no lo tiene)
+  pero pediatría sí. Al resolver/abrir la HC de pediatría (`HcPediatriaBackend.resolverPaciente`, que corre en segundo plano al abrir
+  la ficha o la lista de consultas) se completa el sexo vacío de la ficha local con el que devuelve `pacientes/resolver`
+  (`SexoDesdeHc.kt`: `sexoDesdeHc` tolerante, `completarSexo` nunca pisa uno cargado). Solo cambia ese campo, sin marcar `dirty`.
+  Si el paciente ya estaba vinculado y sigue sin sexo, se vuelve a preguntar una sola vez por sesión. Las curvas y la ficha se
+  actualizan solas porque observan la base. Sin migración ni queries nuevas ni cambios de API. **Pendiente:** la cartera (opción B,
+  `guardarPacienteDeCartera` solo inserta pacientes nuevos) cuando `GET pacientes` de pediatría esté en producción. El sexo cargado
+  en la app sigue sin viajar a turnos, porque turnos no lo tiene.
+- Bloqueos y tipos de turno (servidor turnosonlinebb, **en producción desde 2026-11-08**; los cambios de la app están en `main`): los bloqueos (paciente
+  DNI 99999) ocupan el horario sin importar el tipo de turno. Causa: la lista de horarios libres filtra los turnos por `tipo_turno`
+  (y el bloqueo nace con tipo 1) pero la validación al reservar no, así que un médico con varios tipos mostraba libre un horario
+  bloqueado y recién al elegirlo decía «ocupado». `bloquear-dia` ahora bloquea los horarios de todos los tipos. Sin migración
+  ni cambios en la app. Reserva interna de la secretaria (panel web): corregida en el servidor (filtraba por tipo en
+  `consultarTurno`, así que dejaba reservar sobre un bloqueo, y al mover un turno cancelaba el original antes de validar el
+  destino); también en producción.
+- Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
+  `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
+  commit `19e4e2c`). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Commits hechos** (`19e4e2c` ocultar
+  médicos y licencias de desactivados; `c231e84` activar/desactivar médico guardado en turnos), pendientes de publicar en `main`:
+  el botón Desactivar/Activar de la pestaña Usuarios ahora se guarda en turnos (`AgendaTurnosOnline.guardarActivoMedico`, `PUT
+  medicos/{id}/activo`, solo médicos; `ActivoDelUsuario.kt`, `AdminViewModel.cambiarActivoUsuario`). `catalogos` no trae a los
+  desactivados: `sincronizarAdministracion` los deja inactivos con lo que informa `usuarios`. El endpoint de turnos
+  `PUT medicos/{id}/activo` ya está subido a producción de turnos (2026-11-05).
+  **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
+  agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
+- Rama `feature/pacientes-del-medico` (sobre `main`, sin commit): el buscador de la pestaña Pacientes del médico ya no es global
+  (`PacientesListViewModel` filtra solo su cartera `medico_paciente`; el de la agenda para dar turnos sigue global). El alta ya
+  no duplica: `POST pacientes` con `creado=false` (el DNI ya existía en turnos) reemplaza la ficha local por la de turnos y repunta
+  todo lo que la referenciaba (`PacientesRepository.reemplazarPorRemoto`, reglas puras en `FusionDePacientes.kt`; 11 tablas) y
+  avisa «Ese paciente ya existía en el sistema: se asoció a tu lista». `guardar` ya no pisa la ficha de un DNI que el
+  dispositivo tenía. Se agregaron queries `repuntar*` a `Pacientes.sq` (sin cambios de esquema ni migración).
+  **Dependencia:** antes de publicar tienen que estar subidos a turnos `pacientes/vinculados` en unión (médico ∪ con turnos)
+  y el `store` que no pisa datos de pacientes ajenos. Pendiente: endurecer `show`/`update`/`buscar` en turnos; los dispositivos
+  con duplicados viejos no se limpian solos; `verificarDni()` sigue sin conectarse; el alta por `pacienteTobbId` (agenda) no fusiona.
+- Rama `feature/ficha-paciente-hc-boton` (sobre `main`, sin commit): en la ficha del paciente (`PacienteDetalleScreen`), con una
+  sola historia clínica habilitada el botón dice «Nueva consulta» y lleva directo a elegir el tipo de consulta (con un único tipo
+  la crea; con una consulta ya en curso no crea otra y muestra «Consulta en curso»); con varias HC aparece el texto «Seleccioná la
+  historia clínica que deseás trabajar» sobre los botones por HC, que siguen abriendo la HC como antes. La señal «nueva consulta» va
+  en un estado en memoria de `MainShell` (`hcConNuevaConsulta`), NO en la ruta: en web recargar no crea nada; la HC la atiende una
+  sola vez cuando las consultas ya se leyeron (`HistoriaClinicaViewModel.consultas` ahora es `null` hasta entonces). Decisión pura
+  en `core/data` (`alLlegarConNuevaConsulta`, con test). Las consultas previas (cerradas) se abren con todas las secciones
+  expandidas (`RenderSeccionSola` fuerza `inicialmenteExpandida = true` si `soloLectura`); las en curso quedan como hoy. Las secciones
+  de texto con consultas previas (`TextoLibreConPrevias`) muestran el área de escritura (~62 %) y, a la derecha, un panel con la última
+  previa (alto máx. 180 dp, con scroll) y «Ver todas (N)» que abre un modal con todas; en ancho < 600 dp se apila (lógica en `ConsultasPrevias.kt`).
+  Primera consulta: al abrir una consulta abierta de una HC en la que el médico nunca configuró secciones (no existe la preferencia
+  `secciones_ocultas_<código>`; «todas» se guarda como valor vacío y también cuenta), un modal no descartable le pregunta qué secciones ver
+  (mismo selector que Configuración, `SelectorSeccionesHc`); «Guardar» o «Usar todas» guardan la preferencia y no vuelve a salir (sin
+  migración; lógica en `PreguntaSecciones.kt`, con test).
+- Rama `feature/licencias-renovar` (sobre `main`, sin commit): pestaña Licencias del admin con snackbar en cada actualización
+  (éxito, «la historia clínica no la aceptó» o error con el motivo), botón «Renovar» (+1 mes calendario a «Vence» y «Aviso
+  desde», `RenovacionDeLicencia.kt`, un solo guardado) y tarjeta reordenada (fechas e importe con wrap; debajo Renovar + «Activa»).
+  El importe se guarda ~800 ms después de la última tecla (`AdminViewModel.guardarImporte`), no en cada tecla.
+- Spec 005 (agenda por médico): **implementada y probada a mano (2026-11-05)**; publicada en `main` (`8767561`, `70c8cee`, `6107fac`) con el servidor de turnos ya en producción. T1 a T11 hechas.
+  T9: el usuario probó contra producción M1 a M4 y M6 a M11, todo ok; M5 y M12 (servidor viejo) no se pueden probar a mano y los cubren `AgendaTurnosOnlineAgendaTest` y `TurnosImportadorAgendaTest`
+  (`core:data` 240 tests, 0 fallas; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `especialidades:clinica` no tiene tests en esta rama).
+  - **Qué hace:** el administrador decide `tiene_agenda` y `visible_en_turnos` (independientes) con `PUT medicos/{id}/agenda`; la copia local cambia recién con la respuesta
+    (`dirty = false`). `Medico.tieneTurnos` guarda `tiene_agenda` (no «tiene horarios»); `tiene_horarios` es respaldo si el servidor no informa. Todas las reglas de quién ve qué
+    están en `AgendaDelMedico` (`core/data`); `MainShell` las usa en menús, secciones de Config y rutas (`SoloConAgenda`). Sin migración ni cambios en `core/database`.
+    La regla «`mostrar_en_turnos` solo con agenda» del alta vive en `AgendaDelMedico` (`mostrarEnTurnosEnElAlta`, `puedeMarcarMostrarEnElAlta`); los errores de turnos usan los códigos reales (`sin_permiso` 403, `no_encontrado` 404).
+  - **Aprendizajes:** `AuthRepository.refrescarPerfil()` no consulta a turnos: el estado nuevo del médico entra por `login` y `restaurar`. El defecto de origen era que
+    `sincronizarAdministracion` pisaba `visibleEnTurnos` con `true` en cada sincronización. `tobbJson` tiene `encodeDefaults = false`: un `Boolean? = null` no viaja y un `false` explícito sí.
+  - **Pendientes (no implementados, fuera de la spec):** (1) hallazgos 1 y 4 del reviewer: cierre por ruta de `CONFIG_AGENDA` y de las rutas de administración, y `guardarAgenda` marca limpia la fila con ediciones locales pendientes;
+    (2) el resto de la tarjeta del médico (consultorio, especialidad, teléfono, mail) sigue **solo local** (las historias clínicas ya se guardan en turnos, ver el feature de abajo) (`dirty = true`, turnos lo pisa en la próxima sincronización);
+    (3) `sincronizarAdministracion` guarda el consultorio `tobb-c0` para el médico sin consultorio (turnos manda `0`): `tieneConsultorio` lo trata como «sin consultorio» pero la fila queda con ese id;
+    (4) el conteo de RF-17 en producción quedó **sin confirmar** (en la base local dio 40 = 40).
+- Feature `/feature` sin spec (rama `feature/ajustes-agenda`, **sin commit**): las historias clínicas habilitadas de la tarjeta del médico (Administración → Médicos)
+  ahora se guardan en turnos con `PUT medicos/{id}/historias-clinicas` (lista exacta, `[]` = ninguna) vía `AgendaTurnosOnline.guardarHistoriasClinicas` /
+  `TurnosRepository.guardarHistoriasClinicas`; antes solo escribían en el dispositivo y turnos las pisaba al volver a entrar. Sin cambio optimista: la copia local toma la lista
+  que informa turnos recién con la respuesta (`dirty = false`). Reglas puras en `HistoriasClinicasDelMedico.kt`. El panel de administración muestra sus avisos (éxito y error) como
+  snackbar (`AdminViewModel.mensaje` ahora es `Aviso`). `AdminRepository.setEspecialidadHc` se eliminó. **El endpoint de turnos todavía no está en producción** (patch en el backup):
+  hasta subirlo, la app contesta «todavía no permite cambiar las historias clínicas de un médico desde la app (falta actualizar turnosonlinebb)». Ojo al volver a `hc-general`:
+  su T26 (spec 001) pide el mismo `TurnosRepository.guardarHistoriasClinicas` y `setEspecialidadHc` del ViewModel; hay que reconciliarlos en la unión.
+- Feature `admin-tipos-turno` (ya commiteado y mergeado en `main`: `5b965c5`, `e616f4c`, `fbae9e2`): el administrador, en Médicos → tarjeta del médico con agenda (de turnos), tiene la sección «Tipos de turno»:
+  tilda los tipos del catálogo global, elige su condición («Siempre», «Solo primera consulta», «Solo consultas de seguimiento») y sus opciones (subtipos), guarda con
+  `PUT medicos/{id}/tipos-turno` (lista exacta) y crea tipos nuevos con `POST tipos-turno`. Sin esquema local ni cambio optimista: viven en memoria del `AdminViewModel` y se piden
+  a demanda, al abrir la sección de ese médico. Reglas puras en `TiposDeTurnoDelMedico.kt` (`core/data`), modelo en `core/model/.../TiposDeTurno.kt` (el enum `TipoTurno` no se tocó).
+  La condición es solo configuración (la app no filtra con ella). **Dependencia:** el servidor de turnos con `tipos-turno` tiene que estar en producción; hasta entonces el panel
+  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** renombrar/borrar tipos (la agenda con tipos y los horarios/asignar con tipos habilitados están en las ramas de abajo).
+- Feature `agenda-con-tipos` (rama `feature/agenda-con-tipos`, commiteada sobre `main`): la agenda de la app (día, semana, próximas fechas) pide `todos_los_tipos=1`, así que un médico con horarios de otro tipo
+  (deportología, ecografías, tipos creados por el admin) ya no la ve vacía. El código real del tipo se conserva en `Turno`/`HorarioMedico`/`SlotAgenda` (`tipoCodigo`, `codigoDeTipo`; el enum
+  `TipoTurno` sigue igual y su `porCodigo` cae en Consulta, pero el código no se pierde) y se guarda en la columna `tipo_turno` que ya existía (sin migración). Cada horario libre y la semana
+  muestran una etiqueta con el tipo solo si no es «Consulta» o si el día mezcla tipos; el chip de cada turno usa el nombre real. Asignar, sobreturno y bloquear mandan el tipo del horario
+  (reglas puras en `core/data/.../repos/TiposEnLaAgenda.kt`). Los nombres de los tipos viven en memoria (`TurnosRepository.nombresDeTipos`): la base solo guarda el código.
+  **Dependencia:** el servidor de turnos con `todos_los_tipos` ya está en producción desde 2026-11-08; con un servidor viejo el parámetro se ignora y la agenda se ve como hoy (tipo 1).
+  **Pendientes:** mover un turno a un horario de otro tipo (conserva el tipo original), `agenda/dias-atencion` no recibe el parámetro, y la lista de turnos del paciente (`PacientesScreens`)
+  muestra «Consulta» para un tipo desconocido. (El selector de tipo de los horarios y asignar con opciones se hicieron en la rama de abajo.)
+- Feature `horarios-turnos-con-tipos` (rama `feature/horarios-turnos-con-tipos`, sobre `main`): el selector de tipo de Horarios ofrece solo los tipos habilitados del médico
+  (se oculta si hay uno solo; un horario con un tipo que el enum no conoce se rotula con su nombre real y nunca se reescribe a Consulta). Al asignar un turno o un sobreturno sobre un horario
+  cuyo tipo tiene opciones aparece «Opción del turno (opcional)» con «Sin especificar» (= el tipo del horario) y el turno viaja con el código de la opción; el chip de la lista del día
+  muestra «Tipo: Opción» si el padre es conocido. La condición (primera consulta/seguimiento) sigue siendo solo informativa. Reglas puras en `TiposParaHorariosYTurnos.kt` (`core/data`); los tipos
+  del médico se leen con `GET medicos/{n}/tipos-turno` desde cualquier rol y viven en memoria por médico (`AgendaTurnosOnline.tiposHabilitados`; se vuelven a leer al abrir Horarios/Agenda/Asignar y se
+  invalidan al guardar tipos desde el admin). **Dependencia:** el servidor de turnos con la lectura de `tipos-turno` para médico/secretaria y las validaciones `tipo_no_habilitado` / `tipo_invalido`
+  ya está en producción desde 2026-11-08; con un servidor viejo (403/404/405) la app degrada sin romper: Horarios ofrece solo «Consulta» y Asignar queda como antes (sin opciones). Sin esquema local.
+- Rama `feature/ajustes-turnos` (commit `d505e26`, mergeado sobre la agenda con tipos): agenda del día con barra compacta (`BarraAgendaDia` en `AgendaScreens.kt`): fecha con
+  flechas y «Hoy» en una línea (la fecha abre el calendario), «Sobreturno», «Ver semana» y total de caja contra la derecha (solo con
+  módulo caja), en un `FlowRow`; las próximas fechas siguen como 3 pills en una fila propia debajo del picker. Solo cambia la
+  disposición; las acciones y el ViewModel son los mismos.
 - Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
   C a C7 (admin de perfiles, HC del médico, estudios con historial, filas de laboratorio, varias cargas, serologías
   SI/NO, Child-Pugh, motivo con consultas previas): todas hechas, ver `specs/001-hc-configurable/tasks.md`.
@@ -679,7 +797,8 @@ registros de personas): el repo es público.
   tocarla: no poner topes de reloj de 5 s. Un cambio de la lista actualiza la ventana y un paso después la sección: un test
   que espere una también espera la otra (`marcado.guardado`). Las intermitencias (1) y (3) nunca se reprodujeron: la causa
   más probable es ese frenón, no demostrada.
-- RF-4: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
+- ~~RF-4~~ **(reemplazado el 2026-11-09: la secretaria ya no abre HC, solo turnos; ver rama `feature/hc-solo-medico-habilitado` en
+  «Estado actual»; vale solo el médico y `ConsultaScreen` sigue recibiendo su propio `medicoId`)**: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
   Enfermedades sale de la sesión (`medicoParaEnfermedades`), nunca de la pantalla. `EnfermedadesViewModel.editable` no es
   observable: la pantalla calcula `puedeAdministrar` en la misma composición que el estado del controlador.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose

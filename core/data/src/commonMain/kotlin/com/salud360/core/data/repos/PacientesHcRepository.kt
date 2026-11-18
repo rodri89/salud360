@@ -115,9 +115,31 @@ class PacientesHcRepository(
      * no sirve no se pide nada (RF-12). Lo llama quien la necesita: abrir una sección que lee de la web o enviar la
      * primera consulta.
      */
-    suspend fun vinculo(pacienteId: Id, especialidad: String): ResultadoVinculo {
+    suspend fun vinculo(
+        pacienteId: Id,
+        especialidad: String,
+        alResolver: (suspend (HcPacienteFicha) -> Unit)? = null,
+    ): ResultadoVinculo {
         fichaConocida(pacienteId, especialidad)?.let { return ResultadoVinculo.Vinculado(it) }
-        return resolver(pacienteId, especialidad, elegida = null)
+        return resolver(pacienteId, especialidad, elegida = null, alResolver = alResolver)
+    }
+
+    /**
+     * Le pregunta a la historia clínica por el paciente solo para leer el **sexo** que informa (`null` si no lo
+     * informa, si el documento no sirve o si falla). No guarda ni pisa el vínculo: el que ya está guardado manda
+     * (RF-35), aunque la respuesta traiga otro id.
+     */
+    suspend fun sexoDelServidor(pacienteId: Id, especialidad: String): String? {
+        val api = apis.porEspecialidad[especialidad] ?: return null
+        val paciente = pq.pacientePorId(pacienteId).uno { it.toModel() } ?: return null
+        if (documentoParaHc(paciente.dni) == null) return null
+        val pedido = pedidoResolver(paciente, TobbIds.numero(pacienteId) ?: idTobbDeExtras(pacienteId))
+        return try {
+            api.resolver(pedido, null).paciente.sexo
+        } catch (e: TobbException) {
+            log.i { "no se pudo leer el sexo de $pacienteId en $especialidad: ${e.codigo}" }
+            null
+        }
     }
 
     /** Vincula con la ficha que eligió el médico entre las candidatas de [ResultadoVinculo.ElegirFicha] (RF-11). */
@@ -129,7 +151,12 @@ class PacientesHcRepository(
      * vincula no guarda nada. Solo se traducen los errores de la API ([TobbException]); otro error sigue de largo,
      * como antes en pediatría.
      */
-    private suspend fun resolver(pacienteId: Id, especialidad: String, elegida: Long?): ResultadoVinculo {
+    private suspend fun resolver(
+        pacienteId: Id,
+        especialidad: String,
+        elegida: Long?,
+        alResolver: (suspend (HcPacienteFicha) -> Unit)? = null,
+    ): ResultadoVinculo {
         val api = apis.porEspecialidad[especialidad]
             ?: return ResultadoVinculo.NoSePudo(TobbException(0, "sin_api", "La historia clínica de $especialidad no tiene API"))
         val paciente = pq.pacientePorId(pacienteId).uno { it.toModel() }
@@ -153,6 +180,9 @@ class PacientesHcRepository(
             return resultadoDe(e)
         }
         val fichaId = respuesta.paciente.id
+        // Lo que informa la respuesta (hoy el sexo de pediatría), antes de guardar el vínculo: si esto falla, el
+        // vínculo ya resuelto no se pierde.
+        alResolver?.invoke(respuesta.paciente)
         pq.upsertPacienteExtra(
             PacienteExtra(pacienteId, especialidad, EXTRA_HC_PACIENTE_ID, fichaId.toString()).toRow(ahoraMillis(), dirty = false),
         )

@@ -46,6 +46,8 @@ import com.salud360.core.data.hcgeneral.marcaDeSeccion
 import com.salud360.core.data.hcgeneral.mensajeDeLaLecturaDeConsulta
 import com.salud360.core.data.hcgeneral.pendientesDeLaWeb
 import com.salud360.core.data.hcgeneral.puedeResolverse
+import com.salud360.core.data.repos.debePreguntarSecciones
+import com.salud360.core.data.repos.hayConfigDeSecciones
 import com.salud360.core.model.Id
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.Pendiente
@@ -85,7 +87,7 @@ import org.koin.core.parameter.parametersOf
 /**
  * Pantalla de una consulta: cabecera del paciente, pestañas superiores (datos, antecedentes) y
  * secciones en acordeón, renderizadas a partir de la definición de la especialidad.
- * Cuando la consulta está cerrada se muestra en modo lectura.
+ * Cuando la consulta está cerrada se muestra en modo lectura, con todas las secciones expandidas.
  */
 @Composable
 fun ConsultaScreen(
@@ -120,6 +122,17 @@ fun ConsultaScreen(
     LaunchedEffect(pendientesPrevios.isNotEmpty(), soloLectura) {
         if (!soloLectura && pendientesPrevios.isNotEmpty() && !avisoMostrado) { avisoMostrado = true; mostrarAviso = true }
     }
+
+    // Primera vez que el médico abre una consulta de esta historia clínica: se le pregunta qué secciones quiere ver. Las
+    // preferencias llegan en la misma emisión que la consulta, así que acá ya están leídas. `preguntaResuelta` tapa el
+    // instante entre tocar un botón y que la base devuelva la preferencia guardada.
+    val seccionesParaElegir = remember(def) { seccionesConfigurables(def) }
+    var preguntaResuelta by remember(consulta.id) { mutableStateOf(false) }
+    val preguntarSecciones = !preguntaResuelta && debePreguntarSecciones(
+        configGuardada = hayConfigDeSecciones(ui.preferencias, clavePreferenciaSeccionesOcultas(def.codigo)),
+        soloLectura = soloLectura,
+        haySeccionesParaElegir = seccionesParaElegir.isNotEmpty(),
+    )
 
     val ctx = remember(consulta.id, soloLectura, ui.edadMeses, ui.paciente?.sexo) {
         object : SeccionContext {
@@ -297,7 +310,19 @@ fun ConsultaScreen(
             onConfirm = { mostrarAnular = false; vm.anularConsulta(onVolver) }, onDismiss = { mostrarAnular = false },
         )
     }
-    if (mostrarAviso) androidx.compose.material3.AlertDialog(
+    if (preguntarSecciones) PreguntaSeccionesHcDialog(
+        secciones = seccionesParaElegir,
+        onGuardar = { ocultas ->
+            preguntaResuelta = true
+            vm.guardarPreferencia(clavePreferenciaSeccionesOcultas(def.codigo), ocultas.joinToString(","))
+        },
+        onUsarTodas = {
+            preguntaResuelta = true
+            vm.guardarPreferencia(clavePreferenciaSeccionesOcultas(def.codigo), "")
+        },
+    )
+    // Un diálogo por vez: el aviso de pendientes espera a que el médico responda lo de las secciones.
+    if (mostrarAviso && !preguntarSecciones) androidx.compose.material3.AlertDialog(
         onDismissRequest = { mostrarAviso = false },
         title = { Text("Pendientes de la consulta anterior") },
         text = { Column { pendientesPrevios.forEach { p -> p.texto.lines().filter { it.isNotBlank() }.forEach { Text("• $it") } } } },
@@ -388,16 +413,19 @@ fun RenderSeccion(s: SeccionDef, ctx: SeccionContext, registry: EspecialidadRegi
 }
 
 @Composable
-private fun RenderSeccionSola(s: SeccionDef, ctx0: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
+private fun RenderSeccionSola(definida: SeccionDef, ctx0: SeccionContext, registry: EspecialidadRegistry, valores: Map<String, Map<String, String>>, ui: ConsultaUi) {
     // RF-63: lo que la web dejó de mandar de esta sección (o de alguno de sus campos) se sigue viendo, con la marca arriba.
     if (ui.soloLecturaWeb) {
-        marcaDeSeccion(ui.ausencias, ctx0.consultaId, s.id, s.campos.associate { it.clave to it.etiqueta })?.let { MarcaDeLaSeccion(it) }
+        marcaDeSeccion(ui.ausencias, ctx0.consultaId, definida.id, definida.campos.associate { it.clave to it.etiqueta })?.let { MarcaDeLaSeccion(it) }
     }
     // Spec 005, T37 (RF-3, RF-4): en una consulta que se envía a la web, una sección que la web no guarda o que esta versión todavía no envía no
     // se ofrece para cargar: se ve solo para leer, con lo que ya tenía cargado (nada se borra), y dice por qué. `avisoDeEnvioDeLaSeccion` lo decide.
-    val aviso = avisoDeEnvioDeLaSeccion(s.id, ui.seEnviaALaWeb)
-    aviso?.let { AvisoDeEnvioDeLaSeccion(s.titulo, it) }
+    val aviso = avisoDeEnvioDeLaSeccion(definida.id, ui.seEnviaALaWeb)
+    aviso?.let { AvisoDeEnvioDeLaSeccion(definida.titulo, it) }
     val ctx = remember(ctx0, aviso != null) { if (aviso == null) ctx0 else ctx0.soloParaLeer() }
+    // Una consulta previa (cerrada) se abre con todas las secciones que se dibujan expandidas; la en curso respeta
+    // el estado inicial que define cada especialidad. El usuario puede contraer/expandir a mano después.
+    val s = if (ctx.soloLectura) definida.copy(inicialmenteExpandida = true) else definida
     when (s.tipo) {
         TipoSeccion.FORM -> FormSeccion(s, ctx, valores[s.id] ?: emptyMap())
         TipoSeccion.TEXTO -> TextoSeccion(s, ctx, ui, valores[s.id] ?: emptyMap())

@@ -16,6 +16,7 @@ import com.salud360.core.database.DriverFactory
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.pacientes.PacienteExtra
+import com.salud360.core.model.pacientes.Sexo
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
@@ -80,7 +81,9 @@ class HcPediatriaVinculoTest {
     fun un_vinculo_guardado_no_se_vuelve_a_pedir() {
         val api = ApiFalsa()
         conBackend(api) { backend, db, _ ->
-            guardarPaciente(db)
+            // Con el sexo cargado no hay nada que completar: el vínculo guardado basta (con el sexo vacío se pregunta
+            // una vez por sesión, ver `HcPediatriaSexoDesdeHcTest`).
+            guardarPaciente(db, paciente.copy(sexo = Sexo.M))
             db.pacientesQueries.upsertPacienteExtra(PacienteExtra("tobb-p55", "pediatria", "hc_paciente_id", "10").toRow(0, dirty = false))
             assertEquals(10L, backend.resolverPaciente("tobb-p55"))
             assertEquals(emptyList(), api.resueltos)
@@ -98,12 +101,14 @@ class HcPediatriaVinculoTest {
 
     @Test
     fun resuelto_queda_guardado_sin_dirty() {
-        val api = ApiFalsa().apply { respuestas += HcResolverRespuesta(ficha(20), creado = true, vinculadoPor = "nuevo") }
+        // La respuesta trae el sexo (como pediatría): se completa la ficha local y no hace falta preguntar de nuevo.
+        val api = ApiFalsa().apply { respuestas += HcResolverRespuesta(ficha(20).copy(sexo = "M"), creado = true, vinculadoPor = "nuevo") }
         conBackend(api) { backend, db, driver ->
             guardarPaciente(db)
             assertEquals(20L, backend.resolverPaciente("tobb-p55"))
             assertEquals(55L, api.resueltos.single().pacienteIdTobb)
             assertEquals(listOf("pediatria|hc_paciente_id|20|0"), textos(driver, "SELECT especialidad || '|' || clave || '|' || valor || '|' || dirty FROM paciente_extra"))
+            assertEquals(listOf("M"), textos(driver, "SELECT sexo FROM paciente"))
             // Ya guardado: la segunda vez no pide.
             assertEquals(20L, backend.resolverPaciente("tobb-p55"))
             assertEquals(1, api.resueltos.size)

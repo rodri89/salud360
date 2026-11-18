@@ -59,17 +59,21 @@ class PacientesRepository(private val db: Salud360Db) {
     }
 
     /**
-     * Alta o actualización. Si ya existe un paciente con el mismo DNI se reutiliza (comportamiento de
-     * `altaPacienteMedicoSecretaria`) y se lo vincula al médico indicado.
+     * Alta o actualización. Si ya existe otro paciente con el mismo DNI se reutiliza (comportamiento de
+     * `altaPacienteMedicoSecretaria`): se lo vincula al médico indicado y se devuelve **su** ficha, sin pisarla con
+     * lo que se escribió. Quien llama distingue ese caso porque el id devuelto es distinto del que se pasó.
      */
     suspend fun guardar(paciente: Paciente, vincularA: Id? = null): Paciente {
         val existente = if (paciente.dni.isNotBlank()) porDni(paciente.dni) else null
-        val aGuardar = if (existente != null && existente.id != paciente.id) paciente.copy(id = existente.id) else paciente
-        val normalizado = aGuardar.copy(
-            nombre = aGuardar.nombre.trim().uppercase(),
-            apellido = aGuardar.apellido.trim().uppercase(),
-            dni = aGuardar.dni.trim(),
-            nota = aGuardar.nota.trim(),
+        if (existente != null && existente.id != paciente.id) {
+            if (vincularA != null) vincular(vincularA, existente.id)
+            return existente
+        }
+        val normalizado = paciente.copy(
+            nombre = paciente.nombre.trim().uppercase(),
+            apellido = paciente.apellido.trim().uppercase(),
+            dni = paciente.dni.trim(),
+            nota = paciente.nota.trim(),
         )
         db.transaction {
             q.upsertPaciente(normalizado.toRow(ahoraMillis()))
@@ -78,6 +82,52 @@ class PacientesRepository(private val db: Salud360Db) {
             }
         }
         return normalizado
+    }
+
+    /**
+     * Reemplaza la ficha local `idLocal` por la que turnos tiene para ese DNI ([remoto], id `tobb-p<N>`), sin dejar dos
+     * filas con el mismo DNI. En una sola transacción:
+     * - la ficha `remoto.id` queda con los datos de turnos, sin pisar con vacíos lo que ya había (ver [fusionarFicha]),
+     *   y sin `dirty`: su dueño es turnos;
+     * - todo lo que apuntaba a `idLocal` pasa a `remoto.id`: vínculos con médicos (ver [fusionarVinculos]), `paciente_extra`
+     *   (ante una misma clave gana el dato que ya tenía el id de turnos), turnos, recetas, consultas, antecedentes,
+     *   registros clínicos, laboratorios, archivos, pendientes y vacunas;
+     * - la ficha local sobrante se marca borrada.
+     *
+     * Es idempotente y sirve aunque la ficha de turnos ya estuviera en el dispositivo (la sincronizó otra pantalla antes)
+     * o aunque la local ya no exista. Devuelve la ficha que quedó.
+     */
+    suspend fun reemplazarPorRemoto(idLocal: Id, remoto: Paciente): Paciente {
+        val ahora = ahoraMillis()
+        var ficha = remoto
+        db.transaction {
+            val mismo = idLocal == remoto.id
+            val local = if (mismo) null else q.pacientePorId(idLocal).uno { it.toModel() }
+            val previa = q.pacientePorId(remoto.id).uno { it.toModel() } ?: local
+            ficha = fusionarFicha(previa, remoto)
+            q.upsertPaciente(ficha.toRow(ahora, dirty = false))
+            if (mismo) return@transaction
+
+            val deLaLocal = q.vinculosDePaciente(idLocal).lista { it.toModel() }
+            if (deLaLocal.isNotEmpty()) {
+                val deTurnos = q.vinculosDePaciente(remoto.id).lista { it.toModel() }
+                fusionarVinculos(deLaLocal, deTurnos, remoto.id).forEach { q.upsertMedicoPaciente(it.toRow(ahora, dirty = false)) }
+            }
+            q.borrarVinculosDePaciente(idLocal)
+            q.repuntarExtrasDePaciente(remoto.id, idLocal)
+            q.borrarExtrasDePaciente(idLocal)
+            q.repuntarTurnosDePaciente(remoto.id, idLocal)
+            q.repuntarRecetasDePaciente(remoto.id, idLocal)
+            q.repuntarConsultasDePaciente(remoto.id, idLocal)
+            q.repuntarAntecedentesDePaciente(remoto.id, idLocal)
+            q.repuntarRegistrosDePaciente(remoto.id, idLocal)
+            q.repuntarLaboratoriosDePaciente(remoto.id, idLocal)
+            q.repuntarArchivosDePaciente(remoto.id, idLocal)
+            q.repuntarPendientesDePaciente(remoto.id, idLocal)
+            q.repuntarVacunasDePaciente(remoto.id, idLocal)
+            local?.let { q.upsertPaciente(it.toRow(ahora, deleted = true)) }
+        }
+        return ficha
     }
 
     suspend fun vincular(medicoId: Id, pacienteId: Id) {

@@ -117,11 +117,13 @@ class HistoriasHabilitadasTest {
     }
 
     @Test
-    fun sin_historias_clinicas_en_el_perfil_vale_la_especialidad_de_turnos() = conBase { db, driver ->
+    fun sin_historias_clinicas_en_el_perfil_ya_no_se_deduce_de_la_especialidad() = conBase { db, driver ->
         val p = perfil("""{"id":1,"nombre":"Ana","apellido":"Prueba","consultorio_id":0,"especialidad":"Hepatología"}""")
         TurnosImportador(db).importar(p)
 
-        assertEquals("clinica", texto(driver, "SELECT especialidades_hc FROM medico WHERE id = 'tobb-m1'"))
+        // Desde el 2026-11-09 el administrador decide (feature/hc-solo-medico-habilitado): sin `historias_clinicas` no
+        // se habilita nada por la especialidad de turnos; el médico la recibe cuando el admin se la habilita.
+        assertEquals("", texto(driver, "SELECT especialidades_hc FROM medico WHERE id = 'tobb-m1'"))
     }
 
     @Test

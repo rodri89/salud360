@@ -41,6 +41,12 @@ enum class TipoTurno(val codigo: Int, val etiqueta: String) {
 
     companion object {
         fun porCodigo(codigo: Int): TipoTurno = entries.firstOrNull { it.codigo == codigo } ?: CONSULTA
+
+        /**
+         * Lo que hay que guardar en `tipoCodigo` de un modelo para el [codigo] real que informa turnos: `null` si el enum ya
+         * lo representa, el propio código si no (los tipos que crea el administrador: [porCodigo] los cae en [CONSULTA]).
+         */
+        fun codigoSiNoEsDelEnum(codigo: Int): Int? = if (entries.any { it.codigo == codigo }) null else codigo
     }
 }
 
@@ -63,7 +69,12 @@ data class HorarioMedico(
     val activo: Boolean = true,
     /** Se ofrece semana por medio (cada 15 días), tomando `validoDesde` como semana ancla. */
     val quincenal: Boolean = false,
+    /** Código real del tipo cuando [tipoTurno] no lo representa (tipos creados por el administrador); `null` si lo representa. */
+    val tipoCodigo: Int? = null,
 ) {
+    /** Código real del tipo de este horario: el de turnos aunque el enum cerrado no lo conozca. */
+    val codigoDeTipo: Int get() = tipoCodigo ?: tipoTurno.codigo
+
     fun vigenteEn(fecha: LocalDate): Boolean =
         activo && (validoDesde == null || validoDesde <= fecha) && (validoHasta == null || validoHasta >= fecha)
 }
@@ -127,7 +138,12 @@ data class Turno(
     val pacienteDni: String = "",
     val pacienteTelefono: String = "",
     val pacienteObraSocial: String = "",
-)
+    /** Código real del tipo cuando [tipoTurno] no lo representa (tipos creados por el administrador); `null` si lo representa. */
+    val tipoCodigo: Int? = null,
+) {
+    /** Código real del tipo de este turno: el de turnos aunque el enum cerrado no lo conozca. */
+    val codigoDeTipo: Int get() = tipoCodigo ?: tipoTurno.codigo
+}
 
 @Serializable
 data class Feriado(val id: Id, val fecha: LocalDate, val descripcion: String = "")
@@ -225,4 +241,11 @@ data class SlotAgenda(
     /** Si el módulo "mostrar de a dos" está activo, solo el par vigente es reservable. */
     val reservableOnline: Boolean = true,
     val doble: Boolean = false,
-)
+    /** Tipo del horario (con todos los tipos, cada horario es de uno). Por omisión Consulta, como antes. */
+    val tipoTurno: TipoTurno = TipoTurno.CONSULTA,
+    /** Código real del tipo cuando [tipoTurno] no lo representa (tipos creados por el administrador); `null` si lo representa. */
+    val tipoCodigo: Int? = null,
+) {
+    /** Código real del tipo de este horario: el de turnos aunque el enum cerrado no lo conozca. */
+    val codigoDeTipo: Int get() = tipoCodigo ?: tipoTurno.codigo
+}

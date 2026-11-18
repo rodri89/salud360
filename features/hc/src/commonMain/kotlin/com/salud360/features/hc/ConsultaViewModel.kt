@@ -750,7 +750,9 @@ class HistoriaClinicaViewModel(
     val definicion: StateFlow<DefinicionResuelta?> = _definicion
 
     val paciente: StateFlow<Paciente?> = pacientes.observar(pacienteId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val consultas: StateFlow<List<Consulta>> = hc.observarConsultas(pacienteId, especialidad).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** `null` hasta que la base responde: «todavía no se leyó» no es lo mismo que «no hay consultas». */
+    val consultas: StateFlow<List<Consulta>?> = hc.observarConsultas(pacienteId, especialidad).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val pendientes: StateFlow<List<Pendiente>> = hc.observarPendientes(pacienteId, medicoId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _mensaje = MutableStateFlow<String?>(null)

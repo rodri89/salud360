@@ -67,9 +67,13 @@ class HcPediatriaBackend internal constructor(
 
     private val log = Logger.withTag("HcPediatria")
     private val hq get() = db.historiaClinicaQueries
+    private val pq get() = db.pacientesQueries
 
     /** Cartera y vínculo de los pacientes, como en la HC general (spec 002). Los nombres no hacen falta: no da motivos. */
     private val pacientes = PacientesHcRepository(db, PacientesHcApis(mapOf(especialidad to pacientesApi)), emptyMap())
+
+    /** Pacientes ya vinculados a los que, en esta sesión, se les preguntó a pediatría por el sexo (ver [completarSexoDeUnVinculado]). */
+    private val preguntadosPorSexo = mutableSetOf<Id>()
 
     // ------------------------------------------------------------------
     // Consultas
@@ -323,10 +327,16 @@ class HcPediatriaBackend internal constructor(
      * nada: null si el paciente no está en el dispositivo y, si no queda vinculado, la [TobbException]
      * con el mismo status y código que manda pediatría (con un documento que no sirve ya no se pide:
      * se arma acá, con el mensaje de RF-12).
+     *
+     * Pediatría devuelve también el sexo, que turnos no tiene: si la ficha local no lo tiene se completa con ese
+     * (nunca se pisa uno ya cargado). Ver [completarSexoLocal] y [completarSexoDeUnVinculado].
      */
     suspend fun resolverPaciente(pacienteId: Id): Long? =
-        when (val r = pacientes.vinculo(pacienteId, especialidad)) {
-            is ResultadoVinculo.Vinculado -> r.fichaId
+        when (val r = pacientes.vinculo(pacienteId, especialidad) { ficha -> completarSexoLocal(pacienteId, ficha.sexo) }) {
+            is ResultadoVinculo.Vinculado -> {
+                completarSexoDeUnVinculado(pacienteId)
+                r.fichaId
+            }
             is ResultadoVinculo.NoSePudo ->
                 if (r.error.codigo == PacientesHcRepository.PACIENTE_NO_ESTA) null else throw r.error
             is ResultadoVinculo.DocumentoInvalido -> throw TobbException(422, "dni_invalido", r.mensaje)
@@ -336,6 +346,40 @@ class HcPediatriaBackend internal constructor(
             // Solo pasa al elegir una ficha, que el motor no hace.
             ResultadoVinculo.FichaNoElegible -> throw TobbException(422, "ficha_no_elegible", "La ficha elegida no corresponde")
         }
+
+    /**
+     * El paciente ya vinculado con pediatría no se vuelve a resolver, pero si su ficha local no tiene sexo (las de
+     * turnos nacen así) se le pregunta a pediatría **una sola vez por sesión de la app**: si allá tampoco está, no
+     * se insiste en cada apertura. Es solo un complemento: cualquier falla (sin red, un rechazo) se anota y no
+     * impide seguir con el id que ya se conoce. El vínculo guardado manda aunque la respuesta traiga otro id.
+     */
+    private suspend fun completarSexoDeUnVinculado(pacienteId: Id) {
+        val p = pq.pacientePorId(pacienteId).uno { it.toModel() } ?: return
+        if (p.sexo != null || !preguntadosPorSexo.add(pacienteId)) return
+        try {
+            completarSexoLocal(pacienteId, pacientes.sexoDelServidor(pacienteId, especialidad))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            log.w { "no se pudo completar el sexo desde pediatría: ${(e as? TobbException)?.codigo ?: e::class.simpleName}" }
+        }
+    }
+
+    /**
+     * Completa SOLO el sexo de la ficha local con el de pediatría, si la ficha no tiene ninguno y el de allá es
+     * reconocible (ver [sexoDesdeHc] y [completarSexo]). No toca los demás datos ni el `dirty`: el dato lo tiene
+     * pediatría, así que no es un cambio del médico que haya que enviar; si la ficha ya estaba pendiente por otra
+     * edición, sigue pendiente. Se lee la fila de nuevo acá para no pisar una edición hecha mientras se esperaba.
+     */
+    private suspend fun completarSexoLocal(pacienteId: Id, sexoHc: String?) {
+        val desdeHc = sexoDesdeHc(sexoHc) ?: return
+        val fila = pq.pacientePorId(pacienteId).uno { it } ?: return
+        val actual = fila.toModel().sexo
+        val nuevo = completarSexo(actual, desdeHc)
+        if (nuevo == actual) return
+        pq.upsertPaciente(fila.copy(sexo = nuevo?.name, updated_at = ahoraMillis()))
+    }
+
 
     // ------------------------------------------------------------------
     // Apoyo
@@ -418,7 +462,7 @@ class HcPediatriaBackend internal constructor(
      * Atajo a la cartera del médico en pediatría ([PacientesHcRepository.traerCartera]), para
      * `HcCarteraE2ETest`. La app la pide con [PacientesHcRepository.sincronizarCarteras].
      */
-    suspend fun traerPacientes(medicoId: Id): Int = pacientes.traerCartera(medicoId, especialidad)
+    override suspend fun traerPacientes(medicoId: Id): Int = pacientes.traerCartera(medicoId, especialidad)
 
     // ------------------------------------------------------------------
     // Licencias
