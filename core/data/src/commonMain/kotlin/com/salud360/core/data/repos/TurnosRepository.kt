@@ -10,7 +10,6 @@ import com.salud360.core.data.uno
 import com.salud360.core.data.network.tobb.TobbAltaUsuario
 import com.salud360.core.database.Salud360Db
 import com.salud360.core.model.Id
-import com.salud360.core.model.auth.Usuario
 import com.salud360.core.model.TobbIds
 import com.salud360.core.model.newId
 import com.salud360.core.model.turnos.Asistencia
@@ -30,9 +29,13 @@ import com.salud360.core.model.turnos.ObraSocialMedico
 import com.salud360.core.model.turnos.Receta
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
+import com.salud360.core.model.turnos.TipoTurnoCatalogo
+import com.salud360.core.model.turnos.TipoTurnoDelMedico
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.model.pacientes.Paciente
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -69,6 +72,9 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     fun esRemota(medicoId: Id): Boolean = online != null && TobbIds.esTobb(medicoId)
     private fun remota(medicoId: Id): AgendaTurnosOnline? = online?.takeIf { TobbIds.esTobb(medicoId) }
 
+    /** Nombre de cada tipo de turno (por código) que informó turnos en esta sesión; vacío si no hay turnos en línea o no los manda. */
+    val nombresDeTipos: StateFlow<Map<Int, String>> = online?.nombresDeTipos ?: MutableStateFlow(emptyMap())
+
     /**
      * Trae de turnosonlinebb la agenda del día y la deja en la caché local (los flujos `observar…` se actualizan solos).
      * Para médicos locales no hace nada y devuelve null.
@@ -82,11 +88,13 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     suspend fun sincronizarPacientesVinculados(medicoId: Id): List<Paciente>? = remota(medicoId)?.pacientesVinculados(medicoId)
 
     /**
-     * Guarda en turnosonlinebb la ficha editada en la app (la da de alta si todavía no existe allá).
-     * Null si el médico es local, en cuyo caso la ficha vive solo en la base propia.
+     * Guarda en turnosonlinebb la ficha editada en la app (la da de alta si todavía no existe allá; si el DNI ya existía
+     * allá, la ficha local se reemplaza por la de turnos y el paciente queda asociado al médico). Devuelve la ficha que
+     * quedó en el dispositivo y si ya existía en el sistema, o null si el médico es local, en cuyo caso la ficha vive
+     * solo en la base propia. `esAlta`: ver [AgendaTurnosOnline.guardarPacienteRemoto].
      */
-    suspend fun guardarPacienteRemoto(medicoId: Id, pacienteId: Id, consultorioId: Id?): Unit? =
-        remota(medicoId)?.guardarPacienteRemoto(pacienteId, medicoId, consultorioId)
+    suspend fun guardarPacienteRemoto(medicoId: Id, pacienteId: Id, consultorioId: Id?, esAlta: Boolean = false): PacienteGuardado? =
+        remota(medicoId)?.guardarPacienteRemoto(pacienteId, medicoId, consultorioId, esAlta)
 
     // ---- consultorios / catálogos ----
 
@@ -118,8 +126,77 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
      * Da de alta en turnosonlinebb a quien va a usar la app. Requiere conexión: la contraseña se
      * guarda allá, que es donde se valida, y sin turnos no hay a quién darlo de alta.
      */
-    suspend fun crearUsuario(alta: TobbAltaUsuario): Usuario =
+    suspend fun crearUsuario(alta: TobbAltaUsuario): UsuarioCreado =
         online?.crearUsuario(alta) ?: throw IllegalStateException("El alta de usuarios necesita conexión con turnos.")
+
+    /**
+     * Cambia en turnos la agenda y/o la visibilidad de un médico (`PUT medicos/{n}/agenda`) y devuelve el estado final con
+     * los turnos futuros que informa turnos. Exige conexión (el dueño del dato es turnos): sin `online` no hay dónde
+     * guardarlo y la copia local no se toca. Qué pedido sale lo decide `AgendaDelMedico.cambioDeAgenda`.
+     */
+    suspend fun guardarAgenda(medicoId: Id, tieneAgenda: Boolean?, visible: Boolean?): AgendaGuardada =
+        online?.guardarAgenda(medicoId, tieneAgenda, visible)
+            ?: throw IllegalStateException("Cambiar la agenda necesita conexión con turnos.")
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/historias-clinicas`) la lista exacta de historias clínicas habilitadas de un
+     * médico y devuelve la que informa turnos. Exige conexión (el dueño del dato es turnos): sin `online` no hay dónde
+     * guardarlo y la copia local no se toca. La lista nueva la arma `nuevasHistoriasClinicas`.
+     */
+    suspend fun guardarHistoriasClinicas(medicoId: Id, codigos: List<String>): List<String> =
+        online?.guardarHistoriasClinicas(medicoId, codigos)
+            ?: throw IllegalStateException("Cambiar las historias clínicas necesita conexión con turnos.")
+
+    /**
+     * Catálogo global de tipos de turno (`GET tipos-turno`, solo administrador), con los inactivos. Exige conexión (el
+     * dueño del dato es turnos) y no se guarda en el dispositivo.
+     */
+    suspend fun tiposDeTurno(): List<TipoTurnoCatalogo> =
+        online?.tiposDeTurno()
+            ?: throw IllegalStateException("Ver los tipos de turno necesita conexión con turnos.")
+
+    /** Crea un tipo de turno en el catálogo de turnos (`POST tipos-turno`) y devuelve el que creó. Exige conexión. */
+    suspend fun crearTipoTurno(nombre: String): TipoTurnoCatalogo =
+        online?.crearTipoTurno(nombre)
+            ?: throw IllegalStateException("Crear un tipo de turno necesita conexión con turnos.")
+
+    /** Tipos habilitados de un médico con su condición y opciones (`GET medicos/{n}/tipos-turno`). Exige conexión. */
+    suspend fun tiposDelMedico(medicoId: Id): List<TipoTurnoDelMedico> =
+        online?.tiposDelMedico(medicoId)
+            ?: throw IllegalStateException("Ver los tipos de turno de un médico necesita conexión con turnos.")
+
+    /** Tipos habilitados de cada médico que se leyeron en esta sesión (por id de médico); vacío sin turnos en línea. */
+    val tiposHabilitados: StateFlow<Map<Id, List<TipoTurnoDelMedico>>> = online?.tiposHabilitados ?: MutableStateFlow(emptyMap())
+
+    /** Los tipos habilitados del médico que hay en memoria, o `null` si no se leyeron o no se pudieron leer (se degrada al comportamiento de antes). */
+    fun tiposEnMemoria(medicoId: Id): List<TipoTurnoDelMedico>? = tiposHabilitados.value[medicoId]
+
+    /**
+     * Vuelve a leer de turnos los tipos habilitados del médico (lo hace cualquier rol: administrador, médico o secretaria) para
+     * horarios y asignar. No lanza: [LecturaDeTiposDelMedico] cuenta cómo salió. Un médico propio de Salud 360 no tiene tipos de
+     * turnos ([LecturaDeTiposDelMedico.NoDisponible], sin tocar la red).
+     */
+    suspend fun refrescarTiposDelMedico(medicoId: Id): LecturaDeTiposDelMedico =
+        remota(medicoId)?.refrescarTiposDelMedico(medicoId) ?: LecturaDeTiposDelMedico.NoDisponible
+
+    /** Olvida los tipos en memoria de un médico; se vuelven a leer al abrir Horarios o Asignar. */
+    fun invalidarTiposDelMedico(medicoId: Id) { online?.invalidarTiposDelMedico(medicoId) }
+
+    /**
+     * Guarda en turnos (`PUT medicos/{n}/tipos-turno`) la lista exacta de tipos habilitados de un médico y devuelve lo
+     * que quedó según turnos, con sus avisos. Exige conexión; no hay copia local. La lista la arma `aPedido`.
+     */
+    suspend fun guardarTiposDelMedico(medicoId: Id, config: List<ConfigTipoTurno>): GuardadoTipos =
+        online?.guardarTiposDelMedico(medicoId, config)
+            ?: throw IllegalStateException("Cambiar los tipos de turno necesita conexión con turnos.")
+
+    /**
+     * Activa o desactiva a un médico en turnos (`PUT medicos/{n}/activo`) y devuelve el estado final que informa turnos.
+     * Exige conexión (el dueño del dato es turnos): sin `online` no hay dónde guardarlo y la copia local no se toca.
+     */
+    suspend fun guardarActivoMedico(medicoId: Id, activo: Boolean): Boolean =
+        online?.guardarActivoMedico(medicoId, activo)
+            ?: throw IllegalStateException("Activar o desactivar a un médico necesita conexión con turnos.")
 
     /** Guarda el vínculo médico–obra social; para médicos de turnosonlinebb (y obras sociales de la web) se guarda en la web. */
     suspend fun guardarObraSocialMedico(o: ObraSocialMedico) {
@@ -172,7 +249,7 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Alta de un horario fijo; rechaza duplicados (día + horario + consultorio + tipo). En médicos de turnosonlinebb se crea en la web. */
     suspend fun agregarHorario(h: HorarioMedico): Boolean {
         val existe = q.horariosDeMedicoDia(h.medicoId, h.consultorioId, h.dia.ordinal + 1L).lista { it.toModel() }
-            .any { it.horario == h.horario && it.tipoTurno == h.tipoTurno }
+            .any { it.horario == h.horario && it.codigoDeTipo == h.codigoDeTipo }
         if (existe) return false
         remota(h.medicoId)?.let { return it.agregarHorario(h) }
         q.upsertHorario(h.toRow(ahoraMillis()))
@@ -191,14 +268,18 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
     /** Genera slots cada `intervaloMinutos` entre `desde` y `hasta` para un día (`crear_turnos_dia_dh`). */
     suspend fun generarHorarios(
         medicoId: Id, consultorioId: Id, dia: kotlinx.datetime.DayOfWeek, desde: LocalTime, hasta: LocalTime, intervaloMinutos: Int,
-        tipo: TipoTurno = TipoTurno.CONSULTA, quincenal: Boolean = false, validoDesde: LocalDate? = null, validoHasta: LocalDate? = null,
+        tipoCodigo: Int = CODIGO_TIPO_CONSULTA, quincenal: Boolean = false, validoDesde: LocalDate? = null, validoHasta: LocalDate? = null,
     ): Int {
         var minutos = desde.hour * 60 + desde.minute
         val fin = hasta.hour * 60 + hasta.minute
         var creados = 0
         while (minutos < fin) {
             val h = LocalTime(minutos / 60, minutos % 60)
-            if (agregarHorario(HorarioMedico(newId(), medicoId, consultorioId, dia, h, tipoTurno = tipo, validoDesde = validoDesde, validoHasta = validoHasta, quincenal = quincenal))) creados++
+            val nuevo = HorarioMedico(
+                newId(), medicoId, consultorioId, dia, h, tipoTurno = TipoTurno.porCodigo(tipoCodigo), validoDesde = validoDesde, validoHasta = validoHasta,
+                quincenal = quincenal, tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoCodigo),
+            )
+            if (agregarHorario(nuevo)) creados++
             minutos += intervaloMinutos
         }
         return creados
@@ -238,14 +319,18 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
      * 2. cruzados con turnos activos/bloqueados
      * 3. feriado → sin turnos
      * 4. módulo "mostrar de a dos" → solo el primer par no ocupado es reservable online
+     *
+     * Sin [tipo], un médico de turnosonlinebb devuelve los horarios de todos los tipos (cada slot lleva el suyo); uno propio
+     * de Salud 360, solo los de Consulta, como siempre.
      */
-    suspend fun slotsDelDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno = TipoTurno.CONSULTA): List<SlotAgenda> {
+    suspend fun slotsDelDia(medicoId: Id, consultorioId: Id, fecha: LocalDate, tipo: TipoTurno? = null): List<SlotAgenda> {
         remota(medicoId)?.let { return it.dia(medicoId, consultorioId, fecha, tipo).slots }
         if (esFeriado(fecha)) return emptyList()
+        val tipoLocal = tipo ?: TipoTurno.CONSULTA
         val modulos = modulos(medicoId)
         val agregada = q.fechaAgregada(medicoId, consultorioId, fecha.toString()).uno { it.toModel() }
         val plantilla = q.horariosDeMedicoDia(medicoId, consultorioId, fecha.dayOfWeek.ordinal + 1L).lista { it.toModel() }
-            .filter { it.tipoTurno == tipo && it.vigenteEn(fecha) }
+            .filter { it.tipoTurno == tipoLocal && it.vigenteEn(fecha) }
         val horarios: List<Pair<LocalTime, Boolean>> = agregada?.horarios?.map { it to false }
             ?: plantilla.map { it.horario to it.doble }
         val ocupados = q.turnosOcupados(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }.associateBy { it.horario }
@@ -340,12 +425,20 @@ class TurnosRepository(private val db: Salud360Db, private val online: AgendaTur
         return ResultadoTurno.Ok(t)
     }
 
-    /** Bloquea un horario sin paciente (`estado = BLOQUEADO`, equivalente a `activo = 2`). */
-    suspend fun bloquearHorario(medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String): ResultadoTurno {
-        remota(medicoId)?.let { return it.bloquearHorario(medicoId, consultorioId, fecha, horario) }
+    /**
+     * Bloquea un horario sin paciente (`estado = BLOQUEADO`, equivalente a `activo = 2`). [tipoCodigo] es el tipo del horario
+     * que se bloquea (`codigoParaRegistrar` del slot): en turnos de otro tipo el bloqueo lo lleva, el de tipo 1 no lo manda.
+     */
+    suspend fun bloquearHorario(
+        medicoId: Id, consultorioId: Id, fecha: LocalDate, horario: LocalTime, por: String, tipoCodigo: Int = CODIGO_TIPO_CONSULTA,
+    ): ResultadoTurno {
+        remota(medicoId)?.let { return it.bloquearHorario(medicoId, consultorioId, fecha, horario, tipoCodigo) }
         val ocupados = q.turnosOcupados(medicoId, consultorioId, fecha.toString()).lista { it.toModel() }
         if (ocupados.any { it.horario == horario }) return ResultadoTurno.HorarioOcupado
-        val t = Turno(newId(), null, medicoId, consultorioId, fecha, horario, estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Bloqueado")
+        val t = Turno(
+            newId(), null, medicoId, consultorioId, fecha, horario, TipoTurno.porCodigo(tipoCodigo),
+            estado = EstadoTurno.BLOQUEADO, otorgadoPor = por, comentario = "Bloqueado", tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipoCodigo),
+        )
         q.upsertTurno(t.toRow(ahoraMillis()))
         return ResultadoTurno.Ok(t)
     }

@@ -1,5 +1,6 @@
 package com.salud360.core.data.network.hc
 
+import com.salud360.core.data.hcgeneral.ErrorPerfil
 import com.salud360.core.data.network.TobbException
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -27,6 +28,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -102,15 +104,27 @@ class HcApiClient(
         return interpretar(r)
     }
 
-    private suspend fun interpretar(r: HttpResponse): JsonObject {
-        val texto = runCatching { r.bodyAsText() }.getOrDefault("")
+    private suspend fun interpretar(r: HttpResponse): JsonObject =
+        interpretar(r.status.value, runCatching { r.bodyAsText() }.getOrDefault(""))
+
+    /**
+     * La respuesta ya leída: el objeto si salió bien; si no, [TobbException] con el código y, en un `422 validacion`,
+     * los `errores` campo por campo (RF-13); en un `409 paciente_ambiguo`, los `candidatos` (RF-11).
+     */
+    internal fun interpretar(status: Int, texto: String): JsonObject {
         val obj = runCatching { json.parseToJsonElement(texto).jsonObject }.getOrNull()
         val ok = obj?.get("ok")?.jsonPrimitive?.booleanOrNull
-        if (!r.status.isSuccess() || ok == false || obj == null) {
+        if (status !in 200..299 || ok == false || obj == null) {
             val mensaje = obj?.get("mensaje")?.jsonPrimitive?.contentOrNull
                 ?: obj?.get("message")?.jsonPrimitive?.contentOrNull
-                ?: texto.ifBlank { "La historia clínica de $especialidad respondió ${r.status.value}" }
-            throw TobbException(r.status.value, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, obj)
+                ?: texto.ifBlank { "La historia clínica de $especialidad respondió $status" }
+            val errores = obj?.get("errores")
+                ?.let { runCatching { json.decodeFromJsonElement(ListSerializer(ErrorPerfil.serializer()), it) }.getOrNull() }
+                .orEmpty()
+            val candidatos = obj?.get("candidatos")
+                ?.let { runCatching { json.decodeFromJsonElement(ListSerializer(HcPacienteCandidato.serializer()), it) }.getOrNull() }
+                .orEmpty()
+            throw TobbException(status, obj?.get("codigo")?.jsonPrimitive?.contentOrNull, mensaje, errores, candidatos, cuerpo = obj)
         }
         return obj
     }
@@ -182,6 +196,21 @@ class HcApiClient(
     suspend fun get(ruta: String, params: Map<String, Any?> = emptyMap()): JsonObject = pedir(HttpMethod.Get, ruta, params)
     suspend fun post(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Post, ruta, emptyMap(), cuerpo)
     suspend fun put(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Put, ruta, emptyMap(), cuerpo)
+    /** `DELETE`; con [cuerpo] lleva un JSON, igual que un `POST` (la baja de una consulta de la HC general manda `clave` y `dispositivo`). */
+    suspend fun delete(ruta: String, cuerpo: String? = null): JsonObject = pedir(HttpMethod.Delete, ruta, emptyMap(), cuerpo)
+
+    /**
+     * POST auth/salir: le pide a la HC que olvide [token] (RF-59). Va por parámetro y no es el de [token]: cuando
+     * `AuthRepository.logout` revoca en segundo plano, el cliente ya lo olvidó. No mira el estado de la respuesta (una
+     * API vieja contesta 404 y da igual). Un fallo de red se propaga y lo ignora quien llama.
+     */
+    suspend fun salir(token: String) {
+        http.post(base + "auth/salir") {
+            accept(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer $token")
+            header("X-Salud360-Token", token)
+        }
+    }
 
     /** Serializa el cuerpo de un pedido. */
     fun <T> cuerpo(serializer: KSerializer<T>, valor: T): String = json.encodeToString(serializer, valor)
@@ -189,6 +218,14 @@ class HcApiClient(
     /** Decodifica una parte de la respuesta (`paciente`, `consulta`, ...). */
     fun <T> leer(serializer: KSerializer<T>, obj: JsonObject, clave: String): T =
         json.decodeFromJsonElement(serializer, obj[clave] ?: throw TobbException(0, "respuesta", "Falta '$clave' en la respuesta de $especialidad"))
+
+    /**
+     * Decodifica la respuesta entera (`{ok, pacientes, hay_mas, ...}`); lo que el DTO no tiene se ignora. Si no tiene
+     * la forma esperada, [TobbException] `respuesta`, como [leer] cuando falta la clave.
+     */
+    fun <T> leerTodo(serializer: KSerializer<T>, obj: JsonObject): T =
+        runCatching { json.decodeFromJsonElement(serializer, obj) }
+            .getOrElse { throw TobbException(0, "respuesta", "Respuesta inesperada de $especialidad: ${it.message}") }
 
     /** Decodifica una parte opcional; null si no vino o vino nula. */
     fun <T> leerOpcional(serializer: KSerializer<T>, obj: JsonObject, clave: String): T? {

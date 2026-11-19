@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.LocalHospital
@@ -62,6 +63,7 @@ fun iconoSeccion(nombre: String?): ImageVector? = when (nombre) {
     "embarazo" -> Icons.Default.PregnantWoman
     "psico" -> Icons.Default.Psychology
     "diagnostico" -> Icons.Default.Visibility
+    "enfermedades" -> Icons.Default.HealthAndSafety
     "archivos" -> Icons.Default.AttachFile
     "texto" -> Icons.Default.Notes
     "form" -> Icons.Default.ListAlt

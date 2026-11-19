@@ -6,7 +6,8 @@ siguiente (la E2, app, se genera después de validar la E1).
 
 **Parte 2, entrega L (solo lectura): tandas E3 a E9, abajo, aprobadas por el usuario el 2026-10-28** (plan en
 `plan.md`; Q15 = nunca borrar; la tanda S, E3 y E4, puede empezar; E9, producción, requiere aprobación aparte). La
-entrega E (escritura) es borrador sin aprobar y no tiene tareas.
+entrega E (escritura) ya no se sigue acá: se especifica en `specs/005-hc-clinica-escritura/spec.md` (borrador, sin
+aprobar, sin plan ni tareas).
 
 Reglas para todas:
 - Commits locales como `rodri89` (ya configurado), uno por tarea, **sin push** en ningún repo. Subir a producción
@@ -332,6 +333,9 @@ vínculo lo cubren el E2E (`HcClinicaPacientesE2ETest`) y los tests del reposito
 *(Nota 2026-10-28: en la **entrega L** estos dos puntos se cubren con los candados de E5, que impiden todo envío de la
 HC general y dejan lo viejo sin tocar. Su resolución definitiva —filtrar `activo = 0`, decidir qué hacer con lo viejo
 sin enviar— es de la **entrega E**.)*
+*(Nota 2026-11-03: ya están decididos en la spec 005: los antecedentes `activo = 0` no se envían nunca (RF-9) y lo viejo sin
+enviar no sale solo, sino con un botón «Enviar a la web» consulta por consulta y con confirmación; sin lote ni «marcar como
+resuelto» (D2, RF-7 a RF-10).)*
 
 Anotados el 2026-10-27 por el cierre de la tanda D de la 001 (T54, hallazgo H2 del reviewer). **No se implementan en la parte 1.**
 Al registrar el backend de `clinica` en `HcApiSync` (el `HcBackend` de la HC general):
@@ -1524,14 +1528,34 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     como los frenones ya conocidos de esta máquina) y la repetición salió verde. Token: el de la prueba local, sin revocar (no hace falta
     para una copia local; vencido, lo regenera el usuario).
 
-- [ ] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
+- [x] **E8.2. Verificación de que no se escribe, con la app real.** RF-47, RF-48, RF-50 — **S** — Toca API Laravel: no
   - Con una base del dispositivo que tenga consultas viejas de la HC general sucias (la de pruebas anteriores del
     usuario o una armada): abrir historias y consultas en el `devWeb` contra la copia local con `suma.sql` antes y
     después; contar las filas sucias del dispositivo antes y después; revisar el registro de accesos.
   - Hecho cuando: `suma.sql` antes = después; las filas sucias del dispositivo son las mismas; el registro de accesos
     no tiene ningún método distinto de `GET` hacia `clinica` en la sesión; resultado anotado en esta tarea.
+  - **Hecho (2026-11-03), con salvedades.** Medido con el `devWeb` de la rama `hc-general` en http://localhost:8080 contra la
+    copia local (turnos y clínica en el XAMPP). **Servidor:** `suma.sql` (32 tablas de datos que leen las rutas) antes = después;
+    `CHECKSUM` y conteos de las 68 tablas de `hc_clinica` iguales salvo `salud360_token_cache` (1 → 3 filas: la escribe el
+    middleware al validar el token y `auth/salir`; no es un dato clínico). Dos corridas seguidas del «antes» dieron lo mismo
+    (medición estable). **Registro de accesos de Apache:** 274 líneas nuevas (16:44 a 18:02); hacia clínica, 36 pedidos entre las
+    17:02 y las 17:06: 21 `GET` con 200, 15 `OPTIONS` con 204 y 1 `POST auth/salir` (200). Rutas: `config`, `config/asignaciones`,
+    `config/catalogo`, `config/perfiles`, `consultas` ×2, `consultas/{n}` ×1 (un solo id), `pacientes` ×2, `pacientes/{n}/historia`
+    ×2, `enfermedades/pacientes/{n}` ×3. Ningún `PUT`, `PATCH` ni `DELETE`, ningún 4xx/5xx hacia clínica y sin entradas nuevas en
+    los `laravel*.log` de la copia de clínica.
+    - **Excepción al texto «ningún método distinto de `GET`»:** el `POST auth/salir` es el cierre de sesión; solo vacía el token
+      en `salud360_token_cache`, no escribe datos (coherente con la nota de E4.4 sobre el middleware). Con esa excepción, el
+      «Hecho cuando» se da por cumplido en lo del servidor (`suma.sql` y registro de accesos).
+    - **Salvedades:** (a) la cobertura de uso fue acotada: 2 historias y 1 consulta pedida por id, no las tres consultas del plan.
+      (b) Las filas `dirty` del dispositivo **NO se pudieron contar**: viven en la base del navegador, que no se lee desde acá, así
+      que esa parte del «Hecho cuando» **no está verificada**. Lo único que hay es indirecto: el `sync/push` a turnos salió ~1 por
+      minuto (137 en el rango, todos 404 esperados), lo que indica que el dispositivo tiene filas sucias, sin saber cuántas ni de qué
+      HC; tampoco se pudo confirmar que se haya creado la consulta local de prueba. (c) El `devWeb` de pediatría que ocupaba el
+      puerto 8080 se cerró para esta prueba (el servidor de clínica quedó en el 8080). (d) Antes de levantar clínica hubo 3 pedidos
+      a pediatría con 503 (`POST pacientes/resolver` ×2 y `PUT licencias/42`), no aceptados, ajenos a esta tarea.
+    - Archivos de apoyo, fuera del repo, en `%TEMP%\opencode\e44` (`*-e82-antes.txt`, `*-e82-despues.txt`, `e82-rows.xml`).
 
-- [ ] **E8.3. Prueba manual del usuario en `devWeb`.** RF-38 a RF-46, RF-49, RF-56, RF-62, RF-63 — **S** — Toca API Laravel: no
+- [x] **E8.3. Prueba manual del usuario en `devWeb`.** RF-38 a RF-46, RF-49, RF-56, RF-62, RF-63 — **S** — Toca API Laravel: no — **cerrada por decisión del usuario, con excepciones; NO verificada paso a paso, y con la limpieza de datos de prueba pendiente (ver la nota al final de esta tarea)**
   - Pasos (copia local, médico de prueba con el perfil equivalente al de la web, Q10; el paciente "PRUEBA SALUD360"):
     1. Abrir la historia del paciente: ve las consultas (a), (b) y (c) de E3.1, con origen; no ve (d), (e), (g); ve la línea de
        consultas de tipos no mostrables.
@@ -1555,11 +1579,56 @@ Condición previa de la tanda (D6): E6.5 y E7.4 hechas (E6.5 va después de E7.3
     8. En una consulta local, no se puede borrar una carga de laboratorio ni resolver un pendiente que vino de la web.
     9. `suma.sql` antes y después de toda la prueba: igual.
   - Hecho cuando: el usuario confirma cada paso o anota qué falla; `limpiar.sql` aplicado y token revocado.
+  - **Cerrada por decisión del usuario el 2026-11-03** (pidió cerrar la E8). Es una **cerrada con excepciones**: el «Hecho
+    cuando» de arriba (cada paso confirmado o con su falla anotada, `limpiar.sql` aplicado y token revocado) **no se cumplió**. La
+    marca `[x]` no significa que la prueba manual se haya hecho entera.
+    - **Lo que hubo:** el usuario recorrió la lectura en `devWeb`. Lo único que se ve de eso es el registro de accesos de E8.2:
+      2 historias abiertas, 1 consulta pedida por id y «Actualizar». **No hay confirmación del usuario, paso por paso, de ninguno de
+      los 9 pasos del plan**; no se deben dar por verificados.
+    - **SIN verificar:** la comparación lado a lado del paso 2; el paso 3 (salvo lo que haya coincidido con lo recorrido); los pasos 4
+      a 8 y el 5b. El paso 9 (`suma.sql` antes y después) quedó medido en E8.2, con las salvedades de esa nota.
+    - **Lo que sí respalda la spec sin esa prueba manual:** los tests automáticos, `HcClinicaLecturaE2ETest` (E8.1) contra la copia
+      local y la verificación de E8.2. No reemplaza la prueba manual de lo anterior.
+    - **LIMPIEZA DE DATOS DE PRUEBA PENDIENTE** (deuda explícita, no un olvido): `limpiar.sql` **no se aplicó** y el token **no se
+      revocó**. El detalle está en `MEMORY.md`.
 
-- [ ] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no
+- [x] **E8.4. Validación del reviewer.** RF-38 a RF-63 — **S** — Toca API Laravel: no — **APROBADO CON OBSERVACIONES (2026-11-03), ninguna bloqueante**
   - RF por RF: qué test lo cubre y el resultado (plan.md, "Estrategia de tests"); lista de los candados con su test;
     contradicciones y riesgos del plan resueltos o anotados; `MEMORY.md` actualizado (sin datos sensibles).
   - Hecho cuando: el reviewer aprueba o devuelve observaciones, y las observaciones quedan cerradas o anotadas.
+  - **Resultado (reviewer, 2026-11-03): aprobado con observaciones, ninguna bloqueante.**
+    - **Cómo validó:** solo lectura, sin ejecutar Gradle ni PHPUnit. `core:data` tiene 1161 `@Test` (igual al último verde anotado) y no
+      hay commits de código desde `20d7916` (2026-10-30), por lo que los verdes anotados siguen valiendo. Cubrió RF-1 a RF-4, RF-25 y
+      RF-38 a RF-63 con test o código, y 11 candados con su test (el de `ConsultaViewModel` solo por lectura, porque `features/*` no
+      tiene tests). Tanda S (servidor hclinica, rama `salud360-api`, HEAD `64849c9`): copia servida idéntica por SHA-256 en 9 archivos y
+      0 escrituras en el grep.
+    - **Observaciones:**
+      1. (media) RF-57 no se cumple con más de 50 consultas: `leerLista` pide hasta 20 páginas de 50 al abrir la historia (decisión de
+         E6.3 que no llegó a la spec); con el `throttle` de 60/min un paciente de 1000 consultas son 21 pedidos. Enmendar RF-57/RF-38
+         o limitar los pedidos antes de E9.
+      2. (media) RF-50, última cláusula inexacta: el middleware escribe `medico_licencias.activo = 0`, `salud360_vinculos_pendientes`,
+         el token cache y hace `Schema::create` de sus tablas. Editar RF-50 o aceptarlo por escrito; en E9.1 mirar el privilegio
+         `CREATE` de producción.
+      3. (media) Criterios de finalización de la L no cumplidos al pie de la letra: falta la prueba manual completa y una baja/texto
+         vaciado real contra la copia local (5b y E8.1 d son simulación); E9.3 no cubre los pasos 5b, 7 y 8. Hacerlos antes de E9 o
+         aceptarlo por escrito.
+      4. (media) Filas `dirty` reales del dispositivo sin medir: contarlas antes/después con una base conocida o aceptar el residuo por
+         escrito.
+      5. (baja, **obligatoria en la entrega E**) `archivosPendientesDeConsulta` recoge adjuntos por paciente sin mirar la HC: el envío
+         de pediatría puede recoger y marcar adjuntos de otra HC; está fijado como límite conocido en un test.
+      6. (media-baja) `SyncEngine` no pasa por el candado: hoy da 404, pero si turnos crea `sync/push|pull` saldría todo lo `dirty`; la
+         protección es solo documental. Excluir las tablas de HC con backend de solo lectura o apagar el motor antes de tocar turnos.
+      7. (baja) Tests que prueban menos de lo que dicen: `LecturaClinicaSinBorradoTest` revisa nombres con regex (el respaldo real es
+         `HcClinicaBackendAusentesTest`); los E2E se saltean sin propiedades.
+      8. (baja) RF-2, RF-3 y RF-59 sin evidencia propia (faltan `curl` de `hc_no_habilitada`, `medico_no_vinculado` y
+         `licencia_vencida`, y el 403 de administrador con token real).
+      9. (baja) `HcLicenciasE2ETest` no se corrió tras E5.3 (RF-61).
+      10. (baja) Documentación desactualizada (corregida en el mismo commit que esta nota: `MEMORY.md` y `specs/README.md`); además
+          `MEMORY.md` listaba ids de filas de la copia de producción (ahora van en un archivo de apoyo fuera del repo).
+      11. (baja) La barrera de publicar es solo humana: `release.hc.clinica` ya está en `gradle.properties`, así que un push a `main` que
+          toque `composeApp/`, `core/` o `features/` publicaría una app que da 404 en clínica hasta E9; no figura en `AGENTS.md`
+          (propuesta: sumar esa línea; no se editó).
+    - **Observaciones 1 a 4 a resolver o aceptar por escrito antes de pedir E9.**
 
 Al terminar la tanda: **el usuario decide si pasa a producción (E9)**. Sin aprobación explícita, la L queda validada
 solo en local.
@@ -1603,11 +1672,12 @@ producción (AGENTS.md): todo se hace a mano, con la app corrida en esta máquin
   - `MEMORY.md` y la tabla de `specs/README.md` actualizados; decisión del usuario sobre la entrega E.
   - Hecho cuando: el usuario aprueba el cierre de la L.
 
-## Entrega E (escritura) — pendiente, sin tareas
-Crear, editar y cerrar desde la app; laboratorio y pendientes con id de la web (`9.sqm`, **REQUIERE aprobación
-explícita**); filtro de antecedentes `activo = 0`; qué hacer con lo viejo sin enviar; `tabaquismo` (Q13) y el mapa
-al revés; adjuntos; aviso de licencia; sin conexión. Antes: respaldo probado de producción y limpieza de lo que dejen
-las pruebas. Se planifica después de ver funcionar la L.
+## Entrega E (escritura) — ahora en la spec 005
+Ya no se sigue acá. Se especifica en `specs/005-hc-clinica-escritura/spec.md` (borrador con las decisiones D1 a D15 del
+2026-11-03; sin plan ni tareas): crear, editar y cerrar solo lo que la app creó; laboratorio y pendientes con id de la web
+(`9.sqm`, aprobada en D8 para cuando llegue E3); filtro de antecedentes `activo = 0`; lo viejo sin enviar (D2);
+`tabaquismo` (Q13) y el mapa al revés (D9); adjuntos; licencia; sin conexión. Antes: limpieza de la deuda de pruebas y
+respaldo probado (D4). Las tareas se generan en la spec 005 después de su aprobación.
 
 ## Contradicciones, riesgos y lo no verificado
 Ver `plan.md` ("Contradicciones", "Riesgos de la entrega L" y "No verificado"). Lo que más pesa: H2 (E5), el esquema

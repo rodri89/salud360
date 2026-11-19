@@ -13,6 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.SECCION_DE_LA_NOTA_PERFIL4
+import com.salud360.core.data.hcgeneral.notaPerfil4
+import com.salud360.core.data.hcgeneral.avisoDeEnvioDeLaCasilla
+import com.salud360.core.data.hcgeneral.puedeEditarAntecedente
+import com.salud360.core.model.especialidad.ItemAntecedente
+import com.salud360.features.hc.AvisoDeEnvioDelCampo
 import com.salud360.core.model.especialidad.ModoAntecedentes
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.ui.components.CheckboxWithDetail
@@ -21,6 +27,7 @@ import com.salud360.core.ui.components.TextAreaField
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.features.hc.ConsultaUi
+import com.salud360.features.hc.MarcaYaNoFigura
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
 import kotlinx.coroutines.delay
@@ -36,13 +43,21 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val actuales = ui.antecedentes.filter { it.categoria == cat.categoria }.associateBy { it.clave }
     val ro = ctx.soloLectura
     // En lectura solo se listan los ítems marcados o con detalle.
-    val items = if (ro) cat.items.filter { i -> actuales[i.clave]?.let { it.flag || it.detalle.isNotBlank() } == true } else cat.items
+    val seEnvia = ui.seEnviaALaWeb
+    fun cargado(i: ItemAntecedente) = actuales[i.clave]?.let { it.flag || it.detalle.isNotBlank() } == true
+    // Spec 005, T37 (RF-3): la casilla que la web no guarda (el tabaquismo) no se ofrece para cargar en una consulta que se envía: se ve solo
+    // si ya estaba cargada, solo para leer y con «No se envía a la web».
+    val items = if (ro) cat.items.filter(::cargado) else cat.items.filter { !(seEnvia && it.sinEnvio) || cargado(it) }
     val historico = actuales["texto"]?.detalle ?: ""
     val nota = actuales["nota"]?.detalle ?: ""
+    // La nota de la pestaña de antecedentes familiares del perfil 4 (D2): la web la guarda aparte de las casillas y de la
+    // nota común, y llega como el antecedente `nota_perfil4`. Las casillas salen de `cat.items` (el catálogo), así que nunca
+    // se dibuja como una más; acá se muestra, solo para leer, y solo si existe (`notaPerfil4` es null si no hay).
+    val notaDelPerfil4 = notaPerfil4(ui.antecedentes).takeIf { s.id == SECCION_DE_LA_NOTA_PERFIL4 }
     val hayContenido = when (cat.modo) {
         ModoAntecedentes.CASILLAS -> items.isNotEmpty()
         ModoAntecedentes.TEXTO_ACUMULATIVO -> historico.isNotBlank()
-    } || (cat.notaLibre && nota.isNotBlank())
+    } || (cat.notaLibre && nota.isNotBlank()) || notaDelPerfil4 != null
     if (ro && !hayContenido) { SeccionVacia(); return }
 
     SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "antecedentes"), initiallyExpanded = s.inicialmenteExpandida) {
@@ -50,15 +65,22 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             ModoAntecedentes.CASILLAS -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items.forEach { item ->
                     val a = actuales[item.clave]
-                    if (item.soloDetalle) {
-                        DebouncedText(item.etiqueta, a?.detalle ?: "", ro, multiline = false) { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it.isNotBlank(), it) }
-                    } else {
-                        CheckboxWithDetail(
-                            label = item.etiqueta, checked = a?.flag == true, detail = a?.detalle ?: "",
-                            onCheckedChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it, a?.detalle ?: "") },
-                            onDetailChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, true, it) },
-                            readOnly = ro,
-                        )
+                    // Un antecedente que vino de la web no se edita desde una consulta del dispositivo (RF-62), y si la web ya no
+                    // lo manda se sigue viendo entero, con la marca (RF-63).
+                    val soloLeer = !puedeEditarAntecedente(a, editable = !ro && !(seEnvia && item.sinEnvio))
+                    Column {
+                        if (item.soloDetalle) {
+                            DebouncedText(item.etiqueta, a?.detalle ?: "", soloLeer, multiline = false) { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it.isNotBlank(), it) }
+                        } else {
+                            CheckboxWithDetail(
+                                label = item.etiqueta, checked = a?.flag == true, detail = a?.detalle ?: "",
+                                onCheckedChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, it, a?.detalle ?: "") },
+                                onDetailChange = { ctx.vm.guardarAntecedente(cat.categoria, item.clave, true, it) },
+                                readOnly = soloLeer,
+                            )
+                        }
+                        if (ui.ausencias.antecedenteDeClave(item.clave)) MarcaYaNoFigura()
+                        avisoDeEnvioDeLaCasilla(item.sinEnvio, seEnvia)?.let { AvisoDeEnvioDelCampo(it) }
                     }
                 }
             }
@@ -80,8 +102,10 @@ fun AntecedentesSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
             }
         }
         if (cat.notaLibre && (!ro || nota.isNotBlank())) {
-            DebouncedText("Nota", nota, ro, multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
+            DebouncedText("Nota", nota, !puedeEditarAntecedente(actuales["nota"], editable = !ro), multiline = true) { ctx.vm.guardarAntecedente(cat.categoria, "nota", it.isNotBlank(), it) }
+            if (ui.ausencias.antecedenteDeClave("nota")) MarcaYaNoFigura()
         }
+        notaDelPerfil4?.let { TextAreaField("Nota", it, {}, Modifier.fillMaxWidth(), minLines = 3, readOnly = true) }
     }
 }
 

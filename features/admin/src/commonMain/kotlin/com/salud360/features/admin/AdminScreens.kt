@@ -1,6 +1,7 @@
 package com.salud360.features.admin
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -9,17 +10,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,11 +42,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.repos.EstadoTiposDelMedico
+import com.salud360.core.data.repos.avisoDeTiposNoCargados
+import com.salud360.core.data.repos.errorDelNombreDeTipo
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.data.repos.importeEscrito
+import com.salud360.core.data.repos.mostrarEnTurnosEnElAlta
+import com.salud360.core.data.repos.nombreNuevoDeTipo
+import com.salud360.core.data.repos.opcionesPosibles
+import com.salud360.core.data.repos.puedeCambiarActivoDelUsuario
+import com.salud360.core.data.repos.puedeCambiarVisible
+import com.salud360.core.data.repos.puedeMarcarMostrarEnElAlta
+import com.salud360.core.data.repos.puedeVerConfigDeAgenda
+import com.salud360.core.data.repos.puedeVerHorarios
+import com.salud360.core.data.repos.puedeVerTiposDeTurno
+import com.salud360.core.data.repos.textoDelImporte
+import com.salud360.core.data.repos.tiposOfrecidos
 import com.salud360.core.model.auth.Licencia
 import com.salud360.core.model.auth.Medico
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Secretaria
+import com.salud360.core.model.especialidad.CodigosHc
+import com.salud360.core.model.turnos.CondicionTipoTurno
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
 import com.salud360.core.ui.components.CheckboxField
@@ -57,43 +83,77 @@ import com.salud360.core.ui.components.TableColumn
 import com.salud360.core.ui.components.TextField
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
-private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorios", "Especialidades", "Feriados", "Licencias")
+private val SOLAPAS = listOf("Usuarios", "Médicos", "Secretarias", "Consultorios", "Especialidades", "Feriados", "Licencias", "Perfiles HC")
 
 /** Panel de administración con solapas. */
 @Composable
 fun AdminScreen(onAbrirConfigMedico: (medicoId: String) -> Unit, onAbrirHorarios: (medicoId: String, consultorioId: String) -> Unit, vm: AdminViewModel = koinViewModel()) {
     var solapa by remember { mutableIntStateOf(0) }
-    val mensaje by vm.mensaje.collectAsState()
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ScreenTitle("Administración", modifier = Modifier.weight(1f))
-            LinkButton("Sincronizar ahora", onClick = vm::sincronizar)
+    val snackbar = remember { SnackbarHostState() }
+    // Cada aviso del ViewModel se muestra una vez como snackbar y se limpia al tomarlo: el mismo texto repetido vuelve a
+    // verse, y uno nuevo reemplaza al que está en pantalla.
+    LaunchedEffect(vm) {
+        vm.mensaje.filterNotNull().collectLatest { aviso ->
+            vm.mensaje.value = null
+            snackbar.showSnackbar(AvisoVisible(aviso.texto, aviso.esError))
         }
-        mensaje?.let { Text(it, color = Salud360Colors.Indigo, fontWeight = FontWeight.SemiBold) }
-        ScrollableTabRow(selectedTabIndex = solapa, edgePadding = 0.dp, containerColor = Color.Transparent) {
-            SOLAPAS.forEachIndexed { i, t -> Tab(selected = solapa == i, onClick = { solapa = i }, text = { Text(t) }) }
-        }
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            when (solapa) {
-                0 -> UsuariosTab(vm)
-                1 -> MedicosTab(vm, onAbrirConfigMedico, onAbrirHorarios)
-                2 -> SecretariasTab(vm)
-                3 -> ConsultoriosTab(vm)
-                4 -> EspecialidadesTab(vm)
-                5 -> FeriadosTab(vm)
-                6 -> LicenciasTab(vm)
+    }
+    // Uno solo para todo el panel: el alta y la ficha del médico eligen el perfil de la HC general con lo mismo
+    // que muestra la solapa "Perfiles HC" (RF-18).
+    val perfilesVm: PerfilesHcViewModel = koinViewModel()
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ScreenTitle("Administración", modifier = Modifier.weight(1f))
+                LinkButton("Sincronizar ahora", onClick = vm::sincronizar)
             }
-            Spacer(Modifier.height(24.dp))
+            ScrollableTabRow(selectedTabIndex = solapa, edgePadding = 0.dp, containerColor = Color.Transparent) {
+                SOLAPAS.forEachIndexed { i, t -> Tab(selected = solapa == i, onClick = { solapa = i }, text = { Text(t) }) }
+            }
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (solapa) {
+                    0 -> UsuariosTab(vm, perfilesVm)
+                    1 -> MedicosTab(vm, perfilesVm, onAbrirConfigMedico, onAbrirHorarios)
+                    2 -> SecretariasTab(vm)
+                    3 -> ConsultoriosTab(vm)
+                    4 -> EspecialidadesTab(vm)
+                    5 -> FeriadosTab(vm)
+                    6 -> LicenciasTab(vm)
+                    7 -> PerfilesHcTab(perfilesVm)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp)) { data ->
+            val esError = (data.visuals as? AvisoVisible)?.esError == true
+            Snackbar(
+                data,
+                containerColor = if (esError) MaterialTheme.colorScheme.error else Salud360Colors.SuccessDark,
+                contentColor = Color.White,
+                dismissActionContentColor = Color.White,
+            )
         }
     }
 }
 
+/** El aviso tal como lo muestra el snackbar: los errores duran más y se pueden cerrar a mano. */
+private class AvisoVisible(override val message: String, val esError: Boolean) : SnackbarVisuals {
+    override val actionLabel: String? = null
+    override val withDismissAction: Boolean = esError
+    override val duration: SnackbarDuration = if (esError) SnackbarDuration.Long else SnackbarDuration.Short
+}
+
 @Composable
-private fun UsuariosTab(vm: AdminViewModel) {
+private fun UsuariosTab(vm: AdminViewModel, perfilesVm: PerfilesHcViewModel) {
     val usuarios by vm.usuarios.collectAsState()
+    val perfiles by perfilesVm.state.collectAsState()
+    var perfilId by remember { mutableStateOf<Long?>(null) }
+    val guardandoUsuarios by vm.guardandoUsuarios.collectAsState()
     var nombre by remember { mutableStateOf("") }
     var apellido by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -103,8 +163,9 @@ private fun UsuariosTab(vm: AdminViewModel) {
     val especialidades by vm.especialidades.collectAsState()
     var consultorioId by remember { mutableStateOf<String?>(null) }
     var especialidadId by remember { mutableStateOf<String?>(null) }
-    // Por defecto no se publica: el que se da de alta desde acá suele ser el que solo usa historia
-    // clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    // Por defecto sin agenda y sin publicar: el que se da de alta desde acá suele ser el que solo usa
+    // historia clínica, y aparecer para pedir turno sin horarios cargados confunde al paciente.
+    var tieneAgenda by remember { mutableStateOf(false) }
     var mostrarEnTurnos by remember { mutableStateOf(false) }
     var hcElegidas by remember { mutableStateOf(emptySet<String>()) }
     val esMedico = rol == Rol.MEDICO
@@ -136,36 +197,73 @@ private fun UsuariosTab(vm: AdminViewModel) {
                     CheckboxField(nombreHc, codigo in hcElegidas, { marcada -> hcElegidas = if (marcada) hcElegidas + codigo else hcElegidas - codigo })
                 }
             }
-            CheckboxField("Mostrar para pedir turno", mostrarEnTurnos, { mostrarEnTurnos = it })
+            if (CodigosHc.GENERAL in hcElegidas) {
+                PerfilHcGeneral(perfiles, perfilId, "Sin conexión con la historia clínica general: el perfil se le asigna después, en Perfiles HC.") { perfilId = it }
+            }
+            CheckboxField("Tiene agenda de turnos", tieneAgenda, { tieneAgenda = it; mostrarEnTurnos = mostrarEnTurnosEnElAlta(esMedico, it, mostrarEnTurnos) })
+            // Ofrecerse para pedir turno solo tiene sentido con agenda (RF-14): la regla está en AgendaDelMedico.
+            CheckboxField("Mostrar para pedir turno", mostrarEnTurnosEnElAlta(esMedico, tieneAgenda, mostrarEnTurnos), { mostrarEnTurnos = it }, enabled = puedeMarcarMostrarEnElAlta(tieneAgenda))
         }
         ActionRow {
             PillButton("Crear usuario", enabled = completo, onClick = {
-                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList())
+                val perfil = perfilId.takeIf { esMedico && CodigosHc.GENERAL in hcElegidas }
+                vm.crearUsuario(nombre, apellido, email, password, rol, especialidadId, consultorioId, mostrarEnTurnos, hcElegidas.toList(), perfil, tieneAgenda)
                 nombre = ""; apellido = ""; email = ""; password = ""
-                especialidadId = null; consultorioId = null; mostrarEnTurnos = false; hcElegidas = emptySet()
+                especialidadId = null; consultorioId = null; tieneAgenda = false; mostrarEnTurnos = false; hcElegidas = emptySet(); perfilId = null
             })
         }
     }
     DataTable(
         columns = listOf(TableColumn("Apellido y nombre", 240.dp), TableColumn("Mail", 260.dp), TableColumn("Rol", 110.dp), TableColumn("Activo", 80.dp)),
         rows = usuarios, cells = { u -> listOf(u.nombreCompleto, u.email, u.rol.etiqueta(), if (u.activo) "Sí" else "No") },
-        trailing = { u -> LinkButton(if (u.activo) "Desactivar" else "Activar", onClick = { vm.guardarUsuario(u.copy(activo = !u.activo)) }) },
+        // Solo el médico tiene «activo» en turnos (el de secretarias y administradores es siempre 1): para ellos no hay botón.
+        trailing = { u ->
+            if (puedeCambiarActivoDelUsuario(u.rol)) {
+                LinkButton(if (u.activo) "Desactivar" else "Activar", onClick = { vm.cambiarActivoUsuario(u, !u.activo) }, enabled = u.id !in guardandoUsuarios)
+            }
+        },
     )
 }
 
 fun Rol.etiqueta() = when (this) { Rol.ADMIN -> "Administrador"; Rol.MEDICO -> "Médico"; Rol.SECRETARIA -> "Secretaria" }
 
 @Composable
-private fun MedicosTab(vm: AdminViewModel, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
-    val medicos by vm.medicos.collectAsState()
+private fun MedicosTab(vm: AdminViewModel, perfilesVm: PerfilesHcViewModel, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
+    val medicos by vm.medicosActivos.collectAsState()
     val consultorios by vm.consultorios.collectAsState()
     val especialidades by vm.especialidades.collectAsState()
-    if (medicos.isEmpty()) EmptyState("Todavía no hay médicos. Creá un usuario con rol Médico.")
-    medicos.forEach { m -> MedicoCard(m, vm, consultorios.map { it.id to it.nombre }, especialidades.map { it.id to it.nombre }, onConfig, onHorarios) }
+    val perfiles by perfilesVm.state.collectAsState()
+    // Lo que respondió hclinica al cambiar un perfil desde una ficha (RF-13).
+    perfiles.mensaje?.let { Text(it, color = Salud360Colors.Indigo) }
+    if (medicos.isEmpty()) EmptyState("No hay médicos activos. Creá un usuario con rol Médico.")
+    medicos.forEach { m ->
+        MedicoCard(m, vm, perfiles, perfilesVm, consultorios.map { it.id to it.nombre }, especialidades.map { it.id to it.nombre }, onConfig, onHorarios)
+    }
+}
+
+/** Perfil de la HC general en el alta y en la ficha del médico (RF-18); sin conexión no se puede elegir (RF-14). */
+@Composable
+private fun PerfilHcGeneral(perfiles: PerfilesHcUi, actual: Long?, avisoSinConexion: String, onElegir: (Long?) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Perfil de la historia clínica general", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SelectorPerfil(actual, perfiles.perfiles, !perfiles.cargando && !perfiles.sinConexion, onElegir)
+    }
+    if (perfiles.sinConexion) Text(avisoSinConexion, style = MaterialTheme.typography.bodyMedium, color = Salud360Colors.Warning)
 }
 
 @Composable
-private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<String, String>>, especialidades: List<Pair<String, String>>, onConfig: (String) -> Unit, onHorarios: (String, String) -> Unit) {
+private fun MedicoCard(
+    m: Medico,
+    vm: AdminViewModel,
+    perfiles: PerfilesHcUi,
+    perfilesVm: PerfilesHcViewModel,
+    consultorios: List<Pair<String, String>>,
+    especialidades: List<Pair<String, String>>,
+    onConfig: (String) -> Unit,
+    onHorarios: (String, String) -> Unit,
+) {
+    val guardandoAgenda by vm.guardandoAgenda.collectAsState()
+    val guardandoHc by vm.guardandoHc.collectAsState()
     SectionCard(m.nombreCompleto, initiallyExpanded = false, trailing = {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (m.tieneTurnos) StatusChip("Turnos", Salud360Colors.TealStart)
@@ -173,16 +271,29 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
         }
     }) {
         Text("Historias clínicas habilitadas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Se guardan en turnos (el dueño del dato): la casilla muestra lo guardado y vuelve sola si turnos no confirma.
+        // Quietas mientras su pedido está en vuelo, para no mandar dos listas pisadas.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             vm.especialidadesHc.forEach { (codigo, nombre) ->
-                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) })
+                CheckboxField(nombre, codigo in m.especialidadesHc, { vm.setEspecialidadHc(m, codigo, it) }, enabled = m.id !in guardandoHc)
+            }
+        }
+        if (CodigosHc.GENERAL in m.especialidadesHc) {
+            // El mismo de "Perfiles HC": por número de turnos, también si hclinica todavía no lo tiene vinculado.
+            perfiles.medicos.firstOrNull { it.medicoId == m.id }?.let { asignable ->
+                PerfilHcGeneral(perfiles, asignable.perfilId, "Sin conexión con la historia clínica general: el perfil no se puede cambiar ahora.") {
+                    perfilesVm.asignar(asignable, it)
+                }
             }
         }
         HorizontalDivider()
+        // Los dos interruptores escriben en turnos (el dueño del dato) y muestran lo guardado: si turnos no
+        // confirma, vuelven solos y `mensaje` dice por qué. Quietos mientras su pedido está en vuelo.
+        val guardando = m.id in guardandoAgenda
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Switch(checked = m.tieneTurnos, onCheckedChange = { vm.guardarMedico(m.copy(tieneTurnos = it)) })
+            Switch(checked = m.tieneTurnos, onCheckedChange = { vm.cambiarAgenda(m, it) }, enabled = !guardando)
             Text("Tiene agenda de turnos")
-            Switch(checked = m.visibleEnTurnos, onCheckedChange = { vm.guardarMedico(m.copy(visibleEnTurnos = it)) })
+            Switch(checked = m.visibleEnTurnos, onCheckedChange = { vm.cambiarVisible(m, it) }, enabled = !guardando && puedeCambiarVisible(m.tieneTurnos, m.visibleEnTurnos))
             Text("Visible para pacientes en la web")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -195,10 +306,85 @@ private fun MedicoCard(m: Medico, vm: AdminViewModel, consultorios: List<Pair<St
             TextField("Teléfono", m.telefono, { vm.guardarMedico(m.copy(telefono = it)) }, Modifier.weight(1f))
             TextField("Mail de contacto", m.mail, { vm.guardarMedico(m.copy(mail = it)) }, Modifier.weight(1f))
         }
-        ActionRow {
-            AcceptButton("Módulos y configuración", onClick = { onConfig(m.id) })
-            if (m.consultorioId != null) AcceptButton("Horarios", onClick = { onHorarios(m.id, m.consultorioId!!) })
+        if (puedeVerTiposDeTurno(m.tieneTurnos, m.id)) TiposDeTurnoDelMedico(m, vm)
+        val verConfig = puedeVerConfigDeAgenda(m.tieneTurnos)
+        val verHorarios = puedeVerHorarios(m.tieneTurnos, m.consultorioId)
+        if (verConfig || verHorarios) ActionRow {
+            if (verConfig) AcceptButton("Módulos y configuración", onClick = { onConfig(m.id) })
+            if (verHorarios) AcceptButton("Horarios", onClick = { onHorarios(m.id, m.consultorioId!!) })
         }
+    }
+}
+
+/**
+ * Sección «Tipos de turno» de la tarjeta del médico (solo administrador). `SectionCard` no compone su contenido mientras
+ * está cerrado, así que los tipos se piden a turnos recién cuando el administrador la abre —uno por médico, no uno por
+ * tarjeta al abrir la pestaña—. Las reglas están en `TiposDeTurnoDelMedico` (core/data); acá solo se muestran.
+ */
+@Composable
+private fun TiposDeTurnoDelMedico(m: Medico, vm: AdminViewModel) {
+    SectionCard("Tipos de turno", initiallyExpanded = false) {
+        val estados by vm.tiposDelMedico.collectAsState()
+        LaunchedEffect(m.id) { vm.cargarTiposDelMedico(m.id) }
+        when (val estado = estados[m.id]) {
+            null, EstadoTiposDelMedico.Cargando -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Cargando los tipos de turno…")
+            }
+            is EstadoTiposDelMedico.Error -> {
+                Text(avisoDeTiposNoCargados(estado.motivo), color = MaterialTheme.colorScheme.error)
+                ActionRow { AcceptButton("Reintentar", onClick = { vm.cargarTiposDelMedico(m.id) }) }
+            }
+            is EstadoTiposDelMedico.Listo -> TiposDeTurnoListos(m, estado, vm)
+        }
+    }
+}
+
+@Composable
+private fun TiposDeTurnoListos(m: Medico, estado: EstadoTiposDelMedico.Listo, vm: AdminViewModel) {
+    val catalogo by vm.catalogoTipos.collectAsState()
+    val guardandoTipos by vm.guardandoTipos.collectAsState()
+    val creandoTipo by vm.creandoTipo.collectAsState()
+    var nuevoTipo by remember { mutableStateOf("") }
+    // Se guarda en turnos y lo editado queda en pantalla hasta que turnos confirma: mientras tanto, controles quietos.
+    val guardando = m.id in guardandoTipos
+    val ofrecidos = tiposOfrecidos(catalogo)
+    Text(
+        "Tildá los tipos que atiende este médico. Cada uno puede ofrecerse siempre, solo en la primera consulta o solo en las consultas de seguimiento.",
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (ofrecidos.isEmpty()) Text("Todavía no hay tipos de turno. Creá el primero más abajo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    ofrecidos.forEach { tipo ->
+        val e = estado.editor.estadoDe(tipo.id)
+        CheckboxField(tipo.nombre, e.habilitado, { vm.alternarTipoDelMedico(m.id, tipo.id, it) }, enabled = !guardando)
+        // Como en la web: las opciones y la condición aparecen solo con el tipo tildado.
+        if (e.habilitado) Column(Modifier.padding(start = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SelectField(
+                "Se ofrece", e.condicion.etiqueta, CondicionTipoTurno.entries.map { it.etiqueta },
+                { v -> CondicionTipoTurno.entries.firstOrNull { it.etiqueta == v }?.let { vm.cambiarCondicionDelTipo(m.id, tipo.id, it) } },
+                Modifier.fillMaxWidth(), readOnly = guardando, allowEmpty = false,
+            )
+            val posibles = opcionesPosibles(catalogo, tipo.id)
+            if (posibles.isNotEmpty()) {
+                Text("Opciones que se eligen al confirmar el turno", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    posibles.forEach { o ->
+                        CheckboxField(o.nombre, o.id in e.opciones, { vm.alternarOpcionDelTipo(m.id, tipo.id, o.id, it) }, enabled = !guardando)
+                    }
+                }
+            }
+        }
+    }
+    // Avisos del último guardado (p. ej. un tipo quitado que sigue con horarios): no son un error, quedan visibles hasta la próxima edición.
+    estado.avisos.forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    ActionRow { PillButton("Guardar tipos de turno", enabled = estado.hayCambios && !guardando, onClick = { vm.guardarTiposDelMedico(m.id) }) }
+    HorizontalDivider()
+    TextField(
+        "Nuevo tipo de turno", nuevoTipo, { nuevoTipo = it }, Modifier.fillMaxWidth(),
+        isError = errorDelNombreDeTipo(nuevoTipo) != null, supportingText = errorDelNombreDeTipo(nuevoTipo),
+    )
+    ActionRow {
+        PillButton("Crear", enabled = nombreNuevoDeTipo(nuevoTipo) != null && !creandoTipo, onClick = { vm.crearTipoTurno(nuevoTipo) { nuevoTipo = "" } })
     }
 }
 
@@ -287,8 +473,9 @@ private fun FeriadosTab(vm: AdminViewModel) {
 
 @Composable
 private fun LicenciasTab(vm: AdminViewModel) {
-    val medicos by vm.medicos.collectAsState()
-    val licencias by vm.licencias.collectAsState()
+    val medicos by vm.medicosActivos.collectAsState()
+    val licencias by vm.licenciasVisibles.collectAsState()
+    val guardandoLicencias by vm.guardandoLicencias.collectAsState()
     // La licencia es el permiso para entrar a una historia clínica, así que solo tiene sentido para
     // los médicos que tienen alguna habilitada. Al resto no se les cobra ni se les vence nada.
     val conHc = medicos.filter { it.especialidadesHc.isNotEmpty() }
@@ -300,25 +487,40 @@ private fun LicenciasTab(vm: AdminViewModel) {
     conHc.forEach { m ->
         val l = licencias.firstOrNull { it.medicoId == m.id }
         PlainCard {
+            // Primera línea: quién es y cómo está. Los controles van debajo, así ninguno pisa a otro en un ancho angosto.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(220.dp))
+                Text(m.nombreCompleto, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (l == null) {
-                    // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como
-                    // si la licencia venciera hoy. La licencia vive en la base de la historia clínica
-                    // y la app todavía no la trae.
+                    StatusChip("Sin dato", Salud360Colors.Grey)
+                } else {
+                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
+                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                }
+            }
+            if (l == null) {
+                // Sin dato no se inventa una fecha: antes se mostraba la de hoy, que se leía como si la licencia
+                // venciera hoy. La licencia vive en la base de la historia clínica y la app todavía no la trae.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sin licencia cargada", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     // Sin licencia el médico no entra a la historia clínica, así que darla de alta es
                     // parte de habilitarlo y tiene que poder hacerse desde acá.
                     TextButton(onClick = { vm.nuevaLicencia(m.id) }) { Text("Cargar licencia") }
-                    StatusChip("Sin dato", Salud360Colors.Grey)
-                } else {
+                }
+            } else {
+                // Cada cambio se guarda y avisa por el snackbar del panel. El importe se guarda cuando se deja de tipear
+                // (AdminViewModel.guardarImporte), no en cada tecla.
+                var importe by remember { mutableStateOf(textoDelImporte(l.importe, "")) }
+                LaunchedEffect(l.importe) { importe = textoDelImporte(l.importe, importe) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DateField("Vence", runCatching { LocalDate.parse(l.fechaExpiracion) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaExpiracion = d.toString())) } }, Modifier.width(180.dp))
                     DateField("Aviso desde", runCatching { LocalDate.parse(l.fechaAviso) }.getOrNull(), { it?.let { d -> vm.guardarLicencia(l.copy(fechaAviso = d.toString())) } }, Modifier.width(180.dp))
-                    var importe by remember(l.importe) { mutableStateOf(if (l.importe == 0.0) "" else l.importe.toString()) }
-                    NumberField("Importe", importe, { importe = it; it.replace(',', '.').toDoubleOrNull()?.let { v -> vm.guardarLicencia(l.copy(importe = v)) } }, Modifier.width(140.dp), suffix = "$")
+                    NumberField("Importe", importe, { importe = it; importeEscrito(it)?.let { v -> vm.guardarImporte(m.id, v) } }, Modifier.width(140.dp), suffix = "$")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Suma un mes a «Vence» y a «Aviso desde»; queda quieto mientras se guarda esta licencia.
+                    PillButton("Renovar", onClick = { vm.renovarLicencia(l) }, enabled = m.id !in guardandoLicencias)
                     Switch(checked = l.activo, onCheckedChange = { vm.guardarLicencia(l.copy(activo = it)) })
-                    val vencida = runCatching { LocalDate.parse(l.fechaExpiracion) < hoy() }.getOrDefault(false)
-                    StatusChip(if (!l.activo || vencida) "Vencida" else "Vigente", if (!l.activo || vencida) Salud360Colors.Danger else Salud360Colors.Success)
+                    Text("Activa")
                 }
             }
         }

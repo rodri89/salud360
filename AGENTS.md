@@ -5,7 +5,8 @@ commits están en **español**: seguir igual. Contexto de fondo en `docs/ARQUITE
 sobre todo, `docs/hc-pediatria-estado-y-plan.md` (decisiones cerradas y trampas de la integración con pediatría:
 leer "Cosas que hay que saber antes de tocar" antes de tocar HC/sync/API).
 
-> **Nota sobre ramas (2026-11-03):** este archivo, `MEMORY.md` y `specs/` vienen de la rama `hc-general` (aún sin publicar). Lo que mencionan de la HC general de clínica (tests `HcClinica*`, carpeta `hcgeneral/`, migraciones `6.sqm` a `8.sqm`, lectura de `local.properties` por Gradle) **todavía no existe en `main`**: en `main` las URLs locales se pasan con `-P`. Para trabajar una HC nueva (o varias en paralelo) leé primero [`docs/trabajo-por-historia-clinica.md`](docs/trabajo-por-historia-clinica.md).
+> **Ramas en paralelo:** para trabajar una HC nueva (o varias en paralelo, en otra PC u otra IA) leé primero
+> [`docs/trabajo-por-historia-clinica.md`](docs/trabajo-por-historia-clinica.md).
 
 ## Repo público: cuidado con datos
 - `bd_test/` tiene volcados de producción (pacientes, contraseñas, credenciales de cobro). Está en `.gitignore`;
@@ -76,6 +77,21 @@ Ver el KDoc de cada test y `core/data/build.gradle.kts`. No correrlos contra pro
 - Identidad: turnosonlinebb es el único proveedor (login `/api/salud360/auth/login`). Las APIs de HC (Laravel de
   cada especialidad, repo aparte) no emiten tokens: aceptan el de turnos. El dueño de cada dato manda (agenda y
   usuarios → turnos; HC y licencias → base de la especialidad); la base local es caché/offline.
+- Agenda del médico (spec 005): se decide con `tiene_agenda` de turnos, que escribe el administrador con
+  `PUT medicos/{id}/agenda` (`AgendaTurnosOnline.guardarAgenda`; la copia local cambia recién con la respuesta). `Medico.tieneTurnos`
+  guarda ese dato (no «tiene horarios»); `tiene_horarios` es solo respaldo si el servidor no informa `tiene_agenda`. Las reglas de
+  quién ve qué están en `AgendaDelMedico` (`core/data`). Las historias clínicas habilitadas también se guardan en turnos, con
+  `PUT medicos/{id}/historias-clinicas` (lista exacta; `AgendaTurnosOnline.guardarHistoriasClinicas`, misma regla: la copia local
+  cambia recién con la respuesta). Activar/desactivar a un médico también se guarda en turnos, con `PUT medicos/{id}/activo`
+  (`AgendaTurnosOnline.guardarActivoMedico`): en turnos el «activo» del usuario es el del médico y secretaria/admin no tienen
+  (siempre 1), por eso el botón de la pestaña Usuarios solo existe para médicos. `catalogos` no trae a los desactivados:
+  se recuperan de `usuarios` (`medico_id`) para poder reactivarlos. El resto de los campos de la tarjeta del admin (consultorio, especialidad, teléfono, mail)
+  siguen siendo solo locales. Los tipos de turno habilitados de un médico, su condición («Siempre», solo primera consulta, solo
+  seguimiento) y sus opciones también se guardan en turnos, con `PUT medicos/{id}/tipos-turno` (lista exacta) y `POST tipos-turno`
+  (alta en el catálogo global): no se persisten en la base local (viven en memoria del `AdminViewModel`, se piden al abrir la sección
+  «Tipos de turno» de ese médico); el alta y la edición son solo del administrador, pero la lectura de los tipos habilitados de un médico (`GET medicos/{n}/tipos-turno`)
+  la hace también el propio médico y su secretaria: el selector de tipo de Horarios y las opciones al asignar un turno salen de ahí (`TurnosRepository.tiposHabilitados`, en memoria; sin
+  lectura —servidor viejo o sin red— se degrada a «Consulta» y a asignar sin opciones); el enum `TipoTurno` sigue siendo el cerrado de siempre.
 - HC con API (hoy pediatría): `HcPediatriaBackend` + `HcApiSync` (envío diferido, ~4 s). El autoguardado dispara
   cada 600 ms: nunca llamar a la API desde ahí.
 - Los datos cuyo dueño es remoto no deben quedar `dirty` en el dispositivo (ese fue un bug real en licencias).

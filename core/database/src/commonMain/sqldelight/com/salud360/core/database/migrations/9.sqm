@@ -1,0 +1,5 @@
+-- v9 -> v10: marca de histórico/propio de la consulta (spec 005, RF-8, D26).
+-- 0 = histórico o de la web (todo lo que ya había en el dispositivo y todo lo que trae la lectura); 1 = propia de la app,
+-- creada con el envío habilitado. Por eso el valor por omisión es 0: lo existente queda como histórico y nada más cambia.
+-- Va última porque el upsert es posicional (ver migraciones 3.sqm y 6.sqm). Sin vuelta atrás en un dispositivo migrado.
+ALTER TABLE consulta ADD COLUMN propia INTEGER NOT NULL DEFAULT 0;

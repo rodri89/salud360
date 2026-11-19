@@ -1,9 +1,13 @@
 package com.salud360.core.data.network.tobb
 
+import com.salud360.core.data.repos.toUsuarioCreado
+import com.salud360.core.model.TobbIds
+import com.salud360.core.model.auth.Rol
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -53,5 +57,60 @@ class TobbAltaUsuarioTest {
         assertTrue("especialidad_id" !in cuerpo)
         assertTrue("consultorio_id" !in cuerpo)
         assertEquals("secretaria", cuerpo["rol"]?.jsonPrimitive?.content)
+    }
+
+    private fun creado(json: String) =
+        tobbJson.decodeFromString(TobbAltaUsuarioResponse.serializer(), json).usuario.toUsuarioCreado()
+
+    @Test
+    fun elAltaDelMedicoDevuelveSuNumeroDeMedico() {
+        // Como responde `AltaUsuarioController`: con ese número se le asigna el perfil de la HC general (RF-18).
+        val c = creado(
+            """{"ok":true,"usuario":{"id":12,"nombre":"Valentina","apellido":"Romano","email":"v@ejemplo.com","tipo":2,"rol":"medico","medico_id":7,"secretaria_id":null,"activo":1}}""",
+        )
+        assertEquals(7L, c.medicoIdTobb)
+        assertEquals(TobbIds.usuario(12), c.usuario.id)
+        assertEquals(Rol.MEDICO, c.usuario.rol)
+        assertEquals("v@ejemplo.com", c.usuario.email)
+    }
+
+    @Test
+    fun laSecretariaNoTraeNumeroDeMedico() {
+        val c = creado(
+            """{"ok":true,"usuario":{"id":13,"nombre":"Ana","apellido":"Gomez","email":"a@ejemplo.com","tipo":3,"rol":"secretaria","medico_id":null,"secretaria_id":4,"activo":1}}""",
+        )
+        assertNull(c.medicoIdTobb)
+        assertEquals(Rol.SECRETARIA, c.usuario.rol)
+    }
+
+    private fun medicoConAgenda(tieneAgenda: Boolean?) = TobbAltaUsuario(
+        nombre = "Ana", apellido = "Vera", email = "av@ejemplo.com", password = "secreta1",
+        rol = "medico", especialidadId = 1, consultorioId = 2, tieneAgenda = tieneAgenda,
+    )
+
+    @Test
+    fun tieneAgendaViajaConTrueYTambienConFalse() {
+        // Con `encodeDefaults = false` solo se omite el valor por omisión (`null`): un `false` explícito viaja,
+        // y es lo que distingue «sin agenda» de «el alta no dijo nada» (turnos toma entonces `mostrar_en_turnos`).
+        assertEquals("true", jsonDe(medicoConAgenda(true))["tiene_agenda"]?.jsonPrimitive?.content)
+        assertEquals("false", jsonDe(medicoConAgenda(false))["tiene_agenda"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun tieneAgendaNoViajaSiEsNull() {
+        assertTrue("tiene_agenda" !in jsonDe(medicoConAgenda(null)))
+        val secretaria = jsonDe(
+            TobbAltaUsuario(nombre = "Ana", apellido = "Gomez", email = "a@ejemplo.com", password = "secreta1", rol = "secretaria"),
+        )
+        assertTrue("tiene_agenda" !in secretaria, "la secretaria no lleva el campo")
+    }
+
+    @Test
+    fun mostrarEnTurnosSigueComoHoyConLaAgenda() {
+        val conAgendaVisible = jsonDe(medicoConAgenda(true).copy(mostrarEnTurnos = true))
+        assertEquals("true", conAgendaVisible["tiene_agenda"]?.jsonPrimitive?.content)
+        assertEquals("true", conAgendaVisible["mostrar_en_turnos"]?.jsonPrimitive?.content)
+        val sinAgenda = jsonDe(medicoConAgenda(false))
+        assertTrue("mostrar_en_turnos" !in sinAgenda, "false es el valor por omisión y no se manda")
     }
 }

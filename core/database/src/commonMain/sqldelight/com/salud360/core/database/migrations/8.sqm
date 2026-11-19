@@ -1,0 +1,48 @@
+-- v8 -> v9: lo que el dispositivo guardó como `hepatologia` pasa a `clinica` (spec 001, tanda D, T49 y T50).
+-- Hepatología ya no es una historia clínica aparte: es un perfil de la HC general. No crea ni cambia tablas ni columnas
+-- (ningún .sq cambia): solo mueve datos. Los datos de hepatología solo existen en este dispositivo, así que no hay DROP, no se
+-- recrea ninguna tabla ni se borra nada clínico, y no se tocan `updated_at` ni `dirty` de lo que se mueve (no es una edición
+-- del médico). Solo UPDATE e INSERT OR REPLACE ... SELECT simples, que corren igual en SQLite y en sql.js (web), donde un
+-- error al migrar recrea la base vacía. Idempotente: la segunda corrida ya no encuentra nada de `hepatologia` para mover.
+-- No toca `medico`, `especialidad` (se normalizan al leer), `hc_config`, `interconsultor` ni `turno` (su `especialidad` es
+-- texto libre, no un código de HC).
+
+-- 1) Antecedentes repetidos (misma clave del mismo paciente en las dos HC): queda activa la modificada más reciente
+--    (a igual fecha, la de clinica) y la otra pasa a activo = 0. No se borra nada.
+UPDATE antecedente SET activo = 0
+WHERE especialidad = 'hepatologia' AND activo = 1 AND deleted = 0 AND EXISTS (
+    SELECT 1 FROM antecedente c WHERE c.especialidad = 'clinica' AND c.paciente_id = antecedente.paciente_id
+      AND c.categoria = antecedente.categoria AND c.clave = antecedente.clave
+      AND c.activo = 1 AND c.deleted = 0 AND c.updated_at >= antecedente.updated_at);
+UPDATE antecedente SET activo = 0
+WHERE especialidad = 'clinica' AND activo = 1 AND deleted = 0 AND EXISTS (
+    SELECT 1 FROM antecedente h WHERE h.especialidad = 'hepatologia' AND h.paciente_id = antecedente.paciente_id
+      AND h.categoria = antecedente.categoria AND h.clave = antecedente.clave
+      AND h.activo = 1 AND h.deleted = 0 AND h.updated_at > antecedente.updated_at);
+
+-- 2) Lo que no tiene clave única con la HC: pasa tal cual (sin tocar updated_at ni dirty). Lo que cuelga de una consulta
+--    (seccion_valor, examen_fisico, consulta_diagnostico, archivo) la sigue por `consulta_id`. Si el paciente queda con dos
+--    consultas abiertas en clinica (una de cada HC), se conservan las dos.
+UPDATE consulta SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+UPDATE antecedente SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+UPDATE registro_clinico SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+UPDATE laboratorio SET especialidad = 'clinica' WHERE especialidad = 'hepatologia';
+
+-- 3) paciente_extra tiene PRIMARY KEY (paciente_id, especialidad, clave): solo pasa la que no choca; la repetida queda donde
+--    estaba (no se pierde, y la migración no falla).
+UPDATE paciente_extra SET especialidad = 'clinica'
+WHERE especialidad = 'hepatologia' AND NOT EXISTS (
+    SELECT 1 FROM paciente_extra c WHERE c.paciente_id = paciente_extra.paciente_id
+      AND c.especialidad = 'clinica' AND c.clave = paciente_extra.clave);
+
+-- 4) Secciones ocultas: unión de las dos listas; la clave vieja queda con deleted = 1 (no se borra).
+INSERT OR REPLACE INTO medico_preferencia (medico_id, clave, valor, updated_at, deleted, dirty)
+SELECT h.medico_id, 'secciones_ocultas_clinica',
+       CASE WHEN c.valor IS NULL OR c.valor = '' THEN h.valor
+            WHEN h.valor = '' THEN c.valor
+            ELSE c.valor || ',' || h.valor END,
+       MAX(h.updated_at, COALESCE(c.updated_at, 0)), 0, COALESCE(c.dirty, h.dirty)
+FROM medico_preferencia h
+LEFT JOIN medico_preferencia c ON c.medico_id = h.medico_id AND c.clave = 'secciones_ocultas_clinica' AND c.deleted = 0
+WHERE h.clave = 'secciones_ocultas_hepatologia' AND h.deleted = 0;
+UPDATE medico_preferencia SET deleted = 1 WHERE clave = 'secciones_ocultas_hepatologia' AND deleted = 0;

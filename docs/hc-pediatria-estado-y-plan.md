@@ -208,7 +208,7 @@ El `.env` local se tocó para apuntar a turnos del MAMP. Está ignorado por git.
 
 ### Repo de la app
 
-En la rama `hc-pediatria-fase-2`. Todavía sin unir a `main`.
+Hecho en la rama `hc-pediatria-fase-2`, ya unida a `main` (merge `e601352`).
 
 | Nuevos | |
 |---|---|
@@ -265,9 +265,10 @@ Cuatro cosas para entenderlo:
 - **Turnos no se consulta desde esta máquina.** `SALUD360_TOBB_URL` apunta a un puerto muerto a
   propósito, para que ningún pedido salga a producción. La sesión vale igual porque hay una fila
   sembrada en `salud360_token_cache`, que es el camino que la API ya usa cuando turnos no responde.
-  Los tokens en claro son `salud360-prueba-medico`, del usuario 2 de pediatría (médico 1 de turnos),
-  y `salud360-prueba-admin`, del administrador (usuario 1); el segundo es el que hace falta para las
-  licencias. De un hash no se vuelve al texto, así que si alguno deja de servir se siembra otro. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
+  Hay dos tokens sembrados: `<token de prueba del médico>`, del usuario 2 de pediatría (médico 1 de
+  turnos), y `<token de prueba del administrador>`, del administrador (usuario 1); el segundo es el que
+  hace falta para las licencias. Sus valores no van en el repo (es público): se piden a quien los sembró
+  o se siembran otros. De un hash no se vuelve al texto, así que si alguno deja de servir se siembra otro. **La identidad queda sin ejercitar acá**: eso se probó en su momento contra el MAMP.
 - **El paciente de prueba lo crea la propia prueba**, con documento 42555111. No se usa ninguna
   historia clínica real.
 - **`gradle.properties` no se tocó**: sigue apuntando al MAMP, que es lo correcto para la otra
@@ -293,7 +294,7 @@ Cómo se corre acá:
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcPediatriaE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token=salud360-prueba-medico
+  -Psalud360.test.hc.token=<token de prueba del médico>
 ```
 
 Y las licencias, que van con el token del administrador porque a un médico la API no le informa
@@ -302,7 +303,7 @@ ninguna. La prueba le cambia la fecha a la primera, la vuelve a leer y la deja c
 ```
 ./gradlew :core:data:jvmTest --rerun --tests '*HcLicenciasE2ETest*' \
   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
-  -Psalud360.test.hc.token.admin=salud360-prueba-admin   -Psalud360.test.hc.token=salud360-prueba-medico
+  -Psalud360.test.hc.token.admin=<token de prueba del administrador>   -Psalud360.test.hc.token=<token de prueba del médico>
 ```
 
 **Cuando terminemos, borrar las dos bases y `bd_test/`**: son pacientes, contraseñas y credenciales
@@ -520,6 +521,20 @@ allá (`medicos.activo = 0`). Por eso no se le habilitó nada: con la baja no pu
 
 #### Cómo darlos de alta sin publicarlos para sacar turno
 
+> **Actualizado el 2026-11-05 (spec 005, `specs/005-agenda-por-medico/`).** Ya no se decide con
+> `castigo_automatico` ni con los horarios cargados. turnosonlinebb tiene dos datos independientes por
+> médico, que el administrador cambia desde el panel de la app (`PUT medicos/{id}/agenda`) y el alta del
+> panel manda desde la casilla **«Tiene agenda de turnos»**:
+> - `tiene_agenda` (columna nueva `medicos.tiene_agenda`): si el médico maneja turnos. El que solo usa
+>   historia clínica va **sin agenda** y la app no le muestra nada de turnos (ni «Horarios de atención»).
+> - `visible_en_turnos` (sigue siendo `medicos.castigo_automatico`): si se ofrece al paciente en la web.
+>   Sin agenda no puede estar visible (apagar la agenda lo apaga; prenderlo sin agenda se rechaza).
+>
+> En el alta, «Tiene agenda de turnos» arranca apagada y «Mostrar para pedir turno» queda deshabilitada
+> mientras no haya agenda. `tiene_horarios` queda solo como respaldo si el servidor no informa
+> `tiene_agenda`. Lo que sigue es el razonamiento original (2026-09-29), todavía válido para entender por
+> qué `castigo_automatico` y por qué el médico tiene que estar activo.
+
 El que solo usa historia clínica no debería aparecer en la lista de médicos del paciente: no tiene
 horarios cargados. Y **el médico tiene que estar activo igual**, porque la API lo busca así
 (`medicoPropio` es `medicos.user_id = ? AND activo = 1`); si no lo encuentra, el perfil viene con
@@ -568,7 +583,8 @@ código: es carga de datos desde el administrador de turnos.
 - **La agenda no la decide el consultorio.** Turnos lo exige en toda ficha, así que tenerlo no
   distingue a nadie; lo que distingue es no tener horarios cargados. El catálogo informa ahora
   `tiene_horarios` y la app decide con eso. Por omisión 1, para no esconderle la agenda a nadie
-  mientras el servidor no informe el dato.
+  mientras el servidor no informe el dato. (Desde la spec 005 manda `tiene_agenda`, una decisión del
+  administrador; `tiene_horarios` quedó de respaldo.)
 
 El nombre `castigo_automatico` para "se muestra o no" es una trampa para el que venga después —
 conviene renombrarlo alguna vez, pero no mientras se dan de alta médicos.
@@ -826,6 +842,12 @@ lo pregunta una vez al iniciar sesión. Dentro de la ventana de aviso muestra un
 la izquierda con la fecha. El estado viaja por los atributos del pedido y no pidiéndole el servicio al
 contenedor desde el controlador: `TobbAuthService` no está registrado como singleton, así que allá
 llegaría otra instancia, sin nada resuelto.
+
+**Quién decide al entrar.** El dispositivo ya no decide si hay conexión: al iniciar sesión y al recargar, la licencia la
+decide el servidor de pediatría (`auth/perfil`), antes de mostrar la app. La copia local solo se usa cuando el servidor
+no contesta (sin señal, tope de espera, error) y se pone al día con lo que contestó. El médico que no tiene ninguna fila
+de licencia (`licencia: null`) entra y solo se le frena la historia clínica de pediatría. Detalle en
+`specs/004-licencia-del-servidor/`.
 
 **Antes de subirlo hay que mirar las fechas.** Al quedar en línea, los médicos ya vinculados con la
 licencia vencida dejan de entrar por la app en el mismo momento (hoy son cuatro, y otros cinco entre los

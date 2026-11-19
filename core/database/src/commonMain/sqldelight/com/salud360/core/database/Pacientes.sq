@@ -114,3 +114,20 @@ vinculosDePaciente: SELECT * FROM medico_paciente WHERE paciente_id = ? AND dele
 upsertMedicoPaciente: INSERT OR REPLACE INTO medico_paciente VALUES ?;
 medicoPacientesDirty: SELECT * FROM medico_paciente WHERE dirty = 1;
 limpiarMedicoPaciente: UPDATE medico_paciente SET dirty = 0 WHERE medico_id = ? AND paciente_id = ?;
+
+-- Fusión de un paciente cargado en el dispositivo con el de turnos (PacientesRepository.reemplazarPorRemoto):
+-- lo que apuntaba al id viejo pasa al nuevo. Solo mueven filas: no cambian tablas ni columnas (no hay migración).
+-- paciente_extra tiene la clave (paciente_id, especialidad, clave): si el id nuevo ya tiene ese dato gana el que estaba,
+-- y lo que sobra del id viejo se borra. Los vínculos con médicos se arman en Kotlin (fusionarVinculos) y se borran los viejos.
+repuntarExtrasDePaciente: UPDATE OR IGNORE paciente_extra SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+borrarExtrasDePaciente: DELETE FROM paciente_extra WHERE paciente_id = :viejo;
+borrarVinculosDePaciente: DELETE FROM medico_paciente WHERE paciente_id = :viejo;
+repuntarTurnosDePaciente: UPDATE turno SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarRecetasDePaciente: UPDATE receta SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarConsultasDePaciente: UPDATE consulta SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarAntecedentesDePaciente: UPDATE antecedente SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarRegistrosDePaciente: UPDATE registro_clinico SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarLaboratoriosDePaciente: UPDATE laboratorio SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarArchivosDePaciente: UPDATE archivo SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarPendientesDePaciente: UPDATE pendiente SET paciente_id = :nuevo WHERE paciente_id = :viejo;
+repuntarVacunasDePaciente: UPDATE vacuna_aplicada SET paciente_id = :nuevo WHERE paciente_id = :viejo;

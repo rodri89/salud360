@@ -1,6 +1,8 @@
 package com.salud360.core.data.repos
 
 import com.salud360.core.data.ahoraMillis
+import com.salud360.core.data.hcgeneral.codigoHcPorNombre
+import com.salud360.core.data.hcgeneral.normalizarCodigoHc
 import com.salud360.core.data.mappers.toModel
 import com.salud360.core.data.mappers.toRow
 import com.salud360.core.data.uno
@@ -25,8 +27,8 @@ import kotlinx.datetime.DayOfWeek
  * secretaria, sus consultorios, módulos y configuración de agenda. Los ids se derivan de los de
  * turnosonlinebb (`tobb-u12`, `tobb-m3`, ...) para que sean estables entre inicios de sesión.
  *
- * Los datos propios de Salud 360 que ya existieran (historias clínicas habilitadas, licencia,
- * código de HC de una especialidad) se conservan. Réplica en el cliente de `TurnosBridge` (server),
+ * Los datos propios de Salud 360 que ya existieran (licencia, código de HC de una especialidad) se conservan; las
+ * historias clínicas habilitadas las manda turnos y solo se conservan si el servidor no informa el campo. Réplica en el cliente de `TurnosBridge` (server),
  * sin el registro de cambios de sincronización entre dispositivos (eso requiere el servidor propio).
  */
 class TurnosImportador(private val db: Salud360Db) {
@@ -72,10 +74,9 @@ class TurnosImportador(private val db: Salud360Db) {
             foto = m.foto?.takeIf { it.isNotBlank() && it != "medico_sin_foto.png" } ?: previo?.foto,
             consultorioId = consultorioId, especialidadId = especialidadId,
             especialidadesHc = historiasClinicasDe(m, previo),
-            // Tiene agenda si turnos le asignó consultorio **y** tiene horarios cargados. El
-            // consultorio solo no alcanza: la ficha de turnos lo exige siempre, así que el médico
-            // que solo usa historia clínica también tiene uno, y le aparecía una agenda vacía.
-            tieneTurnos = consultorioId != null && m.tieneHorarios == 1, visibleEnTurnos = previo?.visibleEnTurnos ?: true, activo = m.activo == 1,
+            // Tiene agenda y es visible lo que informa turnos (decisión del administrador); sin esos campos rige
+            // `tiene_horarios` y el valor previo. El consultorio no entra: lo miran las pantallas (`puedeVerAgenda`).
+            tieneTurnos = tieneAgendaDe(m.tieneAgenda, m.tieneHorarios), visibleEnTurnos = visibleDe(m.visibleEnTurnos, previo?.visibleEnTurnos), activo = m.activo == 1,
         )
         db.authQueries.upsertMedico(medico.toRow(ahoraMillis(), dirty = false))
 
@@ -110,44 +111,17 @@ class TurnosImportador(private val db: Salud360Db) {
     private suspend fun importarEspecialidad(tobbId: Long, nombre: String?): String {
         val id = "tobb-e$tobbId"
         val previa = db.authQueries.especialidadPorId(id).uno { it.toModel() }
-        val esp = EspecialidadTurnos(id, nombre?.ifBlank { null } ?: previa?.nombre ?: "Especialidad $tobbId", codigoHc = previa?.codigoHc ?: codigoHcPorNombre(nombre), color = previa?.color, activo = true)
+        val esp = EspecialidadTurnos(id, nombre?.ifBlank { null } ?: previa?.nombre ?: "Especialidad $tobbId", codigoHc = normalizarCodigoHc(previa?.codigoHc) ?: codigoHcPorNombre(nombre), color = previa?.color, activo = true)
         db.authQueries.upsertEspecialidad(esp.toRow(ahoraMillis(), dirty = false))
         return id
     }
 
     /**
      * Historias clínicas habilitadas al médico. Manda lo que informa turnosonlinebb (`historias_clinicas`, gestionado
-     * por el administrador de la web); si la web todavía no manda el campo se conserva lo que ya había en el dispositivo
-     * y, como último recurso, se deduce de la especialidad de turnos (ver [FALLBACK_HC_POR_ESPECIALIDAD]).
+     * por el administrador de la web), también si viene vacío (una baja); solo si la web no manda el campo se conserva lo
+     * que ya había en el dispositivo (ver [historiasClinicasDeTurnos]). Nunca se deduce de la especialidad: ningún médico
+     * ve una historia clínica que el administrador no le habilitó.
      */
-    private fun historiasClinicasDe(m: TobbMedico, previo: Medico?): List<String> {
-        if (m.historiasClinicas.isNotEmpty()) return m.historiasClinicas.map { it.trim().lowercase() }.distinct()
-        previo?.especialidadesHc?.takeIf { it.isNotEmpty() }?.let { return it }
-        return if (FALLBACK_HC_POR_ESPECIALIDAD) listOfNotNull(codigoHcPorNombre(m.especialidad)) else emptyList()
-    }
-
-    /** Sugerencia inicial del código de HC según el nombre de la especialidad de turnos; el admin puede cambiarlo. */
-    internal fun codigoHcPorNombre(nombre: String?): String? {
-        val n = nombre?.lowercase() ?: return null
-        return when {
-            "pediatr" in n -> "pediatria"
-            "ginec" in n || "obstet" in n -> "gineco"
-            "cardio" in n -> "cardiologia"
-            "endocrin" in n -> "endocrinologia"
-            "hemato" in n -> "hematologia"
-            "hepato" in n -> "hepatologia"
-            "clínic" in n || "clinic" in n -> "clinica"
-            "desarrollo" in n || "neurodesarrollo" in n -> "desarrollo_infantil"
-            else -> null
-        }
-    }
-
-    companion object {
-        /**
-         * Mientras turnosonlinebb no devuelva `historias_clinicas` en el perfil, se habilita la HC que coincide con la
-         * especialidad de turnos (Pediatría → `pediatria`). Poner en `false` cuando la web esté desplegada con la tabla
-         * `salud360_medico_hc`, para que solo el administrador decida quién ve cada historia clínica.
-         */
-        const val FALLBACK_HC_POR_ESPECIALIDAD = true
-    }
+    private fun historiasClinicasDe(m: TobbMedico, previo: Medico?): List<String> =
+        historiasClinicasDeTurnos(m.historiasClinicas, previo?.especialidadesHc.orEmpty())
 }

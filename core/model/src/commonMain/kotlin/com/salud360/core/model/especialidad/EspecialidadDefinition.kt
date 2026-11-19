@@ -38,6 +38,11 @@ data class EspecialidadDefinition(
      * Null mientras la especialidad guarda solo en la base local.
      */
     val apiBaseUrl: String? = null,
+    /**
+     * Campos comunes del examen físico que esta especialidad ya no carga pero que, si una consulta los tiene, se
+     * muestran solo para leer (HC general: frecuencia cardíaca y circunferencia abdominal de la clínica de antes).
+     */
+    val examenFisicoSoloLectura: Set<CampoExamenFisico> = emptySet(),
 ) {
     fun tipoConsulta(codigo: String): TipoConsultaDef? = tiposConsulta.firstOrNull { it.codigo == codigo }
     fun seccion(id: String): SeccionDef? = secciones.firstOrNull { it.id == id }
@@ -56,6 +61,18 @@ data class TipoConsultaDef(
     /** Pestañas superiores (datos del paciente, antecedentes...). */
     val pestanias: List<String> = listOf(SeccionesComunes.DATOS_PACIENTE),
     val descripcion: String = "",
+    /**
+     * Pestañas que agrupan [secciones], en orden (HC general: las arma el perfil del médico). Vacío = la pantalla de
+     * siempre, con todas las secciones juntas.
+     */
+    val grupos: List<PestaniaDef> = emptyList(),
+)
+
+/** Pestaña de un tipo de consulta con las secciones que muestra, en orden. */
+data class PestaniaDef(
+    val id: String,
+    val titulo: String,
+    val secciones: List<String>,
 )
 
 enum class TipoSeccion {
@@ -105,7 +122,21 @@ data class SeccionDef(
      * con varios componentes sin escribir una sección a medida.
      */
     val subsecciones: List<String> = emptyList(),
+    /** Cómo se dibujan los campos de una sección FORM. */
+    val modoForm: ModoForm = ModoForm.FILAS,
+    /**
+     * Solo para TEXTO: el campo `texto` de esta consulta con las "Consultas previas" al lado, como los estudios con
+     * historial (ej. el motivo de consulta de la HC general). Sin la marca, la sección de texto de siempre.
+     */
+    val conHistorial: Boolean = false,
 )
+
+/**
+ * Cómo se dibuja un formulario: [FILAS], los campos en filas según `grupo`; [GRILLA_SI_NO], tarjetas SI / NO con
+ * vuelta a "sin cargar" (serologías de la HC general, RF-65 a RF-72). Exige que todos los campos sean `SELECT`
+ * con opciones `["SI", "NO"]`.
+ */
+enum class ModoForm { FILAS, GRILLA_SI_NO }
 
 sealed interface CondicionSeccion {
     data object SoloFemenino : CondicionSeccion
@@ -141,7 +172,16 @@ data class CategoriaAntecedentes(
 
 enum class ModoAntecedentes { CASILLAS, TEXTO_ACUMULATIVO }
 
-data class ItemAntecedente(val clave: String, val etiqueta: String, val soloDetalle: Boolean = false)
+data class ItemAntecedente(
+    val clave: String,
+    val etiqueta: String,
+    val soloDetalle: Boolean = false,
+    /**
+     * La web no guarda esta casilla (HC general, spec 005 D9, RF-3): no viaja nunca. Sigue en el catálogo para leer lo que el
+     * dispositivo ya tenía cargado, con el aviso «No se envía a la web». La regla es `casillaSeEnvia` de `core/data`.
+     */
+    val sinEnvio: Boolean = false,
+)
 
 data class LaboratorioDef(
     val tipo: String,
@@ -160,7 +200,15 @@ data class RegistroDef(
     val conArchivos: Boolean = false,
     /** El registro se asocia al paciente y no a una consulta puntual (ej. screenings). */
     val porPaciente: Boolean = false,
+    val modo: ModoRegistro = ModoRegistro.LISTA,
 )
+
+/**
+ * Cómo se cargan los registros de un tipo: [LISTA], los que hagan falta con "Agregar"; [UNO_POR_CONSULTA], estudio
+ * con historial (HC general): a lo sumo una entrada por consulta (fecha + `detalle`), mostrada junto con las de las
+ * otras consultas del paciente.
+ */
+enum class ModoRegistro { LISTA, UNO_POR_CONSULTA }
 
 /** Identificadores de secciones y tipos de consulta compartidos por varias especialidades. */
 object SeccionesComunes {

@@ -1,5 +1,7 @@
 package com.salud360.core.data.network
 
+import com.salud360.core.data.hcgeneral.ErrorPerfil
+import com.salud360.core.data.network.hc.HcPacienteCandidato
 import com.salud360.core.model.auth.Credenciales
 import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Sesion
@@ -37,9 +39,18 @@ class ApiException(val codigo: Int, mensaje: String) : Exception(mensaje)
  * Error devuelto por turnosonlinebb (ver [com.salud360.core.data.network.TurnosOnlineClient.tobb]).
  * @param status HTTP (409 para rechazos de agenda, 401 si el token venció).
  * @param codigo código de la API (`ocupado`, `mismo_dia`, `cupo_primer_control`, `dia_con_turnos`, ...).
+ * @param errores campo por campo, cuando la API contesta `422 validacion` con `errores` (perfiles de la HC general).
+ * @param candidatos las fichas entre las que elige el médico, cuando una HC contesta `409 paciente_ambiguo`.
  * @param cuerpo el objeto JSON de la respuesta cuando lo había (hoy solo lo llena `HcApiClient`); `null` si no. No va en el mensaje.
  */
-class TobbException(val status: Int, val codigo: String?, mensaje: String, val cuerpo: JsonObject? = null) : Exception(mensaje)
+class TobbException(
+    val status: Int,
+    val codigo: String?,
+    mensaje: String,
+    val errores: List<ErrorPerfil> = emptyList(),
+    val candidatos: List<HcPacienteCandidato> = emptyList(),
+    val cuerpo: JsonObject? = null,
+) : Exception(mensaje)
 
 @Serializable
 data class CrearUsuarioRequest(val nombre: String, val apellido: String, val email: String, val password: String, val rol: Rol)

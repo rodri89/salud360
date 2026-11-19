@@ -17,12 +17,21 @@ import com.salud360.core.model.auth.Rol
 import com.salud360.core.model.auth.Sesion
 import com.salud360.core.model.auth.Usuario
 import com.russhwolf.settings.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -64,6 +73,20 @@ class AuthRepository(
      * la identidad única: esas APIs no tienen login, validan este token contra turnos.
      */
     private val hcClients: Map<String, HcApiClient> = emptyMap(),
+    /**
+     * Se llama al empezar [logout], antes de borrar nada: borra la copia de enfermedades (RF-34) y deja de aceptar las
+     * respuestas de los pedidos que ya salieron, todo en un paso (E12, `EnfermedadesRepository.cerrarSesion`).
+     */
+    private val alCerrarSesion: suspend () -> Unit = {},
+    /**
+     * Revocan el token al cerrar sesión (RF-59): turnosonlinebb y cada HC con API. Por defecto ninguno: el
+     * `TurnosOnlineClient()` por defecto apunta a producción, así que el cableado real va en `DataModule`.
+     */
+    private val revocar: List<RevocaSesion> = emptyList(),
+    /** Donde corre la revocación, fuera de [logout] (C4); tiene que sobrevivir al cierre. */
+    private val scopeRevocacion: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /** Lo más que se deja trabajar a la revocación; pasado el límite se cancela, sin que nadie lo espere. */
+    private val limite: Duration = 3.seconds,
     /**
      * Backends de las historias clínicas con API por código de especialidad. Los que llevan licencia dicen cómo está la
      * del médico en el servidor ([decidirLicencia]); los demás contestan «sin dato» sin pedir nada.
@@ -146,7 +169,8 @@ class AuthRepository(
                 }
                 // El bloqueo va ANTES de guardar: `guardarSesion` publica en `sesion`, y la app navega al shell
                 // apenas deja de ser null, sin darle tiempo a la pantalla de ingreso a mostrar el aviso.
-                if (bloqueada) { cerrarPorLicencia(); return ResultadoLogin.LicenciaVencida(sesion) }
+                // El token recién emitido ya está en los clientes de HC pero no en el de turnos: se pasa para que igual se revoque.
+                if (bloqueada) { cerrarPorLicencia(r.token); return ResultadoLogin.LicenciaVencida(sesion) }
                 guardarSesion(sesion)
                 return ResultadoLogin.Ok(sesion)
             }
@@ -160,7 +184,7 @@ class AuthRepository(
                         // Se rearma el perfil desde la base local por si cambió (especialidades, consultorios, licencia)
                         val actualizada = resolverPerfilLocal(s.usuario)?.copy(token = s.token) ?: s
                         // Sin conexión con turnos no se consulta la licencia al servidor de la HC: decide la copia, como siempre.
-                        if (actualizada.licenciaBloqueada()) { logout(); return ResultadoLogin.LicenciaVencida(actualizada) }
+                        if (actualizada.licenciaBloqueada()) { logout(actualizada.token); return ResultadoLogin.LicenciaVencida(actualizada) }
                         _sesion.value = actualizada
                         api.token = actualizada.token
                         turnos.token = actualizada.token
@@ -179,7 +203,18 @@ class AuthRepository(
      */
     suspend fun resolverPerfilLocal(usuario: Usuario): Sesion? = resolverPerfil(db, usuario)
 
-    suspend fun logout() {
+    /**
+     * Cierra la sesión en el dispositivo y, después y en segundo plano, revoca el token en turnos y en cada HC con API
+     * (RF-59, C4): el cierre no espera a la revocación, así que ninguna HC lenta o caída lo demora.
+     *
+     * @param tokenARevocar el token a revocar cuando todavía no está en la sesión ni en los clientes (el recién emitido
+     * en [login]); sin él se revoca el de la sesión o, si no hay, el del cliente de turnos.
+     */
+    suspend fun logout(tokenARevocar: String? = null) {
+        // El token se toma antes de limpiar: cuando la revocación corre, los clientes ya lo olvidaron.
+        val token = (tokenARevocar ?: _sesion.value?.token ?: turnos.token)?.takeIf { it.isNotBlank() }
+        // RF-34: la copia de enfermedades es del médico que cerró sesión; la borra `alCerrarSesion`, dentro de su guardia.
+        alCerrarSesion()
         db.authQueries.borrarSesion()
         settings?.remove(CLAVE_SESION)
         api.token = null
@@ -187,6 +222,29 @@ class AuthRepository(
         hcClients.values.forEach { it.token = null }
         memoriaLicencia = null
         _sesion.value = null
+        if (token != null) revocarEnSegundoPlano(token)
+    }
+
+    /** Lanza la revocación en [scopeRevocacion] y no la espera: todos a la vez, con tope de [limite], errores ignorados. */
+    private fun revocarEnSegundoPlano(token: String) {
+        if (revocar.isEmpty()) return
+        scopeRevocacion.launch {
+            withTimeoutOrNull(limite) {
+                coroutineScope {
+                    revocar.map { r ->
+                        async {
+                            try {
+                                r.revocar(token)
+                            } catch (e: Throwable) {
+                                // Sin conexión, 404 de una API vieja, lo que sea: no importa. Throwable y no Exception
+                                // porque en web el fallo de red llega como kotlin.Error. Solo se corta si cancelaron.
+                                currentCoroutineContext().ensureActive()
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+        }
     }
 
     /**
@@ -230,8 +288,11 @@ class AuthRepository(
             }
         } ?: EstadoLicenciaRemoto.SinDato
 
-    /** El ingreso queda bloqueado por la licencia: no queda sesión abierta ni guardada. */
-    private suspend fun cerrarPorLicencia() = logout()
+    /**
+     * El ingreso queda bloqueado por la licencia: no queda sesión abierta ni guardada. En `login` el token recién emitido todavía no
+     * está en `turnos`: se pasa para que [logout] lo revoque igual (con `restaurar` y `refrescarPerfil` no hace falta).
+     */
+    private suspend fun cerrarPorLicencia(tokenARevocar: String? = null) = logout(tokenARevocar)
 
     /**
      * Refresca el perfil (por ejemplo tras una sincronización que trajo nuevas especialidades).
@@ -251,7 +312,19 @@ class AuthRepository(
         guardarSesion(nueva)
     }
 
-    private suspend fun guardarSesion(s: Sesion) {
+    /**
+     * RF-34: al entrar alguien, de la copia de enfermedades queda solo lo del médico que entra, con el mismo id que usa
+     * [ConfigHcRepository] (`PerfilMedico.medicoId`); el administrador y la secretaria no tienen copia propia y borran
+     * todo. `internal` para probarlo sin pasar por `login` ni `restaurar`, que piden a turnosonlinebb.
+     */
+    internal suspend fun borrarCopiaEnfermedadesAlEntrar(s: Sesion) {
+        val medicoId = s.medico?.medicoId
+        if (medicoId == null) db.hcEnfermedadesQueries.borrarTodo() else db.hcEnfermedadesQueries.borrarDeOtros(medicoId)
+    }
+
+    /** `internal` para probar el cableado de [borrarCopiaEnfermedadesAlEntrar] sin pasar por `login` ni `restaurar`. */
+    internal suspend fun guardarSesion(s: Sesion) {
+        borrarCopiaEnfermedadesAlEntrar(s)
         api.token = s.token
         turnos.token = s.token
         hcClients.values.forEach { it.token = s.token }

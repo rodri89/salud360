@@ -3,23 +3,26 @@ package com.salud360.features.hc.secciones
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,16 +32,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.YA_NO_FIGURA_EN_LA_WEB
+import com.salud360.core.data.hcgeneral.alternarFila
+import com.salud360.core.data.hcgeneral.avisoDeCargaSinFecha
+import com.salud360.core.data.hcgeneral.cargaNuevaValida
+import com.salud360.core.data.hcgeneral.cargasMultiples
+import com.salud360.core.data.hcgeneral.clavePreferenciaFilasOcultas
+import com.salud360.core.data.hcgeneral.columnasLaboratorio
+import com.salud360.core.data.hcgeneral.esUltimaVisible
+import com.salud360.core.data.hcgeneral.fechaDeLaCargaAbierta
+import com.salud360.core.data.hcgeneral.filasVisibles
+import com.salud360.core.data.hcgeneral.mostrarNuevaCarga
+import com.salud360.core.data.hcgeneral.mostrarTodasLasFilas
+import com.salud360.core.data.hcgeneral.ocultasDePreferencia
+import com.salud360.core.data.hcgeneral.puedeElegirFilas
+import com.salud360.core.data.hcgeneral.textoBotonFilas
 import com.salud360.core.data.repos.hoy
+import com.salud360.core.model.Id
+import com.salud360.core.model.especialidad.AnalitoDef
+import com.salud360.core.model.especialidad.LaboratorioDef
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.Laboratorio
+import com.salud360.core.model.newId
 import com.salud360.core.ui.components.AcceptButton
 import com.salud360.core.ui.components.ActionRow
+import com.salud360.core.ui.components.CeldaEditable
+import com.salud360.core.ui.components.CheckboxField
 import com.salud360.core.ui.components.ConfirmDialog
 import com.salud360.core.ui.components.DateField
+import com.salud360.core.ui.components.LinkButton
 import com.salud360.core.ui.components.PillButton
 import com.salud360.core.ui.components.SectionCard
 import com.salud360.core.ui.components.toDisplay
@@ -46,6 +70,7 @@ import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.hc.ConsultaUi
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
+import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDate
 
 /**
@@ -57,16 +82,26 @@ import kotlinx.datetime.LocalDate
 fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val def = ui.definicion ?: return
     val labDef = s.laboratorioTipo?.let { def.laboratorio(it) } ?: return
+    if (cargasMultiples(def.codigo)) { LaboratorioVariasCargas(s, ctx, ui, labDef); return }
     val historico by ctx.vm.laboratorios(labDef.tipo).collectAsState(emptyList())
     val enEstaConsulta = historico.firstOrNull { it.consultaId == ctx.consultaId }
     var editando by remember(enEstaConsulta?.id) { mutableStateOf(!ctx.soloLectura && enEstaConsulta == null) }
     var fecha by remember(enEstaConsulta?.id) { mutableStateOf(enEstaConsulta?.fecha ?: ui.consulta?.fecha ?: hoy()) }
     val valores = remember(enEstaConsulta?.id) { mutableStateOf(enEstaConsulta?.valores ?: emptyMap()) }
     var borrar by remember { mutableStateOf<Laboratorio?>(null) }
+    var eligiendoFilas by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
+    // Filas ocultas por el médico (RF-43 a RF-49): solo se dejan de mostrar; `valores` sigue con todas las claves y
+    // al guardar las ocultas quedan como estaban (RF-46).
+    val clavePreferencia = clavePreferenciaFilasOcultas(def.codigo, labDef.tipo)
+    val ocultas = ocultasDePreferencia(ui.preferencias[clavePreferencia])
+    val visibles = filasVisibles(labDef.analitos, ocultas)
+    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos)) {
+        { LinkButton(textoBotonFilas(labDef.analitos, ocultas), onClick = { eligiendoFilas = true }) }
+    } else null
 
     if (ctx.soloLectura && enEstaConsulta == null) { SeccionVacia(); return }
-    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida) {
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida, trailing = trailing) {
         val columnas = historico.filter { it.id != enEstaConsulta?.id }.take(8)
         if (!ctx.soloLectura) ActionRow {
             if (editando || enEstaConsulta != null) DateField("Fecha", fecha, { it?.let { f -> fecha = f } }, Modifier.width(200.dp))
@@ -86,7 +121,7 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
                     }
                 }
                 var grupo: String? = null
-                labDef.analitos.forEachIndexed { i, a ->
+                visibles.forEachIndexed { i, a ->
                     if (a.grupo != null && a.grupo != grupo) {
                         grupo = a.grupo
                         Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
@@ -97,7 +132,7 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
                     ) {
                         Text(a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), modifier = Modifier.width(190.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
                         if (editando) {
-                            CeldaEditable(valores.value[a.clave] ?: "") { v -> valores.value = valores.value + (a.clave to v) }
+                            CeldaEditable(valores.value[a.clave] ?: "", onCambio = { v -> valores.value = valores.value + (a.clave to v) })
                         } else if (enEstaConsulta != null) {
                             Text(enEstaConsulta.valores[a.clave] ?: "", modifier = Modifier.width(120.dp).padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
                         }
@@ -117,19 +152,149 @@ fun LaboratorioSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     borrar?.let { l ->
         ConfirmDialog("Eliminar columna", "¿Eliminar el laboratorio del ${l.fecha.toDisplay()}?", onConfirm = { ctx.vm.eliminarLaboratorio(l.id); borrar = null }, onDismiss = { borrar = null }, confirmText = "Eliminar", destructive = true)
     }
+    if (eligiendoFilas) ElegirFilasDialog(labDef.analitos, ocultas, { ctx.vm.guardarPreferencia(clavePreferencia, it.joinToString(",")) }, onCerrar = { eligiendoFilas = false })
 }
 
+/**
+ * HC general (RF-55 a RF-64): cada "Nueva carga" abre una columna editable primera que se guarda como una carga nueva;
+ * las guardadas, de esta consulta o de otras, solo se leen y se borran con el tacho mientras la consulta se pueda editar.
+ *
+ * Spec 005, T87-a (RF-41, Q-E3-1): la columna abierta es **una sola carga** con su id desde que se abre, y el autoguardado la manda
+ * varias veces: lo que el médico sigue completando actualiza esa misma carga, no crea otra. Al cerrarla («Guardar laboratorio») la
+ * carga queda cerrada: para cambiarla se borra y se recarga, como en la web (no hay un modo «editar» aparte).
+ */
 @Composable
-private fun CeldaEditable(valor: String, onCambio: (String) -> Unit) {
-    Box(
-        Modifier.width(120.dp).padding(horizontal = 6.dp).clip(MaterialTheme.shapes.extraSmall)
-            .background(MaterialTheme.colorScheme.surface).padding(horizontal = 6.dp, vertical = 6.dp),
-    ) {
-        BasicTextField(
-            value = valor, onValueChange = onCambio, singleLine = true,
-            textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
-        )
+private fun LaboratorioVariasCargas(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi, labDef: LaboratorioDef) {
+    val def = ui.definicion ?: return
+    val historico by ctx.vm.laboratorios(labDef.tipo).collectAsState(emptyList())
+    val editable = !ctx.soloLectura
+    var abierta by remember { mutableStateOf(false) }
+    // El id de la columna abierta: lo lleva desde que se abre, así el primero de los guardados la crea y los demás la actualizan.
+    var idAbierta by remember { mutableStateOf<Id?>(null) }
+    // Sin fecha elegida: se guarda con la de la consulta (`fechaDeLaCargaAbierta`, RF-41) y el aviso lo dice.
+    var fecha by remember { mutableStateOf<LocalDate?>(fechaConsulta(ui)) }
+    var valores by remember { mutableStateOf(emptyMap<String, String>()) }
+    var borrar by remember { mutableStateOf<Laboratorio?>(null) }
+    var eligiendoFilas by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    val clavePreferencia = clavePreferenciaFilasOcultas(def.codigo, labDef.tipo)
+    val ocultas = ocultasDePreferencia(ui.preferencias[clavePreferencia])
+    val visibles = filasVisibles(labDef.analitos, ocultas)
+    // «Elegir filas» guarda una preferencia del médico (`medico_preferencia`, con pendiente de envío): una consulta de la web
+    // no marca nada para enviar (RF-47), así que ahí no se ofrece; se elige desde cualquier consulta del dispositivo.
+    val trailing: (@Composable () -> Unit)? = if (puedeElegirFilas(def.codigo, labDef.analitos) && !ui.soloLecturaWeb) {
+        { LinkButton(textoBotonFilas(labDef.analitos, ocultas), onClick = { eligiendoFilas = true }) }
+    } else null
+    // La carga de la columna abierta no se dibuja dos veces: mientras la columna está abierta, su columna guardada se esconde.
+    val columnas = columnasLaboratorio(historico.filter { it.id != idAbierta }, ctx.consultaId, editable)
+    fun guardar() {
+        val id = idAbierta ?: return
+        if (!cargaNuevaValida(valores)) return
+        ctx.vm.guardarLaboratorio(labDef.tipo, id, fechaDeLaCargaAbierta(fecha, fechaConsulta(ui)), valores)
     }
+    val cerrar = { guardar(); abierta = false; idAbierta = null; valores = emptyMap() }
+    // Autoguardado de la columna abierta (Q-E3-1): lo escrito va al dispositivo a los 600 ms, como los textos y los estudios, y la
+    // cola de envío lo lleva a la web. Con el id de la columna, cada guardado actualiza la misma carga (RF-41).
+    LaunchedEffect(abierta, idAbierta, fecha, valores) {
+        if (!abierta || idAbierta == null || !cargaNuevaValida(valores)) return@LaunchedEffect
+        delay(600)
+        guardar()
+    }
+
+    if (ctx.soloLectura && columnas.none { it.deEstaConsulta }) { SeccionVacia(); return }
+    SectionCard(s.titulo, icon = iconoSeccion(s.icono ?: "laboratorio"), initiallyExpanded = s.inicialmenteExpandida, trailing = trailing) {
+        if (editable) ActionRow {
+            if (abierta) {
+                DateField("Fecha", fecha, { fecha = it }, Modifier.width(200.dp))
+                // Sin fecha elegida se usa la de la consulta: se dice, no se inventa ni se deja en blanco (RF-41).
+                avisoDeCargaSinFecha(fecha)?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (mostrarNuevaCarga(editable, abierta)) AcceptButton("Nueva carga", onClick = { fecha = fechaConsulta(ui); valores = emptyMap(); idAbierta = newId(); abierta = true })
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(scroll)) {
+            Column {
+                // cabecera
+                Row(Modifier.clip(MaterialTheme.shapes.small).background(Salud360Colors.BrandGradient).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Analito", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(190.dp).padding(horizontal = 8.dp))
+                    if (abierta) Text(fechaDeLaCargaAbierta(fecha, fechaConsulta(ui)).toDisplay(), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.width(120.dp).padding(horizontal = 8.dp))
+                    columnas.forEach { c ->
+                        Row(Modifier.width(120.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(c.carga.fecha.toDisplay(), color = Color.White, fontWeight = FontWeight.SemiBold)
+                                if (c.deEstaConsulta) Text("Esta consulta", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                // RF-63: la carga que la web ya no manda se sigue viendo entera, con la marca en su columna.
+                                if (ui.ausencias.carga(c.carga.id)) Text(YA_NO_FIGURA_EN_LA_WEB, color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (c.puedeBorrar) IconButton(onClick = { borrar = c.carga }, modifier = Modifier.height(24.dp)) { Icon(Icons.Default.Delete, contentDescription = "Eliminar columna", tint = Color.White) }
+                        }
+                    }
+                }
+                var grupo: String? = null
+                visibles.forEachIndexed { i, a ->
+                    if (a.grupo != null && a.grupo != grupo) {
+                        grupo = a.grupo
+                        Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
+                    }
+                    Row(
+                        Modifier.background(if (i % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent).padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), modifier = Modifier.width(190.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                        if (abierta) CeldaEditable(valores[a.clave] ?: "", onCambio = { v -> valores = valores + (a.clave to v) })
+                        columnas.forEach { c ->
+                            Text(
+                                c.carga.valores[a.clave] ?: "", modifier = Modifier.width(120.dp).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (c.deEstaConsulta) FontWeight.SemiBold else null,
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                }
+            }
+        }
+        if (abierta) ActionRow {
+            // Lo que se escribió ya está guardado por el autoguardado: esto cierra la columna (una carga cerrada se borra y se recarga,
+            // como en la web; Q-E3-1). Sin nada escrito, la columna se cierra y no queda ninguna carga (RF-57).
+            PillButton("Guardar laboratorio", onClick = cerrar)
+        }
+        if (columnas.isEmpty() && !abierta) Text("Sin cargas anteriores", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    borrar?.let { l ->
+        ConfirmDialog("Eliminar columna", "¿Eliminar el laboratorio del ${l.fecha.toDisplay()}?", onConfirm = { ctx.vm.eliminarLaboratorio(l.id); borrar = null }, onDismiss = { borrar = null }, confirmText = "Eliminar", destructive = true)
+    }
+    if (eligiendoFilas) ElegirFilasDialog(labDef.analitos, ocultas, { ctx.vm.guardarPreferencia(clavePreferencia, it.joinToString(",")) }, onCerrar = { eligiendoFilas = false })
+}
+
+/** RF-43 a RF-48: una casilla por fila, en el orden y los grupos del laboratorio; cada cambio se guarda al momento. */
+@Composable
+private fun ElegirFilasDialog(analitos: List<AnalitoDef>, ocultas: Set<String>, onGuardar: (Set<String>) -> Unit, onCerrar: () -> Unit) {
+    val visibles = filasVisibles(analitos, ocultas).map { it.clave }.toSet()
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Elegir filas") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                var grupo: String? = null
+                analitos.forEach { a ->
+                    if (a.grupo != null && a.grupo != grupo) {
+                        grupo = a.grupo
+                        Text(a.grupo!!, style = MaterialTheme.typography.labelLarge, color = Salud360Colors.Indigo, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    }
+                    val ultima = esUltimaVisible(analitos, ocultas, a.clave)
+                    CheckboxField(
+                        a.etiqueta + (a.unidad?.let { " ($it)" } ?: ""), a.clave in visibles,
+                        { onGuardar(alternarFila(analitos, ocultas, a.clave, it)) }, enabled = !ultima,
+                    )
+                    if (ultima) Text("Tiene que quedar al menos una fila visible", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 48.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } },
+        dismissButton = { LinkButton("Mostrar todas", onClick = { onGuardar(mostrarTodasLasFilas(analitos, ocultas)) }) },
+    )
 }
 
 /** Fecha por defecto para nuevas cargas: la de la consulta. */

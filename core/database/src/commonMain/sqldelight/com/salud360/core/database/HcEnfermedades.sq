@@ -1,0 +1,23 @@
+-- Copia de las enfermedades de la historia clínica general (spec 003, RF-32 a RF-34): la última respuesta buena de la
+-- web de cada parte, por médico, para mostrar sin conexión. Sin dirty ni deleted: el dueño es la web y acá nunca se
+-- edita ni se envía nada.
+-- parte = `administrar` (con ficha_id = 0: la lista del médico y el catálogo) o `seccion` (el estado de la sección de
+-- esa ficha de la web); datos_json es esa respuesta en JSON. Sin fila = nunca se recibió.
+-- Misma tabla que migrations/7.sqm.
+CREATE TABLE hc_enfermedades (
+    medico_id TEXT NOT NULL,
+    parte TEXT NOT NULL,
+    ficha_id INTEGER NOT NULL,
+    datos_json TEXT NOT NULL,
+    recibida_en INTEGER NOT NULL,
+    PRIMARY KEY (medico_id, parte, ficha_id)
+);
+
+copia: SELECT * FROM hc_enfermedades WHERE medico_id = ? AND parte = ? AND ficha_id = ?;
+guardar: INSERT OR REPLACE INTO hc_enfermedades(medico_id, parte, ficha_id, datos_json, recibida_en) VALUES (?, ?, ?, ?, ?);
+-- RF-11: la web dice que el paciente no está en la cartera; se borra el estado de su sección.
+borrarFicha: DELETE FROM hc_enfermedades WHERE medico_id = ? AND parte = 'seccion' AND ficha_id = ?;
+-- RF-34: al cerrar sesión.
+borrarTodo: DELETE FROM hc_enfermedades;
+-- RF-34: al entrar un médico distinto del dueño de la copia.
+borrarDeOtros: DELETE FROM hc_enfermedades WHERE medico_id <> ?;

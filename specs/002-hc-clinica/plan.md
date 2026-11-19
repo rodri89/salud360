@@ -6,7 +6,8 @@ subida a producción (E9) requiere aprobación aparte. Cubre RF-38 a RF-63 de `s
 toca a leer). Parte 1 (pacientes y cartera): `plan-parte1.md`. Depende de la spec 001 (perfiles,
 secciones y esquema local v9) y de la parte 1 de esta spec; la sección Enfermedades (spec 003) no cambia.
 El borrador de abajo ("Borrador previo") **queda reemplazado** para la entrega L; para la entrega E (escritura) hay que
-rehacerlo cuando se decida (ver "Entrega E, reservada"). No se borra: sigue siendo la referencia de lo que falta.
+rehacerlo en el plan de la spec 005 (`specs/005-hc-clinica-escritura/`, ver "Entrega E, reservada"). No se borra: sigue siendo
+la referencia de lo que falta.
 
 ## Resumen
 
@@ -357,8 +358,9 @@ Qué se aplica y qué se conserva (RF-53 a RF-55):
 - Nombre del médico, avisos y `no_leidas`: filas de `medico_preferencia` y `paciente_extra`. Sin tabla nueva.
 - Consulta SQL nueva `consultaAbiertaLocal`: solo cambia el `.sq`, no el esquema.
 
-**Para la Entrega E** (no se hace ahora, **REQUIERE aprobación explícita**): `9.sqm` (esquema v10) con
-`laboratorio.remoto_id` y `pendiente.remoto_id` **al final** de cada tabla (`upsertX` es posicional), y su `.sq`.
+**Para la Entrega E** (no se hace ahora; **aprobada por el usuario el 2026-11-03 en la spec 005, D8**, a implementar cuando
+llegue su subentrega E3, con el número exacto reservado mirando todas las ramas justo antes de crearla): `9.sqm` (esquema
+v10) con `laboratorio.remoto_id` y `pendiente.remoto_id` **al final** de cada tabla (`upsertX` es posicional), y su `.sq`.
 Q4 se decidió con la opción A (nombre del médico en `medico_preferencia`, sin columna propia) y Q15 con marcas en
 `paciente_extra`, así que la L no necesita migración.
 
@@ -462,10 +464,12 @@ verifica que ninguna fila quedó sucia.
 - La prueba de que la app web publicada no rompe con el backend registrado se hace en E8, no en producción.
 
 ## Entrega E, reservada
-Escritura: crear/abrir (reutiliza), secciones, examen, antecedentes, laboratorio, pendientes, cerrar y reabrir,
-adjuntos, aviso de licencia, sin conexión. Hay que rehacer el plan viejo (abajo) con: motor separado del mapa
-(reutilizando `MapaClinica` al revés), `9.sqm`, filtro de antecedentes `activo = 0`, qué hacer con lo viejo sin
-enviar, `tabaquismo`, respaldo y limpieza probados, y las pruebas locales primero. No tiene tareas.
+**Se especifica en la spec 005** (`specs/005-hc-clinica-escritura/spec.md`, borrador con decisiones D1 a D15 del
+2026-11-03); su plan se escribe allá después de aprobar la spec. Escritura: crear/abrir, secciones, examen,
+antecedentes, laboratorio, pendientes, cerrar, adjuntos, aviso de licencia, sin conexión. Hay que rehacer el plan viejo
+(abajo) con: motor separado del mapa (reutilizando `MapaClinica` al revés), `9.sqm`, filtro de antecedentes `activo = 0`,
+lo viejo sin enviar (D2), `tabaquismo` (D9), respaldo y limpieza probados (D4), y las pruebas locales primero. No tiene
+tareas.
 
 ---
 

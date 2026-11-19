@@ -1,0 +1,12 @@
+-- v7 -> v8: copia de las enfermedades de la historia clínica general (spec 003).
+-- Guarda la última respuesta buena de la web para mostrar sin conexión, por médico: `parte` es `administrar` (con
+-- ficha_id = 0: la lista del médico y el catálogo) o `seccion` (el estado de la sección de esa ficha de la web).
+-- Sin dirty ni deleted porque el dueño es la web y acá nunca se edita. Tiene que quedar igual que en HcEnfermedades.sq.
+CREATE TABLE hc_enfermedades (
+    medico_id TEXT NOT NULL,
+    parte TEXT NOT NULL,
+    ficha_id INTEGER NOT NULL,
+    datos_json TEXT NOT NULL,
+    recibida_en INTEGER NOT NULL,
+    PRIMARY KEY (medico_id, parte, ficha_id)
+);

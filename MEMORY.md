@@ -4,19 +4,357 @@ Memoria del proyecto entre sesiones. Resumir o borrar lo que ya no aporte; el de
 `specs/*/tasks.md` y en `git log`. Nunca datos sensibles (tokens, contraseñas, datos de pacientes, fechas de
 registros de personas): el repo es público.
 
-> **Nota (2026-11-03):** esta memoria viene de la rama hc-general y trata sobre todo de clínica. Desde ahora cada historia clínica lleva su propia memoria en memoria/<código>.md (ver docs/trabajo-por-historia-clinica.md); este archivo queda para lo transversal. Pasar el detalle de clínica a memoria/clinica.md es una limpieza pendiente, que se hace en hc-general.
+## Traspaso 2026-11-18 (unión con `origin/main`: agenda, admin y licencia del servidor)
+- **`origin/main` se integró en `hc-general`** (merge de 43 commits). Llegan la agenda por médico y las features de
+  administración: historias clínicas habilitadas, tipos de turno, agenda con tipos, pacientes del médico, renovación de
+  licencias, ocultar inactivos, sexo desde la HC, el modal de secciones la primera vez y el botón de «Nueva consulta»
+  (el detalle está en «Estado actual» y «Aprendizajes»). La licencia del servidor de pediatría ya estaba acá desde la
+  spec 004 y no se duplicó. **Ojo:** en `main` la agenda es la spec 005, así que ahora hay **dos specs 005**
+  (`005-agenda-por-medico` y `005-hc-clinica-escritura`): renumerar una cuando se unifiquen.
+- **Memoria por HC (2026-11-03, de `main`):** cada historia clínica lleva su propia memoria en `memoria/<código>.md`
+  (ver `docs/trabajo-por-historia-clinica.md`); este archivo queda para lo transversal. Pasar el detalle de clínica a
+  `memoria/clinica.md` es una limpieza pendiente.
 
-## Traspaso 2026-11-02 (clínica en pausa, pediatría primero)
-- **Clínica (rama `hc-general`, 138 commits locales sin push; `origin/main` sigue en el publicado del 2026-09-29):** la entrega L de la
+## Traspaso 2026-11-02 (clínica retomada el 2026-11-03, pediatría primero)
+- **Spec 005, servidor de E3 al 2026-11-12: T73, T74, T76, T77 y T79 hechas → el servidor de E3 está completo** (hclinica rama `salud360-api`,
+  sin push; **solo laboratorio general y peso**, el reducido y los pendientes quedaron fuera por decisión del usuario). T77 (`371da69`): baja lógica de una carga
+  (`DELETE pacientes/{id}/laboratorios|pesos/{cargaId}`, cuerpo `{clave l:<id>-baja, dispositivo, consulta_id}` → `{ok, baja, id}`),
+  `activo = 0` y nunca `DELETE` físico, mismo permiso que la actualización, repetir = ok (misma clave: lo registrado; otra clave: ok sin
+  escribir), sin cascada y sin tocar `medico_infos`; el cierre de la API no la reactiva (D20) y la autorización de la consulta gana al
+  registro (repetir tras cerrar = `409`). `tests/Unit` 1281 en verde; base descartable 68 controles por modo, HTTP 57, 5 mutaciones.
+  **T79 hecha (`9d5716c`, solo pruebas y documentación, sin código):** un solo recorrido por HTTP contra la copia local (crear consulta → alta de
+  laboratorio general → lectura inmediata → actualización → peso → lectura → repetir altas → baja → repetir baja → `422`/`403`/`409`/`401` → cierre
+  posterior) con **66 controles OK** y `medico_infos` con el **mismo CHECKSUM (213039496)** de punta a punta; base descartable `hc_clinica_t10`
+  con T76 (85) + T77 (68) **por modo**: 306 controles; `hc_clinica` igual a la foto de antes después de limpiar por id y por clave (solo se vació
+  `salud360_token_cache`); Apache solo con `GET/POST/PUT/DELETE/OPTIONS`. La sección «Escritura (E3)» del `.md` queda completa (incluye por qué no
+  se replica `es_nueva_consulta`: `medico_infos` es la pantalla del médico en la web) y deja escrito que el reducido y los pendientes (T75 y T78)
+  quedaron fuera de alcance. **Servidor de E3 hecho; sigue T80 (migración local `10.sqm`: `remoto_id` en `laboratorio` y `pendiente`), que NO se
+  empieza sin la aprobación del usuario** (D8; reservar el número mirando todas las ramas justo antes).
+- **Clínica retomada el 2026-11-03:** E8.2 hecha y E8.3 cerrada por decisión del usuario con excepciones (ver tasks.md de la spec 002).
+  E8.4 (revisor) quedó aprobada con observaciones (ver abajo); la limpieza sigue pendiente.
+- **Spec 005 (escritura de la HC general):** spec APROBADA el 2026-11-04 (D1 a D27); plan y tareas aprobados el 2026-11-04 (E0 y E1
+  detalladas, 47 tareas; E2 a E5 en lista); **E0 cerrada por el usuario el 2026-11-04** (médico de prueba y documento libre confirmados);
+  línea base en %TEMP%\opencode\e0\linea-base.txt. **E0 cerrada; T6 hecha (2026-11-04):** la licencia del servidor T1–T7 de la 004 está en
+  `hc-general` (9 cherry-picks `ba679f5` a `6d2cf4d`, más 3 tests de la 004 adaptados); `core:data` 1305 tests en verde y composeApp/features:auth wasm
+  compilan. **T1 a T7 hechas; T8 hecha (2026-11-04): reglas puras de escritura en hclinica `e35d8e7` (`EscrituraReglas`, 215 tests; `tests/Unit` 684
+  en verde; copiado a la servida). T9 hecha (2026-11-04): `EnviosRegistro` en hclinica `9819292` (tabla propia `salud360_envios`, único
+  `(user_id, clave)`, `conTransaccion`; 66 tests, `tests/Unit` 750 en verde; probado con base en la descartable `hc_clinica_t9`, que sigue creada: borrar con
+  `DROP DATABASE hc_clinica_t9;` cuando haga falta). T10 hecha (2026-11-04): `POST consultas` en hclinica `6b3306f`
+  (`ConsultaEscrituraController` + `EscrituraService`; `tests/Unit` 766 en verde; probado en la descartable `hc_clinica_t10` y por HTTP contra la copia local, limpiado por id
+  y por clave con las sumas iguales a la línea base; `salud360_envios` ya existe y está vacía en `hc_clinica` local; la ficha de prueba 1440 se limpió: T11 pide cargar otra);
+  T1 a T10 hechas; T11 diferida a la prueba general del usuario (datos de prueba P1–P5 siguen cargados; limpiar con `t11\limpiar-t11.cmd`); T12 hecha (hclinica `37a0485`: `PUT consultas/{id}/secciones` y `/examen`; `tests/Unit` 789 en verde; `medico_infos` y P1–P5 intactos). T13 hecha (2026-11-04): `POST consultas/{id}/cerrar` y `DELETE consultas/{id}` en hclinica `ed0bb61` (`tests/Unit` 805 en verde; probado en la descartable y por HTTP, limpiado por id y por clave con la base igual a `t11\snap-base-antes`; baja de cerrada = 409 resuelto; MySQL y Apache del XAMPP se levantan a mano si la máquina se reinicia: `mysqld --defaults-file=C:\xampp\mysql\bin\my.ini --standalone` y `C:\xampp\apache\bin\httpd.exe`); el detalle va en tasks.md. T14 hecha (2026-11-04): hclinica `5ebb410` (solo la documentación «Escritura (E1)»); pasada por HTTP 111 controles OK, scripts con base 209 por modo, greps limpios, `tests/Unit` 805 en verde, servida idéntica al clon, `salud360_token_cache` vaciada y la base igual a `base-antes`; **servidor de E1 (T8 a T14) hecho; T11 diferida; sigue T15** (la app).** **T50 hecha (2026-11-07):** reglas puras de formularios en `EscrituraReglas::formularios` (hclinica `7963c77`; `FormulariosReglasTest` 119 en rojo y luego verde, `tests/Unit` 924 en verde); sigue T51/T52 (T51 bloqueada por Q-E2-1). **T54 hecha (2026-11-07):** `PUT consultas/{id}/formularios` en hclinica local (`258225e`; sin registro de claves, Q-E2-6; `tests/Unit` 946 en verde; HTTP 83 y base descartable 82 por modo; 10 mutaciones detectadas; `medico_infos` y P1-P5 intactos); **T53 hecha (2026-11-07):** `EnviosRegistro` con `buscarVarias` y `conTransaccionVarias` (tipo `registro`, la tabla de cada fila en `respuesta_json`; hclinica `891093e`; `tests/Unit` 976 en verde; script con base 74 por modo; 9 mutaciones detectadas). Hechas T50, T53 y T54; siguen bloqueadas por Q-E2-1/2/3/4/5: T51, T52, T55 a T58 y T64. T7 (2026-11-04): la 004 quedó enmendada en texto en `hc-general` (la
+  HC general también lleva licencia, regla D25; sin código); falta avisar en `origin/main`. Datos de la L y de la 003 saldados con excepciones (ver «Limpieza pendiente»), salvo el fixture de la
+  tanda S, que se limpia en T45 (respaldo en la base descartable hc_clinica_respaldo, volcado en %TEMP%\opencode\e0). T9 de la 004 ya integrada en
+  `hc-general` (2026-11-04). RF-50 de la 002 ya enumera lo que escribe el middleware (D17).
+  Quedan 4 observaciones de E8.4 (1 a 4 de su nota: RF-57 con más de 50 consultas, RF-50 y lo que escribe el middleware, prueba manual
+  y baja real contra la copia local, filas `dirty` del dispositivo sin medir) a resolver o aceptar por escrito antes de pedir E9.
+- **Spec 005, estado y nuevo alcance al 2026-11-11 (traspaso; no reemplaza lo de arriba).**
+  **Estado.** E1: servidor T8 a T14 y app T15 a T31 y T36 a T37 hechas; pendientes T11 (verificación de RF-17 con el usuario), T38, T39 y T40 a T47;
+  T32 (iOS) diferida; T33 a T35 sin urgencia. E2: T48 a T50, T53, T54 y T61 hechas; el resto está bloqueado por preguntas abiertas.
+  **Decisiones del usuario.** El foco es que la HC de clínica funcione en la WEB (lectura y escritura); iOS, Android y offline vienen después. Se aprobaron
+  E2 a E4, Q-A (arranca E2 sin esperar el cierre de E1) y Q-B (orden E2-a, E3, E2-b, E4, con un candado por sección que todavía NO existe:
+  `SUBENTREGA_HABILITADA` sigue en E1).
+  **NUEVO ALCANCE (2026-11-11): lo que usan hoy los clínicos y debe quedar andando para leer y escribir.** Perfil 2 (hepatología): motivo de consulta,
+  documentos PDF, laboratorio general, ecografía abdominal, serologías de hepatitis, peso (tabla `pesos`), Child-Pugh, videoendoscopia digestiva alta,
+  biopsia hepática, estudios cardiológicos, TC/RMN/colangioRMN y antecedentes familiares. Perfil 3: enfermedades (ya andan, spec 003), motivo de consulta,
+  documentos PDF, laboratorio general y «antecedentes personales patológicos» (solo nota; la web la guarda en `antecedentes_familiares.nota` con las demás
+  columnas en 0 o vacío). Fuera de alcance por ahora: exámenes complementarios, interconsultas, alimentación, laboratorio reducido, pendientes, fotos y perfil 4.
+  **Hallazgos del análisis.** (a) La app no tiene modo «solo nota» ni un id para ese rótulo; no puede llamarse `antecedentes_personales` (es NUNCA por D9).
+  (b) El perfil 3 queda sin perfil en la carga inicial de la app (hay que armarlo en el admin) y el perfil 2 local tiene 5 secciones de las 17.
+  (c) La web usa laboratorio reducido si el usuario de la web tiene id 9: falta saber si aplica. (d) Los PDF no se leen en la app (todo E4).
+  (e) El peso de la lista es la tabla `pesos`.
+  **Preguntas ABIERTAS sin responder.** Q-E2-1 (nota del perfil 4; recomendación: queda afuera), Q-E2-2 (estudio en blanco; recomendación: vaciar y conservar),
+  Q-E2-3 (tope de largo; recomendación: solo donde la columna lo tiene), Q-E3-1, Q-E4-1/2/3, el id nuevo de la sección solo-nota, el candado por sección,
+  el perfil 9 (¿clínica general u hepatología?) y `dependiente_terceros` (hoy viaja como casilla).
+  **Camino propuesto.** Cerrar E1 (T11 y pruebas), candado por sección, servidor y app de E2 reducidos (estudios, antecedentes familiares y sección solo-nota;
+  serologías y Child-Pugh ya tienen servidor), E3 reducido (laboratorio general y peso; migración `10.sqm`, con pregunta antes), E4 reducido (solo PDF),
+  configurar el perfil 3 y prueba general del usuario.
+  **Entorno.** Se agregó el proveedor DeepSeek a la config GLOBAL de OpenCode (`~/.config/opencode/opencode.json`, modelos `deepseek/deepseek-flash` y
+  `deepseek/deepseek-v4-pro`; la clave está en la variable de usuario `DEEPSEEK_API_KEY`, nunca en el repo); falta `opencode service restart` para que la
+  vea. No usar modelos externos en tareas que lean bases locales con datos de pacientes ni `bd_test/`.
+  **Para retomar.** El servidor local (MySQL y Apache de XAMPP) hay que levantarlo a mano tras un reinicio; los datos de prueba P1 a P5 siguen en `hc_clinica`
+  hasta la prueba general.
+  **Avance 2026-11-11 (respuestas del usuario: Q-E2-1 sin la nota del perfil 4, Q-E2-2 vaciar y conservar la fila, Q-E2-3 sin tope salvo el de la columna).**
+  Hechas: T60-bis (candado por sección, `SECCIONES_HABILITADAS` sigue en E1), T62-a y T63-a (formularios y antecedentes: plan y cola), T62-b y T63-b (los cinco
+  estudios: plan y cola), T51 y T55 (antecedentes en hclinica `267d17e`), T52-a y T56 (estudios en hclinica `e11dff9`). `core:data` 2011 en verde y
+  `tests/Unit` 1199. Los dos pacientes sintéticos de la prueba de T56 se limpiaron; P1–P5, 1997–2001 y `medico_infos` intactos. Sigue T65 (la lectura), T66
+  (pantallas) y T67 (habilitar, solo tras cerrar E1); la verificación manual de E1 (T11) sigue en manos del usuario.
+  **T60-bis hecha (2026-11-11, `49fbf56`): el candado es un conjunto de secciones (`SECCIONES_HABILITADAS`), sigue en E1.**
+  **T62-a hecha (2026-11-11, `87d6195`): el plan de envío arma formularios y antecedentes con cambio real contra `LoEnviado` (aún sin cablear a `HcClinicaEnvio`: T63); T62-b (registros) bloqueada por Q-E2-2/4/5.**
+  **T63-a hecha (2026-11-11, `f6f2c92`): la cola (`HcClinicaEnvio`) envía formularios y antecedentes (un pedido por paso; parcial y limpieza como los textos). El candado sigue en E1: nada de esto sale todavía en la app.**
+  **T62-b hecha (2026-11-11): el plan de envío arma los cinco estudios con cambio real contra `LoEnviado.registros` (solo ida y alta/edición de fecha y `detalle`; un estudio en blanco se vacía, sin baja —Q-E2-2—; sin fecha o desactivado queda en reserva; exámenes complementarios e interconsultas fuera de alcance, en reserva) y `LoEnviado`/su JSON suman `registros` (clave `"r"`, compatible con lo guardado antes). No se cableó la cola (T63-b), ni la UI, ni `HcClinicaBackend`; el candado sigue en E1. Sigue T63-b.**
+  **T63-b hecha (2026-11-11): la cola envía los cinco estudios (`PUT consultas/{id}/registros` con fecha y `detalle` y lo último confirmado); el `ids` de la respuesta deja el `remoto_id` de cada fila en la misma transacción que la limpia (RF-61), lo que no figura en `guardadas` (o `desconocidas`) queda sucio y «No se pudo enviar», y el reenvío repite los mismos `ref` sin duplicar. `ServidorFalso` aplica registros con memoria; nada cableado a la UI ni a `HcClinicaBackend` y el candado sigue en E1 (los estudios no salen en la app hasta T67). Sigue T65.**
+  **T65-a hecha (2026-11-11): la lectura refresca los formularios de una propia ya enviada (misma regla que los textos: lo pendiente y lo que el médico descartó no se pisan) y deja al día `LoEnviado.formularios` y `LoEnviado.registros` con lo que la web tiene (también si la fila local está sucia); los estudios se emparejan por tipo + `remoto_id` (sin una `hcc-r…` aparte ni marca de ausente en una fila propia) y los antecedentes por categoría + clave, sin duplicar y con lo del dispositivo mandando. T65 se dividió: **T65-b (exámenes e interconsultas, `activo = 2`, Q-E2-4) queda fuera de alcance por ahora**. El candado sigue en E1.**
+  **T66-a hecha (2026-11-11): las pantallas de alimentación, serologías, Child-Pugh, antecedentes familiares y los cinco estudios quedan listas para enviarse (el aviso «Esta sección todavía no se envía a la web» y el solo-lectura ya salían de `avisoDeEnvioDeLaSeccion` en `ConsultaScreen`, T37; se verificó por archivo y línea) y un estudio que solo tiene la web ya no se puede editar desde la app (`puedeEditarRegistro` en `EstudioConHistorialSeccion`). Sin tope de largo, sin borrar/completar y sin adjuntos: eso es **T66-b, fuera de alcance por ahora**. La revisión visual queda para T71.**
+  **T67 reducida hecha (2026-11-11, decisión del usuario de habilitar antes del cierre de E1): `SECCIONES_HABILITADAS` = los 9 de E1 + serologías, Child-Pugh, antecedentes familiares y los cinco estudios (17 ids); `SUBENTREGA_HABILITADA` sigue en E1 y ya no es el candado, solo siembra el conjunto. La alimentación, los exámenes complementarios, las interconsultas, E3 y E4 siguen en `TODAVIA_NO`. La app ya los manda (T63-a/T63-b) y la lectura los refresca (T65-a); las pantallas de T66-a quedan sin aviso y editables. Sigue el cierre de E1 (T11) y la revisión visual en `devWeb` (T71).**
+  **T51 hecha (2026-11-11): reglas de antecedentes familiares en hclinica `c7e4eb7` (`EscrituraReglas::antecedentesFamiliares` y `mezclarAntecedentes`; sin ruta ni servicio: T55). Respuestas del usuario: Q-E2-1 la nota del perfil 4 NO se envía; Q-E2-2 un estudio en blanco se vacía; Q-E2-3 las columnas son `text` en la base del servidor (sin tope de 191 en antecedentes).**
+  **T55 hecha (2026-11-11): antecedentes en hclinica `267d17e` (`PUT pacientes/{id}/antecedentes-familiares`: fila nueva de la consulta mezclada con la última fila activa del paciente, la de `historia`; consulta de otro paciente = 422; `tests/Unit` 1107 en verde, base 72 controles por modo, HTTP 56, mutaciones 6/6). Se lee de vuelta por `historia` y no por `consultas/{id}`. T56 sigue con una duda de Q-E2-3 solo para estudios (el tope de 191 de `estudios_cardiologicos.descripcion`). Ojo: `cargar-prueba.sql` con el documento 99000901 reutiliza a P1 (1441); se limpió y P1 quedó intacta; para un paciente de prueba nuevo usar un documento libre (ej. 99000960).**
+  **T52-a hecha (2026-11-11): reglas puras de los cinco estudios en hclinica `d4cd5ab` (`EscrituraReglas::registros` y `::accionDeRegistro`; sin ruta ni servicio: T56); `tests/Unit` 1165 en verde, mutaciones 12/12, base sin cambios. Largo real: 191 caracteres solo en `estudios_cardiologicos.descripcion` y 65535 bytes en las otras cuatro (si producción pasa esa columna a `text`, se borra una entrada de `DETALLE_MAXIMO_CARACTERES`). Un `tipo` que no es estudio va en `desconocidas`. T52-b (exámenes e interconsultas) FUERA DE ALCANCE por decisión del usuario; no implementarla sin pedido.**
+  **T73 hecha (2026-11-12): solo lectura del esquema de E3, contrato y scripts; hclinica `c3e99dd` (rama `salud360-api`, sin push), un solo archivo `md/API_SALUD360_CLINICA.md` («Escritura (E3) - BORRADOR», más la reparación del encabezado «## Tests» que había quedado pegado en `e11dff9`). ALCANCE REDUCIDO por decisión del usuario: la escritura de E3 es solo laboratorio general (`laboratorio_generals`) y peso (`pesos`); el reducido (`laboratorio_general2s`) y los pendientes (`aux_pendientes`) se verificaron y documentaron (los usan los scripts y la lectura) pero NO se implementan. Esquema real en `notas-para-el-plan.md` §12.1: `laboratorio_generals` 59 columnas (`fecha date NOT NULL` sin defecto, 40 analitos `varchar(255)` sin defecto, 11 con defecto `''` —incluye `peso`—, `otro varchar(500)`), `laboratorio_general2s` 15 analitos `varchar(191)`, `pesos.valor varchar(255)`, `aux_pendientes.pendientes text`; ninguna con `UNIQUE` y `ColumnasLegacy` pondría la fecha de HOY, así que la API manda siempre la fecha. Corrección de las notas: `guardarPeso` NO escribe `medico_infos.es_nueva_consulta` (bloque comentado `MedicoController.php:6722-6728`); lo escriben el laboratorio general (`:6526-6532`) y el reducido (`:6646-6652`). La puerta RF-16 no cambia: la API no escribe `medico_infos` en ningún caso. Contrato de E3 en `plan.md` y borrador en el `.md` del clon: `PUT pacientes/{id}/laboratorios` y `/pesos` (`{clave "l:<id local>", dispositivo, consulta_id, tipo?, id?, fecha, valores}` → `{ok, id, guardadas, desconocidas}`; el peso viaja con el id de la app `peso`, no con la columna `valor`) y `DELETE pacientes/{id}/laboratorios/{cargaId}` y `.../pesos/{cargaId}` → `{ok, baja, id}`. Scripts de `%TEMP%\opencode\e0` ampliados con las cuatro tablas y ensayados SOLO en `hc_clinica_respaldo` (cargar → limpiar → cargar → limpiar, con y sin `STRICT_TRANS_TABLES`: `FALLOS=0`; rechazos con hijas ajenas incluidos). `hc_clinica` no cambió (foto antes/después idéntica; `medico_infos` igual) y `tests/Unit` sigue en 1199 en verde (5367 aserciones).**
+  **T74 hecha (2026-11-12): reglas puras de las cargas de laboratorio general y peso en hclinica `b95ea80` (rama `salud360-api`, sin push; `EscrituraReglas::carga` y `::puedeActualizarCarga` + `CargasReglasTest` de 25 tests).** Solo laboratorio general y peso: `tipo laboratorio_reducido` da `422 tipo_invalido` y no hay constante ni mapa del reducido (tampoco pendientes). `fecha` obligatoria y sin los marcadores de «sin fecha» (`2000-01-01`, `1000-01-01`, `0000-00-00`); claves por los mapas (`columnaWeb`), `"0"` es dato, `""` es vaciado, un alta sin valor con contenido es `422 carga_vacia`, topes reales (255 caracteres; 500 en `otro`) y dos cargas con la misma fecha conviven. `puedeActualizarCarga` pide la fila cruda de `salud360_envios` (`user_id`, `tipo` `carga`, `remoto_id`). `tests/Unit` **1224 en verde** (6215 aserciones; 1199 + 25), `php -l` limpio, `hc_clinica` sin cambios (fotos `t74-antes`/`t74-despues` idénticas) y copia servida idéntica. Para T76/T77: el `dispositivo` lo valida el registro de lo recibido; la `fecha` también es obligatoria al actualizar; `puedeActualizarCarga` recibe la fila cruda (con el `resultadoDeFila` sin `user_id` da `false`); el mensaje de `tipo_invalido` pasó a «no es un tipo permitido». Ningún test existente cambió.
+  **T76 hecha (2026-11-12): alta y actualización de las cargas de laboratorio general y peso en el servidor, hclinica `3034e5b` (rama `salud360-api`, sin push).** `EscrituraService::carga` (con `cargaNueva` por `conTransaccion` prefijo `l` tipo `carga`, el id en la misma transacción; `cargaExistente` por `conConsulta` y `puedeActualizarCarga`), `EnviosRegistro::porRemoto` (la fila cruda del registro por `remoto_id`+`tipo`, porque `resultadoDeFila` no trae `user_id`), `ConsultaEscrituraController@laboratorios`/`@pesos` (+`guardarCarga`), `Route::put('pacientes/{id}/laboratorios')` y `…/pesos`, `tablasEscribibles()` con `laboratorio_generals` y `pesos` (20), «Escritura (E3)» definitiva en `md/API_SALUD360_CLINICA.md` y `tests/Unit/EscrituraCargasTest.php` (36). `tests/Unit` **1260 en verde** (1224 + 36; 6554 aserciones); base descartable `hc_clinica_t10` 85 controles × 2 modos; HTTP contra la copia local 67 controles (alta, reintento, edición, vaciado, dos cargas con la misma fecha, `422`, `403 carga_no_propia`, `404 carga_no_encontrada`, `409`, CORS, 401 sin token); 5 mutaciones detectadas y restauradas; copia servida idéntica al clon (631 archivos) y `route:clear`. `hc_clinica` quedó igual que `t76-antes` salvo `salud360_token_cache` (2 → 0); `medico_infos`, P1–P5 y 1997–2001 intactos y los datos de la pasada limpiados por id y por clave. Decisiones a revisar en el resultado de T76 (la `fecha` se escribe también al actualizar; `404` si la fila no es de ese paciente; `403` si es de otra consulta/de la web/de otro médico/está de baja; el tipo de la carga va en lo registrado para no confundir una clave de peso con la de un laboratorio; 4 tests existentes que fijaban la lista de tablas cambiaron). Sigue **T77 (baja de la carga)**.
+  **T81 hecha (2026-11-12): la API de escritura de E3 en la app, con servidor falso (solo laboratorio general y peso; los pendientes quedaron fuera por decisión del usuario).** `core:data`: `ClinicaEscrituraApi` +3 (`laboratorio`, `peso`, `bajaDeCarga`), `ClinicaEscrituraApiRemota` (`PUT pacientes/{id}/laboratorios` y `/pesos`, `DELETE …/{cargaId}` con cuerpo JSON), DTOs `RespuestaCargaDto{id, guardadas, desconocidas}` y `RespuestaBajaDeCargaDto{baja, id}` (el `id` viene como **texto**) y `PayloadsClinica.carga/claveDeCarga/claveDeBajaDeCarga/bajaDeCarga` + `TIPOS_DE_CARGA`/`FECHAS_SIN_DATO`. La clave es `l:<id local>` (`l:<id local>-baja` para la baja); al alta viajan todos los valores con contenido y al actualizar solo los tocados contra lo confirmado, el vaciado sale `""` y una columna que ya no está es un vaciado; `fecha` siempre (un marcador de «sin fecha» revienta); peso como `valores:{peso}` y sin `tipo`; sin nada que mandar no hay cuerpo ni pedido. `core:data` **2043** en verde (2019 + 24: 16 de `PayloadsClinicaE3Test` y 8 de `ClinicaEscrituraApiTest`), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las tres wasm (`-Pentorno=dev`) y `:server:compileKotlin`. **Sin cablear** (`HcClinicaBackend`, `HcClinicaEnvio` y la UI intactos), `SECCIONES_HABILITADAS` sigue igual, sin migración y sin pedidos reales. Sigue **T80** (la migración `10.sqm`, con aprobación aparte) **o T82** (funciones puras de cargas y pendientes).
+  **T82-a hecha (2026-11-12): qué carga viaja con qué fecha y qué valores, en `core:data/hcgeneral/CargasAEnviar.kt` (puro: sin Compose, sin
+  red, sin reloj).** `fechaAEnviar(carga, consulta)`: la de la carga o la de la consulta si la suya es `2000-01-01`/`1000-01-01`, y si ninguna
+  sirve `FechaAEnviar.SinFecha` (T84 la deja en reserva; no se inventa la de hoy ni un marcador). `valoresAEnviar(valores, confirmada)`: al alta
+  todos los que tienen contenido; al actualizar solo los cambios reales, el vaciado sale `""` y una columna que ya no está es un vaciado; `0` y
+  `0.00` son datos. `PayloadsClinica.carga` (T81) delega en `valoresAEnviar` y `FECHAS_SIN_DATO` vive en `hcgeneral` con un alias público en
+  `PayloadsClinica`. `core:data` **2061** en verde (2043 + 18), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las
+  dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. **T82-b (texto de pendientes y huella) queda fuera de alcance por
+  ahora**; nada cableado, sin migración y sin pedidos reales. Sigue **T80** (migración, pendiente de aprobación) **o T83**.
+  **T80 hecha (2026-11-12): `10.sqm` (v11) reservada y aplicada; no hay vuelta atrás.** Con la aprobación del usuario del mismo día y el número
+  reservado mirando todas las ramas con `git ls-tree` justo antes (`hc-general` llegaba a `9.sqm`; `main`, `origin/main`, `docs/sdd-y-guia-por-hc`,
+  `hc-pediatria-fase-2`, `pediatria-licencia-servidor`, `origin/hc_odontologia` y las dos `origin/feature/*` están en 5, y ninguna tenía `10.sqm`).
+  `laboratorio.remoto_id` y `pendiente.remoto_id` (`TEXT NOT NULL DEFAULT ''`, al final de cada tabla y una sentencia por columna), consultas
+  `guardarRemotoIdLaboratorio/Pendiente` y `laboratorioPorRemotoId/pendientePorRemotoId`, `Laboratorio.remotoId` y `Pendiente.remotoId` en
+  `core/model` y `Mappers.kt`. Nada cableado todavía (no lo usan el repositorio, el envío, la lectura ni la UI). `core:data` **2070** en verde
+  (2061 + 9 de `MigracionLaboratorioTest`), `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`),
+  `core:data` wasm y `:server:compileKotlin`. Los cinco tests que simulan una base vieja suman `DROP COLUMN remoto_id` en `laboratorio` y `pendiente`
+  (regla de T15) y sus aserciones de versión pasan a 11. **Ojo:** una base v11 en el navegador no vuelve atrás (una app v10 la descarta) y el `devWeb`
+  de :8080 queda en v11. Sigue **T83** (o T82-b, fuera de alcance por ahora).
+  **T83-a hecha (2026-11-12): cargas de laboratorio general y peso en `HcRepository` con cambio real, reasignación, baja y aviso a la cola.**
+  `guardarLaboratorio(lab, enConsulta)` usa `cambioRealDeCarga` (lo mismo no marca ni reasigna; vaciar a propósito sí y el `remoto_id` se conserva),
+  reasigna a la propia cuando la carga es del histórico y respeta la barrera de T36; `eliminarLaboratorio` deja `activo = 0, dirty = 1` si la web la
+  tiene y **retira** (`deleted = 1, dirty = 0`) la que nunca se envió; `ConsultaViewModel` avisa a la cola desde las dos. Tests nuevos
+  `HcRepositoryCargasTest` (rojo 5 de 10 y después 10/10), `core:data` **2080** en verde. T83 se partió: **T83-b (pendientes) queda fuera de alcance
+  por ahora**. Sin migración, sin Laravel, sin pedidos reales; el plan todavía no manda cargas (T84/T85) y el candado de E3 sigue en E1. Sigue **T84**.
+  **T84-a hecha (2026-11-12): el plan de envío arma las cargas de laboratorio general y peso (los pendientes son T84-b, fuera de alcance por ahora).**
+  `PlanDeEnvio` suma el paso `Cargas` (después de los estudios y antes del cierre): una carga por pedido, altas con la fecha de `fechaAEnviar` y todos
+  los valores con contenido, actualizaciones con **solo lo tocado** contra `LoEnviado.cargas`, bajas (`activo = 0, dirty = 1` con `remoto_id`) sin fecha
+  ni valores, y la que nunca se envió y se retiró no viaja; el reducido y las de la web quedan en reserva, y sin fecha útil también (no se inventa la de
+  hoy). `LoEnviado`/su JSON suman `cargas` (clave `"c"`, compatible con lo guardado antes) y `cargaEnviada` alimenta `PayloadsClinica.carga`.
+  `HcClinicaEnvio.limpiarSiNoCambio` gana la rama `LABORATORIO` (solo para compilar el `when` del enum: no envía nada y hoy es inalcanzable). Rojo 27
+  de 55 y después verde; `core:data` **2113** (2080 + 33). `PlanDeEnvioTest` y `PlanDeEnvioE2Test` solo pasan a argumentos nombrados; siguen verdes.
+  Sin migración, sin Laravel, sin cablear la cola ni la UI; `SECCIONES_HABILITADAS` sigue igual. **Sigue T85** (`HcClinicaEnvio` ejecuta cargas).
+  **T85-a hecha (2026-11-12): la cola manda las cargas de laboratorio general y peso (los pendientes son T85-b, fuera de alcance por ahora).**
+  `EnvioEnCurso.cargas`: una carga por pedido con la fecha que resolvió el plan y `LoEnviado.cargaEnviada` como «lo ya enviado»; el `id` de la web entra
+  en `laboratorio.remoto_id` en la **misma transacción** que limpia y anota `LoEnviado` (RF-61), solo si la fila no cambió en vuelo y solo lo confirmado
+  (sin `id` o con `desconocidas` queda sucio y «No se pudo enviar»); la baja sale como `bajaDeCarga`. `Sucio.laboratorios` pasa a `FilaSucia` y
+  `entradaDelPlan` ya pasa `cargas`; `contarPendientes` cuenta laboratorio y peso con `seccionesDe(E3)` (mapa compartido `seccionDeLaCarga`: el tipo
+  `peso` es la sección `tabla_peso`). `ServidorFalso` aplica las cargas con memoria por `l:<id local>`. Rojo 15 de 25 y después verde; `core:data`
+  **2129** (2113 + 16). Sin migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` sigue igual. **Sigue T86** (la lectura empareja por `remoto_id`).
+  **T86-a hecha (2026-11-12): la lectura empareja las cargas de laboratorio general y peso por `remoto_id` (lo pendiente es T86-b, fuera de alcance).**
+  `laboratoriosDeLaWeb` pone `remotoId` y `HcClinicaBackend.aplicarHistoria` busca las cargas propias ya enviadas por `tipo` + `remoto_id`
+  (`cargaDeLaWebParaLaPropia` les devuelve id local, consulta y `activo`): una carga enviada y la de `historia` son una sola, sin `hcc-l…`
+  duplicada. Lo sucio manda (una baja de T83-a no reaparece ni se reactiva) y lo limpio se refresca (RF-34); un vacío de la web no pisa y el
+  `remoto_id` no se pierde. Rojo 6 de 6 y después verde; `core:data` **2135** (2129 + 6); cambió un solo test existente
+  (`LecturaClinicaTest.cada_carga_en_su_tipo_con_los_valores_de_la_app`, ahora espera `remotoId`). Sin migración, sin Laravel, sin pedidos reales;
+  `SECCIONES_HABILITADAS` sigue igual. **T86-a hecha; sigue T87** (pantallas de E3, bloqueada por Q-E3-1).
+  **T87-a hecha (2026-11-12): las pantallas del laboratorio general y del peso quedan listas para enviarse (el reducido y los
+  pendientes son T87-b, fuera de alcance).** El aviso y el solo lectura ya salían de `avisoDeEnvioDeLaSeccion` (T37) y el tacho de
+  `puedeBorrarCarga` (las propias, también enviadas, lo conservan; las `hcc-l…` de la web no). En `LaboratorioSeccion.kt` (rama
+  `cargasMultiples`) la columna abierta lleva un **id desde que se abre** y el **autoguardado** (600 ms) la guarda con ese id: el
+  primer guardado la crea y los demás actualizan la misma carga (Q-E3-1, sin modo «editar»); se esconde su columna guardada mientras
+  está abierta; la fecha se puede borrar y entonces se usa la de la consulta, con el aviso «Sin fecha: se usa la de la consulta»
+  (`SIN_FECHA_SE_USA_LA_DE_LA_CONSULTA`/`fechaDeLaCargaAbierta`/`avisoDeCargaSinFecha` en `core/data/hcgeneral/CargasLaboratorio.kt`);
+  se quitó «Cancelar». `core:data` **2137** (2135 + 2, rojo por compilación y después verde), `especialidades:clinica` 38,
+  `core:ui` 17 y `core:crecimiento` 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. `SECCIONES_HABILITADAS`
+  sigue igual (E3 se enciende en T88) y la revisión visual es T92. **T87-a hecha; sigue T88.**
+  **T88 reducida hecha (2026-11-12, decisión del usuario de habilitar antes de cerrar E1/E2): laboratorio general y peso habilitados (`laboratorio_general` y
+  `tabla_peso` en `SECCIONES_HABILITADAS`, 19 ids: los 9 de E1 + las 8 de E2 + estos 2); `SUBENTREGA_HABILITADA` sigue en E1. El laboratorio reducido, los
+  pendientes y los documentos siguen en `TODAVIA_NO` (los dos primeros, fuera del alcance de E3; documentos es E4), igual que la alimentación, los exámenes
+  complementarios y las interconsultas. `core:data` 2139 en verde (2137 + 2 tests nuevos: el conjunto exacto de 19 y lo que queda afuera), `especialidades:clinica`
+  38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin migración, sin Laravel,
+  sin pedidos reales. Con esto la HC general ya manda laboratorio general y peso; sigue el cierre de E1 (T11) y la revisión visual (T92).**
+  **T95 hecha (2026-11-13): arranca E4 (adjuntos) con el contrato y los límites de los documentos PDF, JPG, JPEG y PNG (borrador).** Solo documentación y ensayos: **no
+  escribe código ni toca la base de trabajo**. En el clon de la API: `plan.md` («Contrato de E4 (revisado el 2026-11-13)») completado (clave `a:<id local>` hasta 191 y
+  `dispositivo` obligatorios; `consulta_pdfs` es la tabla de `documentos`; nunca se lista un adjunto sin consulta ni de otra HC; el `413` del servidor web la app lo trata
+  como `archivo_grande`) y copiado como «Escritura (E4) — BORRADOR» a `md/API_SALUD360_CLINICA.md` (hclinica `1eb1316`, rama `salud360-api`, sin push; copia servida
+  idéntica en los archivos del repo salvo el parche local de dos blades, que no se tocó). **Límites locales** (`notas-para-el-plan.md` §13.1): `upload_max_filesize` 64M,
+  `post_max_size` 64M, `memory_limit` 128M, `max_execution_time` 300 en el `php.ini` (la CLI informa 0), GD 2.1.0 cargada (no se usa), web 15 MB → **límite efectivo 15 MB**;
+  `config('salud360.img_path')` vacío → `public_path('img')` (existe y es escribible). **Scripts de `e0`** ampliados con `consulta_pdfs` (contar/suma/cargar; limpiar ya la
+  tenía) y ensayados **solo en `hc_clinica_respaldo`** con `ensayo-t95.cmd` y `ensayo-t95-extra.cmd` (con y sin modo estricto): cargar → limpiar → cargar → limpiar con las
+  tres sumas idénticas y `FALLOS=0`; `hc_clinica` con el **mismo SHA-256** de suma y conteos antes y después. `tests/Unit` **1281 en verde**. Las **fotos de exámenes**
+  (T100/T105) siguen **fuera de alcance** y **Q-E4-2** (carpeta y límites del hosting) sigue pendiente y es paso de producción.
+  **T96 hecha (2026-11-13): reglas puras de los adjuntos de la HC general (servidor), hclinica `9212707` (rama `salud360-api`, sin push; copia servida idéntica).**
+  `app/Services/Salud360/AdjuntosReglas.php` (nuevo): `clave` `a:`, `tipo` (solo `documento`; `foto_examen` → `tipo_invalido`), `tipoDeArchivo` por firma
+  (`%PDF-`, `FF D8 FF`, `89 50 4E 47 0D 0A 1A 0A`), `extensionDe`, `nombreOriginal` (basename, sin caracteres de control, UTF-8, recorte a 255 conservando la
+  extensión), `nombreEnDisco` (`<segundos>_<azar>.<ext>`, azar de 1 a 32 alfanuméricos), `rutaRelativa` (`<carpeta>/consulta_pdf/<archivo>`), `parsearBytes` y
+  `limiteEfectivo` (el menor entre 15 MB y `upload_max_filesize`/`post_max_size`; 0, vacío o ilegible no recorta; `2G` se satura en `PHP_INT_MAX` por el PHP de
+  32 bits), `cabe`, `errorDeSubida` (INI/FORM_SIZE → `archivo_grande`; PARTIAL/NO_FILE → `archivo_invalido`), `adjunto($datos, $limite)` que compone todo, y
+  `autorizarSubida`/`autorizarBaja` sobre `EscrituraReglas::autorizarConsulta`; test nuevo `tests/Unit/AdjuntosReglasTest.php` (32 tests; **rojo 32 errores**).
+  `EnviosRegistro::PREFIJOS` suma `a`: por eso cambian **dos aserciones** de `EnviosRegistroTest` (el caso «adjunto todavía no» pasa a válido y el `['a:1']` de
+  «otros tipos» pasa a `['x:1']`). **Decisión no prevista en el plan:** el test nuevo **no puede nombrar `EnviosRegistro`** (el propio `EnviosRegistroTest` se lo
+  prohíbe a los demás tests de Unit), así que la comprobación del prefijo queda en `EnviosRegistroTest` y en `AdjuntosReglasTest` solo la forma de la clave y los
+  tipos `adjunto`/`baja_adjunto`. `tests/Unit` en la copia servida: **1313 en verde, 7267 aserciones, salida 0** (1281 + 32). `hc_clinica` idéntica (foto
+  antes/después: ninguna tabla cambió). Sigue **T97** (subir: servicio, controlador y ruta).
+   **T97 hecha (2026-11-13): `POST consultas/{id}/adjuntos` en hclinica `0df2c05` (rama `salud360-api`, sin push; copia servida idéntica y `route:clear`).**
+   `AdjuntosService` (nuevo) y `AdjuntosController` (nuevo), `tests/Unit/EscrituraAdjuntosTest.php` (17 tests). Multipart `archivo`, `clave:"a:<id local>"`,
+   `dispositivo`, `tipo:"documento"`: `201`/`200` (repetir la misma clave = misma fila, un solo archivo), PDF/JPG/JPEG/PNG por **firma**, límite 15 MB, `422`
+   `archivo_invalido|archivo_grande|tipo_invalido|clave_en_uso`, `403/404/409` de RF-52/53, `500 carpeta_no_escribible` con la ruta exacta y `500 escritura` sin
+   detalle. Orden sin huérfanos: temporal -> fila de `consulta_pdfs` + registro `a:` en una transacción -> renombrar; `finally` borra el temporal. La respuesta no
+   trae la ruta del disco; `tamanio` sale del archivo (la tabla no tiene esa columna). No toca la lectura ni `medico_infos`, sin columnas ni migraciones.
+   **Pruebas:** `tests/Unit` **1330 en verde (7410 aserciones)**; base descartable `hc_clinica_t10` **40 controles por modo** (estricto y sin) y HTTP contra
+   `hc_clinica` **26 controles**; 6/6 mutaciones detectadas; `t97-clean-antes` vs `t97-clean-final` **sin diferencias** y P1-P5 intactos. Los archivos de prueba se
+   borraron del disco con su SHA-256 anotado en `%TEMP%\opencode\t97\*antes-de-borrar.txt`. Sigue **T98** (listar, bajar y baja lógica).
+   **T98 hecha (2026-11-13): listas, descarga y baja lógica de los documentos, hclinica `a68bb95` (rama `salud360-api`, sin push; copia servida idéntica y `route:clear`).**
+   `GET pacientes/{id}/adjuntos` (consulta nueva: todos los documentos vigentes de todas las consultas del paciente, con su `consulta_id`) y `GET consultas/{id}/adjuntos` (previa: solo los suyos), con
+   `{id, nombre_original, tamanio, tipo pdf|jpeg|png, created_at, consulta_id}`; nunca la ruta del disco ni una URL; sin consulta (`consulta_id = 0`) ni de otro paciente no se listan. `GET adjuntos/{id}/archivo`
+   baja los bytes con la sesión y el `Content-Type` real (solo `activo = 1`, archivo en disco y paciente en cartera; falta → `404`). `DELETE adjuntos/{id}` con `{clave:"a:<id local>-baja", dispositivo,
+   consulta_id}` → `200 {ok, baja, id}`, `activo = 0` sin borrar el archivo, solo lo que subió la app para ese médico en esa consulta abierta; lo de la web es `403 adjunto_no_propio` (códigos nuevos, análogos
+   a los de carga) y repetir es `ok`. `tamanio` sale de `filesize` (0 si falta el archivo) y el tipo de la extensión que generó el servidor. No toca la lectura ni `medico_infos`; sin columnas ni migraciones.
+   **`tests/Unit` 1345 en verde (7549 aserciones; 1330 + 15)**, base descartable 54 controles × 2 modos, HTTP 35 controles, 5/5 mutaciones; `hc_clinica` igual salvo `salud360_token_cache`.
+   Cambiaron dos tests existentes (rutas de `EscrituraAdjuntosTest` y el conteo de `Route::delete(` de `EscrituraBajaCargasTest`, 4 → 5). **Sigue T99** (límites de subida); las fotos de exámenes siguen fuera de alcance.
+   **T99 hecha (2026-11-13): `GET adjuntos/limites` (solo lectura), hclinica `5e475ee` (rama `salud360-api`, sin push; copia servida idéntica en los archivos del repo —solo quedan distintos los dos
+   blades del parche local— y `route:clear`).** Con la sesión del médico; sin token `401 sin_token`. Contesta `{ok, maximo_bytes, maximo_web_bytes, upload_max_filesize, post_max_size}` y en la copia local
+   `{"maximo_bytes":15728640,"maximo_web_bytes":15728640,"upload_max_filesize":"64M","post_max_size":"64M"}` (los de T95). La forma la arma `AdjuntosReglas::limites`, pura: `maximo_bytes` =
+   `limiteEfectivo` (si el tope de la web no sirve, `MAXIMO_WEB`; **nunca** null, la app necesita un número), `maximo_web_bytes` = el de la web parseado y los dos crudos tal como los da `ini_get`
+   (`null` si la instalación no los informa; cero/vacío no recortan). El controlador solo llama a `ini_get`: no escribe ni consulta la base ni toca el disco. **`tests/Unit` 1349 en verde (7593
+   aserciones; 1345 + 4)**, HTTP 11 controles OK; `hc_clinica` idéntica (`suma`/`contar` con el mismo SHA-256, `medico_infos` 213039496) y la foto del disco de la copia servida también: lo único que se
+   movió en la pasada fueron los dos contadores del *throttle* de `storage/framework/cache/data` (los escribe cualquier pedido) y la fila de `salud360_token_cache`, y se restauraron. Cambió una aserción de
+   `EscrituraAdjuntosTest` (daba `limites` por inexistente). Sigue **T101** (prueba de punta a punta de E4 y documentación); las fotos de exámenes siguen fuera de alcance.
+   **T101 hecha (2026-11-13): el servidor de E4 está probado de punta a punta y documentado; sigue T102 (la API en la app).** hclinica `cc41316` (rama `salud360-api`,
+   sin push; solo `md/API_SALUD360_CLINICA.md`, copiado a la servida: idéntica en los archivos del repo salvo el parche local de dos blades). «Escritura (E4)» deja de
+   ser borrador: seis rutas, multipart, tipos por firma con su `Content-Type`, límites y `GET adjuntos/limites`, carpeta con **[Q-E4-2] pendiente (paso de
+   producción)**, las dos listas (Q-E4-3), la baja lógica y la tabla de códigos. **Un solo recorrido por HTTP contra `hc_clinica` con datos inventados: 58 controles,
+   0 fallas** (crear → subir PDF/PNG/JPG y el PDF de una consulta previa → repetir la misma clave = una fila y un archivo → las dos listas → bajar los cuatro con
+   SHA-256 y `Content-Type` → baja (deja de listarse y el archivo queda) → cerrar la previa → límites → `422` firma/grande/`foto_examen`, `401` en las seis rutas,
+   `403` de otro paciente, `409` en la cerrada → limpieza por id y por clave). Desde el fixture cambian **solo `consulta_pdfs` y `salud360_envios`**; `medico_infos`
+   con el mismo CHECKSUM (213039496); conteos finales idénticos y la única tabla distinta es `salud360_token_cache`, que se **vació**. Archivos de prueba borrados
+   del disco (ruta + SHA-256 anotados antes). Scripts con base de T97/T98 en `hc_clinica_t10` (estricto y sin `sql_mode`): misma salida que sus tareas.
+   **Grep:** 0 `medico_infos`, 0 DDL, 0 `delete` sobre `consulta_pdfs`; los tres `unlink` son del temporal `.part` → nunca se borra un archivo guardado.
+   `tests/Unit` **1349 en verde (7593 aserciones)**. Apache: solo `GET`/`POST`/`DELETE`, sin `5xx`.
+   **T102 hecha (2026-11-13): la API de adjuntos de E4 en la app, con servidor falso (nada cableado).** `core:data`: `network/hc/ClinicaAdjuntosApi.kt` (nuevo):
+   `ClinicaAdjuntosApi` (`subir`, `listarDePaciente`, `listarDeConsulta`, `bajar`, `borrar`, `limites`) + `ClinicaAdjuntosApiRemota` sobre el `HcApiClient` completo
+   (multipart de `subir`, `descargar` que rechaza un JSON en lugar del archivo) y `TIPO_ADJUNTO_DOCUMENTO`; en `HcClinicaEscrituraDtos.kt`, los DTOs del alta y de la
+   lista (ids como **texto**, `created_at` opcional) y de los límites; `PayloadsClinica.claveDeAdjunto` (`a:<id local>`), `claveDeBajaDeAdjunto` (`a:<id local>-baja`)
+   y `bajaDeAdjunto` (comparte con `bajaDeCarga` un `bajaConConsulta`). **Un `413` del servidor web al subir se lee como `archivo_grande`**; `bajar` devuelve solo
+   los bytes (el tipo de la descarga lo da `tipo` de la lista). Se hizo como interfaz aparte y no sumando métodos a `ClinicaEscrituraApi`, para no tocar el
+   `ServidorFalso` de las pruebas de la cola. Rojo por compilación (73 errores) y después verde: `ClinicaAdjuntosApiTest` **21**, `core:data` **2160** (2139 + 21),
+   `especialidades:clinica` 38, `core:ui` 17 y `core:crecimiento` 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y `:server:compileKotlin`. Sin
+   migración, sin Laravel, sin pedidos reales; `SECCIONES_HABILITADAS` igual y las fotos de exámenes siguen fuera de alcance. **Sigue T103.**
+   **T103 hecha (2026-11-13): qué documento de la HC general viaja y el aviso del tope antes de subir (puro, sin cablear).** `core:data/hcgeneral/AdjuntosClinica.kt` (nuevo):
+   `SECCION_DOCUMENTOS`, `TipoDeAdjunto` (`pdf`/`jpeg`/`png`, con su `mime` y extensiones), `tipoDeAdjunto(nombre, mime)` (manda la extensión declarada; sin extensión, el `Content-Type`) y
+   `adjuntoViaja(archivo, consulta)` (solo de **esa** consulta propia, mismo paciente, sección `documentos`, sin registro, activa y PDF/JPG/JPEG/PNG: nunca sin consulta ni de otra HC, RF-46) y
+   `limiteExcedido(tamanio, limites)` → «El archivo pesa X MB y el máximo es Y MB» o `null`; solo texto, no marca enviado, manda `maximo_bytes` (el efectivo) y los MB son de 1.048.576 (peso hacia
+   arriba, máximo hacia abajo, un décimo con coma). `HistoriaClinica.sq`: `archivosDeConsultaPropia` (dirty de **una** consulta, altas y bajas, sin los `consulta_id IS NULL` del paciente); **sin
+   cambio de esquema** (v11). `HcRepository.guardarArchivo/eliminarArchivo` ahora aplican la **barrera de T36** (cierre enviado o viajando → rechaza; pediatría e histórico igual). **Rojo:** 60 errores
+   de compilación. **Verde:** `AdjuntosClinicaTest` 16 + `AdjuntosPropiosTest` 3; `core:data` **2180** (2160 + 20), clinica 38, ui 17, crecimiento 6; compilan features:hc, las dos wasm (`-Pentorno=dev`),
+   core:data wasm y `:server`. Cambió `HcRepositoryCierreEnviadoTest` (la lista de escrituras suma `guardarArchivo`, 6 → 7, y una baja de adjunto). `HcApiSync` sin cambios, sin migración ni Laravel.
+   **Sigue T104** (el plan y la cola envían los documentos).
+   **T104 hecha (2026-11-13): el plan y la cola envían los documentos de la HC general (PDF, JPG, JPEG y PNG).** `PlanDeEnvio.kt`: `PARTE_ADJUNTOS`,
+   `PasoDeEnvio.Adjuntos` (una `List<Archivo>`: alta = activo sin `remotoId`, baja = `remotoId` + `activo = false`) y `TablaDeLaFila.ARCHIVO`, **después de los estudios y las
+   cargas y antes del cierre**; `EntradaDelPlan.archivos`; solo la sección `documentos`, solo los cuatro tipos, nunca otra consulta ni otra HC (RF-46), la foto de un examen
+   espera en reserva (T105), lo de una anulada también, y lo que nunca viaja se limpia sin figurar enviado (RF-60). `HcClinicaEnvio`: parámetros nuevos `adjuntos:
+   ClinicaAdjuntosApi?` y `archivos: ArchivoStore?` (al final, para no romper las llamadas posicionales), `EnvioEnCurso.enviarAdjuntos` **un archivo por pedido**, bytes de
+   `ArchivoStore`, tope (`GET adjuntos/limites`, una vez por paso) comparado **antes** de subir, clave `a:<id local>`, `remoto_id` en la **misma transacción** que la limpieza
+   (RF-61/RF-55), baja con `a:<id local>-baja`, «falta el archivo en este dispositivo» sin reintento solo, y `limpiarSiNoCambio` para `ARCHIVO`. `DataModule`: la API de
+   adjuntos es `ClinicaAdjuntosApiRemota` sobre el mismo cliente completo y el `ArchivoStore` va con `getOrNull` (los tests de Koin que no lo registran no rompen). **Rojo:** 73
+   errores de compilación. **Verde:** `PlanDeEnvioE4Test` 19 + `HcClinicaEnvioAdjuntosTest` 11 + 1 en `HcClinicaEnvioRepetibleTest` y 1 en `HcClinicaEnvioAtomicoTest`;
+   `core:data` **2212** (2180 + 32), clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm y `:server`. `ServidorFalso` implementa ahora
+   `ClinicaAdjuntosApi` con memoria (subida repetible por clave, baja, listas, descarga y límites) y `Escena`/`conServidor` aportan una carpeta temporal de `ArchivoStore`; sin
+   migración, sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` sigue igual (E4 se enciende en T108). Fotos de exámenes (T105) fuera de alcance; el E2E real es T109.
+   **Nota (2026-11-14, rama `hc-general`): el test de reintento de adjuntos quedó estabilizado.** `HcClinicaEnvioAdjuntosTest.un_5xx_…` (y el `429` de al lado) fallaba
+   una vez cada tanto (`expected [adjunto a:a1, adjunto a:a1] but was [adjunto a:a1]`): el reintento de 15 s lo programa el envío desde otra corrutina (los bytes se
+   leen con `Dispatchers.IO`), así que la espera podía quedar anotada en el `RelojFalso` **después** de que volviera el `join()`; el `avanzar` no encontraba nada que
+   reanudar y `terminarElEnvio()` tomaba el turno libre (en una sonda en proceso: 92 de 300). Arreglo: `RelojFalso.esperarAQueHaya(1)` —espera ese hecho observable, sin
+   dormir ni reintentar— antes de mover el reloj: 0 de 300, 30 corridas del test y la suite completa en verde. Sin cambios de producción, sin migración, sin dependencias.
+   **T106 hecha (2026-11-13): la lectura de la HC general lista los documentos de la web al abrir una consulta y los baja con la
+   sesión.** Regla de Q-E4-3: se lista por **paciente** (`GET pacientes/{id}/adjuntos`) si la consulta que se abre es una **propia abierta**
+   (la que se está cargando) y por **consulta** (`GET consultas/{id}/adjuntos`) en cualquier otro caso (histórico, de la web, propia ya
+   cerrada); una previa que nunca se envió (sin `remoto_id`) no pide nada. Se dispara al abrir (`ConsultaViewModel.init` y el
+   «Reintentar» de una consulta de la web), nunca desde el autoguardado, y un fallo de la lista no impide abrir la consulta.
+   `LecturaClinica.kt`: `idArchivoWeb` (`hcc-f<id>`) y `archivosDeLaWeb`, que guarda filas `archivo` **sin archivo** (`rutaLocal` nula,
+   `remoto_id` = id de la web, `dirty = 0`, mime por el `tipo` de la lista) y descarta el documento de una consulta que el dispositivo no
+   tiene. `HcClinicaBackend.traerAdjuntos`/`aplicarAdjuntos` empareja por `remoto_id` con lo que la app subió (una sola fila, sin duplicar),
+   no toca lo `dirty` y da de baja lógica (`activo = 0`) lo que la web dejó de listar **sin borrar** la fila ni el archivo (Q15).
+   `bajarArchivo` baja con la sesión (`GET adjuntos/{id}/archivo`, solo sección `documentos`) y cualquier error —también el `404`— devuelve
+   `null` sin romper la pantalla; `HcRepository.bytesDeArchivo` cachea en `ArchivoStore` una sola vez. Cambios de interfaz: capacidad nueva
+   `ListaDeAdjuntos`, `HcClinicaBackend` con el parámetro opcional `adjuntos` (el constructor con `HcApiClient` arma la API remota) y
+   `HcRepository.bajarArchivo` deja de exigir `consulta.remotoId` en la HC general. Abrir una consulta pasan a ser **dos** pedidos
+   (contenido y lista). Rojo 17 errores de compilación y después verde: `HcClinicaBackendAdjuntosTest` **9**, `core:data` **2221** (2212 + 9),
+   clinica 38, ui 17, crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), core:data wasm, `:server` y `:features:hc`. Ningún test
+   existente cambió (solo la firma del ayudante `HcClinicaPruebas.conBackend`). Sin migración, sin Laravel y sin pedidos reales;
+   `SECCIONES_HABILITADAS` sigue igual. **Sigue T107** (pantallas de E4); las fotos de exámenes siguen fuera de alcance (T105).
+   **T107 hecha (2026-11-13): las pantallas de la sección «Documentos» de la HC general quedan listas (el candado de E4 sigue puesto, T108).**
+   `features/hc/secciones/ArchivosSeccion.kt`: selector con PDF, JPG, JPEG y PNG (`TIPOS_MIME_DE_ADJUNTO`, de `TipoDeAdjunto`), rechazo antes de
+   guardar con `avisoDelTipoDeAdjunto` («Solo se aceptan PDF, JPG, JPEG o PNG», `AVISO_TIPO_DE_ADJUNTO`), tope avisado antes de subir con
+   `limiteExcedido` (T103; `ConsultaViewModel.avisoDelTope` pregunta los límites una vez por pantalla y el archivo no se guarda), ícono/miniatura por
+   `tipoDeAdjunto`, apertura con `bytesDe`/`abrirArchivo` y el `mime` del tipo (T106), «Falta enviar» bajo el adjunto propio que todavía no está en la
+   web y la lista de Q-E4-3 con `Consulta.documentosDeTodoElPaciente()` (nueva = todo el paciente; previa = solo los suyos). Los adjuntos de registros
+   de examen no se muestran (filtro `registroId == null`; T105 sigue fuera de alcance) y «Esta sección todavía no se envía a la web» sigue saliendo de
+   `avisoDeEnvioDeLaSeccion` (desaparece solo en T108). **Decisión no prevista:** el tope necesita los límites de la web y la pantalla no los tenía,
+   así que `LimitesDeAdjuntos` (capacidad nueva en `core/data/repos`, como `ListaDeAdjuntos`), `HcClinicaBackend.limiteDeAdjuntos()` y
+   `HcRepository.limiteDeAdjuntos(especialidad)`; si falla, el archivo se guarda igual (la cola lo compara al subir, T104). `ArchivosInline` separa
+   `porPaciente` (dónde se guarda) de `lecturaPorPaciente` (dónde se lee); `HcClinicaBackend.traerAdjuntos` usa la misma regla. Rojo 21 errores de
+   compilación y después verde: `AdjuntosClinicaTest` 19 y `HcClinicaBackendAdjuntosTest` 10; `core:data` **2225** (2221 + 4), clinica 38, ui 17,
+   crecimiento 6; compilan `:features:hc:compileKotlinJvm` y el wasm `-Pentorno=dev`. Cambió el `AdjuntosFalso` (contesta `limites()`). Sin migración,
+   sin Laravel, sin pedidos reales y `SECCIONES_HABILITADAS` igual. **T107 hecha; sigue T108** (habilitar E4); la revisión visual es T112.
+   **T108 reducida hecha (2026-11-13, decisión del usuario): documentos habilitados; quedan sin habilitar reducido, pendientes y alimentación/exámenes/interconsultas.**
+   `SECCIONES_HABILITADAS` = 20 ids (los 9 de E1 + las 8 del alcance de E2 + `laboratorio_general` y `tabla_peso` + **`documentos`**); `SUBENTREGA_HABILITADA` sigue en E1 y
+   solo siembra, y no se habilitó nada más (las fotos de exámenes siguen fuera de alcance, T105). Rojo 6 de 2226 en `core:data` y 1 de 38 en `especialidades:clinica`;
+   verde `core:data` **2226** (2225 + 1 test nuevo; uno existente se reemplazó por otro del mismo asunto), clinica 38, ui 17 y crecimiento 6; compilan las dos wasm (`-Pentorno=dev`), `core:data` wasm y
+   `:server:compileKotlin`, todo en 0. Cambiaron `SeccionesEnviablesTest` (cuenta 20, conjunto exacto de 20, `documentos` fuera de los «todavía no» y por omisión
+   `SE_ENVIA`), `LecturaClinicaCatalogoTest` (se ofrece; «todavía no» 5 → 4) y `EstadoEnPantallaTest` (sin aviso). Sin migración, sin Laravel y sin pedidos reales.
+   **Sigue T109** (E2E de E4 contra la copia local); la revisión visual es T112.
+   **Comando para preparar la base antes de publicar (2026-11-13, hclinica `79a4790`, rama `salud360-api`, sin push):** `php artisan salud360:preparar`
+   crea las 8 tablas `salud360_*` y `pacientes.paciente_id_tobb` (+ índice) reutilizando los `asegurar*` de los servicios (sin copiar DDL);
+   es idempotente, no toca datos de pacientes y no encola nada. Informa «creada ahora»/«ya existía» por tabla/columna y, sin permisos,
+   el `SQLSTATE` (código `1142`, salida 1). `--datos` corre además la carga inicial de perfiles (idempotente); sin la opción no escribe datos.
+   Probado dos veces en una base descartable (copia de `t10`) y con un usuario de solo `SELECT`; `SHOW CREATE TABLE` idéntico al de `hc_clinica`.
+   `tests/Unit` 1349 en verde. Pasos de producción en `specs/005-hc-clinica-escritura/tasks.md` (§E9).
+- **Correcciones del reviewer de la 005 hechas (2026-11-14, sin push).** (1) **RF-31/RF-60:** el contador ya no agrega la parte de laboratorio
+  por ver una carga sucia; las partes salen **solo del plan** (`PARTE_CARGAS`), así que una carga sin fecha útil, una baja que nunca llegó a la web
+  o la de una consulta anulada no dejan la consulta en «Falta enviar» para siempre. `EntradaDelContador` perdió `laboratorios` y se borró
+  `PARTE_LABORATORIOS` (nadie lo escribía: la cola anota `PARTE_CARGAS`). (2) **RF-44:** `AdjuntosClinica.tipoPorContenido` valida las firmas de la
+  web (`%PDF-`, `FF D8 FF`, PNG) y `avisoDelTipoDeAdjunto` recibe los bytes, así que un `.pdf` con contenido inválido se rechaza **antes** de crear
+  la fila (la extensión/MIME sigue siendo el primer filtro). (3) Doc: T108/P22 ya no dicen `SUBENTREGA_HABILITADA = E4` (el candado es
+  `SECCIONES_HABILITADAS`, 20 ids; `SUBENTREGA_HABILITADA` sigue en E1), `SeccionesEnviables` dice «documentos (PDF, JPG, JPEG y PNG)» y
+  `DataModule` ya no dice que la cola no la llama nadie. **El tope de 191 no se aplica en la app** (decisión del usuario, Q-E2-3): lo valida el
+  servidor (`422 texto_demasiado_largo`); **riesgo aceptado** y anotado en T64. Rojo: 3 de 30 en `ContadorDeEnvioTest` y 20 errores de
+  compilación; verde `core:data` **2234** (+8), clinica 38, ui 17, crecimiento 6 y los cinco compilados en 0.
+- **T15 de la 005 hecha (2026-11-04, `89e62d8`): migración `9.sqm` RESERVADA (esquema v10)**, `consulta.propia INTEGER NOT NULL DEFAULT 0`
+  (0 = histórico o de la web, 1 = propia). Autorizada por el usuario; se miraron todas las ramas locales y remotas (hc-general llega al 8,
+  main al 5, hc_odontologia al 2). **No hay vuelta atrás en un dispositivo migrado** (una app v9 sobre una base v10 descarta los datos del
+  navegador en la web). `core:data` 1314 tests en verde. La próxima migración (E3, `remoto_id`) sería la `10.sqm`: volver a mirar las ramas
+  antes de crearla. **T16 hecha (2026-11-06, `d0b51c8`); sigue T17.** `OrigenDeConsulta` (propia / histórico / web; la propia enviada con `remoto_id` NO es de la web),
+  `abrirConsulta` de la HC general crea con `propia = 1` y solo reutiliza una propia abierta; `fusionarConsulta` conserva la marca; `core:data` 1342 tests en
+  verde. `marcarPropia` sigue sin llamarse (lo usa «Enviar a la web» del histórico). Ojo: una abierta del histórico ya no se retoma desde `abrirConsulta`.
+  **T17 hecha (2026-11-06, `4936364`); sigue T18. CAMBIO DE REQUISITOS SOBRE LA 001 (D9):** lo que la web no guarda (tabaquismo, FC, CA del examen, diagnósticos, audio, antecedentes personales) no se
+  ofrece ni se envía nunca; lo ya cargado se conserva y se marca «No se envía a la web». `hcgeneral/SeccionesEnviables.kt`: `SUBENTREGA_HABILITADA = E1` (10 de las 25 secciones: 8 textos, examen físico y
+  `enfermedades`; el resto «todavía no»); **al cerrar E2, E3 y E4 se sube esa constante**. `ItemAntecedente.sinEnvio` marca el tabaquismo en `ClinicaMedica.kt`. Las pantallas NO se tocaron: T36 a T39
+  tienen que usar `sinEnvio` y `seccionSeOfrece`. `core:data` 1357 tests, `especialidades:clinica` 38.
+  **T18 hecha (2026-11-06, `493ca64`); sigue T19.** Hallazgo: hasta T18 cada autoguardado (600 ms) marcaba `dirty` y movía `updated_at` aunque no cambiara nada. Ahora, solo en la HC general, `guardarValor`/
+  `guardarSeccion`/`guardarExamenFisico`/`guardarAntecedente`/`guardarRegistro` escriben solo con cambio real (`hcgeneral/CambioReal.kt`; `0.00` = vacío en las medidas; vaciar a propósito se escribe vacío);
+  pediatría y las demás igual que antes. Datos por paciente: `antecedentesDeConsultasPropias`/`registrosDeConsultasPropias` (solo los de una consulta propia pueden viajar). **Pendiente de cablear:**
+  `ConsultaViewModel.guardarRegistro` y `flushEstudios` deben pasar `enConsulta = consultaId` para reasignar filas del histórico. `core:data` 1394 tests.
+  **T19 hecha (2026-11-06, `e7da239`); sigue T20.** `network/hc/ClinicaEscrituraApi.kt` + `HcClinicaEscrituraDtos.kt` (`PayloadsClinica`, puro): crear, secciones, examen, cerrar y baja contra el contrato de E1,
+  probados con un servidor falso en 127.0.0.1 (nada cableado al backend ni a la UI; ningún pedido real). `HcApiClient.delete(ruta, cuerpo)`: el DELETE con cuerpo anda en JVM; **sin probar en Android, iOS ni web** (prueba manual).
+  Ojo para T20: `clave_en_uso` es el `motivo` de un `422 datos_invalidos`, no un `codigo` (está en `TobbException.cuerpo`). `core:data` 1432 tests.
+  **T20 hecha (2026-11-06, `19d9a95`); sigue T21.** `hcgeneral/ClasificacionDeEnvio.kt` (puro): causa ajena → «En espera: <motivo con el nombre de la HC>» (401, 403 hc/médico/licencia/cartera/permiso, 404 paciente, 429, 5xx, 503, sin red, respuesta ilegible);
+  causa del dato → «No se pudo enviar» (422, 404 consulta, 409, 403 consulta_no_propia); precedencia de RF-19 en `masPrioritaria`. `core/model/hc/EstadoEnvio.kt`. Estados en `paciente_extra` (`hce_estado_<consulta>:<parte>`, `dirty = 0`, sin migración) con
+  `repos/EstadosDeEnvio.kt`; sobreviven a reabrir la app. Nada cableado todavía. `core:data` 1460 tests.
+  **T21 hecha (2026-11-06, `1bd70cf`); sigue T22.** `hcgeneral/PlanDeEnvio.kt` (puro): `planDeEnvio(EntradaDelPlan)` da pasos ordenados (crear → secciones → examen → … → cierre al final; `siguiente` corta en la primera parte frenada),
+  `sinViaje` (se limpia sin figurar enviado: lo que la web no guarda, desactivados, lo ya igual), `enReserva` (lo que la versión todavía no envía: queda sucio y no cuenta) y retenciones por partes rechazadas. Solo `propia`; solo lo tocado y con cambio real.
+  **Pendiente para T25:** registrar `LoEnviado` (lo último que la web confirmó, `conLoConfirmado`) y dejar la fila de la consulta `dirty` mientras falte cierre o baja. Ojo: `toSortedMap` y similares son solo JVM; compilar wasm antes de dar por hecho. `core:data` 1503 tests.
+  **T22 hecha (2026-11-06, `5668069`); sigue T23.** `HcBackend.envioPropio` (por omisión `false`) y `administraLicencia` (por omisión `true`); `HcClinicaBackend` declara `true`/`false` (su `soloLectura` sigue `true` hasta T23). `HcApiSync` ignora y no cuenta a los de
+  `envioPropio` (los de solo lectura se siguen contando, Q16-A) y `AdminRepository.destinosDeLicencia` = `!soloLectura && administraLicencia` (el panel no cambia para clínica, RF-66). Ojo: el contador `HcApiSync.pendientes` de clínica es 0 desde acá hasta que T24 cuente lo suyo.
+  `core:data` 1514 tests.
+  **E2, E3 y E4 (T48 a T113) detalladas y APROBADAS por el usuario el 2026-11-07: Q-A sí (arranca E2 sin esperar el cierre de E1; no se habilita ni se cierra E2 hasta decidirlo con el usuario), Q-B orden alternativo (E2-a, E3, E2-b, E4; con la tarea chica del «candado por sección» antes de T61); las demás preguntas (Q-E2-1 a Q-E2-6, Q-E3-*, Q-E4-*) siguen ABIERTAS y las tareas «BLOQUEADA por Q-…» no se empiezan sin respuesta. T48 hecha (2026-11-07, solo lectura y documentación): el esquema real de E2 está verificado (`notas-para-el-plan.md` §11.0) y el contrato JSON de E2 está en `plan.md`; hallazgo principal: el tope de 191 caracteres existe solo en `estudios_cardiologicos.descripcion` (el resto es `text`/`longtext`) y `antecedentes_familiares_perfil4` no existe en la copia local. T49 hecha (2026-11-07: los scripts de e0 cuentan, suman y limpian las tablas de E2, ensayados en el respaldo con y sin modo estricto; hc_clinica no cambió). T61 hecha (2026-11-08, `7552b2a`: la API de formularios, antecedentes y registros en la app, con servidor falso; sin cablear, `SUBENTREGA_HABILITADA` sigue en E1; `dependiente_terceros` sí viaja, a revisar). Sigue T62; esperando respuesta del usuario a Q-E2-1/2/3 (y 4/5 para E2-b). E1 pendiente de cierre: T11, T40 a T47.** **Decisión del usuario (2026-11-07): el foco es la HC de clínica en la WEB (lectura y escritura); iOS, Android y el modo sin conexión quedan para después.** **T31 hecha (2026-11-07, `530e3f9`); T32 (iOS) DIFERIDA por decisión del usuario; T33, T34 y T35 sin urgencia (no se hacen ahora). T36 hecha (2026-11-07, `d797352`). T37 hecha (2026-11-07, `b92ed2b`); sigue T38 (la lista de la historia), y después las revisiones manuales en el navegador.** T37: la consulta propia de la HC general muestra la franja de estado de envío («Enviando el cierre.», «Falta enviar», «En espera: .» con Reintentar, «No se pudo enviar: .» con Reintentar y Descartar, «Descartado: no se envió a la web»), las secciones que no se envían solo para leer con su aviso, «Anular consulta» con confirmación, y sin «Reabrir» tras enviar el cierre; la lógica está en `hcgeneral/EstadoEnPantalla.kt`. **Pendiente: la revisión visual en devWeb (pasos en tasks.md); no existe otro puerto que 8080.** Con E1, casi todo el perfil queda solo lectura con «Esta sección todavía no se envía a la web» (RF-4). T36 cableó `ConsultaViewModel`: el autoguardado llama a `marcarSucia()` = `HcApiSync` (pediatría, igual) + `HcRepository.avisarCambio` (la cola de la HC general, que no hace pedidos: programa a los 4 s); `ConsultaUi.envio` expone el `EstadoDeLaConsulta` observable; y una propia con el cierre enviado o viajando es solo lectura también en el repositorio (segunda barrera). Pendientes de T31: la prueba manual en el navegador (pasos en tasks.md) y el `actual` de iOS, vacío. Disparadores de envío de la HC general: `HcClinicaEnvio.alAbrirOIniciar()` (lo llama `App.kt` con la sesión) y `alRecuperarConexion()` (el `ObservadorDeConexion` de la plataforma: web = evento `online`, Android = `ConnectivityManager` con permiso `ACCESS_NETWORK_STATE`; **iOS = `actual` vacío hasta T32**, JVM = nada) retoman lo propio pendiente o «En espera» del médico de la sesión con la misma espera de 4 s, adelantando y nunca atrasando una espera más cercana. **Pendiente: la prueba manual en el navegador (pasos en la nota de T31) y T32.** **T30 hecha (2026-11-07, `85aa616`).** El riesgo del motor viejo quedó cerrado: `SyncAdapters.todos(db)` ya no incluye las ocho tablas clínicas de contenido y `SyncEngine` ya no sube adjuntos (`:server` conserva `completos`); sigue empujando `paciente_extras`, `medico_preferencias` y diagnósticos/interconsultores/vacunas (ver nota de T30). **T29 hecha (2026-11-07, `49bbbce`; carrera lectura/envío cerrada en `763dce2`: la lectura de una propia aplica con el turno de la consulta, `TurnosPorConsulta`, y descarta la respuesta si un envío confirmó algo mientras se pedía).** La lectura de la HC general refresca lo propio y no lo duplica (RF-33): empareja por `remoto_id`, así que la lista no crea otra `hcc-c<id>` para una propia ya enviada (si ya había una copia, la retira con baja lógica) y refresca su cabecera salvo si tiene pendiente, es de otro médico o está anulada (una cerrada no se reabre por una lista vieja); `traerConsulta` refresca su contenido salvo lo pendiente, sin que un vacío pise y sin pisar lo que el médico descartó (se compara con `LoEnviado`); los registros ya enviados se emparejan por tipo + `remoto_id`. «Ya no figura en la web» ya se aplica a las propias (lista, `404` al abrir y `404` al enviar; la pantalla pregunta `AusenciasEnLaWeb.consultaPropia(remotoId)`). Pendiente: laboratorios y pendiente no se emparejan por `remoto_id` (sin columna; migración `10.sqm` de E3) y hay una carrera lectura/envío chica sin cerrar (ver nota de T29). **T28 hecha (2026-11-07, `1cbb337`).** `HcRepository` (con la cola por la interfaz `EnvioDeConsultas`, que le pasa `DataModule`) aplica las reglas a las consultas **propias** de la HC general: `cerrarConsulta` deja el cierre pendiente («Falta enviar») y pide `empujarYa` a la cola; `reabrirConsulta` solo si el cierre **no** se envió y **no** viaja (D13), sin tocar la web y borrando el estado del cierre; `anularConsulta`: nunca creada → cero pedidos y limpia, creada → baja `c:<id>-baja` y descarta lo pendiente, **no** si el cierre ya se envió ni mientras viaja; el envío en curso no sigue con el resto de su plan si se anuló. «Cierre enviado» = `CERRADA` + creada + fila sin pendiente + cierre no «Descartado» (`cierreEnviado`, puro). Modelo de la tarjeta sin UI: `EstadoDeLaConsulta` (marca «Falta enviar» / «En espera: …» / «No se pudo enviar: …» / «Enviando el cierre.», `puedeReabrir`, `puedeAnular`) vía `HcClinicaEnvio.estadoDeLaConsulta` y `consultasEnviandoElCierre`. Los datos por paciente pendientes de una anulada siguen **en reserva** (la spec no lo dice: confirmar). **Ojo:** sin tocar la UI, «Cerrar» y «Anular» de la pantalla actual ya mandan a la web (usan `hc.cerrarConsulta/anularConsulta`); y no hay barrera de escritura para una cerrada con el cierre enviado (T36 a T39 + segunda barrera). `core:data` 1834 tests.
+  **T27 hecha (2026-11-07, `d7ef1d7`).** Reintentos: una causa ajena al dato deja **toda** la consulta «En espera: <motivo con la HC>» (ya no solo el 401) y programa el próximo intento con `esperaDeReintento` (pasajeras 15/60/300 s y después cada 300 s; de cuenta o de alguien, cada 300 s), en el scope inyectado y con el reloj inyectado: solo con la app abierta, nada en segundo plano. El reintento es la misma espera que el autoguardado (una por consulta; un cambio la adelanta, no la multiplica); un `429` frena a **todas** las consultas hasta cumplir su espera; mismas claves, sin duplicar. Rechazo (`422`/`404 consulta_no_encontrada`/`409`/`403 consulta_no_propia`): «No se pudo enviar», sin reintento solo ni frenar a las demás. `reintentar(id)` (a mano, vuelve a mandar lo rechazado) y `descartar(id, parte?)` («Descartado: no se envió a la web»: deja `dirty = 0` lo que la parte cubría, **conserva el dato**, no toca la web ni `LoEnviado`, y libera el cierre; no descarta esperas ni la creación). Ojo: la cadena de reintentos es en memoria, **no se retoma al reabrir la app** (lo hace el disparador `alAbrirOIniciar` de T31, que debe recorrer lo pendiente/«En espera» del médico). `core:data` 1708 tests.
+  **Pregunta abierta (decide el usuario antes de la prueba general; por ahora rige la spec):** el vínculo antes de enviar la primera consulta de un paciente sin ficha (T26) usa `pacientes/resolver`, y la 002 (RF-10) dice que la web **crea la ficha** si no hay ninguna con ese documento; el pedido del usuario fue «nunca crear fichas desde el envío». El envío no crea fichas por su cuenta (no resuelve ni crea para un paciente de baja ni tras un 404, ni tras elegir ficha / ficha de otro paciente, ni con un documento inválido), pero la primera consulta de un paciente sin ficha puede disparar que la web la cree. Si se quiere prohibirlo hay que cambiar la regla de la 002 y el contrato de `resolver`.
+  **T26 hecha (2026-11-06, `4705951`).** `crear` resuelve el vínculo con `PacientesHcRepository.vinculo` antes del `POST` (solo la creación lo necesita); si no queda vinculado, la parte `crear` queda «En espera: <motivo>» (`estadoDeVinculo`, causas nuevas `ELEGIR_FICHA`/`DOCUMENTO_INVALIDO`/`FICHA_DE_OTRO_PACIENTE`, sin migración) y no sale nada; un paciente dado de baja (`404`) deja «En espera» sin volver a resolver. La cola recibe `medicoDeLaSesion` (por omisión `null` = no envía) y envía **solo lo del médico de la sesión**, mirado al programar, al empezar y antes de cada paso (enviar con el token de otro crearía la consulta a su nombre); lo de otro ni se envía ni se programa ni se marca. `contarPendientes` cuenta solo lo del médico de la sesión. Un `401` deja lo que faltaba de esa consulta «En espera: sesión vencida». Ojo: resolver por documento puede **crear la ficha en la web** (002 RF-10); el envío no la crea por su cuenta. Test de Koin cambiado (ahora hace falta sesión). `core:data` 1669 tests.
+  **T25 hecha (2026-11-06, `fda5791`).** `HcClinicaEnvio.enviar` ya manda: `planDeEnvio` → crear (`c:<id>`) → textos → examen → cierre (`-cierre`) / baja (`-baja`), cortando en el primer paso que no llega (el cierre nunca sale con algo sin confirmar). Cada paso se anota en **una** `db.transaction` (`remoto_id` + `dirty = 0` solo si no cambió en vuelo, comparando `updated_at` + `LoEnviado` + estado); la fila de una cerrada/anulada sigue sucia hasta el cierre/la baja. `LoEnviado` vive en `paciente_extra` (`hce_enviado_<consulta>`, JSON, `dirty = 0`, sin migración). Parcial = solo lo de `guardadas`; lo demás, `NoSePudoEnviar(OTRO)`. Errores con `clasificarErrorDeEnvio` guardados por parte. Sin ficha conocida **no envía ni marca estado** (T26 resuelve el vínculo y la sesión); reintentos/descarte son T27. `consultasCreadas` (SharedFlow) expone `otras_abiertas` (RF-59); no persiste. `DataModule` arma la cola con el `escritura` del backend y el `dispositivo_id`. Test de Koin de T24 reemplazado (ahora la cola envía). `core:data` 1635 tests.
+  **T24 hecha (2026-11-06, `fbb4a5a`).** `sync/HcClinicaEnvio.kt` (`open class`): `marcarSucia` (solo marca y programa: espera de 4 s por consulta, cada cambio la reinicia), `empujarYa` (en el acto), `contarPendientes` (RF-31; cuenta pura en `hcgeneral/ContadorDeEnvio.kt`), `Mutex` por consulta; solo entran consultas propias de la HC general (D2). Su envío es el gancho `protected open suspend fun enviar(consultaId)`: **T25 lo llena** (hoy no hace nada). Reloj inyectado (`esperar`); el falso (`RelojFalso`) vive en `jvmTest` porque `core:data` no tiene `kotlinx-coroutines-test`. Registrada en `DataModule`, **sin cablear** a la UI ni a `App.kt`. Ojo: una consulta nueva vacía ya cuenta como «Falta enviar» (la creación es un paso del plan) y sin `LoEnviado` (T25) un texto vaciado a propósito no se cuenta. `core:data` 1576 tests.
+  **T23 hecha (2026-11-06, `b189850`).** `HcClinicaBackend`: `soloLectura = false`, recibe `escritura: ClinicaEscrituraApi` (no la usa; el motor es `HcClinicaEnvio`, T24); constructor público con el `HcApiClient` completo. Trampa evitada: `esSoloLectura` ya no dice «viene de la web» → `HcRepository.leeDeLaWeb`/`esConsultaDeLaWeb` (la consulta de la web sigue siempre solo lectura, D1) y `ConsultaViewModel` los usa. `core:data` 1529 tests.
+- **PR #1 y servidores (2026-11-03):** el PR #1 llevó el SDD y la guía `docs/trabajo-por-historia-clinica.md` a `main`. El `devWeb` de
+  clínica corre en :8080 (el de pediatría se cerró; quedó un cliente de Gradle de pediatría con `-Psalud360.web.puerto=8090` colgado,
+  sin cerrar). `origin/main` contiene la licencia del servidor T1 a T7 desde el 2026-11-03 y su deploy salió bien (la prueba manual M1
+  a M10 sigue pendiente).
+- **Clínica (rama `hc-general`, más de 150 commits locales sin push, ver `git log origin/main..hc-general`; `origin/main` ya no está en el
+  publicado de septiembre: contiene el PR #1, SDD y guía, y la licencia del servidor T1 a T7):** la entrega L de la
   spec 002 (lectura) llega hasta E8.1 y E7.4. La lectura local quedó verificada: la app no escribió en clínica (se miró el log de
-  Apache). **Pendiente de clínica:** E8.3 (prueba manual formal), E8.4 (revisor), limpieza de los datos de prueba, E9 (producción, con
-  aprobación aparte) y la entrega E (escritura), que todavía no tiene spec. Ojo: esta rama NO debe publicarse tal cual, porque dos
+  Apache). **Pendiente de clínica:** limpieza de los datos de prueba, E9 (producción, con
+  aprobación aparte) y la entrega E (escritura), que se especifica en la spec 005. Ojo: esta rama NO debe publicarse tal cual, porque dos
   commits de su historia llevan un nombre real (uno lo puso y otro lo sacó del archivo, pero queda en el historial): hay que
   reescribir o rehacer la historia antes de cualquier push, y solo con pedido expreso.
-- **Limpieza pendiente en la base local de clínica (datos de prueba):** consulta 1989 de la web con sus 12 filas hijas;
-  `consulta_pdfs` 24 con su archivo; restaurar `medico_infos` id 6 a `consulta_id=1909`, `es_nueva_consulta=1`, `paciente_id=1285`.
-  De la spec 003: enfermedades «Prueba Salud360» 1/2/3 (ids 53-55), la lista vaciada del médico 9, los pacientes PRUEBA SALUD360 A-F, el
-  perfil 4 y `medico_enfermedades` del médico 9. Archivos de apoyo en `%TEMP%\opencode\{e31,e82,f37,lectura,respaldos}`.
+- **Limpieza pendiente en la base local de clínica (datos de prueba):** lo de la L (consulta de la web de E8.2) quedó saldado en la T2
+  y lo de la 003 (enfermedades «Prueba Salud360», lista del médico de prueba, fichas de prueba con sus carteras y marcas) en la T3 de la
+  spec 005 (2026-11-04; detalle en `%TEMP%\opencode\e0\t3-resultado.txt`). **NO saldado, por decisión del usuario:** (1) el perfil 2
+  (Hepatología) está alterado: se editó el 26/10 y tiene 5 secciones en vez de las 17 de la carga inicial (reconstruible desde la carga
+  inicial de perfiles de hclinica); (2) el perfil de prueba 4 se conserva; (3) el médico de prueba sigue asignado al perfil 2 (el original
+  era el 1); (4) los pacientes E y F de la prueba siguen en `turnosonlinebb`; (5) el fixture de la tanda S sigue cargado y se limpia en T45.
+  Por eso los totales de perfiles (3, 6 y 29) no son los iniciales (2, 4 y 29).
 - **Pediatría primero:** el servidor de pediatría lo subió el usuario a mano (8 archivos, verificado por GET sin token). Pendientes:
   licencias (revisar las fechas reales), `APP_DEBUG=false` en pediatría y en hclinica, 10 médicos sin alta, y el cambio de licencia
   (la app debe leer la licencia del servidor al entrar, no la copia local), que va en una rama aparte (`pediatria-licencia-servidor`,
@@ -49,7 +387,7 @@ registros de personas): el repo es público.
   servidor falso y M9). **T8 hecha, parte técnica (2026-11-03, sin commit de código):** `core:data` 169 en verde, `features:auth` y `composeApp`
   wasm (klib, `-Pentorno=dev`) compilan, diff acotado a `core/data` (13 archivos, sin esquema, build ni servidores); `core:crecimiento:jvmTest`
   no corrió (Gradle colgado en su `compileKotlinJvm`, sin relación con el diff). Falta el reviewer (corrida aparte), la prueba manual M1 a M10 y
-  aprobación aparte para publicar. **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
+  aprobación aparte para publicar. **T9 hecha en hc-general el 2026-11-04** (cherry-picks, 3 tests adaptados, `core:data` 1305 en verde; nota en `tasks.md`). **Ojo (probar):** el worktree es esquema v6 y el navegador en `localhost:8080` guarda una v9: servirlo allá
   borra esa base; usar otro puerto (script de Gradle en `%TEMP%\opencode\t8`, comando y M1 a M10 en `tasks.md`). En el árbol publicado nada lee
   `local.properties`: las URLs locales van con `-P`. Médico de prueba con pediatría y licencia: el 1 de turnos. El árbol publicado tenía 43 tests en `core:data`.
   **Checklist reescrita (2026-11-03, solo doc):** el revisor aprobó con observaciones (H1 a H5, M10 y H6 [documentar `licencia`/`licencia_vencida` en
@@ -189,14 +527,11 @@ registros de personas): el repo es público.
   crear enfermedades (M3: el log de Apache no tiene ningún `POST enfermedades`), M4 puntos 1, 3 y 4, M5, M6, M7 salvo la
   consulta cerrada y «Datos», y M8 (cierre de sesión con conteo de tokens). Confirmado por el usuario: M2 puntos 1 y 2 y
   M3 agregar, quitar y marcar. Detalle en la nota de F3.7.
-- **DEUDA, no un olvido: limpieza de datos de prueba de F3.7 sin hacer.** La base local `hc_clinica` no volvió al
-  estado inicial: enfermedades "Prueba Salud360 1/2/3", la lista del médico de prueba vaciada por `UPDATE` (6 filas
-  inactivas), marcas en el paciente de prueba A y en otros, pacientes "PRUEBA SALUD360 A" a "F", un perfil de prueba
-  (4), el médico de prueba con el perfil 2 (el original es el 1) y totales distintos de los iniciales. Archivos fuera
-  del repo en `%TEMP%\opencode\f37` (`estado-inicial.txt`, `ids-y-limpieza.txt`, `lista-medico9-antes.txt`,
-  `limpieza.sql`). Se hace al final y **antes** hay que mirar en el log de Apache a qué pacientes y enfermedades
-  apuntan los 9 `PUT enfermedades/pacientes/{n}/{n}` del 26 y 27 de octubre, para restaurar esas marcas. La tanda S
-  usa la misma base: no mezclar su fixture con estos datos.
+- **Limpieza de datos de prueba de F3.7: hecha en la T3 de la spec 005 (2026-11-04), con excepciones.** Enfermedades, lista del
+  médico de prueba, fichas, carteras y marcas están en los totales iniciales (los 9 `PUT` apuntaban solo a fichas de prueba). Quedan
+  sin saldar el perfil 2 alterado, el perfil de prueba conservado, la asignación del médico al perfil 2 y los pacientes E y F en turnos
+  (ver «Limpieza pendiente» arriba). Archivos de apoyo fuera del repo en `%TEMP%\opencode\f37` y `e0`. La tanda S usa la misma base:
+  no mezclar su fixture con estos datos.
 - **Spec 001 (perfiles configurables): completa.** T52 (prueba manual de la tanda D) cerrada con excepciones el
   2026-10-28: confirmado que no hay error de migración, que hay una sola HC «Clínica» con el perfil Hepatología y que una
   consulta creada con un perfil se ve al cambiar de perfil; sin comparar antes/después (la base ya estaba migrada al
@@ -228,7 +563,7 @@ registros de personas): el repo es público.
   reescribir historia ahora, resolverlo justo antes del push. Si se reescribe, los hashes de esta memoria y de los `tasks.md` cambian.
 - Cómo seguir: leer `AGENTS.md`, esta memoria y el `tasks.md` de la spec activa; una tarea por vez con el
   implementador, tests primero, validación del revisor al cerrar cada tanda; commits locales como rodri89, sin push.
-- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `64849c9`), hc_pediatria rama
+- Repos hermanos (todo local, sin push): hclinica rama `salud360-api` (último `891093e`, 005 T53), hc_pediatria rama
   `salud360-api` (`72196ce`), turnosonlinebb rama `salud360-hc-general` (`0077ed4`).
 - Entorno: `.\gradlew devWeb` a secas apunta al XAMPP (`local.properties`). Apache y MySQL del XAMPP pueden estar vivos de
   sesiones anteriores (login de turnos con credenciales malas da 422 como se espera).
@@ -242,6 +577,113 @@ registros de personas): el repo es público.
 - App desplegada en web (push a `main` → GitHub Actions → Hostinger). SDD adoptado (`docs/constitution.md`, `specs/`).
 - HC de pediatría lee y escribe su base real (detalle y pendientes en `docs/hc-pediatria-estado-y-plan.md`).
   Licencias y alta de usuarios desde el admin, leyendo de su dueño. El médico que solo usa HC ve su cartera.
+- Rama `feature/hc-solo-medico-habilitado` (commiteada y mergeada en `main` local, sin pushear aún; 2026-11-09): **la secretaria ya no ve historias clínicas, solo turnos**
+  (agenda, pacientes, obras sociales); cambia el RF-4 de la spec 003, por decisión del usuario. Su ficha del paciente no tiene
+  la tarjeta «Historia clínica» ni «Nueva consulta», y las rutas `hc/...` y `consulta/...` quedan cerradas (también al restaurar
+  la URL en web) para secretaria, administrador y médico sin esa HC habilitada («No tenés habilitada esta historia clínica»).
+  El médico ve solo las HC que el administrador le habilitó en turnos: se apagó el fallback por especialidad
+  (`FALLBACK_HC_POR_ESPECIALIDAD`, eliminado) y `historias_clinicas` distingue `[]` (baja, se propaga) de campo ausente
+  (servidor viejo, se conserva la copia). Reglas puras en `HistoriasClinicasDelMedico.kt` (`historiasClinicasVisibles`,
+  `puedeAbrirHistoriaClinica`, `historiasClinicasDeTurnos`). Sin migración ni cambios de API. **Riesgo:** los médicos que
+  dependían del fallback (p. ej. un pediatra al que el admin nunca le habilitó pediatría) quedan sin HC hasta que el admin se
+  las habilite. La copia local contaminada se corrige sola en el próximo login/restauración (perfil) o sync de catálogos.
+- Rama `feature/sexo-desde-hc` (commiteada y mergeada en `main` local, sin pushear aún): los pacientes que vienen de turnos no tienen sexo (turnos no lo tiene)
+  pero pediatría sí. Al resolver/abrir la HC de pediatría (`HcPediatriaBackend.resolverPaciente`, que corre en segundo plano al abrir
+  la ficha o la lista de consultas) se completa el sexo vacío de la ficha local con el que devuelve `pacientes/resolver`
+  (`SexoDesdeHc.kt`: `sexoDesdeHc` tolerante, `completarSexo` nunca pisa uno cargado). Solo cambia ese campo, sin marcar `dirty`.
+  Si el paciente ya estaba vinculado y sigue sin sexo, se vuelve a preguntar una sola vez por sesión. Las curvas y la ficha se
+  actualizan solas porque observan la base. Sin migración ni queries nuevas ni cambios de API. **Pendiente:** la cartera (opción B,
+  `guardarPacienteDeCartera` solo inserta pacientes nuevos) cuando `GET pacientes` de pediatría esté en producción. El sexo cargado
+  en la app sigue sin viajar a turnos, porque turnos no lo tiene.
+- Bloqueos y tipos de turno (servidor turnosonlinebb, **en producción desde 2026-11-08**; los cambios de la app están en `main`): los bloqueos (paciente
+  DNI 99999) ocupan el horario sin importar el tipo de turno. Causa: la lista de horarios libres filtra los turnos por `tipo_turno`
+  (y el bloqueo nace con tipo 1) pero la validación al reservar no, así que un médico con varios tipos mostraba libre un horario
+  bloqueado y recién al elegirlo decía «ocupado». `bloquear-dia` ahora bloquea los horarios de todos los tipos. Sin migración
+  ni cambios en la app. Reserva interna de la secretaria (panel web): corregida en el servidor (filtraba por tipo en
+  `consultarTurno`, así que dejaba reservar sobre un bloqueo, y al mover un turno cancelaba el original antes de validar el
+  destino); también en producción.
+- Rama `feature/admin-ocultar-inactivos`: el panel del admin oculta, en «Médicos» y «Licencias», a los médicos con
+  `Medico.activo` o su `Usuario.activo` en false (`ListadosDelPanel.kt`, `AdminViewModel.medicosActivos`/`licenciasVisibles`;
+  commit `19e4e2c`). «Secretarias» NO filtra (para poder destildar un médico inactivo). **Commits hechos** (`19e4e2c` ocultar
+  médicos y licencias de desactivados; `c231e84` activar/desactivar médico guardado en turnos), pendientes de publicar en `main`:
+  el botón Desactivar/Activar de la pestaña Usuarios ahora se guarda en turnos (`AgendaTurnosOnline.guardarActivoMedico`, `PUT
+  medicos/{id}/activo`, solo médicos; `ActivoDelUsuario.kt`, `AdminViewModel.cambiarActivoUsuario`). `catalogos` no trae a los
+  desactivados: `sincronizarAdministracion` los deja inactivos con lo que informa `usuarios`. El endpoint de turnos
+  `PUT medicos/{id}/activo` ya está subido a producción de turnos (2026-11-05).
+  **Trampa:** la baja NO corta sesiones abiertas (token de 6 meses): `auth/perfil` responde con `medico: null` y
+  agenda/turnos/horarios dan 403, pero `pacientes/{id}` no controla rol.
+- Rama `feature/pacientes-del-medico` (sobre `main`, sin commit): el buscador de la pestaña Pacientes del médico ya no es global
+  (`PacientesListViewModel` filtra solo su cartera `medico_paciente`; el de la agenda para dar turnos sigue global). El alta ya
+  no duplica: `POST pacientes` con `creado=false` (el DNI ya existía en turnos) reemplaza la ficha local por la de turnos y repunta
+  todo lo que la referenciaba (`PacientesRepository.reemplazarPorRemoto`, reglas puras en `FusionDePacientes.kt`; 11 tablas) y
+  avisa «Ese paciente ya existía en el sistema: se asoció a tu lista». `guardar` ya no pisa la ficha de un DNI que el
+  dispositivo tenía. Se agregaron queries `repuntar*` a `Pacientes.sq` (sin cambios de esquema ni migración).
+  **Dependencia:** antes de publicar tienen que estar subidos a turnos `pacientes/vinculados` en unión (médico ∪ con turnos)
+  y el `store` que no pisa datos de pacientes ajenos. Pendiente: endurecer `show`/`update`/`buscar` en turnos; los dispositivos
+  con duplicados viejos no se limpian solos; `verificarDni()` sigue sin conectarse; el alta por `pacienteTobbId` (agenda) no fusiona.
+- Rama `feature/ficha-paciente-hc-boton` (sobre `main`, sin commit): en la ficha del paciente (`PacienteDetalleScreen`), con una
+  sola historia clínica habilitada el botón dice «Nueva consulta» y lleva directo a elegir el tipo de consulta (con un único tipo
+  la crea; con una consulta ya en curso no crea otra y muestra «Consulta en curso»); con varias HC aparece el texto «Seleccioná la
+  historia clínica que deseás trabajar» sobre los botones por HC, que siguen abriendo la HC como antes. La señal «nueva consulta» va
+  en un estado en memoria de `MainShell` (`hcConNuevaConsulta`), NO en la ruta: en web recargar no crea nada; la HC la atiende una
+  sola vez cuando las consultas ya se leyeron (`HistoriaClinicaViewModel.consultas` ahora es `null` hasta entonces). Decisión pura
+  en `core/data` (`alLlegarConNuevaConsulta`, con test). Las consultas previas (cerradas) se abren con todas las secciones
+  expandidas (`RenderSeccionSola` fuerza `inicialmenteExpandida = true` si `soloLectura`); las en curso quedan como hoy. Las secciones
+  de texto con consultas previas (`TextoLibreConPrevias`) muestran el área de escritura (~62 %) y, a la derecha, un panel con la última
+  previa (alto máx. 180 dp, con scroll) y «Ver todas (N)» que abre un modal con todas; en ancho < 600 dp se apila (lógica en `ConsultasPrevias.kt`).
+  Primera consulta: al abrir una consulta abierta de una HC en la que el médico nunca configuró secciones (no existe la preferencia
+  `secciones_ocultas_<código>`; «todas» se guarda como valor vacío y también cuenta), un modal no descartable le pregunta qué secciones ver
+  (mismo selector que Configuración, `SelectorSeccionesHc`); «Guardar» o «Usar todas» guardan la preferencia y no vuelve a salir (sin
+  migración; lógica en `PreguntaSecciones.kt`, con test).
+- Rama `feature/licencias-renovar` (sobre `main`, sin commit): pestaña Licencias del admin con snackbar en cada actualización
+  (éxito, «la historia clínica no la aceptó» o error con el motivo), botón «Renovar» (+1 mes calendario a «Vence» y «Aviso
+  desde», `RenovacionDeLicencia.kt`, un solo guardado) y tarjeta reordenada (fechas e importe con wrap; debajo Renovar + «Activa»).
+  El importe se guarda ~800 ms después de la última tecla (`AdminViewModel.guardarImporte`), no en cada tecla.
+- Spec 005 (agenda por médico): **implementada y probada a mano (2026-11-05)**; publicada en `main` (`8767561`, `70c8cee`, `6107fac`) con el servidor de turnos ya en producción. T1 a T11 hechas.
+  T9: el usuario probó contra producción M1 a M4 y M6 a M11, todo ok; M5 y M12 (servidor viejo) no se pueden probar a mano y los cubren `AgendaTurnosOnlineAgendaTest` y `TurnosImportadorAgendaTest`
+  (`core:data` 240 tests, 0 fallas; `:composeApp:compileKotlinWasmJs -Pentorno=dev` compila; `especialidades:clinica` no tiene tests en esta rama).
+  - **Qué hace:** el administrador decide `tiene_agenda` y `visible_en_turnos` (independientes) con `PUT medicos/{id}/agenda`; la copia local cambia recién con la respuesta
+    (`dirty = false`). `Medico.tieneTurnos` guarda `tiene_agenda` (no «tiene horarios»); `tiene_horarios` es respaldo si el servidor no informa. Todas las reglas de quién ve qué
+    están en `AgendaDelMedico` (`core/data`); `MainShell` las usa en menús, secciones de Config y rutas (`SoloConAgenda`). Sin migración ni cambios en `core/database`.
+    La regla «`mostrar_en_turnos` solo con agenda» del alta vive en `AgendaDelMedico` (`mostrarEnTurnosEnElAlta`, `puedeMarcarMostrarEnElAlta`); los errores de turnos usan los códigos reales (`sin_permiso` 403, `no_encontrado` 404).
+  - **Aprendizajes:** `AuthRepository.refrescarPerfil()` no consulta a turnos: el estado nuevo del médico entra por `login` y `restaurar`. El defecto de origen era que
+    `sincronizarAdministracion` pisaba `visibleEnTurnos` con `true` en cada sincronización. `tobbJson` tiene `encodeDefaults = false`: un `Boolean? = null` no viaja y un `false` explícito sí.
+  - **Pendientes (no implementados, fuera de la spec):** (1) hallazgos 1 y 4 del reviewer: cierre por ruta de `CONFIG_AGENDA` y de las rutas de administración, y `guardarAgenda` marca limpia la fila con ediciones locales pendientes;
+    (2) el resto de la tarjeta del médico (consultorio, especialidad, teléfono, mail) sigue **solo local** (las historias clínicas ya se guardan en turnos, ver el feature de abajo) (`dirty = true`, turnos lo pisa en la próxima sincronización);
+    (3) `sincronizarAdministracion` guarda el consultorio `tobb-c0` para el médico sin consultorio (turnos manda `0`): `tieneConsultorio` lo trata como «sin consultorio» pero la fila queda con ese id;
+    (4) el conteo de RF-17 en producción quedó **sin confirmar** (en la base local dio 40 = 40).
+- Feature `/feature` sin spec (rama `feature/ajustes-agenda`, **sin commit**): las historias clínicas habilitadas de la tarjeta del médico (Administración → Médicos)
+  ahora se guardan en turnos con `PUT medicos/{id}/historias-clinicas` (lista exacta, `[]` = ninguna) vía `AgendaTurnosOnline.guardarHistoriasClinicas` /
+  `TurnosRepository.guardarHistoriasClinicas`; antes solo escribían en el dispositivo y turnos las pisaba al volver a entrar. Sin cambio optimista: la copia local toma la lista
+  que informa turnos recién con la respuesta (`dirty = false`). Reglas puras en `HistoriasClinicasDelMedico.kt`. El panel de administración muestra sus avisos (éxito y error) como
+  snackbar (`AdminViewModel.mensaje` ahora es `Aviso`). `AdminRepository.setEspecialidadHc` se eliminó. **El endpoint de turnos todavía no está en producción** (patch en el backup):
+  hasta subirlo, la app contesta «todavía no permite cambiar las historias clínicas de un médico desde la app (falta actualizar turnosonlinebb)». Ojo al volver a `hc-general`:
+  su T26 (spec 001) pide el mismo `TurnosRepository.guardarHistoriasClinicas` y `setEspecialidadHc` del ViewModel; hay que reconciliarlos en la unión.
+- Feature `admin-tipos-turno` (ya commiteado y mergeado en `main`: `5b965c5`, `e616f4c`, `fbae9e2`): el administrador, en Médicos → tarjeta del médico con agenda (de turnos), tiene la sección «Tipos de turno»:
+  tilda los tipos del catálogo global, elige su condición («Siempre», «Solo primera consulta», «Solo consultas de seguimiento») y sus opciones (subtipos), guarda con
+  `PUT medicos/{id}/tipos-turno` (lista exacta) y crea tipos nuevos con `POST tipos-turno`. Sin esquema local ni cambio optimista: viven en memoria del `AdminViewModel` y se piden
+  a demanda, al abrir la sección de ese médico. Reglas puras en `TiposDeTurnoDelMedico.kt` (`core/data`), modelo en `core/model/.../TiposDeTurno.kt` (el enum `TipoTurno` no se tocó).
+  La condición es solo configuración (la app no filtra con ella). **Dependencia:** el servidor de turnos con `tipos-turno` tiene que estar en producción; hasta entonces el panel
+  dice «todavía no permite … (falta actualizar turnosonlinebb)». **Pendientes:** renombrar/borrar tipos (la agenda con tipos y los horarios/asignar con tipos habilitados están en las ramas de abajo).
+- Feature `agenda-con-tipos` (rama `feature/agenda-con-tipos`, commiteada sobre `main`): la agenda de la app (día, semana, próximas fechas) pide `todos_los_tipos=1`, así que un médico con horarios de otro tipo
+  (deportología, ecografías, tipos creados por el admin) ya no la ve vacía. El código real del tipo se conserva en `Turno`/`HorarioMedico`/`SlotAgenda` (`tipoCodigo`, `codigoDeTipo`; el enum
+  `TipoTurno` sigue igual y su `porCodigo` cae en Consulta, pero el código no se pierde) y se guarda en la columna `tipo_turno` que ya existía (sin migración). Cada horario libre y la semana
+  muestran una etiqueta con el tipo solo si no es «Consulta» o si el día mezcla tipos; el chip de cada turno usa el nombre real. Asignar, sobreturno y bloquear mandan el tipo del horario
+  (reglas puras en `core/data/.../repos/TiposEnLaAgenda.kt`). Los nombres de los tipos viven en memoria (`TurnosRepository.nombresDeTipos`): la base solo guarda el código.
+  **Dependencia:** el servidor de turnos con `todos_los_tipos` ya está en producción desde 2026-11-08; con un servidor viejo el parámetro se ignora y la agenda se ve como hoy (tipo 1).
+  **Pendientes:** mover un turno a un horario de otro tipo (conserva el tipo original), `agenda/dias-atencion` no recibe el parámetro, y la lista de turnos del paciente (`PacientesScreens`)
+  muestra «Consulta» para un tipo desconocido. (El selector de tipo de los horarios y asignar con opciones se hicieron en la rama de abajo.)
+- Feature `horarios-turnos-con-tipos` (rama `feature/horarios-turnos-con-tipos`, sobre `main`): el selector de tipo de Horarios ofrece solo los tipos habilitados del médico
+  (se oculta si hay uno solo; un horario con un tipo que el enum no conoce se rotula con su nombre real y nunca se reescribe a Consulta). Al asignar un turno o un sobreturno sobre un horario
+  cuyo tipo tiene opciones aparece «Opción del turno (opcional)» con «Sin especificar» (= el tipo del horario) y el turno viaja con el código de la opción; el chip de la lista del día
+  muestra «Tipo: Opción» si el padre es conocido. La condición (primera consulta/seguimiento) sigue siendo solo informativa. Reglas puras en `TiposParaHorariosYTurnos.kt` (`core/data`); los tipos
+  del médico se leen con `GET medicos/{n}/tipos-turno` desde cualquier rol y viven en memoria por médico (`AgendaTurnosOnline.tiposHabilitados`; se vuelven a leer al abrir Horarios/Agenda/Asignar y se
+  invalidan al guardar tipos desde el admin). **Dependencia:** el servidor de turnos con la lectura de `tipos-turno` para médico/secretaria y las validaciones `tipo_no_habilitado` / `tipo_invalido`
+  ya está en producción desde 2026-11-08; con un servidor viejo (403/404/405) la app degrada sin romper: Horarios ofrece solo «Consulta» y Asignar queda como antes (sin opciones). Sin esquema local.
+- Rama `feature/ajustes-turnos` (commit `d505e26`, mergeado sobre la agenda con tipos): agenda del día con barra compacta (`BarraAgendaDia` en `AgendaScreens.kt`): fecha con
+  flechas y «Hoy» en una línea (la fecha abre el calendario), «Sobreturno», «Ver semana» y total de caja contra la derecha (solo con
+  módulo caja), en un `FlowRow`; las próximas fechas siguen como 3 pills en una fila propia debajo del picker. Solo cambia la
+  disposición; las acciones y el ViewModel son los mismos.
 - Rama `hc-general` de este repo (sin push). Spec 001, tandas A1/A2 (servidor hclinica + turnos), B (modelo y repos),
   C a C7 (admin de perfiles, HC del médico, estudios con historial, filas de laboratorio, varias cargas, serologías
   SI/NO, Child-Pugh, motivo con consultas previas): todas hechas, ver `specs/001-hc-configurable/tasks.md`.
@@ -251,11 +693,11 @@ registros de personas): el repo es público.
   `HcClinicaPacientesE2ETest` con `-Psalud360.test.hc.dni` explícito); ver `specs/002-hc-clinica/tasks.md`.
 - Spec 003 (cerrada con excepciones, ver el traspaso): servidor en hclinica (`EnfermedadesReglas`, `EnfermedadesService`,
   `EnfermedadController`, 5 rutas, `auth/salir` en hclinica y pediatría); en la app `hcgeneral/*Enfermedad*`,
-  `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v9 por `8.sqm`), `repos/EnfermedadesRepository`
+  `network/hc/EnfermedadesApi`, `7.sqm` con `hc_enfermedades` (hoy la base es v10 por `8.sqm` y `9.sqm`), `repos/EnfermedadesRepository`
   y `repos/EnfermedadesControlador` (dos `StateFlow`: sección y administrar), que arma el ViewModel con
   `EnfermedadesRepository` y `PacientesHcRepository` (de Koin). Decisiones C1-C5 y E1-E12 en `tasks.md`.
 - Spec 002 entrega L: servidor (tanda S, E3 y E4) implementado en hclinica y documentado en `md/API_SALUD360_CLINICA.md`, con los ajustes de E4.4;
-  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); E7.4 hecha (el `devWeb` sirve el build nuevo). E8.1 (E2E de lectura contra la copia local) hecha; faltan E8.2 a E8.4.
+  falta la validación final del reviewer solo si cambió algo mayor. La app (tanda A): E5, E6.1 a E6.6 y E7.1 a E7.3 hechas; `HcClinicaBackend` es de solo lectura y está registrado en `DataModule` (E6.5); E7.4 hecha (el `devWeb` sirve el build nuevo). E8 cerrada (E8.1 y E8.2 hechas, E8.3 cerrada con excepciones, E8.4 aprobada con observaciones); falta E9, con aprobación aparte.
 - hclinica: MySQL compara nombres sin tildes (`utf8mb4_unicode_ci`) y `validar` no; el `unique` lo frena y la API
   contesta 422 igual. En esa MySQL `ß` = `ss` y `ａ` = `a` (sirven para probar el choque). La app (`claveDeNombre`)
   ignora tildes y ñ = n para avisar antes.
@@ -305,9 +747,14 @@ registros de personas): el repo es público.
 - 001 y 002 se entregan juntas (rama `hc-general`; push a main publica).
 - Endpoint nuevo en turnos para editar HC habilitadas (`PUT medicos/{id}/historias-clinicas`, solo admin): mismo
   servicio que `admin_hc_medico` (desactiva, no borra); el HC del médico queda sin `dirty`.
+- Spec 005 (E4, 2026-11-16): un adjunto de «Documentos» se acepta por su **contenido** aunque no tenga extensión (un PDF con MIME
+  `application/octet-stream` entra y se guarda con el `mime` de su tipo, `tipoDelArchivo`), y si el nombre define un tipo tiene que coincidir; sin bytes
+  deciden el nombre y el `Content-Type`. RF-39 no se aplica en la app: el tope del texto lo valida el servidor (`422 texto_demasiado_largo`).
 
 ## Aprendizajes y errores a evitar
-- Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto.
+- Gradle necesita `JAVA_HOME` (JBR de Android Studio) y se queda sin memoria si el navegador está abierto. Si se cuelga en un
+  `compileKotlinJvm` sin CPU (daemon de Kotlin viejo), cortar solo el cliente y el daemon propios (no el del `devWeb`) y reintentar con
+  `-Pkotlin.compiler.execution.strategy=in-process`.
 - Las URLs del entorno se pisan por máquina desde `local.properties` (no versionado), con las mismas claves que
   `gradle.properties`: precedencia `-P` > `local.properties` > `gradle.properties`. En esta compu apunta al XAMPP
   (turnos y HC clínica); en la Mac sigue mandando el MAMP `:8888` de `gradle.properties`. `release` no se altera.
@@ -318,6 +765,11 @@ registros de personas): el repo es público.
   `https://clinica.hclinicadigital.com`. Su API va con `throttle:60,1` por IP. Commits como rodri89.
 - PowerShell no distingue mayúsculas en variables (`$t` pisa `$T`): un logout falló así; tokens de turnos en
   `salud360_tokens` (revocar = borrar la fila). Quedan filas viejas de pruebas anteriores sin revocar.
+- Migración que agrega una columna: los tests que simulan una base vieja (`PRAGMA user_version = N` sobre una base creada con el esquema
+  actual) tienen que quitar antes esa columna con `ALTER TABLE … DROP COLUMN` (el driver reaplica las migraciones y `ADD COLUMN` choca con
+  la existente), y las aserciones de `Schema.version`/`user_version` suben. El `CREATE TABLE` del `.sq` no lleva comentarios pegados a las
+  últimas columnas: SQLite no reescribe bien la tabla en `DROP COLUMN`. Hoy son cuatro: `ConfigHcRepositoryTest`, `CopiaEnfermedadesTest`,
+  `MigracionHepatologiaTest`, `HcApiSyncBaseMigradaTest`.
 - SQLDelight con `generateAsync`: los `INSERT`/`DELETE` generados son `suspend` (los helpers que escriben también). Un
   test que simula una base de versión anterior tiene que borrar todas las tablas que crean las migraciones siguientes
   (si no, `CREATE TABLE` falla con "already exists").
@@ -345,7 +797,8 @@ registros de personas): el repo es público.
   tocarla: no poner topes de reloj de 5 s. Un cambio de la lista actualiza la ventana y un paso después la sección: un test
   que espere una también espera la otra (`marcado.guardado`). Las intermitencias (1) y (3) nunca se reprodujeron: la causa
   más probable es ese frenón, no demostrada.
-- RF-4: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
+- ~~RF-4~~ **(reemplazado el 2026-11-09: la secretaria ya no abre HC, solo turnos; ver rama `feature/hc-solo-medico-habilitado` en
+  «Estado actual»; vale solo el médico y `ConsultaScreen` sigue recibiendo su propio `medicoId`)**: la secretaria abre las HC del médico que eligió y `ConsultaScreen` recibe el `medicoId` de ese médico; el de
   Enfermedades sale de la sesión (`medicoParaEnfermedades`), nunca de la pantalla. `EnfermedadesViewModel.editable` no es
   observable: la pantalla calcula `puedeAdministrar` en la misma composición que el estado del controlador.
 - Renderers CUSTOM de la HC: leer con `ctx.vm.valores.collectAsState()`, no con `ctx.valor` (no se observa y Compose
@@ -365,3 +818,7 @@ registros de personas): el repo es público.
   OAuth venció, ~8 h de vida del refresh), el error es "Could not resolve authentication method" y no es de red:
   se arregla con `claude auth login` (abre el navegador y la página muestra un código que hay que pegar).
   Diagnóstico rápido: `claude auth status` → `loggedIn: false`.
+## Propuestas para AGENTS.md
+(Se proponen, no se imponen: el usuario las pasa a `AGENTS.md` si está de acuerdo.)
+
+- **Riesgo de `SyncEngine` cerrado (spec 005, T30, `85aa616`).** Reemplazar en «Comandos» la frase del riesgo («`SyncEngine` igual se inicia tras cada login... Si alguien crea esas rutas en turnos, saldrían de golpe todas las filas `dirty` del dispositivo») por: «`SyncEngine` igual se inicia tras cada login y pega cada minuto a `<turnos>/api/salud360/sync/push|pull` (404, se ignora). Desde la spec 005 ya **no** maneja las tablas clínicas de contenido (`TABLAS_CLINICAS_DE_CONTENIDO`: consultas, secciones, examen, antecedentes, registros, laboratorios, archivos, pendientes) ni sube adjuntos; sigue empujando las demás (p. ej. `paciente_extra`, `medico_preferencia`, diagnósticos, vacunas): si crean esas rutas en turnos, saldrían esas filas `dirty`. `:server` usa `SyncAdapters.completos`.» Además, que una tabla clínica nueva no se agregue a `SyncAdapters` sin pensar su envío propio.

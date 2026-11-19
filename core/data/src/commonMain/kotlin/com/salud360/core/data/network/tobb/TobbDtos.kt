@@ -46,6 +46,8 @@ data class TobbTurno(
     val caja: Double = 0.0,
     val comentario: String? = "",
     @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    /** Nombre del tipo según el catálogo de turnos; un servidor viejo no lo manda. */
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
     val especialidad: String? = null,
     @SerialName("otorgado_por") val otorgadoPor: String? = null,
     @SerialName("cancelado_por") val canceladoPor: String? = null,
@@ -56,9 +58,18 @@ data class TobbTurno(
     val paciente: TobbPacienteResumen? = null,
 )
 
-/** `{horario, libre}`; con primer control doble también `horario2`. */
+/**
+ * `{horario, libre}`; con primer control doble también `horario2`. Con `todos_los_tipos=1` cada horario trae su `tipo_turno` y
+ * `tipo_turno_nombre`; un servidor viejo (que ignora el parámetro) no los manda: el tipo queda en 1 y el nombre en `null`.
+ */
 @Serializable
-data class TobbSlot(val horario: String, val horario2: String? = null, val libre: Int = 0)
+data class TobbSlot(
+    val horario: String,
+    val horario2: String? = null,
+    val libre: Int = 0,
+    @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
+)
 
 @Serializable
 data class TobbAgendaDia(
@@ -153,6 +164,8 @@ data class TobbHorarioFijo(
     val horario: String,
     val doble: Int = 0,
     @SerialName("tipo_turno") val tipoTurno: Int = 1,
+    /** Nombre del tipo según el catálogo de turnos; un servidor viejo no lo manda. */
+    @SerialName("tipo_turno_nombre") val tipoTurnoNombre: String? = null,
     @SerialName("valido_desde") val validoDesde: String? = null,
     @SerialName("valido_hasta") val validoHasta: String? = null,
     val quincenal: Int = 0,
@@ -207,7 +220,11 @@ data class TobbCatalogosResponse(
     val especialidades: List<TobbEspecialidad> = emptyList(),
 )
 
-/** Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. */
+/**
+ * Médico como lo lista `GET catalogos`: todos los activos, sin filtrar por quién pregunta. La agenda la deciden
+ * [tieneAgenda] y [visibleEnTurnos] (los escribe el administrador con `PUT medicos/{id}/agenda`); [tieneHorarios] es
+ * solo el respaldo si el servidor no los informa.
+ */
 @Serializable
 data class TobbMedicoCatalogo(
     val id: Long,
@@ -220,13 +237,17 @@ data class TobbMedicoCatalogo(
     @SerialName("especialidad_id") val especialidadId: Long = 0,
     @SerialName("consultorio_id") val consultorioId: Long = 0,
     /**
-     * Si atiende por agenda. No alcanza con el consultorio: turnos lo exige siempre, así que el
-     * médico que solo usa historia clínica también tiene uno. Lo que lo distingue es no tener ningún
-     * horario cargado. Por omisión 1, para no esconderle la agenda a nadie si el servidor todavía no
-     * informa el dato.
+     * Tiene horarios cargados. Es solo el respaldo: cuando el servidor todavía no informa [tieneAgenda] se
+     * decide con esto (el consultorio no alcanza, turnos lo exige siempre y el médico que solo usa historia
+     * clínica también tiene uno). Por omisión 1, para no esconderle la agenda a nadie.
      */
     @SerialName("tiene_horarios") val tieneHorarios: Int = 1,
-    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+    /** Si el administrador le dio agenda de turnos (`0`/`1`). `null` = el servidor no lo informa (no es `0`). */
+    @SerialName("tiene_agenda") val tieneAgenda: Int? = null,
+    /** Si figura para que el paciente pida turno (`0`/`1`). `null` = el servidor no lo informa. */
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Int? = null,
+    /** Historias clínicas que el administrador le habilitó. `[]` = ninguna; `null` = el servidor no informa el campo. */
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>? = null,
     val activo: Int = 1,
 )
 
@@ -286,9 +307,132 @@ data class TobbAltaUsuario(
     val sexo: String = "",
     /** Si aparece en las listas donde el paciente elige a quién pedirle turno. */
     @SerialName("mostrar_en_turnos") val mostrarEnTurnos: Boolean = false,
+    /**
+     * Si el médico tiene agenda de turnos. El alta de médico lo manda siempre (`true` o `false`); secretaria y
+     * administrador lo dejan en `null` y no viaja. Con `encodeDefaults = false` el `null` se omite y el `false` no.
+     */
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean? = null,
     /** Historias clínicas que va a poder abrir desde la app. */
     @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
 )
+
+/**
+ * Cuerpo de `PUT medicos/{id}/agenda` (solo administrador). Solo viaja lo que se tocó (`null` no viaja, `false` sí):
+ * así un administrador no pisa con un valor viejo el campo que el otro cambió.
+ */
+@Serializable
+data class TobbAgendaRequest(
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean? = null,
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Boolean? = null,
+)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/agenda`: el estado final de los dos datos, tal como quedó en turnos, y
+ * los turnos vigentes de hoy en adelante (`turnos_futuros`, para avisar al apagar la agenda).
+ *
+ * Los dos booleanos no tienen valor por omisión: una respuesta que no los traiga no confirma nada y no se toma por buena.
+ */
+@Serializable
+data class TobbAgendaResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    @SerialName("tiene_agenda") val tieneAgenda: Boolean,
+    @SerialName("visible_en_turnos") val visibleEnTurnos: Boolean,
+    @SerialName("turnos_futuros") val turnosFuturos: Int = 0,
+)
+
+/**
+ * Cuerpo de `PUT medicos/{id}/historias-clinicas` (solo administrador): la lista EXACTA de historias clínicas que debe
+ * quedar habilitada (`[]` = ninguna). La lista no tiene valor por omisión a propósito: con `encodeDefaults = false` un
+ * `emptyList()` por omisión no viajaría, y «ninguna» es un pedido válido.
+ */
+@Serializable
+data class TobbHistoriasClinicasRequest(
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>,
+)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/historias-clinicas`: la lista final tal como quedó en turnos (en el orden de su
+ * catálogo, que puede diferir de lo pedido). Sin valor por omisión: una respuesta que no la traiga no confirma nada.
+ */
+@Serializable
+data class TobbHistoriasClinicasResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String>,
+)
+
+/**
+ * Cuerpo de `PUT medicos/{id}/activo` (solo administrador): activar (`true`) o desactivar (`false`) a un médico. Sin
+ * valor por omisión a propósito: con `encodeDefaults = false` un `false` por omisión no viajaría.
+ */
+@Serializable
+data class TobbMedicoActivoRequest(val activo: Boolean)
+
+/**
+ * Respuesta `200` de `PUT medicos/{id}/activo`: el estado final del médico tal como quedó en turnos. Sin valor por
+ * omisión: una respuesta que no lo traiga no confirma nada y no se toma por buena.
+ */
+@Serializable
+data class TobbMedicoActivoResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    val activo: Boolean,
+)
+
+/** Un tipo del catálogo global de tipos de turno (`GET`/`POST tipos-turno`); [activo] llega como `0`/`1`. */
+@Serializable
+data class TobbTipoTurno(val id: Int, val nombre: String = "", val activo: Int = 1)
+
+/** Respuesta `200` de `GET tipos-turno`. Sin valor por omisión: una respuesta sin la lista no informa nada. */
+@Serializable
+data class TobbTiposTurnoResponse(val tipos: List<TobbTipoTurno>)
+
+/** Cuerpo de `POST tipos-turno` (solo administrador). */
+@Serializable
+data class TobbCrearTipoTurnoRequest(val nombre: String)
+
+/** Respuesta `201` de `POST tipos-turno`. Sin valor por omisión: sin el tipo no se sabe qué se creó. */
+@Serializable
+data class TobbCrearTipoTurnoResponse(val tipo: TobbTipoTurno)
+
+/** Una opción (subtipo) de un tipo habilitado para un médico. */
+@Serializable
+data class TobbOpcionTipoTurno(val id: Int, val nombre: String = "")
+
+/** Un tipo habilitado para un médico. [primerControl]: `null` = siempre, `1` = solo primera consulta, `0` = solo seguimiento. */
+@Serializable
+data class TobbTipoDelMedico(
+    val id: Int,
+    val nombre: String = "",
+    @SerialName("primer_control") val primerControl: Int? = null,
+    val opciones: List<TobbOpcionTipoTurno> = emptyList(),
+)
+
+/**
+ * Respuesta `200` de `GET` y de `PUT medicos/{id}/tipos-turno`: los tipos habilitados tal como quedaron en turnos. Sin
+ * valor por omisión en [tipos]: una respuesta que no los traiga no confirma nada. [avisos] solo viene en el `PUT`
+ * (p. ej. un tipo deshabilitado que todavía tiene horarios).
+ */
+@Serializable
+data class TobbMedicoTiposResponse(
+    @SerialName("medico_id") val medicoId: Long = 0,
+    val tipos: List<TobbTipoDelMedico>,
+    val avisos: List<String> = emptyList(),
+)
+
+/**
+ * Un tipo del `PUT medicos/{id}/tipos-turno`. [primerControl] no tiene valor por omisión a propósito: con
+ * `encodeDefaults = false` un `null` por omisión no viajaría, y `null` es «Siempre». [opciones] sí: `null` = no se
+ * tocan las que turnos ya tiene; `[]` = se dejan vacías (y viaja).
+ */
+@Serializable
+data class TobbTipoConfig(
+    val id: Int,
+    @SerialName("primer_control") val primerControl: Int?,
+    val opciones: List<Int>? = null,
+)
+
+/** Cuerpo de `PUT medicos/{id}/tipos-turno` (solo administrador): la lista EXACTA que queda habilitada (`[]` = ninguno). */
+@Serializable
+data class TobbMedicoTiposRequest(val tipos: List<TobbTipoConfig>)
 
 /** El usuario recién creado, con los números que le asignó turnos. */
 @Serializable
@@ -304,6 +448,21 @@ data class TobbUsuarioCreado(
 
 @Serializable
 data class TobbAltaUsuarioResponse(val usuario: TobbUsuarioCreado)
+
+/**
+ * Cuerpo de `PUT medicos/{id}/historias-clinicas`: todas las historias clínicas que le quedan al médico (turnos
+ * deshabilita las que no vienen). Sin valor por omisión a propósito: la lista vacía tiene que viajar, porque del
+ * otro lado que falte el campo es `422 datos`, no "ninguna".
+ */
+@Serializable
+data class TobbHistoriasClinicas(@SerialName("historias_clinicas") val historiasClinicas: List<String>)
+
+/** Respuesta del mismo `PUT`: las que quedaron habilitadas, que es lo que se guarda en el dispositivo. */
+@Serializable
+data class TobbHistoriasClinicasMedico(
+    @SerialName("medico_id") val medicoId: Long,
+    @SerialName("historias_clinicas") val historiasClinicas: List<String> = emptyList(),
+)
 
 /** Fila de `GET obras-sociales?medico_id` (`obra_social_medicos` + nombre). */
 @Serializable

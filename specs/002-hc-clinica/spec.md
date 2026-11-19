@@ -2,11 +2,11 @@
 
 Estado: parte 1 (pacientes y cartera, RF-8 a RF-14 y RF-35 a RF-37) aprobada el 2026-10-19; el resto en borrador.
 **La parte 2 (consultas) se parte en la Entrega L, solo lectura (RF-38 a RF-63, redactada abajo), aprobada por el
-usuario el 2026-10-28 (con Q15 = nunca borrar), y la Entrega E, escritura (borrador sin aprobar, sin tareas).** Ver la
-sección "Parte 2 en entregas".
+usuario el 2026-10-28 (con Q15 = nunca borrar), y la Entrega E, escritura, que ahora se especifica en la spec 005
+(`specs/005-hc-clinica-escritura/spec.md`, borrador con decisiones del 2026-11-03).** Ver la sección "Parte 2 en entregas".
 Depende de la spec 001 (qué secciones ve cada médico lo decide su perfil). La parte 1 (con RF-35 a RF-37) se
 planifica en `plan-parte1.md` y la usa la spec 003 (enfermedades); la Entrega L se planifica en `plan.md`; la
-Entrega E se planifica después de ver funcionar la L.
+Entrega E se especifica y se planifica aparte, en la spec 005.
 
 ## Contexto y objetivo
 La HC general (la web `hclinica`, clínica médica con sus perfiles: clínica general, hepatología, enfermedades
@@ -63,10 +63,10 @@ cualquier perfil, incluido el médico que trabaja solo con la historia clínica 
   historia clínica, y no pierde lo cargado en el dispositivo.
 - RF-4: SI la licencia del médico para esa historia clínica está vencida o inactiva, ENTONCES EL SISTEMA no le
   deja abrirla y muestra "licencia vencida", con la misma regla que aplica la web al ingresar.
-- RF-5: CUANDO la licencia esté dentro del período de aviso, EL SISTEMA avisa al médico la fecha de vencimiento de
+- RF-5 [reemplazado por la 005, RF-47]: CUANDO la licencia esté dentro del período de aviso, EL SISTEMA avisa al médico la fecha de vencimiento de
   esa historia clínica.
-- RF-6: EL SISTEMA deja entrar siempre al administrador, sin licencia.
-- RF-7: EL SISTEMA guarda y muestra una licencia por médico **y por historia clínica**: cambiar la de clínica no
+- RF-6 [reemplazado por la 005, RF-49]: EL SISTEMA deja entrar siempre al administrador, sin licencia.
+- RF-7 [reemplazado por la 005, RF-48]: EL SISTEMA guarda y muestra una licencia por médico **y por historia clínica**: cambiar la de clínica no
   cambia la de pediatría.
 
 ### Médico sin agenda y pacientes (parte 1)
@@ -98,44 +98,44 @@ cualquier perfil, incluido el médico que trabaja solo con la historia clínica 
   en turnosonlinebb sin publicarlo para sacar turno.
 
 ### Consulta (cada sección, si está en el perfil del médico)
-- RF-15: CUANDO el médico abre una consulta nueva de un tipo (consulta, telemedicina) y ya tiene una abierta del
+- RF-15 [reemplazado por la 005, RF-11]: CUANDO el médico abre una consulta nueva de un tipo (consulta, telemedicina) y ya tiene una abierta del
   mismo paciente y tipo, EL SISTEMA reutiliza esa en vez de crear otra.
-- RF-16: CUANDO el médico escribe en una sección de texto (motivo, conductas, nota, datos subjetivos, datos
+- RF-16 [reemplazado por la 005, RF-20]: CUANDO el médico escribe en una sección de texto (motivo, conductas, nota, datos subjetivos, datos
   objetivos, hábitos), EL SISTEMA lo guarda y la web lo muestra en la misma consulta.
-- RF-17: CUANDO el médico carga el examen físico, EL SISTEMA guarda peso, talla, IMC, TA y nota, y la web los muestra.
-- RF-18: CUANDO el médico marca antecedentes familiares (con su detalle) o escribe antecedentes, EL SISTEMA los
+- RF-17 [reemplazado por la 005, RF-21]: CUANDO el médico carga el examen físico, EL SISTEMA guarda peso, talla, IMC, TA y nota, y la web los muestra.
+- RF-18 [reemplazado por la 005, RF-36]: CUANDO el médico marca antecedentes familiares (con su detalle) o escribe antecedentes, EL SISTEMA los
   guarda donde la web los lee, y muestra los últimos cargados del paciente aunque vengan de otra consulta.
-- RF-19: CUANDO el médico carga alimentación (hiposódica, diabetes, celíaco, otra, con detalle), EL SISTEMA la guarda.
-- RF-20: CUANDO el médico carga laboratorio con una fecha, EL SISTEMA agrega esa carga a la tabla longitudinal del
+- RF-19 [reemplazado por la 005, RF-35]: CUANDO el médico carga alimentación (hiposódica, diabetes, celíaco, otra, con detalle), EL SISTEMA la guarda.
+- RF-20 [reemplazado por la 005, RF-41; la carga es visible en la web apenas llega]: CUANDO el médico carga laboratorio con una fecha, EL SISTEMA agrega esa carga a la tabla longitudinal del
   paciente, visible en la app y en la web; CUANDO borra una carga, deja de verse en ambas.
-- RF-21: SI una carga de laboratorio no tiene fecha, ENTONCES EL SISTEMA usa la fecha de la consulta.
-- RF-22: CUANDO el médico pide un examen complementario o una interconsulta, EL SISTEMA los guarda como pendientes
+- RF-21 [reemplazado por la 005, RF-41]: SI una carga de laboratorio no tiene fecha, ENTONCES EL SISTEMA usa la fecha de la consulta.
+- RF-22 [reemplazado por la 005, RF-40 y RF-22; solo exámenes e interconsultas quedan pendientes de confirmar]: CUANDO el médico pide un examen complementario o una interconsulta, EL SISTEMA los guarda como pendientes
   de confirmar, y los confirma al cerrar la consulta, para que la web los muestre.
-- RF-23: CUANDO el médico escribe pendientes del paciente, EL SISTEMA los guarda y la web los muestra.
-- RF-24: CUANDO el médico cierra la consulta, EL SISTEMA la marca cerrada en la web; CUANDO la reabre, vuelve a
+- RF-23 [reemplazado por la 005, RF-43]: CUANDO el médico escribe pendientes del paciente, EL SISTEMA los guarda y la web los muestra.
+- RF-24 [reemplazado por la 005, RF-22 a RF-26; la web no tiene «reabrir»]: CUANDO el médico cierra la consulta, EL SISTEMA la marca cerrada en la web; CUANDO la reabre, vuelve a
   quedar abierta.
 - RF-25: EL SISTEMA muestra las consultas anteriores del paciente, incluidas las de la web; las de otro médico son
   de solo lectura.
 
 ### Secciones de hepatología (del catálogo; hoy las usa el perfil de hepatología)
-- RF-26: CUANDO el médico carga serologías (16 marcadores, cada uno SI / NO / sin cargar), EL SISTEMA las
+- RF-26 [reemplazado por la 005, RF-37]: CUANDO el médico carga serologías (16 marcadores, cada uno SI / NO / sin cargar), EL SISTEMA las
   guarda; un marcador no cargado queda "sin cargar", nunca "NO".
-- RF-27: CUANDO el médico carga Child-Pugh (5 parámetros), EL SISTEMA guarda los puntos de cada uno y el total,
+- RF-27 [reemplazado por la 005, RF-38]: CUANDO el médico carga Child-Pugh (5 parámetros), EL SISTEMA guarda los puntos de cada uno y el total,
   y muestra la clase (A ≤ 6, B 7-9, C ≥ 10).
-- RF-28: CUANDO el médico carga ecografía abdominal, videoendoscopía digestiva alta, biopsia hepática, TC/RMN
+- RF-28 [reemplazado por la 005, RF-39]: CUANDO el médico carga ecografía abdominal, videoendoscopía digestiva alta, biopsia hepática, TC/RMN
   o estudios cardiológicos (fecha + descripción), EL SISTEMA los guarda y muestra el historial del paciente de cada uno.
-- RF-29: CUANDO el médico carga peso con fecha, EL SISTEMA lo agrega a la tabla de peso del paciente.
+- RF-29 [reemplazado por la 005, RF-42]: CUANDO el médico carga peso con fecha, EL SISTEMA lo agrega a la tabla de peso del paciente.
 
 ### Adjuntos
-- RF-30: CUANDO el médico adjunta un PDF o una foto a la consulta, EL SISTEMA lo sube a la web y la web lo muestra;
+- RF-30 [reemplazado por la 005, RF-44]: CUANDO el médico adjunta un PDF o una foto a la consulta, EL SISTEMA lo sube a la web y la web lo muestra;
   sin señal queda en el dispositivo y se sube después, una sola vez.
-- RF-31: CUANDO el médico abre una consulta con adjuntos cargados desde la web, EL SISTEMA los muestra y permite abrirlos.
-- RF-32: CUANDO el médico borra un adjunto, EL SISTEMA deja de mostrarlo en la app y en la web.
+- RF-31 [reemplazado por la 005, RF-45]: CUANDO el médico abre una consulta con adjuntos cargados desde la web, EL SISTEMA los muestra y permite abrirlos.
+- RF-32 [reemplazado por la 005, RF-46]: CUANDO el médico borra un adjunto, EL SISTEMA deja de mostrarlo en la app y en la web.
 
 ### Sin conexión
-- RF-33: MIENTRAS no haya conexión, EL SISTEMA permite crear y editar consultas de la HC general, y las
+- RF-33 [reemplazado por la 005, RF-29]: MIENTRAS no haya conexión, EL SISTEMA permite crear y editar consultas de la HC general, y las
   envía solo cuando vuelve la conexión, sin duplicarlas.
-- RF-34: SI la web rechaza un cambio, ENTONCES EL SISTEMA lo conserva en el dispositivo y muestra el motivo.
+- RF-34 [reemplazado por la 005, RF-30]: SI la web rechaza un cambio, ENTONCES EL SISTEMA lo conserva en el dispositivo y muestra el motivo.
 
 ### Vínculo de pacientes (parte 1, se agregó el 2026-10-19)
 - RF-35: EL SISTEMA guarda el vínculo de cada paciente por historia clínica, sin dejarlo pendiente de envío (el
@@ -226,7 +226,7 @@ Decidido por el usuario el 2026-10-28:
 | Entrega | Contenido | RF | Estado |
 |---|---|---|---|
 | **L** (lectura) | La app muestra las consultas de la web, sin escribir nada y sin borrar nada de lo ya traído | RF-1 a RF-4 en lo que toca a leer, RF-25 (solo lectura), RF-38 a RF-63 | Aprobada por el usuario el 2026-10-28 (incluye la tanda S del servidor) |
-| **E** (escritura) | Crear, editar, cerrar y enviar desde la app; adjuntos; aviso de licencia | RF-15 a RF-24, RF-26 a RF-34, RF-5 a RF-7 | Borrador sin aprobar, sin tareas |
+| **E** (escritura) | Crear, editar, cerrar y enviar desde la app; adjuntos; aviso de licencia | RF-15 a RF-24, RF-26 a RF-34, RF-5 a RF-7 (**reemplazados por los RF-1 a RF-70 de la spec 005**) | **Se especifica en la spec 005** (`specs/005-hc-clinica-escritura/spec.md`): borrador con decisiones D1 a D15 del 2026-11-03, a la espera de clarificación y aprobación; sin plan ni tareas |
 
 Reparto de los RF que ya existían (ninguno se pierde):
 - **A la L**: RF-1 (mostrar las consultas de la web), RF-2 a RF-4 (habilitación, vínculo y licencia, que valen
@@ -237,6 +237,8 @@ Reparto de los RF que ya existían (ninguno se pierde):
   (serologías, Child-Pugh, estudios, peso: cargar), RF-30 a RF-32 (adjuntos), RF-33 y RF-34 (sin conexión: crear y
   enviar después; rechazo de la web), RF-5 a RF-7 (aviso y datos de licencia por historia clínica). En la L se
   **ven** los datos que cargó la web en esas secciones (RF-40); lo que la L no incluye es **cargarlos** desde la app.
+  (Desde el 2026-11-03 esos RF viven en la spec 005, con su redacción ajustada; los de acá quedan marcados «reemplazado
+  por la 005» y se conservan como historia.)
 - RF-8 a RF-14 y RF-35 a RF-37 (parte 1) no cambian.
 
 ### Definiciones (solo de la entrega L)
@@ -305,7 +307,10 @@ Reparto de los RF que ya existían (ninguno se pierde):
   suma ninguna llamada de ese tipo.)
 - RF-50: CUANDO la web atiende un pedido de lectura de la app, EL SISTEMA no crea, no modifica ni borra ningún dato
   clínico ni de pacientes, ni lo que la web usa para saber qué paciente y qué consulta está mirando el médico en su
-  pantalla; lo único que se registra es la sesión.
+  pantalla. Además de la sesión, solo se registra lo que necesita el control de acceso y el propio servidor de la app: la caché
+  de sesiones, la baja de la licencia vencida, la lista de médicos sin vincular y las tablas propias de la API (incluido el
+  registro de lo recibido, cuando se escribe), sin tocar datos clínicos ni de pacientes. (Aprobado el 2026-11-04, spec 005 D17;
+  antes decía «lo único que se registra es la sesión».)
 - RF-51: EL SISTEMA responde las lecturas solo a médicos, solo de pacientes de su cartera; a un administrador, a una
   secretaria o por un paciente fuera de la cartera responde que no corresponde, sin devolver datos.
 
@@ -406,13 +411,14 @@ Reparto de los RF que ya existían (ninguno se pierde):
 - Después, y solo con aprobación aparte: la misma lectura contra producción con un paciente de la cartera de prueba,
   sin escribir, con la lista de comprobación del `tasks.md` (etapa de producción).
 
-### Entrega E (escritura) — borrador, sin tareas
-Queda como estaba redactada arriba (RF-15 a RF-24, RF-26 a RF-34, RF-5 a RF-7). Antes de planificarla hay que:
-decidir qué se hace con lo viejo sin enviar del dispositivo (confirmación, lote o marcarlo resuelto), probar la
-restauración de una base de producción respaldada, fijar la limpieza de lo que dejen las pruebas, decidir
-"tabaquismo" y el mapa de nombres en sentido inverso (Q12, Q13), y aprobar la migración que guarde el identificador de
-la web en laboratorio y pendientes (necesaria solo para escribir). La escritura contra producción solo con respaldo
-previo y limpieza probada.
+### Entrega E (escritura) — ahora en la spec 005
+La Entrega E se especifica en `specs/005-hc-clinica-escritura/spec.md` (borrador, 2026-11-03). Ahí están los RF
+reescritos (RF-5 a RF-7, RF-15 a RF-24 y RF-26 a RF-34 de arriba quedan marcados «reemplazado por la 005») y las
+decisiones D1 a D15 que se tomaron sobre lo que esta sección dejaba pendiente: qué se hace con lo viejo sin enviar del
+dispositivo (D2: botón consulta por consulta), respaldo y limpieza antes de probar (D4), "tabaquismo" y el mapa de
+nombres al revés (D9, que cierra Q12 y Q13) y la migración que guarda el identificador de la web en laboratorio y
+pendientes (D8: `9.sqm`, aprobada). La escritura contra producción sigue requiriendo respaldo previo, limpieza probada y
+aprobación aparte (decisión D3 de abajo).
 
 ## Decisiones tomadas (2026-10-09)
 - La app muestra lo que tiene la web, ni más ni menos. Diagnósticos, frecuencia cardíaca y tabaquismo (este último
@@ -464,7 +470,7 @@ previo y limpieza probada.
 - D4. La spec, el plan y las tareas de la L quedaron **aprobados por el usuario el 2026-10-28**. La aprobación incluye
   que las tareas de la tanda S del servidor (E3 y E4, `hclinica`, rama `salud360-api`) pueden empezar a implementarse
   ("arranquemos con la tanda S"): el usuario aprobó la tanda como un todo. La subida a producción (E9) **requiere
-  aprobación aparte**; la Entrega E sigue como borrador sin aprobar.
+  aprobación aparte**; la Entrega E se especifica en la spec 005 (borrador, sin aprobar).
 - D5. Q15 = **nunca borrar** (ver "Decididas"): la lectura no elimina ni vacía nada de lo ya traído; lo marca (RF-63).
 - D6. (2026-10-29, usuario) **El backend de solo lectura de clínica se registra después de la pantalla de solo lectura**: la
   tarea E6.5 va después de E7.3 y antes de E7.4 y de la tanda V. Motivo: el implementador de E5.3 detectó que
@@ -473,7 +479,7 @@ previo y limpieza probada.
   (No confundir con la «D6» del plan, que es otra decisión de diseño.)
 
 ## Para decidir
-- Nada en la Entrega L. Para la Entrega E: lo que dice "Entrega E (escritura)" arriba.
+- Nada en la Entrega L. Para la Entrega E: ver la spec 005 (decisiones en su sección «Decididas»; dudas en «Dudas abiertas»).
 
 ## Decididas (2026-10-28, usuario)
 El usuario aprobó **Q1 a Q14 y Q16 a Q18 con la opción recomendada** y decidió **Q15 = "Nunca borrar"** (la estricta).
@@ -491,7 +497,8 @@ Debajo de cada una, las opciones que se evaluaron.
 - **Q4 = A.** Las consultas de otro médico, solo lectura y con el nombre de quien las cargó (guardado en el
   dispositivo sin cambiar el esquema). Descartadas: B) sin nombre; C) no mostrarlas.
 - **Q5 = A.** Las consultas viejas del dispositivo sin enviar (incluidas las ex-hepatología) no se tocan ni se envían:
-  quedan sin enviar y su destino se decide en la Entrega E. Descartadas: B) marcarlas como enviadas; C) ocultarlas.
+  quedan sin enviar y su destino se decide en la Entrega E (resuelto en la spec 005, D2: botón «Enviar a la web» consulta
+  por consulta, con confirmación). Descartadas: B) marcarlas como enviadas; C) ocultarlas.
 - **Q6 = A.** Laboratorio, peso y estudios por paciente y fecha, como la web (RF-41); cada estudio se asocia a la
   consulta donde se cargó. Descartada: B) solo las cargas de esa consulta.
 - **Q7 = A.** Antecedentes familiares: los últimos activos del paciente, visibles en cualquier consulta, como los
@@ -510,9 +517,12 @@ Debajo de cada una, las opciones que se evaluaron.
   C) en un grupo aparte.
 - **Q12 = A.** El servidor conoce el mapa explícito de nombres (albúmina, fósforo, concentración, ácido úrico, B12,
   "otros" del reducido; celíaco, dependiente de terceros) y la app no cambia ninguno de sus identificadores; el mismo
-  mapa sirve a la Entrega E al revés. Descartadas: B) migrar los identificadores de la app; C) el mapa en la app.
+  mapa sirve a la Entrega E al revés (ratificado en la spec 005, D9). Descartadas: B) migrar los identificadores de la app; C) el
+  mapa en la app.
 - **Q13 = A.** "Tabaquismo" queda en el catálogo durante la L (leer no lo afecta: la web nunca trae ese dato) y se
-  resuelve al empezar la E. Descartadas: B) sacarlo ahora (toca la spec 001 y sus tests); C) guardarlo en "otro".
+  resuelve al empezar la E (resuelto en la spec 005, D9: sale del catálogo de las consultas que se envían, junto con la
+  frecuencia cardíaca, la circunferencia abdominal, los diagnósticos, el audio y los antecedentes personales; lo ya cargado
+  queda en solo lectura). Descartadas: B) sacarlo ahora (toca la spec 001 y sus tests); C) guardarlo en "otro".
 - **Q14 = A.** Las consultas nuevas del dispositivo en la HC general se siguen pudiendo crear, con la marca visible
   "Solo en este dispositivo (no se envía a la web)". Descartadas: B) bloquear "Nueva consulta"; C) como hoy, sin marca.
 - **Q15 = nunca borrar (opción A, la estricta; el planificador había recomendado la B, "espejo").** La app **no borra,
@@ -528,4 +538,4 @@ Debajo de cada una, las opciones que se evaluaron.
   probar enseguida; C) probar antes sobre una copia de producción restaurada.
 
 ## Dudas abiertas
-Ninguna en la Entrega L. Las de la Entrega E se listan cuando se la planifique (ver "Entrega E (escritura)" arriba).
+Ninguna en la Entrega L. Las de la Entrega E están en la spec 005 (sección «Dudas abiertas»).

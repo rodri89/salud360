@@ -29,6 +29,31 @@ interface HcBackend {
     val especialidad: String
 
     /**
+     * true si este backend solo lee: [com.salud360.core.data.sync.HcApiSync] no le manda nada (ni consultas, ni
+     * secciones, ni examen, ni listas, ni adjuntos, ni estados) y lo que haya `dirty` en el dispositivo queda como
+     * está. El valor por defecto es `false` para no cambiar a pediatría: **un backend de solo lectura tiene que
+     * declararlo**, y `HcBackendsSoloLecturaTest` obliga a decidirlo en cada backend que se registre.
+     */
+    val soloLectura: Boolean get() = false
+
+    /**
+     * true si este backend envía por su cuenta (spec 005, RF-5): el motor de siempre, [com.salud360.core.data.sync.HcApiSync],
+     * lo ignora del todo —no le manda nada y no cuenta lo suyo en [com.salud360.core.data.sync.HcApiSync.pendientes]— porque su
+     * envío (crear, textos, examen, cerrar, baja, con su propio orden, reintentos y estados) lo hace otro motor. El valor por
+     * defecto es `false`: pediatría y las demás siguen con `HcApiSync` sin cambios. `HcBackendsSoloLecturaTest` obliga a decidirlo
+     * en cada backend que se registre.
+     */
+    val envioPropio: Boolean get() = false
+
+    /**
+     * true si el panel de licencias de la app le lee y le guarda las licencias a este backend (`traerLicencias`,
+     * `guardarLicencia`). El valor por defecto es `true`, como pediatría. La HC general declara `false` (spec 005, RF-66): su
+     * licencia la administra la web de hclinica hasta E5, y registrarla no puede cambiar el panel ni el resultado de guardar una
+     * licencia (un médico solo de esa HC sigue guardándose sin llamar a su servidor).
+     */
+    val administraLicencia: Boolean get() = true
+
+    /**
      * Id de la consulta en la API, creándola allá si todavía no existía.
      * Devuelve null si no se pudo (por ejemplo, el paciente no tiene documento válido).
      */

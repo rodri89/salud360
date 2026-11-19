@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
  * ```
  * ./gradlew :core:data:jvmTest --rerun --tests '*HcCarteraE2ETest*' \
  *   -Psalud360.test.hc.pediatria=http://localhost/HCDPediatria-salud360/public/index.php \
- *   -Psalud360.test.hc.token=salud360-prueba-medico
+ *   -Psalud360.test.hc.token=<token de prueba del médico>
  * ```
  */
 class HcCarteraE2ETest {

@@ -1,5 +1,6 @@
 package com.salud360.especialidades.clinica
 
+import com.salud360.core.data.hcgeneral.casillaSeEnvia
 import com.salud360.core.model.especialidad.AnalitoDef
 import com.salud360.core.model.especialidad.CampoDef
 import com.salud360.core.model.especialidad.CampoExamenFisico
@@ -14,11 +15,10 @@ import com.salud360.core.model.especialidad.SeccionesComunes as C
 import com.salud360.core.model.especialidad.TipoCampo
 import com.salud360.core.model.especialidad.TipoConsultaDef
 import com.salud360.core.model.especialidad.TipoSeccion
-import com.salud360.features.hc.EspecialidadContribution
 import com.salud360.features.hc.SeccionesGenericas
 
 
-private val labGeneralClinica = LaboratorioDef(
+internal val labGeneralClinica = LaboratorioDef(
     "laboratorio_general", "Laboratorio general",
     listOf("HTO", "HB", "Blancos", "Plaquetas", "Glucemia", "Urea", "Creatinina", "NA", "K", "CL", "CA", "MG", "Albúmina", "Fósforo", "TGO", "TGP", "FAL",
         "BT", "BD", "BI", "GGT", "TP", "RIN", "Concentración", "KPTT", "LDH", "PCR", "VSG", "CT", "LDL", "TGC", "HDL", "Ferritina", "Sat de Transf", "MELD",
@@ -27,7 +27,7 @@ private val labGeneralClinica = LaboratorioDef(
         .map { AnalitoDef(it.lowercase().replace(Regex("[^a-z0-9]+"), "_"), it) },
 )
 
-private val alimentacionClinica = SeccionDef(
+internal val alimentacionClinica = SeccionDef(
     "alimentacion", "Alimentación", TipoSeccion.FORM, icono = "alimentacion", inicialmenteExpandida = false,
     campos = listOf(
         CampoDef("hiposodica", "Hiposódica", TipoCampo.CHECK_DETALLE), CampoDef("diabetes", "Diabetes", TipoCampo.CHECK_DETALLE),
@@ -57,7 +57,9 @@ val clinicaMedica = EspecialidadDefinition(
             "hta" to "HTA", "dbt_nir" to "DBT (NIR)", "dbt_ir" to "DBT (IR)", "acv" to "ACV", "dsl" to "DSL", "fa" to "FA", "mp" to "MP", "analfabeto" to "Analfabeto",
             "postrado" to "Postrado", "af_ca_mama" to "AF Ca mama", "ca_mama" to "Ca mama", "institucionalizado" to "Institucionalizado", "psicofarmacos" to "Psicofármacos",
             "dependiente_terceros" to "Dependiente de terceros", "tabaquismo" to "Tabaquismo", "otro" to "Otro",
-        ).map { ItemAntecedente(it.first, it.second) }),
+            // Spec 005 (T17, D9, RF-3; cambio de requisitos sobre la 001): la web no guarda el tabaquismo. Sigue en la lista para leer lo ya
+            // cargado y queda marcado `sinEnvio` (la regla es `casillaSeEnvia`): no se envía nunca y la pantalla le pone «No se envía a la web».
+        ).map { ItemAntecedente(it.first, it.second, sinEnvio = !casillaSeEnvia("familiares", it.first)) }),
     ),
     laboratorios = listOf(labGeneralClinica),
     registros = SeccionesGenericas.registrosBase,
@@ -66,8 +68,13 @@ val clinicaMedica = EspecialidadDefinition(
 
 private fun siNo(clave: String, etiqueta: String) = CampoDef(clave, etiqueta, TipoCampo.SELECT, listOf("SI", "NO"), grupo = "serologias")
 
-/** Hepatología (perfil 2 de hclinica): serologías, Child-Pugh, tabla de peso, estudios con fecha. */
-val hepatologia = EspecialidadDefinition(
+/**
+ * Hepatología (perfil 2 de hclinica): serologías, Child-Pugh, tabla de peso, estudios con fecha.
+ *
+ * Ya no es una historia clínica: no está registrada en la app (hepatología es un perfil de la HC general, spec 001 RF-29).
+ * Es la fuente de las secciones, laboratorios y registros de [catalogoHcGeneral] (`HcGeneral.kt` los copia de acá): no borrar.
+ */
+internal val hepatologia = EspecialidadDefinition(
     codigo = "hepatologia", nombre = "Hepatología", nombreLegacy = "hclinica (perfil 2)",
     tiposConsulta = listOf(
         TipoConsultaDef(C.TIPO_CONTROL, "Consulta", "control", pestanias = SeccionesGenericas.pestaniasEstandar,
@@ -105,6 +112,3 @@ val hepatologia = EspecialidadDefinition(
         .map { (t, n) -> RegistroDef(t, n, n, listOf(CampoDef("detalle", "Detalle", TipoCampo.TEXTO_LARGO))) },
     examenFisicoCampos = clinicaMedica.examenFisicoCampos,
 )
-
-val clinicaContribution = EspecialidadContribution(clinicaMedica)
-val hepatologiaContribution = EspecialidadContribution(hepatologia, mapOf("child_pugh" to { s, ctx -> ChildPughSeccion(s, ctx) }))

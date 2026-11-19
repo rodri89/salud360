@@ -33,6 +33,16 @@ import kotlinx.coroutines.sync.withLock
  *
  * Si el envío falla, la fila queda marcada como pendiente y se reintenta con esperas crecientes.
  * Nada se pierde: lo peor que pasa es que tarde en llegar.
+ *
+ * **Candado contra el envío (spec 002, RF-47 y RF-48):** un backend con [HcBackend.soloLectura] no recibe nada de este
+ * motor, y lo que esté `dirty` en el dispositivo queda como está (ni se limpia ni se marca como enviado, para cuando
+ * exista el envío). Se corta acá, en el motor, y no solo en el backend: `marcarSucia`, `empujarYa` y `empujarTodo` no
+ * programan ni llaman nada, y [drenar] —por donde pasa todo envío, también los reintentos— sale antes de leer lo
+ * pendiente. El contador [pendientes] no cambia: sigue contando lo local sin enviar.
+ *
+ * **Envío propio (spec 005, RF-5):** un backend con [HcBackend.envioPropio] (la HC general) se trata igual de cortado —nada se
+ * manda ni se programa y lo `dirty` queda como está—, y además **no se cuenta** en [pendientes]: lo cuenta su propio motor. Sin esa
+ * declaración, nada cambia: pediatría y las demás siguen como siempre.
  */
 class HcApiSync(
     private val db: Salud360Db,
@@ -55,12 +65,31 @@ class HcApiSync(
     /** true si esta especialidad tiene API configurada. */
     fun activo(especialidad: String): Boolean = backends.containsKey(especialidad)
 
+    /** Este motor no atiende a [backend]: es de solo lectura o envía por su cuenta ([HcBackend.envioPropio]). Sin backend, no. */
+    private fun noLoAtiendeEsteMotor(backend: HcBackend?): Boolean = backend != null && (backend.soloLectura || backend.envioPropio)
+
+    /**
+     * true si la consulta es de una especialidad cuyo backend este motor no atiende (una que no existe no lo es).
+     * Parte del candado contra el envío (ver la nota de la clase): corta antes de programar nada.
+     */
+    private suspend fun noLaAtiendeEsteMotor(consultaId: Id): Boolean {
+        val especialidad = hq.consultaPorId(consultaId).uno { it.especialidad } ?: return false
+        return noLoAtiendeEsteMotor(backends[especialidad])
+    }
+
+    /** true si la consulta es de una especialidad que envía por su cuenta: lo suyo ni se manda ni se cuenta acá. */
+    private suspend fun esDeEnvioPropio(consultaId: Id): Boolean {
+        val especialidad = hq.consultaPorId(consultaId).uno { it.especialidad } ?: return false
+        return backends[especialidad]?.envioPropio == true
+    }
+
     /**
      * Avisa que una consulta cambió. Reinicia la espera, así el envío sale cuando el médico deja de
-     * escribir y no en cada tecla.
+     * escribir y no en cada tecla. Con un backend de solo lectura no programa nada.
      */
     fun marcarSucia(consultaId: Id, esperaMs: Long = ESPERA_MS) {
         scope.launch {
+            if (noLaAtiendeEsteMotor(consultaId)) return@launch
             candado.withLock {
                 jobs[consultaId]?.cancel()
                 jobs[consultaId] = scope.launch {
@@ -74,6 +103,7 @@ class HcApiSync(
     /** Envía ya, sin esperar: al cerrar la consulta, al salir de la pantalla o al volver la conexión. */
     fun empujarYa(consultaId: Id) {
         scope.launch {
+            if (noLaAtiendeEsteMotor(consultaId)) return@launch
             candado.withLock { jobs[consultaId]?.cancel(); jobs.remove(consultaId) }
             drenar(consultaId)
         }
@@ -99,7 +129,8 @@ class HcApiSync(
      */
     private suspend fun drenar(consultaId: Id, intento: Int = 0) {
         val fila = hq.consultaPorId(consultaId).uno { it.toModel() } ?: return
-        val backend = backends[fila.especialidad] ?: return
+        // Sin backend, de solo lectura o de envío propio: no se manda nada y las filas siguen `dirty` (el candado de la clase).
+        val backend = backends[fila.especialidad]?.takeUnless { noLoAtiendeEsteMotor(it) } ?: return
         try {
             val remotoId = backend.asegurarConsulta(fila)
             if (remotoId == null) {
@@ -194,7 +225,8 @@ class HcApiSync(
         ids += hq.examenesFisicosDirty().lista { it.consulta_id }
         ids += hq.archivosDirty().lista { it.consulta_id }.filterNotNull()
         ids += consultasDeAntecedentesPendientes()
-        _pendientes.value = ids.size
+        // Lo de una HC que envía por su cuenta lo cuenta su propio motor (spec 005, RF-5, RF-31); lo de solo lectura sí se cuenta (Q16-A).
+        _pendientes.value = ids.count { !esDeEnvioPropio(it) }
     }
 
     /**
@@ -208,7 +240,10 @@ class HcApiSync(
             .filter { it.first.isNotBlank() } +
             hq.registrosDirty().lista { Triple(it.paciente_id, it.especialidad, it.consulta_id) }
         for ((pacienteId, especialidad, consultaId) in pendientes) {
-            if (!backends.containsKey(especialidad)) continue
+            // Lo de un backend de solo lectura no se resuelve a una consulta: igual que sin backend, ni se envía ni se cuenta.
+            // (y lo de uno de envío propio, que tampoco se cuenta acá).
+            val backend = backends[especialidad]
+            if (backend == null || noLoAtiendeEsteMotor(backend)) continue
             val consulta = consultaId?.let { hq.consultaPorId(it).uno { c -> c.id } }
                 ?: hq.consultasDePaciente(pacienteId, especialidad).lista { it.id }.firstOrNull()
             if (consulta != null) ids += consulta

@@ -32,7 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salud360.core.data.hcgeneral.AusenciasEnLaWeb
+import com.salud360.core.data.hcgeneral.puedeEditarRegistro
 import com.salud360.core.model.especialidad.CampoDef
+import com.salud360.core.model.especialidad.ModoRegistro
 import com.salud360.core.model.especialidad.SeccionDef
 import com.salud360.core.model.hc.RegistroClinico
 import com.salud360.core.ui.components.AcceptButton
@@ -45,6 +48,7 @@ import com.salud360.core.ui.components.StatusChip
 import com.salud360.core.ui.components.toDisplay
 import com.salud360.core.ui.theme.Salud360Colors
 import com.salud360.features.hc.ConsultaUi
+import com.salud360.features.hc.MarcaYaNoFigura
 import com.salud360.features.hc.SeccionContext
 import com.salud360.features.hc.iconoSeccion
 import kotlinx.coroutines.flow.flowOf
@@ -57,11 +61,13 @@ import kotlinx.datetime.LocalDate
  * con "n - total" y flechas; diálogo de alta/edición y adjuntos opcionales.
  * En lectura solo se muestran los de esta consulta; editando, también los de otras consultas del
  * paciente, marcados "Anterior", porque un estudio se pide una vez y el resultado llega después.
+ * Los estudios con historial (`ModoRegistro.UNO_POR_CONSULTA`) van aparte: [EstudioConHistorialSeccion].
  */
 @Composable
 fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
     val def = ui.definicion ?: return
     val regDef = s.registroTipo?.let { def.registro(it) } ?: return
+    if (regDef.modo == ModoRegistro.UNO_POR_CONSULTA) { EstudioConHistorialSeccion(s, regDef, ctx, ui); return }
     val registros by ctx.vm.registros(regDef.tipo, regDef.porPaciente).collectAsState(emptyList())
     // "Anteriores" solo tiene sentido para registros por consulta (los de otras consultas del paciente);
     // los registros por paciente ya se listan completos en `registros`. En lectura no se muestran.
@@ -78,7 +84,7 @@ fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
         if (registros.isEmpty() && previos.isEmpty()) Text("Sin registros", color = MaterialTheme.colorScheme.onSurfaceVariant)
         RegistrosPaginados(
             items = registros.map { it to true } + previos.map { it to false },
-            campos = regDef.campos, soloLectura = ctx.soloLectura, ctx = ctx, conArchivos = regDef.conArchivos,
+            campos = regDef.campos, soloLectura = ctx.soloLectura, ctx = ctx, conArchivos = regDef.conArchivos, ausencias = ui.ausencias,
             onEditar = { editando = it }, onBorrar = { borrar = it },
         )
     }
@@ -102,12 +108,12 @@ fun RegistrosSeccion(s: SeccionDef, ctx: SeccionContext, ui: ConsultaUi) {
 @Composable
 private fun RegistrosPaginados(
     items: List<Pair<RegistroClinico, Boolean>>, campos: List<CampoDef>, soloLectura: Boolean, ctx: SeccionContext, conArchivos: Boolean,
-    onEditar: (RegistroClinico) -> Unit, onBorrar: (RegistroClinico) -> Unit,
+    ausencias: AusenciasEnLaWeb, onEditar: (RegistroClinico) -> Unit, onBorrar: (RegistroClinico) -> Unit,
 ) {
     if (items.isEmpty()) return
     if (items.size == 1) {
         val (r, esActual) = items.single()
-        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
+        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, ausente = ausencias.fila(r.id), conDivider = false)
         return
     }
     val pager = rememberPagerState { items.size }
@@ -131,15 +137,17 @@ private fun RegistrosPaginados(
     }
     HorizontalPager(pager, Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, pageSpacing = 12.dp) { i ->
         val (r, esActual) = items[i]
-        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, conDivider = false)
+        RegistroFila(r, campos, esActual, soloLectura, { onEditar(r) }, { onBorrar(r) }, ctx, conArchivos, ausente = ausencias.fila(r.id), conDivider = false)
     }
 }
 
 @Composable
 private fun RegistroFila(
     r: RegistroClinico, campos: List<CampoDef>, esActual: Boolean, soloLectura: Boolean,
-    onEditar: () -> Unit, onBorrar: () -> Unit, ctx: SeccionContext, conArchivos: Boolean, conDivider: Boolean = true,
+    onEditar: () -> Unit, onBorrar: () -> Unit, ctx: SeccionContext, conArchivos: Boolean, ausente: Boolean, conDivider: Boolean = true,
 ) {
+    // Un registro que vino de la web no se edita ni se quita desde una consulta del dispositivo (RF-62), ni siquiera en una abierta.
+    val puedeEditar = puedeEditarRegistro(r, editable = !soloLectura)
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             r.fecha?.let { Text(it.toDisplay(), fontWeight = FontWeight.SemiBold, modifier = Modifier.width(100.dp)) }
@@ -150,17 +158,19 @@ private fun RegistroFila(
                 }
             }
             if (!esActual) StatusChip("Anterior", Salud360Colors.Grey)
+            // RF-63: lo que la web ya no manda se sigue viendo entero, con la marca.
+            if (ausente) MarcaYaNoFigura()
             // Un registro de otra consulta se puede completar pero no quitar: el estudio se pide una vez
             // y el resultado llega después, así que cargarlo es parte del trabajo; borrar lo que pidió
             // otra consulta, no. Al guardarlo, pediatría anota en qué consulta se cargó la respuesta.
-            if (!soloLectura) {
+            if (puedeEditar) {
                 LinkButton("Editar", onEditar)
                 if (esActual) LinkButton("Quitar", onBorrar)
             }
         }
         // Los adjuntos sí se permiten en los anteriores: la foto del resultado es justamente lo que
         // llega tarde. Del otro lado la foto cuelga del estudio, no de la consulta.
-        if (conArchivos) ArchivosInline(seccion = "registro", ctx = ctx, registroId = r.id, soloLectura = soloLectura)
+        if (conArchivos) ArchivosInline(seccion = "registro", ctx = ctx, registroId = r.id, soloLectura = !puedeEditar)
         if (conDivider) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
     }
 }

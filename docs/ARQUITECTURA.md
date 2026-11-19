@@ -59,12 +59,17 @@ No hace falta tocar la base de datos ni el servidor.
 
 ## Roles y acceso
 
-- **Médico**: ve su agenda (si `tieneTurnos`, es decir, si tiene consultorio en turnosonlinebb) y sus pacientes;
-  abre la historia clínica de cada especialidad habilitada (`medico.especialidades_hc`). Si tiene dos, elige cuál
-  al abrir la ficha.
-- **Secretaria**: elige consultorio y médico; opera agenda, pacientes, recetas y obras sociales, y abre las
-  historias clínicas habilitadas al médico elegido.
-- **Administrador**: usuarios, médicos, secretarias, consultorios, especialidades, feriados, licencias.
+- **Médico**: ve su agenda y todo lo de turnos (Recetas, Horarios de atención, obras sociales, reservas, cupo, módulos,
+  mensajes) solo si `tieneTurnos`, que es la decisión del administrador (`tiene_agenda` de turnosonlinebb; no se deduce
+  de los horarios ni del consultorio, y `tiene_horarios` es solo el respaldo si el servidor no lo informa); y sus
+  pacientes; abre la historia clínica de cada especialidad habilitada (`medico.especialidades_hc`). Si tiene dos, elige
+  cuál al abrir la ficha. Sin agenda, «Config» solo ofrece las secciones de su historia clínica. Las reglas viven en
+  `AgendaDelMedico` (`core/data`).
+- **Secretaria**: elige consultorio y médico; opera pacientes y, si el médico elegido tiene agenda, su agenda, recetas y
+  obras sociales (aunque no sea visible para pacientes); abre las historias clínicas habilitadas al médico elegido.
+- **Administrador**: usuarios, médicos, secretarias, consultorios, especialidades, feriados, licencias. Por médico decide
+  «Tiene agenda de turnos» y «Visible para pacientes en la web»: los dos se guardan en turnosonlinebb
+  (`PUT medicos/{id}/agenda`; apagar la agenda apaga también «visible»). El resto de la tarjeta del médico es solo local.
 
 La sesión se resuelve con `resolverPerfil` (misma función en app y servidor) a partir del mail.
 
@@ -73,12 +78,15 @@ La sesión se resuelve con `resolverPerfil` (misma función en app y servidor) a
 Todos los usuarios de Salud 360 entran con su cuenta de **turnosonlinebb** (`POST /api/salud360/auth/login`),
 tengan o no agenda. Un médico puede tener agenda, historias clínicas o ambas:
 
-- **Agenda**: la tiene si turnosonlinebb le asignó consultorio (`consultorio_id` > 0 en el perfil).
+- **Agenda**: la tiene si el administrador se la dio en turnosonlinebb (`tiene_agenda` en el perfil; sin ese dato, si tiene
+  horarios cargados: `tiene_horarios`). Para abrirla además hace falta consultorio (`consultorio_id` > 0).
 - **Historias clínicas**: el administrador de turnosonlinebb las habilita por médico en Administración → Médico →
   "Historias clínicas Salud 360" (tabla `salud360_medico_hc`). El perfil de login las devuelve en
   `medico.historias_clinicas` (`["pediatria", ...]`) y `TurnosImportador` las copia a `medico.especialidades_hc`.
-  Mientras la web no informe el campo, `TurnosImportador.FALLBACK_HC_POR_ESPECIALIDAD` deduce la HC del nombre de la
-  especialidad de turnos (Pediatría → `pediatria`); hay que ponerlo en `false` cuando la web esté desplegada.
+  Lo que informa turnos manda, también `[]` (una baja del administrador se propaga); solo si el servidor no manda el
+  campo (versión vieja) se conserva lo que el dispositivo ya tenía (`historiasClinicasDeTurnos`). Ya no se deduce nada
+  de la especialidad: el fallback `FALLBACK_HC_POR_ESPECIALIDAD` se eliminó. Solo el médico ve y abre las HC que tiene
+  habilitadas; la secretaria únicamente ve turnos (`historiasClinicasVisibles`, `puedeAbrirHistoriaClinica`).
 
 Antes, cada historia clínica tenía sus propios usuarios y guardaba el id del médico de turnos en
 `users.medico_id_tobb`. Ese campo se conserva, pero invertido: ahora es la forma en que cada sistema de HC
@@ -109,8 +117,9 @@ históricos sobre las curvas P3-P97.
 ## Offline-first y sincronización
 
 - Cada escritura local marca la fila con `dirty = 1`.
-- `SyncEngine.sincronizar()`: envía las filas sucias (`POST /sync/push`), sube adjuntos pendientes y
-  trae los cambios de cada tabla desde la última versión conocida (`GET /sync/pull`).
+- `SyncEngine.sincronizar()`: envía las filas sucias (`POST /sync/push`) y trae los cambios de cada tabla desde la
+  última versión conocida (`GET /sync/pull`). No maneja las tablas de HC con contenido clínico (consultas, secciones, examen,
+  antecedentes, registros, laboratorios, adjuntos y pendientes: tienen envío propio, `HcApiSync` o `HcClinicaEnvio`) ni sube adjuntos.
 - Conflictos: última escritura gana por `updated_at`; para **turnos** el servidor rechaza un turno si
   el horario ya fue ocupado por otro dispositivo, y el cliente lo ve al sincronizar.
 - Web: la base corre en memoria (sql.js en un Web Worker) con una copia en IndexedDB del navegador que se

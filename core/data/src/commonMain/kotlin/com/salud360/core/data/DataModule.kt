@@ -1,21 +1,39 @@
 package com.salud360.core.data
 
+import com.salud360.core.data.files.ArchivoStore
+import com.salud360.core.data.hcgeneral.medicoParaEnfermedades
 import com.salud360.core.data.network.ApiClient
 import com.salud360.core.data.network.TurnosOnlineClient
+import com.salud360.core.data.network.hc.ClinicaAdjuntosApiRemota
+import com.salud360.core.data.network.hc.EnfermedadesApiRemota
 import com.salud360.core.data.network.hc.HcApiClient
 import com.salud360.core.data.network.hc.HcApiClients
+import com.salud360.core.data.network.hc.PacientesHcApiRemota
+import com.salud360.core.data.network.hc.PacientesHcApis
 import com.salud360.core.data.repos.AdminRepository
 import com.salud360.core.data.repos.AgendaTurnosOnline
 import com.salud360.core.data.repos.AuthRepository
+import com.salud360.core.data.repos.ConfigHcApiRemota
+import com.salud360.core.data.repos.ConfigHcRepository
+import com.salud360.core.data.repos.EnfermedadesRepository
 import com.salud360.core.data.repos.HcBackends
+import com.salud360.core.data.repos.HcClinicaBackend
 import com.salud360.core.data.repos.HcPediatriaBackend
 import com.salud360.core.data.repos.HcRepository
+import com.salud360.core.data.repos.PacientesHcRepository
 import com.salud360.core.data.repos.PacientesRepository
+import com.salud360.core.data.repos.PerfilesHcRepository
+import com.salud360.core.data.repos.TurnosPorConsulta
+import com.salud360.core.data.repos.RevocaSesion
 import com.salud360.core.data.repos.TurnosRepository
 import com.salud360.core.data.sync.HcApiSync
+import com.salud360.core.data.sync.HcClinicaEnvio
+import com.salud360.core.data.sync.ObservadorDeConexion
+import com.salud360.core.data.sync.ObservadorDeConexionDelSistema
 import com.salud360.core.data.sync.SyncEngine
 import com.salud360.core.database.Salud360Db
 import com.russhwolf.settings.Settings
+import com.salud360.core.model.especialidad.CodigosHc
 import com.salud360.core.model.newId
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -44,18 +62,16 @@ data class AppConfig(
  * Módulo Koin de la capa de datos.
  * La base se crea de forma asíncrona en el arranque de cada plataforma (`createDatabase`) y se
  * pasa ya lista; la plataforma también aporta [com.salud360.core.data.files.ArchivoStore].
+ *
+ * @param nombresHc código de HC → nombre visible, del registro de especialidades (para los motivos de la cartera).
  */
-fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
+fun dataModule(db: Salud360Db, config: AppConfig, nombresHc: Map<String, String>): Module = module {
     single { config }
     single { db }
     single { Settings() }
     single { ApiClient(config.apiBaseUrl) }
     single { TurnosOnlineClient(config.turnosUrl) }
-    single {
-        val settings = get<Settings>()
-        val id = settings.getStringOrNull("dispositivo_id") ?: newId().also { settings.putString("dispositivo_id", it) }
-        SyncEngine(get(), get(), get(), id)
-    }
+    single { SyncEngine(get(), get(), get(), get<Settings>().idDelDispositivo()) }
     // Clientes de las historias clínicas que ya tienen API propia (`salud360.entorno.*.hc.<codigo>`).
     // Las que no están configuradas siguen guardando solo en el dispositivo, sin cambiar nada.
     single {
@@ -65,28 +81,96 @@ fun dataModule(db: Salud360Db, config: AppConfig): Module = module {
             }.toMap(),
         )
     }
+    // El turno de cada consulta propia de la HC general, compartido por la cola de envío y la lectura (`HcClinicaBackend`): nunca dos a la vez
+    // sobre la misma consulta (spec 005, T29). Va aparte porque la cola necesita la API de escritura del backend y el backend, el turno.
+    single { TurnosPorConsulta() }
+    // `HcBackendsSoloLecturaTest` obliga a decidir `soloLectura`, `envioPropio` y `administraLicencia` de cada código que se agregue acá.
+    // La HC general se registra con lectura y escritura (spec 005, T23): usa el mismo cliente completo (misma URL y mismo token) que su
+    // configuración, su cartera y sus enfermedades; el backend lee por su envoltorio de solo lectura y recibe aparte la API de escritura,
+    // que todavía no usa (el motor de envío es `HcClinicaEnvio`, T24). Sin URL de la HC general en el entorno no se registra y todo
+    // queda como antes (sin API).
     single {
         HcBackends(
             get<HcApiClients>().porEspecialidad.mapNotNull { (codigo, cliente) ->
                 when (codigo) {
                     "pediatria" -> codigo to HcPediatriaBackend(get(), cliente)
+                    CodigosHc.GENERAL -> codigo to HcClinicaBackend(get(), cliente, get<PacientesHcRepository>(), turnos = get())
                     else -> null
                 }
             }.toMap(),
         )
     }
-    single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
-    // `backendsHc`: los backends con API (hoy pediatría, la única HC con licencia) para que el ingreso consulte la licencia al
-    // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
+    // Cartera y vínculo de pacientes de cada HC con API, pediatría y la general por igual (spec 002). Las consultas de
+    // la general solo se leen (`HcClinicaBackend` arriba).
     single {
+        val clientes = get<HcApiClients>().porEspecialidad
+        PacientesHcApis(
+            listOfNotNull(
+                clientes["pediatria"]?.let { "pediatria" to PacientesHcApiRemota(it, "pediatria_paciente_id") },
+                clientes[CodigosHc.GENERAL]?.let { CodigosHc.GENERAL to PacientesHcApiRemota(it, "hc_paciente_id") },
+            ).toMap(),
+        )
+    }
+    single { PacientesHcRepository(get(), get(), nombresHc) }
+    single { HcApiSync(get(), get<HcBackends>().porEspecialidad, get()) }
+    // El observador de conexión (spec 005, T31, RF-57): lo aporta cada plataforma con `ObservadorDeConexionDelSistema` (como `ArchivoStore`)
+    // y `App` lo conecta con la cola de envío cuando hay sesión.
+    single<ObservadorDeConexion> { get<ObservadorDeConexionDelSistema>() }
+    // La cola de envío de la HC general (spec 005, T24 y T25): una sola. Envía por la API de escritura del backend de la HC general (si el
+    // entorno no tiene su URL, no envía nada), con el mismo id de dispositivo que el resto de la app. La llaman el autoguardado y los
+    // disparadores (T31, T36) y las pantallas; desde T104 también manda los documentos. `HcApiSync` ignora a la HC general por `envioPropio`.
+    single {
+        val auth = lazy { get<AuthRepository>() }
+        HcClinicaEnvio(
+            db = get(),
+            turnos = get(),
+            escritura = (get<HcBackends>().porEspecialidad[CodigosHc.GENERAL] as? HcClinicaBackend)?.escritura,
+            pacientes = get(),
+            dispositivo = get<Settings>().idDelDispositivo(),
+            nombreHc = nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
+            // Solo se envía lo del médico de la sesión (RF-50). Se pregunta al enviar, no al armar: la sesión cambia con cada ingreso.
+            medicoDeLaSesion = { auth.value.sesion.value?.let(::medicoParaEnfermedades) },
+            // Los documentos de E4 (T104) por el mismo cliente completo (y el mismo token) que el resto de la HC general. La plataforma aporta
+            // `ArchivoStore` (como para `HcApiSync`): `getOrNull` deja el módulo armable sin él (los tests que no lo registran).
+            adjuntos = get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ClinicaAdjuntosApiRemota(it) },
+            archivos = getOrNull<ArchivoStore>(),
+        )
+    }
+    // `alCerrarSesion`: al cerrar sesión, los pedidos de enfermedades que ya salieron no reescriben la copia (E12).
+    // `backendsHc`: los backends con API (pediatría informa la licencia; clínica, de solo lectura, contesta «sin dato») para que el ingreso la consulte al
+    // servidor. Se resuelven sin pedir nada a la red; los backends no dependen de `AuthRepository`, así que no hay ciclo.
+    // `revocar` (RF-59): al cerrar sesión, en segundo plano, turnos y cada HC con API (hclinica y pediatría) olvidan el token.
+    single {
+        val enfermedades = get<EnfermedadesRepository>()
+        val turnos = get<TurnosOnlineClient>()
+        val clientes = get<HcApiClients>().porEspecialidad
         AuthRepository(
-            get(), get(), get(), get(), get<HcApiClients>().porEspecialidad,
+            get(), get(), turnos, get(), clientes, enfermedades::cerrarSesion,
+            revocar = listOf(RevocaSesion(turnos::cerrarSesion)) + clientes.values.map { RevocaSesion(it::salir) },
             backendsHc = get<HcBackends>().porEspecialidad,
         )
     }
     single { PacientesRepository(get()) }
-    single { HcRepository(get(), get<HcBackends>().porEspecialidad) }
+    // Con la cola de envío de la HC general: cerrar y anular una consulta propia piden el envío, y reabrir y anular miran si el cierre viaja.
+    single { HcRepository(get(), get<HcBackends>().porEspecialidad, get<HcClinicaEnvio>()) }
     single { AgendaTurnosOnline(get(), get()) }
     single { TurnosRepository(get(), get()) }
     single { AdminRepository(get(), get(), get<HcBackends>().porEspecialidad) }
+    // HC general (hclinica): configuración por perfiles, fuera de `HcBackends` (que solo lleva sus consultas, de la spec 002).
+    // Sin URL de hclinica en el entorno los dos se comportan como sin conexión.
+    single { ConfigHcRepository(get(), get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { ConfigHcApiRemota(it) }) }
+    single { PerfilesHcRepository(get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]) }
+    // Enfermedades de la HC general (spec 003): también fuera de `HcBackends`; nunca pasan por `HcApiSync` ni `SyncEngine`.
+    // El controlador de cada consulta lo arma su ViewModel con `PacientesHcRepository`.
+    single {
+        EnfermedadesRepository(
+            get(),
+            get<HcApiClients>().porEspecialidad[CodigosHc.GENERAL]?.let { EnfermedadesApiRemota(it) },
+            nombresHc[CodigosHc.GENERAL] ?: CodigosHc.GENERAL,
+        )
+    }
 }
+
+/** El id estable de este dispositivo (se crea la primera vez): lo usan el motor de turnos y los pedidos de escritura de la HC general. */
+private fun Settings.idDelDispositivo(): String =
+    getStringOrNull("dispositivo_id") ?: newId().also { putString("dispositivo_id", it) }

@@ -38,7 +38,10 @@ data class PerfilMedico(
     val medicoId: Id,
     /** Códigos de especialidad con historia clínica habilitada (ej. "pediatria", "gineco"). */
     val especialidades: List<String>,
-    /** El médico tiene agenda de turnos en el sistema. */
+    /**
+     * El administrador le dio agenda de turnos (dato `tiene_agenda` de turnosonlinebb; ver [Medico.tieneTurnos]).
+     * No significa que tenga horarios cargados ni consultorio: eso lo mira `AgendaDelMedico` aparte.
+     */
     val tieneTurnos: Boolean,
     /** Consultorio principal para la agenda. */
     val consultorioId: Id? = null,

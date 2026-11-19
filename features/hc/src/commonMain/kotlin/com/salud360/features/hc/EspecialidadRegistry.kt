@@ -1,6 +1,7 @@
 package com.salud360.features.hc
 
 import androidx.compose.runtime.Composable
+import com.salud360.core.model.especialidad.CatalogoHc
 import com.salud360.core.model.especialidad.EspecialidadDefinition
 import com.salud360.core.model.especialidad.SeccionDef
 
@@ -27,20 +28,33 @@ typealias SeccionRenderer = @Composable (SeccionDef, SeccionContext) -> Unit
 /**
  * Registro de historias clínicas disponibles. Cada módulo de `especialidades` aporta su
  * [EspecialidadDefinition] y, si hace falta, renderizadores de secciones a medida.
+ *
+ * La definición registrada es fija (nombre, `existe()`); la que arma el perfil del médico para la HC general la da
+ * [DefinicionesHc] a partir del [catalogo].
  */
-class EspecialidadRegistry(definiciones: List<EspecialidadDefinition>, renderers: Map<String, SeccionRenderer>) {
+class EspecialidadRegistry(
+    definiciones: List<EspecialidadDefinition>,
+    renderers: Map<String, SeccionRenderer>,
+    catalogos: Map<String, CatalogoHc> = emptyMap(),
+) {
     private val porCodigo = definiciones.associateBy { it.codigo }
     private val custom = renderers
+    private val catalogosPorCodigo = catalogos
 
     val todas: List<EspecialidadDefinition> get() = porCodigo.values.toList()
     fun definicion(codigo: String): EspecialidadDefinition? = porCodigo[codigo]
     fun nombre(codigo: String): String = porCodigo[codigo]?.nombre ?: codigo
     fun renderer(key: String): SeccionRenderer? = custom[key]
     fun existe(codigo: String) = codigo in porCodigo
+
+    /** Catálogo de secciones de una HC con perfiles (hoy solo la general), o null si es de definición fija. */
+    fun catalogo(codigo: String): CatalogoHc? = catalogosPorCodigo[codigo]
 }
 
 /** Aporte de un módulo de especialidad al registro. */
 data class EspecialidadContribution(
     val definicion: EspecialidadDefinition,
     val renderers: Map<String, SeccionRenderer> = emptyMap(),
+    /** Con catálogo, la definición de cada médico se arma con su perfil (HC general). */
+    val catalogo: CatalogoHc? = null,
 )

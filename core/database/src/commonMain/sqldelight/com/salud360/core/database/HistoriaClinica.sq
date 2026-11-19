@@ -1,3 +1,7 @@
+-- `propia` (última columna, por el upsert posicional; ver migración 9.sqm): marca de histórico/propio de la consulta
+-- (spec 005, RF-8). 0 = histórico o de la web, 1 = propia de la app. Sin comentarios dentro del CREATE TABLE después de
+-- `remoto_id`: los tests quitan la columna con DROP COLUMN para simular una base de la versión anterior y SQLite no
+-- reescribe bien la tabla si la columna a quitar tiene comentarios pegados.
 CREATE TABLE consulta (
     id TEXT NOT NULL PRIMARY KEY,
     paciente_id TEXT NOT NULL,
@@ -14,7 +18,8 @@ CREATE TABLE consulta (
     -- la consulta se abre en el dispositivo aunque no haya señal y se reconcilia después, y así el id
     -- local nunca cambia y nada que lo referencie se rompe. Va última porque el upsert es posicional
     -- (ver migración 3.sqm).
-    remoto_id TEXT NOT NULL DEFAULT ''
+    remoto_id TEXT NOT NULL DEFAULT '',
+    propia INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX consulta_paciente ON consulta(paciente_id, especialidad, fecha);
 
@@ -22,6 +27,13 @@ consultaPorId: SELECT * FROM consulta WHERE id = ? AND deleted = 0;
 consultasDePaciente: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
 consultasDePacienteTodas: SELECT * FROM consulta WHERE paciente_id = ? AND deleted = 0 AND estado != 'ANULADA' ORDER BY fecha DESC, updated_at DESC;
 consultaAbierta: SELECT * FROM consulta WHERE paciente_id = ? AND medico_id = ? AND especialidad = ? AND estado = 'ABIERTA' AND deleted = 0 ORDER BY updated_at DESC LIMIT 1;
+-- Solo las del dispositivo: sin `remoto_id` y sin el prefijo de lo traído de la web (`:prefijoWeb`, ver `PREFIJO_ID_WEB`).
+-- Para un backend de solo lectura, donde una abierta de la web no se retoma como propia. Sin cambio de tablas.
+consultaAbiertaLocal: SELECT * FROM consulta WHERE paciente_id = :pacienteId AND medico_id = :medicoId AND especialidad = :especialidad AND estado = 'ABIERTA' AND deleted = 0 AND trim(remoto_id) = '' AND instr(id, :prefijoWeb) <> 1 ORDER BY updated_at DESC LIMIT 1;
+-- La propia de la app (`propia = 1`, spec 005, RF-11) abierta del mismo paciente, médico, especialidad y tipo; enviada o no
+-- (RF-62). Nunca una del histórico ni una de la web: el prefijo `:prefijoWeb` (ver `PREFIJO_ID_WEB`) descarta lo que la lectura
+-- guardó, por si una fila trajera la marca. Sin cambio de tablas.
+consultaAbiertaPropia: SELECT * FROM consulta WHERE paciente_id = :pacienteId AND medico_id = :medicoId AND especialidad = :especialidad AND tipo = :tipo AND propia = 1 AND estado = 'ABIERTA' AND deleted = 0 AND instr(id, :prefijoWeb) <> 1 ORDER BY updated_at DESC LIMIT 1;
 ultimaConsulta: SELECT * FROM consulta WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND estado = 'CERRADA' ORDER BY fecha DESC, updated_at DESC LIMIT 1;
 contarConsultasMedico: SELECT COUNT(*) FROM consulta WHERE medico_id = ? AND fecha >= ? AND fecha <= ? AND deleted = 0 AND estado = 'CERRADA';
 upsertConsulta: INSERT OR REPLACE INTO consulta VALUES ?;
@@ -29,6 +41,8 @@ consultasDirty: SELECT * FROM consulta WHERE dirty = 1;
 limpiarConsulta: UPDATE consulta SET dirty = 0 WHERE id = ?;
 -- Vínculo con la API de la especialidad, una vez que la consulta se pudo crear allá.
 guardarRemotoId: UPDATE consulta SET remoto_id = ? WHERE id = ?;
+-- Marca la consulta como propia de la app (RF-8). Solo la marca: no toca `dirty` ni `updated_at`.
+marcarPropia: UPDATE consulta SET propia = 1 WHERE id = ?;
 consultaPorRemotoId: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = ? AND deleted = 0;
 consultasSinEnviar: SELECT * FROM consulta WHERE especialidad = ? AND remoto_id = '' AND deleted = 0;
 
@@ -59,6 +73,13 @@ JOIN consulta c ON c.id = sv.consulta_id
 WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.consulta_id != ?
   AND sv.deleted = 0 AND c.deleted = 0 AND c.estado != 'ANULADA'
 ORDER BY c.fecha DESC, c.updated_at DESC;
+-- Valor de un campo en cada consulta vigente del paciente (historial del motivo de la HC general); a diferencia de
+-- historialCampo, sin las anuladas. El orden y la fecha salen de consultasDePaciente.
+valoresDeCampoDePaciente:
+SELECT sv.consulta_id, sv.valor FROM seccion_valor sv
+JOIN consulta c ON c.id = sv.consulta_id
+WHERE c.paciente_id = ? AND c.especialidad = ? AND sv.seccion = ? AND sv.campo = ?
+  AND sv.deleted = 0 AND c.deleted = 0 AND c.estado != 'ANULADA';
 upsertSeccionValor: INSERT OR REPLACE INTO seccion_valor VALUES ?;
 seccionValoresDirty: SELECT * FROM seccion_valor WHERE dirty = 1;
 limpiarSeccionValor: UPDATE seccion_valor SET dirty = 0 WHERE consulta_id = ? AND seccion = ? AND campo = ?;
@@ -112,6 +133,9 @@ CREATE INDEX antecedente_paciente ON antecedente(paciente_id, especialidad, cate
 
 antecedentesDePaciente: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND deleted = 0 AND activo = 1;
 antecedentesDeCategoria: SELECT * FROM antecedente WHERE paciente_id = ? AND especialidad = ? AND categoria = ? AND deleted = 0 AND activo = 1;
+-- Spec 005, RF-68: un dato por paciente es propio, y puede viajar, solo si su `consulta_id` apunta a una consulta propia
+-- (`propia = 1`, no borrada y sin el prefijo `:prefijoWeb` de lo traído de la web). Con `:soloSucios = 1`, solo lo tocado. Sin cambio de tablas.
+antecedentesDeConsultasPropias: SELECT a.* FROM antecedente a JOIN consulta c ON c.id = a.consulta_id WHERE a.paciente_id = :pacienteId AND a.especialidad = :especialidad AND a.deleted = 0 AND a.activo = 1 AND c.propia = 1 AND c.deleted = 0 AND instr(c.id, :prefijoWeb) <> 1 AND (:soloSucios = 0 OR a.dirty = 1) ORDER BY a.updated_at, a.id;
 upsertAntecedente: INSERT OR REPLACE INTO antecedente VALUES ?;
 antecedentesDirty: SELECT * FROM antecedente WHERE dirty = 1;
 limpiarAntecedente: UPDATE antecedente SET dirty = 0 WHERE id = ?;
@@ -137,6 +161,8 @@ CREATE INDEX registro_paciente ON registro_clinico(paciente_id, especialidad, ti
 registrosDePaciente: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registrosDeConsulta: SELECT * FROM registro_clinico WHERE consulta_id = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 registroPorId: SELECT * FROM registro_clinico WHERE id = ? AND deleted = 0;
+-- Igual que `antecedentesDeConsultasPropias` (RF-68), para las filas de registro. Incluye las dadas de baja (`activo = 0`): la baja también viaja.
+registrosDeConsultasPropias: SELECT r.* FROM registro_clinico r JOIN consulta c ON c.id = r.consulta_id WHERE r.paciente_id = :pacienteId AND r.especialidad = :especialidad AND r.deleted = 0 AND c.propia = 1 AND c.deleted = 0 AND instr(c.id, :prefijoWeb) <> 1 AND (:soloSucios = 0 OR r.dirty = 1) ORDER BY r.updated_at, r.id;
 -- Todos los del paciente en la especialidad, sin filtrar por tipo ni por activo: para emparejar con
 -- lo que devuelve la API de la especialidad, que también informa los dados de baja.
 registrosDePacienteTodos: SELECT * FROM registro_clinico WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;
@@ -156,15 +182,22 @@ CREATE TABLE laboratorio (
     activo INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX laboratorio_paciente ON laboratorio(paciente_id, especialidad, tipo, fecha);
 
-laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC;
+laboratoriosDePaciente: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND tipo = ? AND deleted = 0 AND activo = 1 ORDER BY fecha DESC, updated_at DESC;
 laboratorioPorId: SELECT * FROM laboratorio WHERE id = ? AND deleted = 0;
+-- Todas las cargas del paciente, de cualquier tipo: la lectura de la HC general las compara con lo que la web sigue mandando
+-- (marcas "Ya no figura en la web"). Solo lectura: no cambia el esquema.
+laboratoriosDePacienteTodos: SELECT * FROM laboratorio WHERE paciente_id = ? AND especialidad = ? AND deleted = 0;
 upsertLaboratorio: INSERT OR REPLACE INTO laboratorio VALUES ?;
 laboratoriosDirty: SELECT * FROM laboratorio WHERE dirty = 1;
 limpiarLaboratorio: UPDATE laboratorio SET dirty = 0 WHERE id = ?;
+-- Id de la carga en la web (spec 005, RF-41, D8; migración 10.sqm). Vacío mientras no se envió.
+laboratorioPorRemotoId: SELECT * FROM laboratorio WHERE remoto_id = ? AND deleted = 0;
+guardarRemotoIdLaboratorio: UPDATE laboratorio SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE archivo (
     id TEXT NOT NULL PRIMARY KEY,
@@ -211,6 +244,14 @@ WHERE dirty = 1 AND deleted = 0
 ORDER BY updated_at ASC;
 guardarRemotoIdArchivo: UPDATE archivo SET remoto_id = ? WHERE id = ?;
 
+-- Los adjuntos tocados de **una** consulta (altas y bajas: un `activo = 0` también viaja). No lleva los `consulta_id` NULL
+-- por paciente que `archivosPendientesDeConsulta` toma para el envío de la especialidad: en la HC general un documento sin
+-- consulta no viaja (RF-46, T103). Solo es otra consulta sobre `archivo`: el esquema no cambia.
+archivosDeConsultaPropia:
+SELECT * FROM archivo
+WHERE consulta_id = :consultaId AND dirty = 1 AND deleted = 0
+ORDER BY updated_at ASC;
+
 CREATE TABLE pendiente (
     id TEXT NOT NULL PRIMARY KEY,
     paciente_id TEXT NOT NULL,
@@ -220,14 +261,23 @@ CREATE TABLE pendiente (
     resuelto INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0
+    dirty INTEGER NOT NULL DEFAULT 0,
+    remoto_id TEXT NOT NULL DEFAULT ''
 );
 
 pendientesDePaciente: SELECT * FROM pendiente WHERE paciente_id = ? AND medico_id = ? AND resuelto = 0 AND deleted = 0 ORDER BY updated_at DESC;
+-- Un pendiente por su id, resuelto o no (el del médico que sea): la lectura de la HC general lo compara antes de escribirlo.
+-- Solo cambia el `.sq`, no el esquema.
+pendientePorId: SELECT * FROM pendiente WHERE id = ? AND deleted = 0;
+-- Todos los pendientes del paciente, de cualquier médico, resueltos o no (misma razón y misma salvedad que laboratoriosDePacienteTodos).
+pendientesDePacienteTodos: SELECT * FROM pendiente WHERE paciente_id = ? AND deleted = 0;
 contarPendientesDeMedico: SELECT COUNT(*) FROM pendiente WHERE medico_id = ? AND resuelto = 0 AND deleted = 0;
 upsertPendiente: INSERT OR REPLACE INTO pendiente VALUES ?;
 pendientesDirty: SELECT * FROM pendiente WHERE dirty = 1;
 limpiarPendiente: UPDATE pendiente SET dirty = 0 WHERE id = ?;
+-- Id del texto único de la consulta en la web (spec 005, RF-43, D8; migración 10.sqm): lo lleva la fila portadora.
+pendientePorRemotoId: SELECT * FROM pendiente WHERE remoto_id = ? AND deleted = 0;
+guardarRemotoIdPendiente: UPDATE pendiente SET remoto_id = ? WHERE id = ?;
 
 CREATE TABLE diagnostico (
     id TEXT NOT NULL PRIMARY KEY,
@@ -317,3 +367,11 @@ preferenciasDeMedico: SELECT * FROM medico_preferencia WHERE medico_id = ? AND d
 upsertPreferencia: INSERT OR REPLACE INTO medico_preferencia VALUES ?;
 preferenciasDirty: SELECT * FROM medico_preferencia WHERE dirty = 1;
 limpiarPreferencia: UPDATE medico_preferencia SET dirty = 0 WHERE medico_id = ? AND clave = ?;
+-- Los nombres de los médicos de la web (`hcc-m<id>`, clave `nombre`) para «Cargada por …» (spec 002, E7.2). Solo lectura: no cambia el esquema.
+nombresDeMedicosWeb: SELECT * FROM medico_preferencia WHERE medico_id LIKE 'hcc-m%' AND clave = 'nombre' AND deleted = 0;
+
+-- Qué se cargó en una consulta, para saber qué secciones tienen datos en ella (HC general, bloque de solo
+-- lectura). Lo que es del paciente (sin consulta) no entra. Solo lectura: no cambia el esquema.
+tiposRegistroDeConsulta: SELECT DISTINCT tipo FROM registro_clinico WHERE consulta_id = ? AND deleted = 0 AND activo = 1;
+tiposLaboratorioDeConsulta: SELECT DISTINCT tipo FROM laboratorio WHERE consulta_id = ? AND deleted = 0 AND activo = 1;
+seccionesArchivoDeConsulta: SELECT DISTINCT seccion FROM archivo WHERE consulta_id = ? AND deleted = 0 AND activo = 1;

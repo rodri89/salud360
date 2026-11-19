@@ -1,5 +1,7 @@
 package com.salud360.core.data.mappers
 
+import com.salud360.core.data.hcgeneral.normalizarCodigoHc
+import com.salud360.core.data.hcgeneral.normalizarHistoriasClinicas
 import com.salud360.core.database.Antecedente as AntecedenteRow
 import com.salud360.core.database.Archivo as ArchivoRow
 import com.salud360.core.database.Config_agenda as ConfigAgendaRow
@@ -107,7 +109,8 @@ fun Usuario.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = tr
 
 fun MedicoRow.toModel() = Medico(
     id, usuario_id, nombre, apellido, telefono, mail, sexo, foto, consultorio_id, especialidad_id,
-    especialidades_hc.splitCsv(), tiene_turnos.b(), visible_en_turnos.b(), activo.b(),
+    // `hepatologia` (turnos todavía la informa) es la HC general: se lee así en toda la app (RF-29).
+    normalizarHistoriasClinicas(especialidades_hc.splitCsv()), tiene_turnos.b(), visible_en_turnos.b(), activo.b(),
 )
 fun Medico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = MedicoRow(
     id, usuarioId, nombre, apellido, telefono, mail, sexo, foto, consultorioId, especialidadId,
@@ -118,7 +121,7 @@ fun SecretariaRow.toModel() = Secretaria(id, usuario_id, nombre, apellido, consu
 fun Secretaria.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     SecretariaRow(id, usuarioId, nombre, apellido, consultorioIds.joinCsv(), medicoIds.joinCsv(), activo.l(), updatedAt, deleted.l(), dirty.l())
 
-fun EspecialidadRow.toModel() = EspecialidadTurnos(id, nombre, codigo_hc, color, activo.b())
+fun EspecialidadRow.toModel() = EspecialidadTurnos(id, nombre, normalizarCodigoHc(codigo_hc), color, activo.b())
 fun EspecialidadTurnos.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     EspecialidadRow(id, nombre, codigoHc, color, activo.l(), updatedAt, deleted.l(), dirty.l())
 
@@ -160,11 +163,11 @@ fun MedicoPaciente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boole
 
 fun ConsultaRow.toModel() = Consulta(
     id, paciente_id, medico_id, especialidad, tipo, LocalDate.parse(fecha), EstadoConsulta.valueOf(estado), edad_mostrar,
-    Instant.fromEpochMilliseconds(updated_at), remoto_id,
+    Instant.fromEpochMilliseconds(updated_at), remoto_id, propia != 0L,
 )
-// Posicional: `remotoId` va último porque es la última columna de la tabla (ver HistoriaClinica.sq).
+// Posicional: `propia` va último porque es la última columna de la tabla (ver HistoriaClinica.sq).
 fun Consulta.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l(), remotoId)
+    ConsultaRow(id, pacienteId, medicoId, especialidad, tipo, fecha.toString(), estado.name, edadMostrar, updatedAt, deleted.l(), dirty.l(), remotoId, propia.l())
 
 fun SeccionValorRow.toModel() = SeccionValor(consulta_id, seccion, campo, valor)
 fun SeccionValor.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
@@ -187,17 +190,19 @@ fun RegistroRow.toModel() = RegistroClinico(id, paciente_id, consulta_id, especi
 fun RegistroClinico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     RegistroRow(id, pacienteId, consultaId, especialidad, tipo, fecha?.toString(), campos.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
-fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especialidad, tipo, LocalDate.parse(fecha), valores_json.toStringMap(), activo.b())
+fun LaboratorioRow.toModel() = Laboratorio(id, paciente_id, consulta_id, especialidad, tipo, LocalDate.parse(fecha), valores_json.toStringMap(), activo.b(), remoto_id)
+// Posicional: `remoto_id` va último porque es la última columna de la tabla (ver HistoriaClinica.sq y la migración 10.sqm).
 fun Laboratorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    LaboratorioRow(id, pacienteId, consultaId, especialidad, tipo, fecha.toString(), valores.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l())
+    LaboratorioRow(id, pacienteId, consultaId, especialidad, tipo, fecha.toString(), valores.toJsonText(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun ArchivoRow.toModel() = Archivo(id, paciente_id, consulta_id, registro_id, seccion, nombre, mime, tamanio_bytes, duracion_ms, ruta_local, url_remota, subido.b(), activo.b(), remoto_id)
 fun Archivo.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
     ArchivoRow(id, pacienteId, consultaId, registroId, seccion, nombre, mime, tamanioBytes, duracionMs, rutaLocal, urlRemota, subido.l(), activo.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
-fun PendienteRow.toModel() = Pendiente(id, paciente_id, medico_id, texto, consulta_id, resuelto.b())
+fun PendienteRow.toModel() = Pendiente(id, paciente_id, medico_id, texto, consulta_id, resuelto.b(), remoto_id)
+// Posicional: `remoto_id` va último porque es la última columna de la tabla (ver HistoriaClinica.sq y la migración 10.sqm).
 fun Pendiente.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
-    PendienteRow(id, pacienteId, medicoId, texto, consultaId, resuelto.l(), updatedAt, deleted.l(), dirty.l())
+    PendienteRow(id, pacienteId, medicoId, texto, consultaId, resuelto.l(), updatedAt, deleted.l(), dirty.l(), remotoId)
 
 fun DiagnosticoRow.toModel() = Diagnostico(id, medico_id, nombre, activo.b())
 fun Diagnostico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) =
@@ -228,9 +233,10 @@ fun Consultorio.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean 
 fun HorarioRow.toModel() = HorarioMedico(
     id, medico_id, consultorio_id, dia.toDayOfWeek(), horario.toLocalTime(), doble.b(), TipoTurno.porCodigo(tipo_turno.toInt()),
     valido_desde.toLocalDateOrNull(), valido_hasta.toLocalDateOrNull(), activo.b(), quincenal.b(),
+    tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipo_turno.toInt()),
 )
 fun HorarioMedico.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = HorarioRow(
-    id, medicoId, consultorioId, dia.toNumero(), horario.hhmm(), doble.l(), tipoTurno.codigo.toLong(),
+    id, medicoId, consultorioId, dia.toNumero(), horario.hhmm(), doble.l(), codigoDeTipo.toLong(),
     validoDesde?.toString(), validoHasta?.toString(), activo.l(), updatedAt, deleted.l(), dirty.l(), quincenal.l(),
 )
 
@@ -246,9 +252,10 @@ fun TurnoRow.toModel() = Turno(
     id, paciente_id, medico_id, consultorio_id, LocalDate.parse(fecha), horario.toLocalTime(), TipoTurno.porCodigo(tipo_turno.toInt()),
     EstadoTurno.valueOf(estado), Asistencia.valueOf(asistencia), sobreturno.b(), primer_control.b(), caja, comentario, otorgado_por,
     cancelado_por, recordatorio_enviado.b(), pagado.b(), importe_reserva, especialidad, paciente_nombre, paciente_dni, paciente_telefono, paciente_obra_social,
+    tipoCodigo = TipoTurno.codigoSiNoEsDelEnum(tipo_turno.toInt()),
 )
 fun Turno.toRow(updatedAt: Long, deleted: Boolean = false, dirty: Boolean = true) = TurnoRow(
-    id, pacienteId, medicoId, consultorioId, fecha.toString(), horario.hhmm(), tipoTurno.codigo.toLong(), estado.name, asistencia.name,
+    id, pacienteId, medicoId, consultorioId, fecha.toString(), horario.hhmm(), codigoDeTipo.toLong(), estado.name, asistencia.name,
     sobreturno.l(), primerControl.l(), caja, comentario, otorgadoPor, canceladoPor, recordatorioEnviado.l(), pagado.l(), importeReserva,
     especialidad, pacienteNombre, pacienteDni, pacienteTelefono, pacienteObraSocial, updatedAt, deleted.l(), dirty.l(),
 )

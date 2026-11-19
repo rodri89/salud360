@@ -27,5 +27,8 @@ tasks.withType<Test>().configureEach {
         "salud360.test.hc.pediatria", "salud360.test.hc.token", "salud360.test.hc.paciente",
         "salud360.test.hc.dni", "salud360.test.hc.nombre", "salud360.test.hc.apellido",
         "salud360.test.hc.token.admin",
+        "salud360.test.hc.clinica", "salud360.test.hc.clinica.token", "salud360.test.hc.clinica.token.admin",
+        "salud360.test.hc.clinica.ficha", "salud360.test.hc.clinica.ficha.ajena", "salud360.test.hc.clinica.consultas.ocultas",
+        "salud360.test.hc.clinica.consulta.ajena",
     ).forEach { clave -> providers.gradleProperty(clave).orNull?.let { systemProperty(clave, it) } }
 }

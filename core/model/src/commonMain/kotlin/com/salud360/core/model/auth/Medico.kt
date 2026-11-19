@@ -19,8 +19,18 @@ data class Medico(
     val especialidadId: Id? = null,
     /** Códigos de las historias clínicas habilitadas. */
     val especialidadesHc: List<String> = emptyList(),
+    /**
+     * Tiene agenda de turnos: es una decisión del administrador que informa turnosonlinebb (`tiene_agenda`), no
+     * «tiene horarios cargados» ni «tiene consultorio». Si el servidor no la informa se usa `tiene_horarios` como
+     * respaldo. Quién ve qué a partir de este dato está en `AgendaDelMedico` (`core:data`). El dueño es turnos:
+     * se escribe con `PUT medicos/{id}/agenda` y la copia no queda `dirty`.
+     */
     val tieneTurnos: Boolean = false,
-    /** Se muestra al público en la web de turnos. */
+    /**
+     * Se ofrece al paciente para pedir turno en la web (`visible_en_turnos` de turnos). Lo informa turnosonlinebb
+     * junto con [tieneTurnos] y se escribe por el mismo `PUT`; sin agenda no puede estar prendido. Si el servidor
+     * no lo informa se conserva el valor previo del dispositivo.
+     */
     val visibleEnTurnos: Boolean = true,
     val activo: Boolean = true,
 ) {

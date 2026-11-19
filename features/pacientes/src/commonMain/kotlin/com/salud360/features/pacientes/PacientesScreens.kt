@@ -2,6 +2,7 @@ package com.salud360.features.pacientes
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Edit
@@ -88,15 +90,16 @@ import org.koin.core.parameter.parametersOf
 @Composable
 fun PacientesListScreen(
     medicoId: Id?,
+    traerCarteras: Boolean,
     onAbrir: (Paciente) -> Unit,
     onNuevo: () -> Unit,
     titulo: String = "Pacientes",
-    vm: PacientesListViewModel = koinViewModel(key = "pacientes-$medicoId") { parametersOf(medicoId) },
+    vm: PacientesListViewModel = koinViewModel(key = "pacientes-$medicoId-$traerCarteras") { parametersOf(medicoId, traerCarteras) },
 ) {
     val lista by vm.lista.collectAsState()
     val busqueda by vm.busqueda.collectAsState()
     val cargandoCartera by vm.cargandoCartera.collectAsState()
-    val mensaje by vm.mensaje.collectAsState()
+    val motivos by vm.motivos.collectAsState()
     val total by vm.total.collectAsState()
     val hayMas by vm.hayMas.collectAsState()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -117,9 +120,9 @@ fun PacientesListScreen(
             ScreenTitle(titulo, if (hayMas) "$total pacientes · mostrando ${lista.size}" else "$total pacientes")
             SearchBar(value = busqueda, onValueChange = { vm.busqueda.value = it })
             Spacer(Modifier.height(12.dp))
-            // El aviso va antes de la lista y no en lugar de ella: puede haber pacientes viejos en el
-            // dispositivo y aun así no haberse podido traer los de la historia clínica.
-            mensaje?.let { texto ->
+            // Los avisos van antes de la lista y no en lugar de ella: puede haber pacientes viejos en el
+            // dispositivo y aun así no haberse podido traer los de una historia clínica.
+            motivos.forEach { texto ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
                     Icon(Icons.Default.CloudOff, contentDescription = null, tint = Salud360Colors.Warning)
                     Text(texto, style = MaterialTheme.typography.bodyMedium)
@@ -128,7 +131,11 @@ fun PacientesListScreen(
             if (lista.isEmpty() && cargandoCartera) {
                 LoadingIndicator(text = "Cargando pacientes...")
             } else if (lista.isEmpty()) {
-                EmptyState(if (busqueda.isBlank()) "Todavía no hay pacientes cargados" else "No se encontraron pacientes", icon = Icons.Default.PersonSearch)
+                // Sin búsqueda y con motivos, los motivos de arriba ya dicen por qué está vacía: "no hay pacientes"
+                // haría creer que el médico no tiene ninguno.
+                if (busqueda.isNotBlank() || motivos.isEmpty()) {
+                    EmptyState(textoListaVacia(medicoId, busqueda), icon = Icons.Default.PersonSearch)
+                }
             } else {
                 LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(lista, key = { it.id }) { p -> PacienteItem(p, onClick = { onAbrir(p) }) }
@@ -141,6 +148,16 @@ fun PacientesListScreen(
             }
         }
     }
+}
+
+/**
+ * La lista de un médico (o de la secretaria con su médico) son solo sus pacientes asociados: por eso una lista vacía
+ * no quiere decir que no haya pacientes en el sistema, y se explica cómo se suman.
+ */
+private fun textoListaVacia(medicoId: Id?, busqueda: String): String = when {
+    medicoId == null -> if (busqueda.isBlank()) "Todavía no hay pacientes cargados" else "No se encontraron pacientes"
+    busqueda.isBlank() -> "No hay pacientes asociados. Creá uno nuevo con el botón + o dales un turno."
+    else -> "No se encontraron pacientes entre los asociados. Para sumar uno nuevo usá el botón +."
 }
 
 @Composable
@@ -195,6 +212,14 @@ fun PacienteFormScreen(
         val ancho = maxWidth >= 840.dp
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ScreenTitle(if (pacienteId == null) "Nuevo paciente" else "Actualizar paciente")
+
+            state.avisoExistente?.let { aviso ->
+                PlainCard {
+                    Text(aviso, fontWeight = FontWeight.SemiBold)
+                    Text("Los datos que ves son los que ya tenía el sistema; lo que escribiste no los pisó.", style = MaterialTheme.typography.bodyMedium)
+                    ActionRow { AcceptButton("Ver ficha", onClick = { onGuardado(p) }) }
+                }
+            }
 
             state.existente?.let { e ->
                 PlainCard {
@@ -265,7 +290,10 @@ fun PacienteFormScreen(
 
             ActionRow {
                 BackButton(onClick = onVolver)
-                PillButton(if (state.guardando) "Guardando..." else "Guardar", onClick = { vm.guardar(onGuardado) }, enabled = !state.guardando)
+                // Si el paciente ya existía no hay nada más que guardar (salvo reintentar un aviso de turnos): se pasa a «Ver ficha».
+                if (state.avisoExistente == null || state.avisoRemoto != null) {
+                    PillButton(if (state.guardando) "Guardando..." else "Guardar", onClick = { vm.guardar(onGuardado) }, enabled = !state.guardando)
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -282,6 +310,7 @@ fun PacienteDetalleScreen(
     medicoId: Id,
     onEditar: () -> Unit,
     onAbrirHc: (especialidad: String) -> Unit,
+    onNuevaConsulta: (especialidad: String) -> Unit,
     onVerConsulta: (Consulta) -> Unit,
     onNuevoTurno: (() -> Unit)?,
     onVolver: () -> Unit,
@@ -345,8 +374,18 @@ fun PacienteDetalleScreen(
         }
 
         if (especialidadesDisponibles.isNotEmpty()) SectionCard("Historia clínica", icon = Icons.Default.FolderOpen, collapsible = false) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                especialidadesDisponibles.forEach { (codigo, nombre) -> PillButton(nombre, onClick = { onAbrirHc(codigo) }) }
+            if (especialidadesDisponibles.size == 1) {
+                // Una sola historia clínica: no hay nada que elegir, el botón lleva directo a elegir el tipo de consulta nueva.
+                val (codigo, _) = especialidadesDisponibles.first()
+                PillButton("Nueva consulta", icon = Icons.Default.Add, onClick = { onNuevaConsulta(codigo) })
+            } else {
+                Text(
+                    "Seleccioná la historia clínica que deseás trabajar",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    especialidadesDisponibles.forEach { (codigo, nombre) -> PillButton(nombre, onClick = { onAbrirHc(codigo) }) }
+                }
             }
             if (consultas.isEmpty()) Text("Sin consultas registradas", color = MaterialTheme.colorScheme.onSurfaceVariant)
             consultas.take(10).forEach { c ->

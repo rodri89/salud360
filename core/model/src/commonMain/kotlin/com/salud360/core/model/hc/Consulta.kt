@@ -31,6 +31,11 @@ data class Consulta(
      * devuelve su id y se guarda acá. El id local no cambia nunca.
      */
     val remotoId: String = "",
+    /**
+     * `true` si la consulta es propia de la app (HC general, creada con el envío habilitado, RF-8); `false` si es del
+     * histórico del dispositivo o viene de la web. Persiste en la base: sobrevive a cerrar la app y a actualizarla.
+     */
+    val propia: Boolean = false,
 )
 
 @Serializable
@@ -142,6 +147,8 @@ data class Laboratorio(
     val fecha: LocalDate,
     val valores: Map<String, String> = emptyMap(),
     val activo: Boolean = true,
+    /** Id de esta carga en la web (vacío mientras no se envió). Va último: el `upsert` es posicional (migración `10.sqm`). */
+    val remotoId: String = "",
 )
 
 /** Archivo adjunto: imagen, PDF o audio. Puede estar en el dispositivo (offline) y/o en el servidor. */
@@ -178,6 +185,8 @@ data class Pendiente(
     val texto: String,
     val consultaId: Id? = null,
     val resuelto: Boolean = false,
+    /** Id del texto único de la consulta en la web (vacío mientras no se envió): lo lleva la fila portadora (migración `10.sqm`). */
+    val remotoId: String = "",
 )
 
 /** Diagnóstico del catálogo del médico (HC hematología) asociado a una consulta. */

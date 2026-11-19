@@ -1,9 +1,23 @@
 package com.salud360.features.turnos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.graphics.Color
+import com.salud360.core.data.repos.hoy
+import com.salud360.core.ui.components.CalendarioDialog
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,15 +65,24 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salud360.core.data.repos.ResultadoTurno
+import com.salud360.core.data.repos.TEXTO_SIN_ESPECIFICAR
+import com.salud360.core.data.repos.avisoDeTurnoRegistrado
+import com.salud360.core.data.repos.ayudaDeOpcion
+import com.salud360.core.data.repos.codigosDelDia
+import com.salud360.core.data.repos.etiquetaCorta
+import com.salud360.core.data.repos.etiquetaDelTipo
+import com.salud360.core.data.repos.etiquetaDelTipoDelTurno
+import com.salud360.core.data.repos.etiquetaVisibleDelTipo
+import com.salud360.core.data.repos.slotDelHorario
 import com.salud360.core.model.Id
 import com.salud360.core.model.pacientes.Paciente
 import com.salud360.core.model.turnos.Asistencia
 import com.salud360.core.model.turnos.EstadoTurno
+import com.salud360.core.model.turnos.OpcionTipoTurno
 import com.salud360.core.model.turnos.SlotAgenda
 import com.salud360.core.model.turnos.TipoTurno
 import com.salud360.core.model.turnos.Turno
 import com.salud360.core.ui.components.AcceptButton
-import com.salud360.core.ui.components.BackButton
 import com.salud360.core.ui.components.ConfirmDialog
 import com.salud360.core.ui.components.DateField
 import com.salud360.core.ui.components.EmptyState
@@ -132,7 +155,9 @@ fun ResultadoTurno.mensaje(): String = when (this) {
 /** Fila de la agenda del día: un turno ya asignado (o bloqueado) o un horario libre para asignar. */
 private sealed interface FilaAgendaDia {
     data class ConTurno(val turno: Turno) : FilaAgendaDia
-    data class Libre(val horario: LocalTime) : FilaAgendaDia
+    data class Libre(val slot: SlotAgenda) : FilaAgendaDia {
+        val horario: LocalTime get() = slot.horario
+    }
 }
 
 /**
@@ -164,7 +189,8 @@ fun AgendaDiaScreen(
 
     val turnosDia = state.turnosDelDia.filter { it.estado != EstadoTurno.CANCELADO }
     val horariosConTurno = turnosDia.map { it.horario }.toSet()
-    val libres = slots.filter { it.libre && it.horario !in horariosConTurno }.map { it.horario }
+    val libres = slots.filter { it.libre && it.horario !in horariosConTurno }
+    val codigosDia = codigosDelDia(slots, turnosDia)
     val filas: List<FilaAgendaDia> = (turnosDia.map { FilaAgendaDia.ConTurno(it) } + libres.map { FilaAgendaDia.Libre(it) })
         .sortedBy { when (it) { is FilaAgendaDia.ConTurno -> it.turno.horario; is FilaAgendaDia.Libre -> it.horario } }
 
@@ -173,29 +199,12 @@ fun AgendaDiaScreen(
             fotoMedico()
             ScreenTitle("Agenda del día", tituloMedico)
         } else ScreenTitle("Agenda del día", tituloMedico)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::diaAnterior) { Icon(Icons.Default.ChevronLeft, contentDescription = "Día anterior") }
-            DateField("Fecha", state.fecha, { it?.let(vm::irA) }, Modifier.width(200.dp))
-            IconButton(onClick = vm::diaSiguiente) { Icon(Icons.Default.ChevronRight, contentDescription = "Día siguiente") }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Text(state.fecha.dayOfWeek.nombre(), fontWeight = FontWeight.SemiBold)
-            if (state.esFeriado) { Spacer(Modifier.width(8.dp)); StatusChip("Feriado", Salud360Colors.Danger) }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            AcceptButton("Sobreturno", onClick = { sobreturno = true })
-            BackButton("Ver semana", onClick = onVerSemana)
-        }
-        if (state.conCaja) {
-            val totalCaja = turnosDia.filter { it.estado != EstadoTurno.BLOQUEADO }.sumOf { it.caja }
-            Text("Caja del día: $ ${totalCaja.aImporte()}", fontWeight = FontWeight.SemiBold, color = Salud360Colors.SuccessDark, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-        if (state.proximasFechas.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(
-            Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("Próximas fechas disponibles:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
-            state.proximasFechas.forEach { d -> androidx.compose.material3.AssistChip(onClick = { vm.irA(d) }, label = { Text(d.conDia()) }) }
-        }
+        BarraAgendaDia(
+            fecha = state.fecha, esFeriado = state.esFeriado, proximasFechas = state.proximasFechas,
+            totalCaja = if (state.conCaja) turnosDia.filter { it.estado != EstadoTurno.BLOQUEADO }.sumOf { it.caja } else null,
+            onIrA = vm::irA, onAnterior = vm::diaAnterior, onSiguiente = vm::diaSiguiente,
+            onSobreturno = { sobreturno = true }, onVerSemana = onVerSemana,
+        )
         state.turnoAModificar?.let { BannerModificacion(it, onCancelar = vm::cancelarModificacion) }
         aviso?.let { Text(it, color = if (it.startsWith("Turno registrado") || it.startsWith("Turno movido") || it == "Horario bloqueado") Salud360Colors.SuccessDark else MaterialTheme.colorScheme.error) }
         state.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -208,10 +217,15 @@ fun AgendaDiaScreen(
                     is FilaAgendaDia.ConTurno -> TurnoCard(fila.turno, conCaja = state.conCaja, onAsistencia = { vm.asistencia(fila.turno, it) }, onCaja = { vm.caja(fila.turno, it) }, onComentario = { vm.comentario(fila.turno, it) },
                         onCancelar = { cancelar = fila.turno }, onAbrirPaciente = fila.turno.pacienteId?.let { id -> onAbrirPaciente?.let { f -> { f(id) } } },
                         onModificar = if (puedeModificar && fila.turno.pacienteId != null && modificando?.id != fila.turno.id) ({ vm.iniciarModificacion(fila.turno) }) else null,
-                        paciente = fila.turno.pacienteId?.let { state.pacientesDelDia[it] })
-                    is FilaAgendaDia.Libre ->
-                        if (modificando != null) SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotMover = fila.horario }, etiqueta = "Mover acá")
-                        else SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotLibre = fila.horario }, onBloquear = { slotBloquear = fila.horario })
+                        paciente = fila.turno.pacienteId?.let { state.pacientesDelDia[it] },
+                        etiquetaTipo = etiquetaDelTipoDelTurno(fila.turno.codigoDeTipo, state.nombresDeTipos, state.tiposDelMedico))
+                    is FilaAgendaDia.Libre -> {
+                        val codigo = fila.slot.codigoDeTipo
+                        val tipo = etiquetaVisibleDelTipo(codigo, codigosDia, state.nombresDeTipos[codigo])
+                        val colorTipo = fila.slot.tipoTurno.color()
+                        if (modificando != null) SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotMover = fila.horario }, etiqueta = "Mover acá", tipo = tipo, colorTipo = colorTipo)
+                        else SlotCardLibre(fila.horario.hhmm(), onAsignar = { slotLibre = fila.horario }, onBloquear = { slotBloquear = fila.horario }, tipo = tipo, colorTipo = colorTipo)
+                    }
                 }
             }
         }
@@ -220,10 +234,10 @@ fun AgendaDiaScreen(
     slotMover?.let { h ->
         state.turnoAModificar?.let { t -> ConfirmarMoverDialog(vm, t, state.fecha, h, onCerrar = { slotMover = null }, onAviso = { aviso = it }) } ?: run { slotMover = null }
     }
-    if (sobreturno) SobreturnoDialog(vm, state.fecha, onCerrar = { sobreturno = false }, onAviso = { aviso = it })
+    if (sobreturno) SobreturnoDialog(vm, state.fecha, slots, onCerrar = { sobreturno = false }, onAviso = { aviso = it })
     slotBloquear?.let { h ->
         ConfirmDialog("Bloquear horario", "¿Bloquear el ${state.fecha.conDia()} a las ${h.hhmm()}? Nadie va a poder reservarlo hasta que lo liberes.",
-            onConfirm = { vm.bloquear(state.fecha, h) { r -> aviso = r.mensajeBloqueo() }; slotBloquear = null }, onDismiss = { slotBloquear = null }, confirmText = "Bloquear", destructive = true)
+            onConfirm = { vm.bloquear(state.fecha, h, slotDelHorario(slots, h)) { r -> aviso = r.mensajeBloqueo() }; slotBloquear = null }, onDismiss = { slotBloquear = null }, confirmText = "Bloquear", destructive = true)
     }
     cancelar?.let { t ->
         ConfirmDialog("Cancelar turno", "¿Cancelar el turno de ${t.pacienteNombre.ifBlank { "este horario" }} a las ${t.horario.hhmm()}?",
@@ -234,7 +248,62 @@ fun AgendaDiaScreen(
         val idx = ordenados.indexOfFirst { it.horario == h }
         val siguiente = ordenados.getOrNull(idx + 1)?.takeIf { it.libre && it.horario !in horariosConTurno }?.horario
         val doble = ordenados.getOrNull(idx)?.doble ?: false
-        AsignarTurnoDialog(vm, state.fecha, h, siguiente, primerControlDoble = state.primerControlDoble && doble, onCerrar = { slotLibre = null }, onAviso = { aviso = it })
+        AsignarTurnoDialog(vm, state.fecha, h, siguiente, primerControlDoble = state.primerControlDoble && doble, onCerrar = { slotLibre = null }, onAviso = { aviso = it }, slot = ordenados.getOrNull(idx))
+    }
+}
+
+/**
+ * Barra compacta de la agenda del día (1 o 2 líneas; envuelve en ancho angosto): navegación de fecha, «Sobreturno»,
+ * «Ver semana» y el total de la caja contra la derecha (solo si el médico usa caja); debajo, las próximas fechas con turno libre.
+ * Solo dispone los controles: cada acción sigue siendo la del [AgendaViewModel].
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BarraAgendaDia(
+    fecha: LocalDate, esFeriado: Boolean, proximasFechas: List<LocalDate>, totalCaja: Double?,
+    onIrA: (LocalDate) -> Unit, onAnterior: () -> Unit, onSiguiente: () -> Unit, onSobreturno: () -> Unit, onVerSemana: () -> Unit,
+) {
+    var calendario by remember { mutableStateOf(false) }
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onAnterior, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.ChevronLeft, contentDescription = "Día anterior") }
+            // El texto de la fecha abre el calendario (antes era el campo «Fecha» con su ícono).
+            TextButton(onClick = { calendario = true }) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha", modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(fecha.conDia(), fontWeight = FontWeight.SemiBold)
+            }
+            IconButton(onClick = onSiguiente, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.ChevronRight, contentDescription = "Día siguiente") }
+            if (fecha != hoy()) TextButton(onClick = { onIrA(hoy()) }) { Text("Hoy") }
+        }
+        if (esFeriado) StatusChip("Feriado", Salud360Colors.Danger)
+        BotonBarra("Sobreturno", Icons.Default.Add, Salud360Colors.Success, Salud360Colors.SuccessDark, onSobreturno)
+        BotonBarra("Ver semana", Icons.Default.ViewWeek, Salud360Colors.Grey, MaterialTheme.colorScheme.onSurfaceVariant, onVerSemana)
+        // La caja va contra el borde derecho; si no entra en la línea, pasa a la siguiente y sigue alineada a la derecha.
+        if (totalCaja != null) Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            StatusChip("Caja del día: $ ${totalCaja.aImporte()}", Salud360Colors.SuccessDark)
+        }
+    }
+    if (proximasFechas.isNotEmpty()) FlowRow(
+        Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Próximas fechas disponibles:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+        proximasFechas.forEach { d -> androidx.compose.material3.AssistChip(onClick = { onIrA(d) }, label = { Text(d.conDia()) }) }
+    }
+    if (calendario) CalendarioDialog(inicial = fecha, onElegida = { d -> d?.let(onIrA) }, onCerrar = { calendario = false })
+}
+
+/** Botón de la barra de la agenda: contorno de color, ícono y texto corto, más bajo que los botones de acción de los formularios. */
+@Composable
+private fun BotonBarra(texto: String, icono: androidx.compose.ui.graphics.vector.ImageVector, borde: Color, contenido: Color, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick, modifier = Modifier.height(36.dp), shape = CircleShape,
+        border = BorderStroke(1.dp, borde), colors = ButtonDefaults.outlinedButtonColors(contentColor = contenido),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        Icon(icono, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(texto)
     }
 }
 
@@ -245,6 +314,8 @@ fun TurnoCard(
     onModificar: (() -> Unit)? = null,
     /** Ficha cacheada del paciente, para número de afiliado y plan (el turno solo trae el nombre de la obra social). */
     paciente: Paciente? = null,
+    /** Nombre del tipo del turno («Tipo: Opción» si eligió una opción conocida; el de turnos si lo informó; si no, el del enum o «Tipo <código>»). */
+    etiquetaTipo: String = etiquetaDelTipo(t.codigoDeTipo),
 ) {
     val uriHandler = LocalUriHandler.current
     // Caja y comentario se editan localmente y se guardan al salir del campo (no tecla a tecla): así se puede borrar
@@ -310,7 +381,7 @@ fun TurnoCard(
                 }
                 // Arriba a la derecha: tipo de turno (color por tipo) y, si corresponde, sobreturno y primer control.
                 Column(Modifier.align(Alignment.Top), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    StatusChip(t.tipoTurno.etiqueta, t.tipoTurno.color(), pequeno = true)
+                    StatusChip(etiquetaTipo, t.tipoTurno.color(), pequeno = true)
                     if (t.sobreturno) StatusChip("Sobreturno", Salud360Colors.Warning, pequeno = true)
                     if (t.primerControl) StatusChip("1er control", Salud360Colors.Info, pequeno = true)
                 }
@@ -388,6 +459,7 @@ fun AgendaSemanaScreen(
                     Text(dia.fecha.conDia(), style = MaterialTheme.typography.titleMedium, color = Salud360Colors.Indigo, modifier = Modifier.weight(1f))
                     IconButton(onClick = { bloquearDia = dia.fecha }) { Icon(Icons.Default.Block, contentDescription = "Bloquear día", tint = Salud360Colors.Danger) }
                 }
+                val codigosDia = codigosDelDia(dia.slots, dia.slots.mapNotNull { it.turno })
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     dia.slots.forEach { s ->
                         val estado = when {
@@ -395,7 +467,9 @@ fun AgendaSemanaScreen(
                             !s.libre -> SlotState.OCUPADO
                             else -> SlotState.LIBRE
                         }
-                        TimeSlotCircle(s.horario.hhmm(), estado, subtitle = s.turno?.pacienteNombre?.substringBefore(",")?.take(12), onClick = { slotElegido = dia.fecha to s })
+                        // Debajo de la hora: el paciente si el horario está tomado; si no, el tipo cuando corresponde mostrarlo.
+                        val tipo = etiquetaVisibleDelTipo(s.codigoDeTipo, codigosDia, state.nombresDeTipos[s.codigoDeTipo])?.let { etiquetaCorta(it) }
+                        TimeSlotCircle(s.horario.hhmm(), estado, subtitle = s.turno?.pacienteNombre?.substringBefore(",")?.take(12) ?: tipo, onClick = { slotElegido = dia.fecha to s })
                     }
                 }
             }
@@ -450,8 +524,8 @@ private fun SlotDialog(
     var accion by remember { mutableStateOf<String?>(null) }
     when (accion) {
         "bloquear" -> ConfirmDialog("Bloquear horario", "¿Bloquear el ${f.conDia()} a las ${s.horario.hhmm()}?",
-            onConfirm = { vm.bloquear(f, s.horario) { r -> onAviso(r.mensajeBloqueo()) }; onCerrar() }, onDismiss = onCerrar, confirmText = "Bloquear")
-        "asignar" -> AsignarTurnoDialog(vm, f, s.horario, segundoHorario = null, primerControlDoble = primerControlDoble && s.doble, onCerrar = onCerrar, onAviso = onAviso)
+            onConfirm = { vm.bloquear(f, s.horario, s) { r -> onAviso(r.mensajeBloqueo()) }; onCerrar() }, onDismiss = onCerrar, confirmText = "Bloquear")
+        "asignar" -> AsignarTurnoDialog(vm, f, s.horario, segundoHorario = null, primerControlDoble = primerControlDoble && s.doble, onCerrar = onCerrar, onAviso = onAviso, slot = s)
         else -> androidx.compose.material3.AlertDialog(
             onDismissRequest = onCerrar,
             title = { Text("${f.conDia()} ${s.horario.hhmm()}") },
@@ -490,15 +564,48 @@ private fun ConfirmarMoverDialog(vm: AgendaViewModel, t: Turno, f: LocalDate, ho
     )
 }
 
-/** Diálogo para asignar un turno: buscar paciente por DNI/apellido y confirmar. */
+/** El aviso al terminar de asignar: el de siempre, y —si se eligió una opción— cuál. */
+private fun ResultadoTurno.mensajeAlAsignar(slot: SlotAgenda?, state: AgendaUiState): String =
+    if (this is ResultadoTurno.Ok) avisoDeTurnoRegistrado(turno.codigoDeTipo, slot, state.nombresDeTipos, state.tiposDelMedico) else mensaje()
+
+/**
+ * Opción (subtipo) del turno, opcional: «Sin especificar» deja el tipo del horario; una opción lo registra con ella. Solo se
+ * muestra si el tipo del horario tiene opciones (ver `AgendaUiState.opcionesPara`).
+ */
 @Composable
-fun AsignarTurnoDialog(vm: AgendaViewModel, f: LocalDate, horario: LocalTime, segundoHorario: LocalTime?, primerControlDoble: Boolean, onCerrar: () -> Unit, onAviso: (String) -> Unit) {
+private fun SelectorDeOpcion(opciones: List<OpcionTipoTurno>, elegida: Int?, onElegir: (Int?) -> Unit, etiquetaDelHorario: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Opción del turno (opcional)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            androidx.compose.material3.FilterChip(selected = elegida == null, onClick = { onElegir(null) }, label = { Text(TEXTO_SIN_ESPECIFICAR) })
+            opciones.forEach { o ->
+                androidx.compose.material3.FilterChip(selected = elegida == o.id, onClick = { onElegir(if (elegida == o.id) null else o.id) }, label = { Text(o.nombre) })
+            }
+        }
+        Text(ayudaDeOpcion(etiquetaDelHorario, opciones.firstOrNull { it.id == elegida }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Nombre con que se rotula el tipo del horario [slot] (para decir con qué queda el turno). */
+private fun AgendaUiState.etiquetaDelHorario(slot: SlotAgenda?): String =
+    slot?.let { etiquetaDelTipo(it.codigoDeTipo, nombresDeTipos[it.codigoDeTipo]) } ?: etiquetaDelTipo(1)
+
+/**
+ * Diálogo para asignar un turno: buscar paciente por DNI/apellido y confirmar. El turno lleva el tipo del [slot] elegido o,
+ * si ese tipo tiene opciones y se eligió una, el de la opción.
+ */
+@Composable
+fun AsignarTurnoDialog(vm: AgendaViewModel, f: LocalDate, horario: LocalTime, segundoHorario: LocalTime?, primerControlDoble: Boolean, onCerrar: () -> Unit, onAviso: (String) -> Unit, slot: SlotAgenda? = null) {
+    val state by vm.state.collectAsState()
     var busqueda by remember { mutableStateOf("") }
     var resultados by remember { mutableStateOf<List<Paciente>>(emptyList()) }
     var elegido by remember { mutableStateOf<Paciente?>(null) }
     var primerControl by remember { mutableStateOf(false) }
+    var opcion by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(busqueda) { if (busqueda.length >= 2) resultados = vm.buscarPacientes(busqueda) }
+    LaunchedEffect(Unit) { vm.refrescarTipos() }
+    val opciones = state.opcionesPara(slot)
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCerrar,
@@ -511,6 +618,7 @@ fun AsignarTurnoDialog(vm: AgendaViewModel, f: LocalDate, horario: LocalTime, se
                     Text("Paciente: ${e.nombreCompleto} (DNI ${e.dni})", fontWeight = FontWeight.SemiBold)
                     com.salud360.core.ui.components.CheckboxField("Primer control", primerControl, { primerControl = it })
                     if (primerControl && primerControlDoble && segundoHorario != null) Text("Se reservarán dos horarios consecutivos", style = MaterialTheme.typography.bodyMedium)
+                    if (opciones.isNotEmpty()) SelectorDeOpcion(opciones, opcion, { opcion = it }, state.etiquetaDelHorario(slot))
                 } else {
                     resultados.take(8).forEach { p ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -526,7 +634,7 @@ fun AsignarTurnoDialog(vm: AgendaViewModel, f: LocalDate, horario: LocalTime, se
         confirmButton = {
             TextButton(enabled = elegido != null, onClick = {
                 val p = elegido ?: return@TextButton
-                scope.launch { vm.asignar(p, f, horario, primerControl, if (primerControl) segundoHorario else null) { r -> onAviso(r.mensaje()) } }
+                scope.launch { vm.asignar(p, f, horario, primerControl, if (primerControl) segundoHorario else null, slot, opcion) { r -> onAviso(r.mensajeAlAsignar(slot, vm.state.value)) } }
                 onCerrar()
             }) { Text("Confirmar turno") }
         },
@@ -534,15 +642,25 @@ fun AsignarTurnoDialog(vm: AgendaViewModel, f: LocalDate, horario: LocalTime, se
     )
 }
 
-/** Sobreturno: cualquier horario (no necesita estar en la plantilla). */
+/**
+ * Sobreturno: cualquier horario (no necesita estar en la plantilla); si coincide con uno de [slots], lleva su tipo y, si ese
+ * tipo tiene opciones, deja elegir una.
+ */
 @Composable
-private fun SobreturnoDialog(vm: AgendaViewModel, f: LocalDate, onCerrar: () -> Unit, onAviso: (String) -> Unit) {
+private fun SobreturnoDialog(vm: AgendaViewModel, f: LocalDate, slots: List<SlotAgenda>, onCerrar: () -> Unit, onAviso: (String) -> Unit) {
+    val state by vm.state.collectAsState()
     var hora by remember { mutableStateOf("") }
     var busqueda by remember { mutableStateOf("") }
     var resultados by remember { mutableStateOf<List<Paciente>>(emptyList()) }
     var elegido by remember { mutableStateOf<Paciente?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(busqueda) { if (busqueda.length >= 2) resultados = vm.buscarPacientes(busqueda) }
+    LaunchedEffect(Unit) { vm.refrescarTipos() }
+    val horaElegida = runCatching { LocalTime.parse(hora.padStart(5, '0')) }.getOrNull()
+    val slot = horaElegida?.let { slotDelHorario(slots, it) }
+    val opciones = state.opcionesPara(slot)
+    // La opción elegida vale para el horario que la ofrece: si se cambia la hora a otro tipo, se vuelve a «Sin especificar».
+    var opcion by remember(slot?.codigoDeTipo) { mutableStateOf<Int?>(null) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCerrar,
         title = { Text("Sobreturno · ${f.conDia()}") },
@@ -557,13 +675,14 @@ private fun SobreturnoDialog(vm: AgendaViewModel, f: LocalDate, onCerrar: () -> 
                         Text("${p.nombreCompleto} · DNI ${p.dni}", Modifier.weight(1f)); LinkButton("Elegir", onClick = { elegido = p })
                     }
                 }
+                if (opciones.isNotEmpty()) SelectorDeOpcion(opciones, opcion, { opcion = it }, state.etiquetaDelHorario(slot))
             }
         },
         confirmButton = {
-            TextButton(enabled = elegido != null && runCatching { LocalTime.parse(hora.padStart(5, '0')) }.isSuccess, onClick = {
+            TextButton(enabled = elegido != null && horaElegida != null, onClick = {
                 val p = elegido ?: return@TextButton
-                val h = runCatching { LocalTime.parse(hora.padStart(5, '0')) }.getOrNull() ?: return@TextButton
-                scope.launch { vm.sobreturno(p, f, h) { r -> onAviso(r.mensaje()) } }
+                val h = horaElegida ?: return@TextButton
+                scope.launch { vm.sobreturno(p, f, h, slot, opcion) { r -> onAviso(r.mensajeAlAsignar(slot, vm.state.value)) } }
                 onCerrar()
             }) { Text("Registrar sobreturno") }
         },
@@ -571,17 +690,45 @@ private fun SobreturnoDialog(vm: AgendaViewModel, f: LocalDate, onCerrar: () -> 
     )
 }
 
+/** Confirma un turno para un paciente ya elegido; si el tipo del horario [slot] tiene opciones, deja elegir una (opcional). */
+@Composable
+private fun ConfirmarTurnoDialog(vm: AgendaViewModel, mensaje: String, slot: SlotAgenda, onConfirm: (Int?) -> Unit, onDismiss: () -> Unit) {
+    val state by vm.state.collectAsState()
+    var opcion by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) { vm.refrescarTipos() }
+    val opciones = state.opcionesPara(slot)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Confirmar turno") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(mensaje)
+                if (opciones.isNotEmpty()) SelectorDeOpcion(opciones, opcion, { opcion = it }, state.etiquetaDelHorario(slot))
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(opcion) }) { Text("Confirmar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
 /** Card de un horario libre: hora + botón para agregar el turno. */
 @Composable
-fun SlotCardLibre(horario: String, onAsignar: () -> Unit, onBloquear: (() -> Unit)? = null, etiqueta: String = "Agregar turno") {
+fun SlotCardLibre(
+    horario: String, onAsignar: () -> Unit, onBloquear: (() -> Unit)? = null, etiqueta: String = "Agregar turno",
+    /** Tipo del horario, si corresponde mostrarlo (ver `etiquetaVisibleDelTipo`); `null` = sin etiqueta. */
+    tipo: String? = null, colorTipo: androidx.compose.ui.graphics.Color = Salud360Colors.TipoConsulta,
+) {
     // Verde muy suave para distinguir de un vistazo dónde hay lugar: un turno ocupado queda con el fondo normal.
     val dark = LocalIsDarkTheme.current
     PlainCard(containerColor = if (dark) Salud360Colors.SlotLibreBgDark else Salud360Colors.SlotLibreBg) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                horario, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                color = if (dark) MaterialTheme.colorScheme.secondary else Salud360Colors.Indigo, modifier = Modifier.weight(1f),
-            )
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    horario, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    color = if (dark) MaterialTheme.colorScheme.secondary else Salud360Colors.Indigo,
+                )
+                if (tipo != null) StatusChip(tipo, colorTipo, pequeno = true)
+            }
             if (onBloquear != null) LinkButton("Bloquear", onBloquear)
             AcceptButton(etiqueta, onClick = onAsignar)
         }
@@ -598,11 +745,16 @@ fun ResultadoTurno.mensajeBloqueo(): String = when (this) {
 
 /** Card de un horario ocupado o bloqueado: hora + quién lo tiene, sin acción. */
 @Composable
-fun SlotCardOcupado(horario: String, bloqueado: Boolean, pacienteNombre: String?) {
+fun SlotCardOcupado(
+    horario: String, bloqueado: Boolean, pacienteNombre: String?,
+    /** Tipo del horario, si corresponde mostrarlo (ver `etiquetaVisibleDelTipo`); `null` = sin etiqueta. */
+    tipo: String? = null, colorTipo: androidx.compose.ui.graphics.Color = Salud360Colors.TipoConsulta,
+) {
     PlainCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(horario, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
             Text(if (bloqueado) "Bloqueado" else pacienteNombre?.ifBlank { null } ?: "Ocupado", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            if (tipo != null) StatusChip(tipo, colorTipo, pequeno = true)
         }
     }
 }
@@ -639,9 +791,12 @@ fun AsignarTurnoScreen(
         aviso?.let { Text(it, color = if (it.startsWith("Turno registrado")) Salud360Colors.SuccessDark else MaterialTheme.colorScheme.error) }
         if (slots.isEmpty()) EmptyState("Este día no atiende")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val codigosDia = codigosDelDia(slots, slots.mapNotNull { it.turno })
             slots.sortedBy { it.horario }.forEach { s ->
-                if (s.libre) SlotCardLibre(s.horario.hhmm(), onAsignar = { slot = s })
-                else SlotCardOcupado(s.horario.hhmm(), bloqueado = s.turno?.estado == EstadoTurno.BLOQUEADO, pacienteNombre = s.turno?.pacienteNombre)
+                val tipo = etiquetaVisibleDelTipo(s.codigoDeTipo, codigosDia, state.nombresDeTipos[s.codigoDeTipo])
+                val colorTipo = s.tipoTurno.color()
+                if (s.libre) SlotCardLibre(s.horario.hhmm(), onAsignar = { slot = s }, tipo = tipo, colorTipo = colorTipo)
+                else SlotCardOcupado(s.horario.hhmm(), bloqueado = s.turno?.estado == EstadoTurno.BLOQUEADO, pacienteNombre = s.turno?.pacienteNombre, tipo = tipo, colorTipo = colorTipo)
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -650,12 +805,15 @@ fun AsignarTurnoScreen(
     slot?.let { s ->
         val siguiente = slots.indexOf(s).let { i -> slots.getOrNull(i + 1)?.takeIf { it.libre }?.horario }
         if (pacientePreseleccionado != null) {
-            ConfirmDialog("Confirmar turno", "${pacientePreseleccionado.nombreCompleto} · ${fecha.conDia()} ${s.horario.hhmm()}",
-                onConfirm = { scope.launch { vm.asignar(pacientePreseleccionado, fecha, s.horario, false) { r -> aviso = r.mensaje(); scope.launch { slots = vm.slotsDelDia(fecha) } } }; slot = null },
-                onDismiss = { slot = null }, confirmText = "Confirmar")
+            ConfirmarTurnoDialog(vm, "${pacientePreseleccionado.nombreCompleto} · ${fecha.conDia()} ${s.horario.hhmm()}", s,
+                onConfirm = { opcion ->
+                    scope.launch { vm.asignar(pacientePreseleccionado, fecha, s.horario, false, slot = s, opcionId = opcion) { r -> aviso = r.mensajeAlAsignar(s, vm.state.value); scope.launch { slots = vm.slotsDelDia(fecha) } } }
+                    slot = null
+                },
+                onDismiss = { slot = null })
         } else {
             AsignarTurnoDialog(vm, fecha, s.horario, siguiente, primerControlDoble = state.primerControlDoble && s.doble, onCerrar = { slot = null },
-                onAviso = { aviso = it; scope.launch { slots = vm.slotsDelDia(fecha) } })
+                onAviso = { aviso = it; scope.launch { slots = vm.slotsDelDia(fecha) } }, slot = s)
         }
     }
 }
